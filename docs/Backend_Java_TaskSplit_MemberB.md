@@ -1,7 +1,8 @@
 # Backend Java — Phân việc Thành viên B: Media Studio Pipeline
 
 > Bám sát `API_Contract.md`, `docs/SRS.md` 1.4b, `System_Architecture.md` 3.3, `Database_Design.md` 3.3.
-> Trước khi code: đọc 3 tài liệu trên + khảo sát `../transflow/backend-main` theo đúng CLAUDE.md §4.
+> Trước khi code: đọc 4 tài liệu trên + khảo sát `../transflow/backend-main` theo đúng CLAUDE.md §4, và nắm
+> rõ cách chia module package ở CLAUDE.md §4.8.
 > **Cảnh báo riêng cho phần này**: `MediaController`/`MediaSummaryService`/`MediaJobResponse` gốc trong
 > `transflow` đã bị "nhiễm" rất nặng bởi các lớp legacy (Content-Transformation CT0-CT5, W0/W1 workflow,
 > `documentId`, ADR-CEP B-series, `recipeId` gồm cả `summary.extractive/summary.generative` không tồn tại
@@ -14,15 +15,22 @@
 Đây là 2 luồng sản phẩm chính của Media Studio, phụ thuộc vào các service nền tảng do Thành viên A cung
 cấp (xem §4 dưới).
 
-| Module | API_Contract.md | Bảng DB sở hữu |
+**Chia module theo `CLAUDE.md` §4.8** — mỗi package `com.app.modules.<name>` chỉ chứa đúng 1 nhóm bảng dưới
+đây, không truy cập trực tiếp `repository`/`entity` của module do A phụ trách (§4.8 "Quy tắc biên module");
+gọi qua interface ở §4 thay vì tự viết lại.
+
+| Module (package) | API_Contract.md | Bảng DB sở hữu |
 |---|---|---|
-| Media Asset & Consent | §4 | `media_assets`, `media_consents` |
-| Media Job — Localization + Summarization | §5 | `media_jobs`, `media_job_stages`, `summary_proposals`, `summary_proposal_segments`, `subtitle_segments` |
-| Video Batch Localization | §6 | `localization_batches` |
-| Glossary | §7 | `glossaries`, `glossary_terms` |
-| QA | §8 | `qa_issues`, `qa_issue_overrides` |
-| Callback nội bộ Worker→Spring | §14 | ghi `media_job_stages`/`media_jobs` |
-| Ghi log usage AI | (phụ, cho A đọc ở Dashboard) | `ai_usage_logs` |
+| `media_asset` — Media Asset & Consent | §4 | `media_assets`, `media_consents`, `terms_versions` |
+| `media_job` — Media Job orchestrator (Localization + Summarization) + callback (subpackage `media_job.callback`) | §5, §14 | `media_jobs`, `media_job_stages`, `subtitle_segments` |
+| `summarization` — Summarization proposal & refine | §5.1 | `summary_proposals`, `summary_proposal_segments` |
+| `batch` — Video Batch Localization | §6 | `localization_batches` |
+| `glossary` — Glossary | §7 | `glossaries`, `glossary_terms` |
+| `qa` — QA | §8 | `qa_issues`, `qa_issue_overrides` |
+| Ghi log usage AI | (thuộc module `media_job`, cho A đọc ở `dashboard`) | `ai_usage_logs` |
+
+Code dùng chung cả 2 module trở lên (`BaseEntity`, `ApiError`/exception handler, JWT filter, HMAC/AES-GCM
+util, pagination helper) đặt trong package `com.app.common` — sửa file trong đó phải báo trước cho A.
 
 ## 2. Việc cần làm theo từng module
 

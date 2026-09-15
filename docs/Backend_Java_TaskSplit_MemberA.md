@@ -1,24 +1,31 @@
 # Backend Java — Phân việc Thành viên A: Platform & Support Services
 
 > Bám sát `API_Contract.md`, `docs/SRS.md` 1.4b, `System_Architecture.md` 3.3, `Database_Design.md` 3.3.
-> Trước khi code: đọc 3 tài liệu trên + khảo sát `../transflow/backend-main` theo đúng CLAUDE.md §4 (copy
-> rồi cắt, không viết lại từ đầu, không copy nguyên khối chứa logic TM/Document).
+> Trước khi code: đọc 4 tài liệu trên + khảo sát `../transflow/backend-main` theo đúng CLAUDE.md §4 (copy
+> rồi cắt, không viết lại từ đầu, không copy nguyên khối chứa logic TM/Document) và nắm rõ cách chia module
+> package ở CLAUDE.md §4.8.
 
 ## 1. Phạm vi phụ trách
 
 Thành viên A là **nền tảng** mà pipeline Media Studio (Thành viên B) phụ thuộc vào. Ưu tiên hoàn thành
 trước hoặc song song sớm để B không bị block.
 
-| Module | API_Contract.md | Bảng DB sở hữu |
+**Chia module theo `CLAUDE.md` §4.8** — mỗi package `com.app.modules.<name>` chỉ chứa đúng 1 nhóm bảng dưới
+đây, không truy cập trực tiếp `repository`/`entity` của module do B phụ trách (§4.8 "Quy tắc biên module").
+
+| Module (package) | API_Contract.md | Bảng DB sở hữu |
 |---|---|---|
-| Auth (email/password + Google) | §1 | `users` |
-| Workspace + Membership (RBAC 3 role) | §2 | `workspaces`, `workspace_members` |
-| Project + Project assignment | §3 | `projects`, `project_members` |
-| Credit & Thanh toán | §10 | `credit_accounts`, `credit_transactions`, `credit_packages`, `credit_package_purchases`, `credit_pricing_config`, `workspace_billing_configs` |
-| Nguồn AI cá nhân (BYOK) + TTS voices | §11 | `user_ai_providers`, `platform_ai_providers`, `tts_voices` |
-| Preset (3 cấp + template) | §9 | `media_presets` |
-| Thông báo | §12 | `notifications` |
-| Dashboard (usage) | §13 | đọc `ai_usage_logs` (bảng do B ghi, xem §4) |
+| `auth` — Auth (email/password + Google) | §1 | `users` |
+| `workspace` — Workspace + Membership (RBAC 3 role) | §2 | `workspaces`, `workspace_members` |
+| `project` — Project + Project assignment | §3 | `projects`, `project_members` |
+| `credit` — Credit & Thanh toán | §10 | `credit_accounts`, `credit_transactions`, `credit_packages`, `credit_package_purchases`, `credit_pricing_config`, `workspace_billing_configs` |
+| `provider` — Nguồn AI cá nhân (BYOK) + TTS voices | §11 | `user_ai_providers`, `platform_ai_providers`, `tts_voices` |
+| `preset` — Preset (3 cấp + template) | §9 | `media_presets` |
+| `notification` — Thông báo | §12 | `notifications` |
+| `dashboard` — Dashboard (usage) | §13 | đọc `ai_usage_logs` (bảng do module `media_job` của B ghi, xem §4) |
+
+Code dùng chung cả 2 module trở lên (`BaseEntity`, `ApiError`/exception handler, JWT filter, HMAC/AES-GCM
+util, pagination helper) đặt trong package `com.app.common` — sửa file trong đó phải báo trước cho B.
 
 ## 2. Việc cần làm theo từng module
 
