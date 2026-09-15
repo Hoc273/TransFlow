@@ -1,11 +1,11 @@
 package com.app.common.security;
 
 import com.app.common.config.AppProperties;
-import com.app.common.exception.ApiError;
+import com.app.common.dto.ApiResponse;
+import com.app.common.exception.ErrorCode;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -64,18 +64,20 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .exceptionHandling(eh -> eh
                         .authenticationEntryPoint((request, response, ex) -> {
-                            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                            response.setStatus(ErrorCode.UNAUTHENTICATED.getHttpStatusCode().value());
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                            objectMapper.writeValue(response.getWriter(), ApiError.of(
-                                    401, "Unauthorized", "Authentication required",
-                                    request.getRequestURI()));
+                            objectMapper.writeValue(response.getWriter(), ApiResponse.builder()
+                                    .code(ErrorCode.UNAUTHENTICATED.getCode())
+                                    .message(ErrorCode.UNAUTHENTICATED.getMessage())
+                                    .build());
                         })
                         .accessDeniedHandler((request, response, ex) -> {
-                            response.setStatus(HttpStatus.FORBIDDEN.value());
+                            response.setStatus(ErrorCode.UNAUTHORIZED.getHttpStatusCode().value());
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                            objectMapper.writeValue(response.getWriter(), ApiError.of(
-                                    403, "Forbidden", "Access denied",
-                                    request.getRequestURI()));
+                            objectMapper.writeValue(response.getWriter(), ApiResponse.builder()
+                                    .code(ErrorCode.UNAUTHORIZED.getCode())
+                                    .message(ErrorCode.UNAUTHORIZED.getMessage())
+                                    .build());
                         }))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
