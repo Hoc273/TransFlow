@@ -1,0 +1,465 @@
+/* -- Shared form / modal / action buttons (B.2-B.4, C Batch) -- */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+.btn-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.btn-secondary.btn-sm,
+.btn-primary.btn-sm {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.btn-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+/* Purple-tinted secondary action (media studio pages) — same hierarchy as
+   btn-secondary but on-brand: soft purple fill + accent text + accent border. */
+.btn-media-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.btn-media-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent-soft) 82%, var(--color-accent) 18%);
+}
+.btn-media-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.btn-media-secondary.btn-sm {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.btn-icon-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+.btn-icon-danger:hover:not(:disabled) {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+.btn-icon-danger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+/* `.input` is an alias of field controls — used by Media Studio and other forms. */
+.input,
+.field-input,
+.field-select {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+.input:focus,
+.field-input:focus,
+.field-select:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+.input:disabled,
+.field-input:disabled,
+.field-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-secondary);
+}
+.field-select {
+  width: auto;
+  min-width: 140px;
+}
+/* Native <select>/<option> in dark mode — force readable colors */
+.dark .input,
+.dark .field-input,
+.dark .field-select,
+.dark select.input,
+.dark select.field-input,
+.dark select.field-select {
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+  color-scheme: dark;
+}
+.dark .input option,
+.dark .field-input option,
+.dark .field-select option {
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+/* Legacy nested label.field used in media forms */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+.field .field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.field-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-error);
+}
+
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+}
+.modal-panel {
+  width: 100%;
+  max-width: 440px;
+  max-height: min(90vh, 720px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-md);
+}
+.modal-panel-lg {
+  max-width: 560px;
+}
+/* PRESET-VIZ (docs/97 §19.16): xl preset editor with the live preview column.
+ * FE follow-up: wider (min(1280px, 96vw)) so the preview frame can be larger. */
+.modal-panel-xl {
+  max-width: min(1280px, 96vw);
+  max-height: min(92vh, 860px);
+}
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 0;
+}
+.modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+.modal-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.modal-close {
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px;
+}
+.modal-close:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+.modal-body {
+  padding: 16px;
+  overflow-y: auto;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 16px 16px;
+  border-top: 1px solid transparent;
+}
+
+/* PRESET-VIZ (docs/97 §19.16) — preset editor live preview frame.
+ * Layer order mirrors the worker filter chain: video → old burned-in
+ * subtitle → mask cover → new subtitle (on top), fixed z-order. */
+.preset-preview-video {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 90% at 30% 20%, rgba(56, 89, 138, 0.85), transparent 60%),
+    radial-gradient(140% 100% at 75% 85%, rgba(30, 41, 59, 0.9), transparent 55%),
+    linear-gradient(135deg, #243b55 0%, #17202e 55%, #0f172a 100%);
+}
+.preset-preview-old-sub {
+  position: absolute;
+  left: 50%;
+  z-index: 1;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 0.1em 0.3em;
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 2px;
+  font-family: Arial, sans-serif;
+}
+.preset-preview-mask {
+  position: absolute;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  border-radius: 4px;
+}
+.preset-preview-subtitle {
+  position: absolute;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 0.05em 0.25em;
+  border-radius: 2px;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.7);
+  font-family: Arial, sans-serif;
+  line-height: 1.25;
+}
+
+.file-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 110px;
+  border: 1.5px dashed var(--color-border-strong);
+  border-radius: 10px;
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 16px;
+  text-align: center;
+}
+.file-drop:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.language-multiselect {
+  position: relative;
+}
+.language-multiselect-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  padding: 8px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.language-multiselect-trigger:hover,
+.language-multiselect-trigger[aria-expanded='true'] {
+  border-color: var(--color-accent);
+}
+.language-multiselect-trigger:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+.language-multiselect-trigger svg {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  transition: transform 0.15s ease;
+}
+.language-multiselect-count {
+  display: inline-flex;
+  min-width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+.language-multiselect-menu {
+  position: absolute;
+  z-index: 75;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  padding: 4px;
+  box-shadow: var(--shadow-md);
+}
+.language-multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  padding: 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.language-multiselect-option:hover,
+.language-multiselect-option.selected {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+.language-multiselect-option input {
+  accent-color: var(--color-accent);
+}
+.language-multiselect-option svg {
+  color: var(--color-accent);
+}
+
+.dd-table tbody tr.row-partial {
+  background: color-mix(in srgb, var(--color-status-partial-bg) 55%, transparent);
+}
+.dd-table tbody tr.row-failed {
+  background: color-mix(in srgb, var(--color-status-failed-bg) 45%, transparent);
+}
+
+.tm-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+.tm-badge-exact {
+  color: var(--color-tm-exact);
+  background: var(--color-tm-exact-bg);
+}
+.tm-badge-fuzzy {
+  color: var(--color-tm-fuzzy);
+  background: var(--color-tm-fuzzy-bg);
+}
+.tm-badge-miss {
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-surface-2);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
