@@ -1,6 +1,7 @@
 package com.app.common.security;
 
-import com.app.common.exception.ApiException;
+import com.app.common.exception.AppException;
+import com.app.common.exception.ErrorCode;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
@@ -16,6 +17,6 @@ public final class CurrentUser {
         if (auth != null && auth.getPrincipal() instanceof AuthenticatedUser u) {
             return u;
         }
-        throw ApiException.unauthorized("Not authenticated");
+        throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
 }
