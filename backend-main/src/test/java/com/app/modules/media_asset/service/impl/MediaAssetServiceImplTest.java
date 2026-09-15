@@ -182,6 +182,26 @@ class MediaAssetServiceImplTest {
         assertSame(asset, result);
     }
 
+    // ---- hasCurrentConsent ----
+
+    @Test
+    void hasCurrentConsent_matchingConsentExists_returnsTrue() {
+        UUID assetId = UUID.randomUUID();
+        when(termsVersionRepository.findByCurrentTrue()).thenReturn(Optional.of(currentTerms("v1")));
+        when(mediaConsentRepository.existsByRootAssetIdAndTermsVersion(assetId, "v1")).thenReturn(true);
+
+        assertTrue(service.hasCurrentConsent(assetId));
+    }
+
+    @Test
+    void hasCurrentConsent_noMatchingConsent_returnsFalse() {
+        UUID assetId = UUID.randomUUID();
+        when(termsVersionRepository.findByCurrentTrue()).thenReturn(Optional.of(currentTerms("v1")));
+        when(mediaConsentRepository.existsByRootAssetIdAndTermsVersion(assetId, "v1")).thenReturn(false);
+
+        assertFalse(service.hasCurrentConsent(assetId));
+    }
+
     // ---- currentTermsVersion ----
 
     @Test
