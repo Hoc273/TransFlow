@@ -26,6 +26,29 @@ public enum ErrorCode {
     UNAUTHORIZED(9996, "Access denied", HttpStatus.FORBIDDEN),
     RESOURCE_NOT_FOUND(9995, "Resource not found", HttpStatus.NOT_FOUND),
 
+    // 20xx - auth (Member A)
+    EMAIL_ALREADY_EXISTS(2000, "Email is already registered", HttpStatus.CONFLICT),
+    INVALID_CREDENTIALS(2001, "Invalid email or password", HttpStatus.UNAUTHORIZED),
+    ACCOUNT_DISABLED(2002, "Account is disabled", HttpStatus.FORBIDDEN),
+    OAUTH_ONLY_ACCOUNT(2003, "This account signs in with Google. Use Continue with Google, or set a password in Settings.", HttpStatus.UNAUTHORIZED),
+    INVALID_REFRESH_TOKEN(2004, "Invalid or expired refresh token", HttpStatus.UNAUTHORIZED),
+    USER_NOT_FOUND(2005, "User no longer exists", HttpStatus.UNAUTHORIZED),
+    GOOGLE_OAUTH_FAILED(2006, "Google sign-in failed", HttpStatus.UNAUTHORIZED),
+    GOOGLE_EMAIL_UNVERIFIED(2007, "Google email is not verified", HttpStatus.BAD_REQUEST),
+    GOOGLE_ACCOUNT_CONFLICT(2008, "Google account conflict", HttpStatus.CONFLICT),
+    GOOGLE_NOT_CONFIGURED(2009, "Google sign-in is not configured on this environment", HttpStatus.BAD_REQUEST),
+    GOOGLE_STATE_INVALID(2010, "Google OAuth state invalid", HttpStatus.BAD_REQUEST),
+
+    // 21xx - workspace (Member A)
+    WORKSPACE_NOT_FOUND(2100, "Workspace not found", HttpStatus.NOT_FOUND),
+    WORKSPACE_MEMBER_NOT_FOUND(2101, "Workspace member not found", HttpStatus.NOT_FOUND),
+    LEAD_CANNOT_BE_REMOVED(2102, "Workspace Lead cannot be removed or demoted", HttpStatus.BAD_REQUEST),
+
+    // 22xx - project (Member A)
+    PROJECT_NOT_FOUND(2200, "Project not found", HttpStatus.NOT_FOUND),
+    PROJECT_MEMBER_NOT_FOUND(2201, "Project member not found", HttpStatus.NOT_FOUND),
+    PROJECT_ACCESS_DENIED(2202, "Project access denied", HttpStatus.FORBIDDEN),
+
     // 23xx - credit (Member A)
     INSUFFICIENT_CREDIT(2300, "Insufficient credit balance", HttpStatus.PAYMENT_REQUIRED),
 

@@ -1,0 +1,34 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    open-in-view: false
+  flyway:
+    enabled: false
+
+app:
+  cors:
+    allowed-origin: http://localhost:5173
+  fe-origin: http://localhost:5173
+  jwt:
+    secret: ZGV2LW9ubHktc2VjcmV0LWNoYW5nZS1tZS0zMi1ieXRlcy1sb25nISE=
+    access-ttl-minutes: 30
+    refresh-ttl-days: 14
+    issuer: transflow
+  credit:
+    initial-grant-amount: 100.0
+  oauth:
+    google:
+      client-id: test-client-id
+      client-secret: test-client-secret
+      redirect-uri: http://localhost:8080/api/auth/google/callback
+      authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+      token-uri: https://oauth2.googleapis.com/token
+      state-ttl-minutes: 10
+      exchange-ttl-seconds: 120
