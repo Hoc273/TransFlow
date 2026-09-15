@@ -1,72 +1,69 @@
 package com.app.common.exception;
 
-import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.app.common.dto.ApiResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
-@RestControllerAdvice
+/**
+ * Handler tập trung duy nhất cho toàn app — xem docs/api-response-convention.md.
+ */
+@Slf4j
+@ControllerAdvice
 public class GlobalExceptionHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-
-    @ExceptionHandler(ApiException.class)
-    public ResponseEntity<ApiError> handleApi(ApiException ex, HttpServletRequest req) {
-        return ResponseEntity.status(ex.getStatus())
-                .body(ApiError.of(
-                        ex.getStatus().value(),
-                        ex.getStatus().getReasonPhrase(),
-                        ex.getMessage(),
-                        req.getRequestURI(),
-                        ex.getCode(),
-                        ex.getDetails()));
-    }
-
+    // Bean Validation (@Valid) — trả lỗi theo từng field trong `data`
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex,
-                                                     HttpServletRequest req) {
-        Map<String, String> fields = new HashMap<>();
-        for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
-            fields.putIfAbsent(fe.getField(), fe.getDefaultMessage());
-        }
-        return ResponseEntity.badRequest()
-                .body(ApiError.of(
-                        400,
-                        "Bad Request",
-                        "Validation failed",
-                        req.getRequestURI(),
-                        "VALIDATION_ERROR",
-                        fields));
+    ResponseEntity<ApiResponse<Map<String, String>>> handleValidation(MethodArgumentNotValidException e) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        e.getBindingResult().getFieldErrors().forEach(fe ->
+                errors.putIfAbsent(fe.getField(), fe.getDefaultMessage()));
+
+        return ResponseEntity.status(ErrorCode.VALIDATION_ERROR.getHttpStatusCode()).body(
+                ApiResponse.<Map<String, String>>builder()
+                        .code(ErrorCode.VALIDATION_ERROR.getCode())
+                        .data(errors)
+                        .build());
     }
 
+    // Lỗi nghiệp vụ — mọi module ném AppException đều rơi vào đây
+    @ExceptionHandler(AppException.class)
+    ResponseEntity<ApiResponse<?>> handleAppException(AppException e) {
+        ErrorCode errorCode = e.getErrorCode();
+        return ResponseEntity.status(errorCode.getHttpStatusCode()).body(
+                ApiResponse.builder()
+                        .code(errorCode.getCode())
+                        .message(errorCode.getMessage())
+                        .build());
+    }
+
+    // Spring Security — 403
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException ex,
-                                                       HttpServletRequest req) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(ApiError.of(403, "Forbidden", "Access denied", req.getRequestURI()));
+    ResponseEntity<ApiResponse<?>> handleAccessDenied(AccessDeniedException e) {
+        ErrorCode errorCode = ErrorCode.UNAUTHORIZED;
+        return ResponseEntity.status(errorCode.getHttpStatusCode()).body(
+                ApiResponse.builder()
+                        .code(errorCode.getCode())
+                        .message(errorCode.getMessage())
+                        .build());
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiError> handleIllegalArg(IllegalArgumentException ex,
-                                                     HttpServletRequest req) {
-        return ResponseEntity.badRequest()
-                .body(ApiError.of(400, "Bad Request", ex.getMessage(), req.getRequestURI()));
-    }
-
+    // Fallback — bắt mọi lỗi không lường trước, không lộ stacktrace/message gốc ra client
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiError> handleGeneric(Exception ex, HttpServletRequest req) {
-        log.error("Unhandled exception on {} {}", req.getMethod(), req.getRequestURI(), ex);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiError.of(500, "Internal Server Error",
-                        "Unexpected error", req.getRequestURI()));
+    ResponseEntity<ApiResponse<?>> handleException(Exception e) {
+        log.error("Unhandled exception", e);
+        ErrorCode errorCode = ErrorCode.UNCATEGORIZED_EXCEPTION;
+        return ResponseEntity.status(errorCode.getHttpStatusCode()).body(
+                ApiResponse.builder()
+                        .code(errorCode.getCode())
+                        .message(errorCode.getMessage())
+                        .build());
     }
 }
