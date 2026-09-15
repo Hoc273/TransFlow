@@ -1,10 +1,16 @@
 # API Contract — TransFlow Media (transflow_mini)
 
-> Phiên bản: **1.0** · Bám sát `SRS.md` 1.4b, `System_Architecture.md` 3.3, `Database_Design.md` 3.3.
-> Chỉ mô tả API của `backend-main` (Spring Boot) — nguồn sự thật duy nhất chạm PostgreSQL. FastAPI
-> (`backend-ai`) và `backend-media-worker` không có API public, chỉ được Spring gọi nội bộ.
+> Phiên bản: **1.1** · Bám sát `SRS.md` 1.4b, `System_Architecture.md` 3.3, `Database_Design.md` 3.3,
+> `api-response-convention.md`. Chỉ mô tả API của `backend-main` (Spring Boot) — nguồn sự thật duy nhất chạm
+> PostgreSQL. FastAPI (`backend-ai`) và `backend-media-worker` không có API public, chỉ được Spring gọi nội bộ.
 > Không có endpoint nào cho Document/Translation Job/Text Editor/Translation Memory/Batch dịch file/
 > Creative Production/Platform Admin — các domain này ngoài phạm vi (xem `CLAUDE.md` §3).
+>
+> **Ghi chú cập nhật — 1.1:** đổi response envelope theo `api-response-convention.md` — mọi response (kể cả
+> thành công) bọc trong `ApiResponse<T>{code:int, message, data}`; envelope cũ
+> `{status,error,message,path,code:string,details}` không còn dùng. Mã lỗi HTTP trước đây nằm trong body
+> (`status`) nay chỉ còn ở HTTP status code thật của response; `code` trong body chuyển từ string sang số
+> nguyên tra theo `ErrorCode` (§15).
 
 ---
 
@@ -22,21 +28,28 @@
   `project_members` + (khi áp dụng) `media_jobs.created_by_user_id`, không chỉ dựa vào route (Arch §1 mục 7).
   Cột "Role" trong các bảng dưới đây là điều kiện cần; điều kiện Project assignment vẫn áp dụng thêm cho
   `MEMBER`/`CLIENT`.
-- **Lỗi** — response envelope thống nhất:
-  ```json
-  {
-    "status": 400,
-    "error": "Bad Request",
-    "message": "targetLang phải cùng ngôn ngữ với voice đã chọn",
-    "path": "/api/workspaces/{workspaceId}/media/jobs",
-    "code": "VOICE_LANGUAGE_MISMATCH",
-    "details": { "field": "reason cụ thể theo từng field, chỉ có ở lỗi validate" }
-  }
-  ```
-  - `400` lỗi validate/nghiệp vụ (kèm `code` máy đọc được cho các luật nghiệp vụ quan trọng — xem §15).
-  - `401` thiếu/hết hạn JWT. `403` không đủ quyền (role/project assignment/job-ownership). `404` không thấy
-    resource hoặc không có quyền xem (không phân biệt để tránh lộ thông tin). `409` xung đột trạng thái
-    (ví dụ rerun-from-stage khi stage trước chưa COMPLETED). `429` rate limit (tạo batch).
+- **Response envelope** — mọi response (thành công lẫn lỗi) bọc trong `ApiResponse<T>{code, message, data}`
+  theo `api-response-convention.md` (field `null` bị lược bỏ khỏi JSON — `@JsonInclude(NON_NULL)`):
+  - Thành công: `code` mặc định **1000**, không cần set tường minh; payload nằm ở `data`.
+    ```json
+    { "code": 1000, "data": { "id": "uuid", "...": "..." } }
+    ```
+  - Lỗi nghiệp vụ (tra theo `ErrorCode`, xem §15):
+    ```json
+    { "code": 2900, "message": "targetLang phải cùng ngôn ngữ với voice đã chọn" }
+    ```
+  - Lỗi validate (`@Valid`) — lỗi theo từng field nằm ở `data`, không phải field `details` riêng:
+    ```json
+    { "code": 9998, "data": { "targetLang": "must not be blank" } }
+    ```
+  - HTTP status code thật của response tra theo `ErrorCode.httpStatusCode` (§15) — **không** còn field
+    `status`/`error`/`path` trong body như envelope cũ; muốn biết path/status đọc trực tiếp từ response HTTP,
+    không phải parse JSON.
+  - Quy ước HTTP status theo nhóm lỗi (áp dụng khi gán `httpStatusCode` cho `ErrorCode` mới): `400` lỗi
+    validate/nghiệp vụ. `401` thiếu/hết hạn JWT. `403` không đủ quyền (role/project assignment/
+    job-ownership). `404` không thấy resource hoặc không có quyền xem (không phân biệt để tránh lộ thông
+    tin). `409` xung đột trạng thái (ví dụ rerun-from-stage khi stage trước chưa COMPLETED). `429` rate
+    limit (tạo batch).
 - **Polling, không SSE**: FE polling `GET .../jobs/{jobId}` và `GET .../batches/{batchId}` mỗi ~5s để theo
   dõi tiến trình (Arch §1 mục 5). Không có WebSocket/SSE cho pipeline dài.
 - **Đa tenant**: mọi response chỉ trả dữ liệu thuộc `workspaceId` trên path; không có endpoint xuyên
@@ -195,7 +208,7 @@ QA issue được pipeline tự sinh sau stage `TRANSLATE`/`SUMMARIZE`, không c
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/qa-issues?resolved=false` | LEAD/MEMBER/CLIENT | List `qa_issues` (kèm `severity`, `blocking_actions`) của job. |
-| POST | `/api/workspaces/{workspaceId}/qa-issues/{issueId}/override` | **job-ownership** (Lead mọi job; Member chỉ job của mình; Client luôn `403`) | `{reason}` (≥10 ký tự, bắt buộc). Ghi `qa_issue_overrides`, luôn lưu vết. `403` với `code=OVERRIDE_NOT_ALLOWED` nếu `issue_type` thuộc nhóm không bao giờ override được (ví dụ `subtitle_overlap` CRITICAL) — áp dụng cả với Lead. |
+| POST | `/api/workspaces/{workspaceId}/qa-issues/{issueId}/override` | **job-ownership** (Lead mọi job; Member chỉ job của mình; Client luôn `403`) | `{reason}` (≥10 ký tự, bắt buộc). Ghi `qa_issue_overrides`, luôn lưu vết. `403` với `ErrorCode.OVERRIDE_NOT_ALLOWED` (§15) nếu `issue_type` thuộc nhóm không bao giờ override được (ví dụ `subtitle_overlap` CRITICAL) — áp dụng cả với Lead. |
 
 ---
 
@@ -281,16 +294,58 @@ cùng `dedupeKey` không xử lý 2 lần.
 
 ---
 
-## 15. Mã lỗi nghiệp vụ quan trọng (`code` trong `ApiError`)
+## 15. Mã lỗi (`ErrorCode` — theo `api-response-convention.md`)
 
-| `code` | HTTP | Khi nào |
+`code` trong `ApiResponse` là **số nguyên**, tra bảng `com.app.common.exception.ErrorCode`. Enum này là
+**nguồn sự thật cho toàn bộ mã lỗi của `backend-main`** — controller không tự tạo message/status rời rạc,
+mọi lỗi nghiệp vụ ném qua `new AppException(ErrorCode.XXX)`.
+
+### 15.1 Mã hệ thống dùng chung (module nào cũng có thể ném)
+
+| `ErrorCode` | `code` | HTTP | Khi nào |
+|---|---|---|---|
+| `SUCCESS` | 1000 | 200 | Mặc định cho mọi response thành công. |
+| `RESOURCE_NOT_FOUND` | 9995 | 404 | Không thấy resource hoặc không có quyền xem (không phân biệt để tránh lộ thông tin). |
+| `UNAUTHORIZED` | 9996 | 403 | Không đủ quyền (role/project assignment/job-ownership) — dùng chung, không thay thế mã nghiệp vụ cụ thể hơn ở §15.3 khi đã có. |
+| `UNAUTHENTICATED` | 9997 | 401 | Thiếu/hết hạn JWT. |
+| `VALIDATION_ERROR` | 9998 | 400 | Lỗi `@Valid` — lỗi theo field nằm trong `data` (xem ví dụ §0). |
+| `UNCATEGORIZED_EXCEPTION` | 9999 | 500 | Lỗi không lường trước — không lộ stacktrace/message gốc ra `message`, chỉ log server-side. |
+
+### 15.2 Dải mã theo module (đúng thứ tự bảng §4.8 của `CLAUDE.md`)
+
+Mỗi module sở hữu 1 dải 100 mã — chỉ được thêm `ErrorCode` mới trong đúng dải của module mình, không dùng
+chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm song song, tương tự quy ước `pom.xml` §4.9).
+
+| Module | Dải `code` | Đã dùng |
 |---|---|---|
-| `VOICE_LANGUAGE_MISMATCH` | 400 | Giọng chọn không cùng ngôn ngữ với `target_lang`. |
-| `TERMS_NOT_ACCEPTED` | 403 | Tạo job từ asset chưa có `media_consents` khớp `terms_version` hiện hành. |
-| `QA_BLOCKED` | 403 | Xuất bản/dựng video/publish-package khi còn `qa_issues` chặn hành động tương ứng chưa resolve/override. |
-| `OVERRIDE_NOT_ALLOWED` | 403 | Cố override `issue_type` thuộc nhóm không bao giờ override được. |
-| `JOB_OWNERSHIP_REQUIRED` | 403 | Member cố QA/override/checkpoint trên job không do mình tạo. |
-| `STAGE_NOT_READY` | 409 | Rerun-from-stage khi stage trước chưa `COMPLETED/SKIPPED`. |
-| `REFINE_LIMIT_REACHED` | 429 | Vượt 5 lần refine/phiên Summarization. |
-| `BATCH_SIZE_EXCEEDED` | 400 | `sourceAssetIds` > 20 khi tạo batch. |
-| `INSUFFICIENT_CREDIT` | 402 | Số dư không đủ khi tạo job — hành vi mặc định `BLOCK_UPFRONT` (Arch §10.4, cấu hình được). |
+| `auth` | 2000–2099 | — |
+| `workspace` | 2100–2199 | — |
+| `project` | 2200–2299 | — |
+| `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300 |
+| `provider` | 2400–2499 | — |
+| `preset` | 2500–2599 | — |
+| `notification` | 2600–2699 | — |
+| `dashboard` | 2700–2799 | — |
+| `media_asset` | 2800–2899 | `TERMS_NOT_ACCEPTED` = 2800 |
+| `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902 |
+| `summarization` | 3000–3099 | `REFINE_LIMIT_REACHED` = 3000 |
+| `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100 |
+| `glossary` | 3200–3299 | — |
+| `qa` | 3300–3399 | `QA_BLOCKED` = 3300, `OVERRIDE_NOT_ALLOWED` = 3301 |
+
+### 15.3 Mã nghiệp vụ đã xác định (đối chiếu 1:1 với bản `code` string cũ trước bản 1.1)
+
+| `ErrorCode` | `code` | HTTP | Khi nào |
+|---|---|---|---|
+| `VOICE_LANGUAGE_MISMATCH` | 2900 | 400 | Giọng chọn không cùng ngôn ngữ với `target_lang`. |
+| `JOB_OWNERSHIP_REQUIRED` | 2901 | 403 | Member cố QA/override/checkpoint trên job không do mình tạo. |
+| `STAGE_NOT_READY` | 2902 | 409 | Rerun-from-stage khi stage trước chưa `COMPLETED/SKIPPED`. |
+| `TERMS_NOT_ACCEPTED` | 2800 | 403 | Tạo job từ asset chưa có `media_consents` khớp `terms_version` hiện hành. |
+| `INSUFFICIENT_CREDIT` | 2300 | 402 | Số dư không đủ khi tạo job — hành vi mặc định `BLOCK_UPFRONT` (Arch §10.4, cấu hình được). |
+| `REFINE_LIMIT_REACHED` | 3000 | 429 | Vượt 5 lần refine/phiên Summarization. |
+| `BATCH_SIZE_EXCEEDED` | 3100 | 400 | `sourceAssetIds` > 20 khi tạo batch. |
+| `QA_BLOCKED` | 3300 | 403 | Xuất bản/dựng video/publish-package khi còn `qa_issues` chặn hành động tương ứng chưa resolve/override. |
+| `OVERRIDE_NOT_ALLOWED` | 3301 | 403 | Cố override `issue_type` thuộc nhóm không bao giờ override được. |
+
+Thêm mã mới: phụ trách module nào tự thêm `ErrorCode` trong đúng dải của mình (§15.2), cập nhật bảng §15.3
+trong cùng PR — không để `ErrorCode` trong code lệch với bảng ở đây.
