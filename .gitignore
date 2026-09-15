@@ -1,0 +1,19 @@
+# IDE & Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Dependencies & Build
+node_modules/
+dist/
+dist-ssr/
