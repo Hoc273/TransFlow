@@ -1,7 +1,9 @@
 # Backend Java — Phân việc Thành viên B: Media Studio Pipeline
 
-> Bám sát `API_Contract.md`, `docs/SRS.md` 1.4b, `System_Architecture.md` 3.3, `Database_Design.md` 3.3.
-> Trước khi code: đọc 3 tài liệu trên + khảo sát `../transflow/backend-main` theo đúng CLAUDE.md §4.
+> Bám sát `API_Contract.md`, `docs/SRS.md` 1.4b, `System_Architecture.md` 3.3, `Database_Design.md` 3.3,
+> `api-response-convention.md`. Trước khi code: đọc 5 tài liệu trên + khảo sát `../transflow/backend-main`
+> theo đúng CLAUDE.md §4, và nắm rõ cách chia module package ở CLAUDE.md §4.8, quy ước response/lỗi ở
+> CLAUDE.md §4.10.
 > **Cảnh báo riêng cho phần này**: `MediaController`/`MediaSummaryService`/`MediaJobResponse` gốc trong
 > `transflow` đã bị "nhiễm" rất nặng bởi các lớp legacy (Content-Transformation CT0-CT5, W0/W1 workflow,
 > `documentId`, ADR-CEP B-series, `recipeId` gồm cả `summary.extractive/summary.generative` không tồn tại
@@ -14,15 +16,30 @@
 Đây là 2 luồng sản phẩm chính của Media Studio, phụ thuộc vào các service nền tảng do Thành viên A cung
 cấp (xem §4 dưới).
 
-| Module | API_Contract.md | Bảng DB sở hữu |
+**Chia module theo `CLAUDE.md` §4.8** — mỗi package `com.app.modules.<name>` chỉ chứa đúng 1 nhóm bảng dưới
+đây, không truy cập trực tiếp `repository`/`entity` của module do A phụ trách (§4.8 "Quy tắc biên module");
+gọi qua interface ở §4 thay vì tự viết lại.
+
+| Module (package) | API_Contract.md | Bảng DB sở hữu |
 |---|---|---|
-| Media Asset & Consent | §4 | `media_assets`, `media_consents` |
-| Media Job — Localization + Summarization | §5 | `media_jobs`, `media_job_stages`, `summary_proposals`, `summary_proposal_segments`, `subtitle_segments` |
-| Video Batch Localization | §6 | `localization_batches` |
-| Glossary | §7 | `glossaries`, `glossary_terms` |
-| QA | §8 | `qa_issues`, `qa_issue_overrides` |
-| Callback nội bộ Worker→Spring | §14 | ghi `media_job_stages`/`media_jobs` |
-| Ghi log usage AI | (phụ, cho A đọc ở Dashboard) | `ai_usage_logs` |
+| `media_asset` — Media Asset & Consent | §4 | `media_assets`, `media_consents`, `terms_versions` |
+| `media_job` — Media Job orchestrator (Localization + Summarization) + callback (subpackage `media_job.callback`) | §5, §14 | `media_jobs`, `media_job_stages`, `subtitle_segments` |
+| `summarization` — Summarization proposal & refine | §5.1 | `summary_proposals`, `summary_proposal_segments` |
+| `batch` — Video Batch Localization | §6 | `localization_batches` |
+| `glossary` — Glossary | §7 | `glossaries`, `glossary_terms` |
+| `qa` — QA | §8 | `qa_issues`, `qa_issue_overrides` |
+| Ghi log usage AI | (thuộc module `media_job`, cho A đọc ở `dashboard`) | `ai_usage_logs` |
+
+Code dùng chung cả 2 module trở lên (`BaseEntity`, `ApiResponse`/`ErrorCode`/`AppException`/
+`GlobalExceptionHandler`, JWT filter, HMAC/AES-GCM util, pagination helper) đặt trong package
+`com.app.common` — sửa file trong đó phải báo trước cho A.
+
+**Dải mã lỗi (`ErrorCode`) của Thành viên B** — theo `API_Contract.md` §15.2, chỉ thêm mã mới trong đúng
+dải của module đang code, cập nhật đồng thời bảng §15.3: `media_asset` 2800–2899 (đã dùng
+`TERMS_NOT_ACCEPTED`=2800), `media_job` 2900–2999 (đã dùng `VOICE_LANGUAGE_MISMATCH`=2900,
+`JOB_OWNERSHIP_REQUIRED`=2901, `STAGE_NOT_READY`=2902), `summarization` 3000–3099 (đã dùng
+`REFINE_LIMIT_REACHED`=3000), `batch` 3100–3199 (đã dùng `BATCH_SIZE_EXCEEDED`=3100), `glossary`
+3200–3299, `qa` 3300–3399 (đã dùng `QA_BLOCKED`=3300, `OVERRIDE_NOT_ALLOWED`=3301).
 
 ## 2. Việc cần làm theo từng module
 
@@ -52,7 +69,8 @@ cấp (xem §4 dưới).
   `source_separation_enabled=true`; `AUDIO_MIX` khi `output_audio_mode=DUB_MIX`; `SUMMARIZE` khi
   (`localization.full`+`HYBRID`) hoặc (`summary.script_match`+`source_summary_job_id IS NULL`).
 - Rerun-from-stage: set stage được chọn + mọi stage sau về `PENDING`, giữ output stage trước (không tính
-  lại Credit) — chỉ cho phép nếu mọi stage trước `COMPLETED/SKIPPED` (`409 STAGE_NOT_READY` nếu không).
+  lại Credit) — chỉ cho phép nếu mọi stage trước `COMPLETED/SKIPPED` (ném `AppException(ErrorCode.
+  STAGE_NOT_READY)`, code 2902, HTTP 409 nếu không — API_Contract §15.3).
 - Checkpoint (`CUT_CONFIRMED/REVIEW_CONFIRMED/PUBLISH_CONFIRMED`) lưu trong `media_job_stages.input_ref`
   JSONB của stage sở hữu — chỉ có ý nghĩa khi `workflow_mode=MANUAL`.
 - **Authorization QA/checkpoint** (dùng chung logic, viết 1 hàm duy nhất `requireJobOwnership`):
@@ -70,10 +88,10 @@ cấp (xem §4 dưới).
   `A.ProviderResolverService.resolveForCapability(...)` trước mỗi lời gọi, sau khi có kết quả (token dùng)
   gọi `A.CreditService.chargeUsage(...)` **và** ghi 1 dòng `ai_usage_logs`.
 - Khi tạo job: gọi `A.PresetResolverService.resolveForJobCreation(...)` để snapshot vào `preset_snapshot`;
-  gọi `A.CreditService.hasSufficientBalance(...)` trước khi tạo (mặc định `BLOCK_UPFRONT`, trả `402
-  INSUFFICIENT_CREDIT` nếu không đủ).
-- Voice: từ chối rõ ràng (`400 VOICE_LANGUAGE_MISMATCH`) nếu `tts_voices.language ≠ target_lang` — không
-  fallback ngầm.
+  gọi `A.CreditService.hasSufficientBalance(...)` trước khi tạo (mặc định `BLOCK_UPFRONT`) — nếu không đủ, A
+  ném `AppException(ErrorCode.INSUFFICIENT_CREDIT)` (code 2300, HTTP 402, thuộc dải module `credit`).
+- Voice: từ chối rõ ràng bằng `AppException(ErrorCode.VOICE_LANGUAGE_MISMATCH)` (code 2900, HTTP 400) nếu
+  `tts_voices.language ≠ target_lang` — không fallback ngầm.
 - Sửa subtitle sau khi đã qua TTS/RENDER → set stage sau `STALE`, không tự rerun (SRS §5.3).
 - Khi job/batch đổi trạng thái quan trọng (COMPLETED/FAILED/cần chạy lại) → gọi
   `A.NotificationService.notify(...)`.
@@ -177,3 +195,5 @@ block — chỉ cần signature đã thống nhất.
       được.
 - [ ] Callback HMAC cho cả 4 stage FFmpeg (EXTRACT_AUDIO, SOURCE_SEPARATION, AUDIO_MIX, RENDER), idempotent.
 - [ ] Ghi `ai_usage_logs` đầy đủ để Dashboard (A) đọc được.
+- [ ] Mọi controller trả `ApiResponse<T>`, mọi lỗi nghiệp vụ ném qua `AppException(ErrorCode.XXX)` với code
+      trong đúng dải của module (CLAUDE.md §4.10), không tự tạo response/exception riêng.
