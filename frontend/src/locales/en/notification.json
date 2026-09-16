@@ -1,0 +1,8 @@
+{
+  "title": "Notifications",
+  "subtitle": "Your batch terminal events in this workspace · read-only (no mark-as-read in MVP)",
+  "emptyTitle": "No notifications",
+  "emptyDesc": "BATCH_COMPLETED, BATCH_PARTIALLY_FAILED, and BATCH_FAILED events will appear here.",
+  "loadMore": "Load more",
+  "loadingMore": "Loading…"
+}
