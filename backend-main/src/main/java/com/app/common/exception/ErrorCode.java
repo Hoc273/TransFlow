@@ -43,11 +43,17 @@ public enum ErrorCode {
     WORKSPACE_NOT_FOUND(2100, "Workspace not found", HttpStatus.NOT_FOUND),
     WORKSPACE_MEMBER_NOT_FOUND(2101, "Workspace member not found", HttpStatus.NOT_FOUND),
     LEAD_CANNOT_BE_REMOVED(2102, "Workspace Lead cannot be removed or demoted", HttpStatus.BAD_REQUEST),
+    WORKSPACE_MEMBER_ALREADY_EXISTS(2103, "User is already a member of this workspace", HttpStatus.CONFLICT),
+    CANNOT_ASSIGN_LEAD_ROLE(2104, "Cannot invite or change role to Lead", HttpStatus.BAD_REQUEST),
+    WORKSPACE_SLUG_ALREADY_EXISTS(2105, "Workspace slug already exists", HttpStatus.CONFLICT),
 
     // 22xx - project (Member A)
     PROJECT_NOT_FOUND(2200, "Project not found", HttpStatus.NOT_FOUND),
     PROJECT_MEMBER_NOT_FOUND(2201, "Project member not found", HttpStatus.NOT_FOUND),
     PROJECT_ACCESS_DENIED(2202, "Project access denied", HttpStatus.FORBIDDEN),
+    USER_NOT_WORKSPACE_MEMBER(2203, "User must be a workspace member before being assigned to a project", HttpStatus.BAD_REQUEST),
+    LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS(2204, "Workspace Lead already has full access to all projects and cannot be assigned", HttpStatus.BAD_REQUEST),
+    PROJECT_MEMBER_ALREADY_EXISTS(2205, "User is already assigned to this project", HttpStatus.CONFLICT),
 
     // 23xx - credit (Member A)
     INSUFFICIENT_CREDIT(2300, "Insufficient credit balance", HttpStatus.PAYMENT_REQUIRED),

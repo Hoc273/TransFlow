@@ -63,6 +63,32 @@ public class CreditServiceImpl implements CreditService {
 
     @Override
     @Transactional(readOnly = true)
+    public WorkspaceBillingConfig getWorkspaceBillingConfig(UUID workspaceId) {
+        return workspaceBillingConfigRepository.findById(workspaceId)
+                .orElseGet(() -> {
+                    WorkspaceBillingConfig config = new WorkspaceBillingConfig();
+                    config.setWorkspaceId(workspaceId);
+                    config.setCostMode(CostMode.PAY_PER_USER);
+                    return config;
+                });
+    }
+
+    @Override
+    @Transactional
+    public WorkspaceBillingConfig updateCostMode(UUID workspaceId, UUID configuredByUserId, CostMode costMode) {
+        WorkspaceBillingConfig config = workspaceBillingConfigRepository.findById(workspaceId)
+                .orElseGet(() -> {
+                    WorkspaceBillingConfig newConfig = new WorkspaceBillingConfig();
+                    newConfig.setWorkspaceId(workspaceId);
+                    return newConfig;
+                });
+        config.setCostMode(costMode != null ? costMode : CostMode.PAY_PER_USER);
+        config.setConfiguredBy(configuredByUserId);
+        return workspaceBillingConfigRepository.save(config);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<CreditAccount> findByUserId(UUID userId) {
         return creditAccountRepository.findByUserId(userId);
     }

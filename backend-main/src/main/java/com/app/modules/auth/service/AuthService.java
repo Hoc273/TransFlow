@@ -3,7 +3,7 @@ package com.app.modules.auth.service;
 import com.app.modules.auth.dto.*;
 import com.app.modules.auth.entity.User;
 
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Authentication service interface (API_Contract.md §1 & CLAUDE_A.md §4.8).
@@ -20,6 +20,12 @@ public interface AuthService {
     TokenRefreshResponse refresh(RefreshRequest req);
 
     UserResponse me(UUID userId);
+
+    Optional<UserResponse> findUserById(UUID userId);
+
+    Map<UUID, UserResponse> findUsersByIds(Collection<UUID> userIds);
+
+    Optional<UserResponse> findUserByEmail(String email);
 
     WorkspaceProjectInit initDefaultWorkspaceAndCredit(User user);
 
