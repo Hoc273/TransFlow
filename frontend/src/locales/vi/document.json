@@ -1,0 +1,35 @@
+{
+  "list": {
+    "title": "Tài liệu",
+    "subtitle": "Tài liệu trong dự án · mới nhất trước",
+    "projects": "Dự án",
+    "create": "Thêm tài liệu",
+    "batchUpload": "Upload batch",
+    "emptyTitle": "Chưa có tài liệu",
+    "emptyDesc": "Dán văn bản hoặc tải lên file .txt/.docx để bắt đầu dịch.",
+    "col": {
+      "origin": "Nguồn"
+    }
+  },
+  "create": {
+    "title": "Thêm tài liệu",
+    "subtitle": "Dán văn bản nguồn hoặc tải .txt / .docx",
+    "tabPaste": "Dán text",
+    "tabUpload": "Tải file",
+    "name": "Tên tài liệu",
+    "namePlaceholder": "Email chào mừng",
+    "nameRequired": "Tên bắt buộc",
+    "sourceLang": "Ngôn ngữ nguồn",
+    "content": "Nội dung nguồn",
+    "contentPlaceholder": "Dán nội dung nguồn tại đây…",
+    "contentRequired": "Nội dung nguồn bắt buộc",
+    "file": "File",
+    "fileRequired": "Chọn file để tải lên",
+    "dropHint": "Bấm hoặc kéo thả file vào đây",
+    "fileHint": "Tối đa 10MB · .txt, .docx",
+    "invalidType": "Định dạng không hỗ trợ: {{name}}",
+    "tooLarge": "File vượt quá 10MB",
+    "submit": "Tạo tài liệu",
+    "submitting": "Đang tạo…"
+  }
+}
