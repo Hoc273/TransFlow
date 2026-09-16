@@ -15,8 +15,11 @@ public record AppProperties(
         Oauth oauth,
         Credit credit,
         Storage storage,
-        MediaWorker mediaWorker
+        MediaWorker mediaWorker,
+        Crypto crypto,
+        Ai ai
 ) {
+    @org.springframework.boot.context.properties.bind.ConstructorBinding
     public AppProperties {
         if (cors == null) {
             cors = new Cors("http://localhost:5173");
@@ -39,6 +42,24 @@ public record AppProperties(
         if (mediaWorker == null) {
             mediaWorker = new MediaWorker(null);
         }
+        if (crypto == null) {
+            crypto = new Crypto(null);
+        }
+        if (ai == null) {
+            ai = new Ai(null, 5000, 30000, 3);
+        }
+    }
+
+    public AppProperties(Cors cors, Jwt jwt, String feOrigin, Oauth oauth, Credit credit, Storage storage) {
+        this(cors, jwt, feOrigin, oauth, credit, storage, null, null, null);
+    }
+
+    public AppProperties(Cors cors, Jwt jwt, String feOrigin, Oauth oauth, Credit credit, Storage storage, MediaWorker mediaWorker) {
+        this(cors, jwt, feOrigin, oauth, credit, storage, mediaWorker, null, null);
+    }
+
+    public AppProperties(Cors cors, Jwt jwt, String feOrigin, Oauth oauth, Credit credit, Storage storage, Crypto crypto, Ai ai) {
+        this(cors, jwt, feOrigin, oauth, credit, storage, null, crypto, ai);
     }
 
     public record Cors(String allowedOrigin) {
@@ -133,6 +154,37 @@ public record AppProperties(
             public boolean isConfigured() {
                 return clientId != null && !clientId.isBlank()
                         && clientSecret != null && !clientSecret.isBlank();
+            }
+        }
+    }
+
+    public record Crypto(String providerKeySecret) {
+        public Crypto {
+            if (providerKeySecret == null || providerKeySecret.isBlank()) {
+                // Default fallback dev key: 32 bytes base64 encoded ("12345678901234567890123456789012")
+                providerKeySecret = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=";
+            }
+        }
+    }
+
+    public record Ai(
+            String baseUrl,
+            int connectTimeoutMs,
+            int readTimeoutMs,
+            int maxRetries
+    ) {
+        public Ai {
+            if (baseUrl == null || baseUrl.isBlank()) {
+                baseUrl = "http://localhost:8000";
+            }
+            if (connectTimeoutMs <= 0) {
+                connectTimeoutMs = 5000;
+            }
+            if (readTimeoutMs <= 0) {
+                readTimeoutMs = 30000;
+            }
+            if (maxRetries < 0) {
+                maxRetries = 3;
             }
         }
     }

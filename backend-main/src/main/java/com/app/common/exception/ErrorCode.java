@@ -61,6 +61,15 @@ public enum ErrorCode {
     CREDIT_PACKAGE_INACTIVE(2302, "Credit package is not active", HttpStatus.BAD_REQUEST),
     CREDIT_ACCOUNT_NOT_FOUND(2303, "Credit account not found", HttpStatus.NOT_FOUND),
 
+    // 24xx - provider (Member A)
+    PROVIDER_NOT_FOUND(2400, "AI provider not found", HttpStatus.NOT_FOUND),
+    PROVIDER_CAPABILITY_NOT_SUPPORTED(2401, "AI provider does not support this capability", HttpStatus.BAD_REQUEST),
+    PROVIDER_TEST_FAILED(2402, "AI provider connection test failed", HttpStatus.BAD_REQUEST),
+    PROVIDER_VOICES_FETCH_FAILED(2403, "Failed to fetch voices from AI provider", HttpStatus.BAD_GATEWAY),
+    PLATFORM_PROVIDER_NOT_CONFIGURED(2404, "No platform AI provider configured for this capability", HttpStatus.BAD_REQUEST),
+    INVALID_PROVIDER_PROTOCOL(2405, "Unsupported AI provider protocol", HttpStatus.BAD_REQUEST),
+    TTS_VOICE_NOT_FOUND(2406, "TTS voice not found", HttpStatus.NOT_FOUND),
+
     // 28xx - media_asset (Member B)
     TERMS_NOT_ACCEPTED(2800, "Current terms version has not been accepted for this asset", HttpStatus.FORBIDDEN),
     MEDIA_FILE_TOO_LARGE(2801, "Uploaded file exceeds the maximum allowed size of 500MB", HttpStatus.BAD_REQUEST),
