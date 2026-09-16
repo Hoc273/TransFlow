@@ -14,27 +14,33 @@ public record AppProperties(
         String feOrigin,
         Oauth oauth,
         Credit credit,
-        Storage storage
+        Storage storage,
+        Crypto crypto,
+        Ai ai
 ) {
-    public AppProperties {
-        if (cors == null) {
-            cors = new Cors("http://localhost:5173");
-        }
-        if (jwt == null) {
-            jwt = new Jwt(null, 30, 14, null);
-        }
-        if (feOrigin == null || feOrigin.isBlank()) {
-            feOrigin = cors.allowedOrigin();
-        }
-        if (oauth == null) {
-            oauth = new Oauth(new Oauth.Google(null, null, null, null, null, 10, 120));
-        }
-        if (credit == null) {
-            credit = new Credit(new BigDecimal("100.0000"));
-        }
-        if (storage == null) {
-            storage = new Storage("http://localhost:9000", "minioadmin", "minioadmin", "transflow-media");
-        }
+    @org.springframework.boot.context.properties.bind.ConstructorBinding
+    public AppProperties(
+            Cors cors,
+            Jwt jwt,
+            String feOrigin,
+            Oauth oauth,
+            Credit credit,
+            Storage storage,
+            Crypto crypto,
+            Ai ai
+    ) {
+        this.cors = cors != null ? cors : new Cors("http://localhost:5173");
+        this.jwt = jwt != null ? jwt : new Jwt(null, 30, 14, null);
+        this.feOrigin = (feOrigin != null && !feOrigin.isBlank()) ? feOrigin : this.cors.allowedOrigin();
+        this.oauth = oauth != null ? oauth : new Oauth(new Oauth.Google(null, null, null, null, null, 10, 120));
+        this.credit = credit != null ? credit : new Credit(new BigDecimal("100.0000"));
+        this.storage = storage != null ? storage : new Storage("http://localhost:9000", "minioadmin", "minioadmin", "transflow-media");
+        this.crypto = crypto != null ? crypto : new Crypto(null);
+        this.ai = ai != null ? ai : new Ai(null, 5000, 30000, 3);
+    }
+
+    public AppProperties(Cors cors, Jwt jwt, String feOrigin, Oauth oauth, Credit credit, Storage storage) {
+        this(cors, jwt, feOrigin, oauth, credit, storage, null, null);
     }
 
     public record Cors(String allowedOrigin) {
@@ -120,6 +126,37 @@ public record AppProperties(
             public boolean isConfigured() {
                 return clientId != null && !clientId.isBlank()
                         && clientSecret != null && !clientSecret.isBlank();
+            }
+        }
+    }
+
+    public record Crypto(String providerKeySecret) {
+        public Crypto {
+            if (providerKeySecret == null || providerKeySecret.isBlank()) {
+                // Default fallback dev key: 32 bytes base64 encoded ("12345678901234567890123456789012")
+                providerKeySecret = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=";
+            }
+        }
+    }
+
+    public record Ai(
+            String baseUrl,
+            int connectTimeoutMs,
+            int readTimeoutMs,
+            int maxRetries
+    ) {
+        public Ai {
+            if (baseUrl == null || baseUrl.isBlank()) {
+                baseUrl = "http://localhost:8000";
+            }
+            if (connectTimeoutMs <= 0) {
+                connectTimeoutMs = 5000;
+            }
+            if (readTimeoutMs <= 0) {
+                readTimeoutMs = 30000;
+            }
+            if (maxRetries < 0) {
+                maxRetries = 3;
             }
         }
     }

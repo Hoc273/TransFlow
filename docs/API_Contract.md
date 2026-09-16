@@ -322,7 +322,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `workspace` | 2100–2199 | `WORKSPACE_NOT_FOUND` = 2100, `WORKSPACE_MEMBER_NOT_FOUND` = 2101, `LEAD_CANNOT_BE_REMOVED` = 2102, `WORKSPACE_MEMBER_ALREADY_EXISTS` = 2103, `CANNOT_ASSIGN_LEAD_ROLE` = 2104, `WORKSPACE_SLUG_ALREADY_EXISTS` = 2105 |
 | `project` | 2200–2299 | `PROJECT_NOT_FOUND` = 2200, `PROJECT_MEMBER_NOT_FOUND` = 2201, `PROJECT_ACCESS_DENIED` = 2202, `USER_NOT_WORKSPACE_MEMBER` = 2203, `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` = 2204, `PROJECT_MEMBER_ALREADY_EXISTS` = 2205 |
 | `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303 |
-| `provider` | 2400–2499 | — |
+| `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406 |
 | `preset` | 2500–2599 | — |
 | `notification` | 2600–2699 | — |
 | `dashboard` | 2700–2799 | — |
@@ -366,6 +366,14 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `BATCH_RATE_LIMIT_EXCEEDED` | 3101 | 429 | Vượt giới hạn tạo batch/khoảng thời gian của user (mặc định 5 lần/10 phút — cần BA xác nhận). |
 | `QA_BLOCKED` | 3300 | 403 | Xuất bản/dựng video/publish-package khi còn `qa_issues` chặn hành động tương ứng chưa resolve/override. |
 | `OVERRIDE_NOT_ALLOWED` | 3301 | 403 | Cố override `issue_type` thuộc nhóm không bao giờ override được. |
+| `PROVIDER_NOT_FOUND` | 2400 | 404 | Nguồn AI (BYOK) không tồn tại hoặc không thuộc quyền sở hữu của user. |
+| `PROVIDER_CAPABILITY_NOT_SUPPORTED` | 2401 | 400 | Nguồn AI không hỗ trợ capability được yêu cầu (ví dụ cố refresh voice trên provider không hỗ trợ TTS). |
+| `PROVIDER_TEST_FAILED` | 2402 | 400 | Thử nghiệm kết nối tới nhà cung cấp AI thất bại. |
+| `PROVIDER_VOICES_FETCH_FAILED` | 2403 | 502 | Không thể đồng bộ danh sách giọng đọc từ nhà cung cấp AI. |
+| `PLATFORM_PROVIDER_NOT_CONFIGURED` | 2404 | 400 | Hệ thống chưa cấu hình nguồn AI nền tảng cho capability này. |
+| `INVALID_PROVIDER_PROTOCOL` | 2405 | 400 | Giao thức provider không hợp lệ hoặc không được hỗ trợ. |
+| `TTS_VOICE_NOT_FOUND` | 2406 | 404 | Giọng đọc TTS không tồn tại. |
 
 Thêm mã mới: phụ trách module nào tự thêm `ErrorCode` trong đúng dải của mình (§15.2), cập nhật bảng §15.3
 trong cùng PR — không để `ErrorCode` trong code lệch với bảng ở đây.
+
