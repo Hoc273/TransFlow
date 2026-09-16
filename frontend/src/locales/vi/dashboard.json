@@ -1,0 +1,129 @@
+{
+  "title": "Bảng điều khiển",
+  "subtitle": "Tổng quan workspace · Tài nguyên AI và batch đang xử lý",
+  "updatedAt": "Làm mới",
+  "loading": "Đang tải…",
+  "widget": {
+    "usage": {
+      "title": "Tài nguyên AI",
+      "subtitle": "Tổng workspace",
+      "inputTokens": "Token đầu vào",
+      "outputTokens": "Token đầu ra",
+      "embedTokens": "Token embed",
+      "cost": "Chi phí ước tính",
+      "comingSoon": "Sắp ra mắt",
+      "empty": "Chưa có dữ liệu usage",
+      "restricted": "Tài nguyên AI chỉ hiện với PM và Admin.",
+      "loadError": "Không tải được usage"
+    },
+    "queue": {
+      "title": "Batch đang xử lý",
+      "subtitle": "Trong hàng đợi",
+      "emptyTitle": "Không có batch đang chạy",
+      "emptyDesc": "Batch PENDING hoặc PROCESSING sẽ hiện ở đây.",
+      "loadError": "Không tải được batch"
+    },
+    "notifications": {
+      "title": "Thông báo gần đây",
+      "subtitle": "Sự kiện batch cuối",
+      "emptyTitle": "Không có thông báo",
+      "emptyDesc": "Sự kiện BATCH_* của bạn sẽ hiện ở đây.",
+      "loadError": "Không tải được thông báo"
+    },
+    "recentProjects": {
+      "title": "Dự án gần đây",
+      "emptyTitle": "Chưa có dự án",
+      "emptyDesc": "Tạo dự án để bắt đầu.",
+      "loadError": "Không tải được dự án",
+      "tmOn": "TM bật",
+      "tmOff": "TM tắt"
+    }
+  },
+  "usage": {
+    "title": "Tài nguyên AI",
+    "subtitle": "Tiêu thụ token theo thao tác AI và model (PM / Admin)",
+    "empty": "Không có dữ liệu usage cho phạm vi này",
+    "summary": {
+      "input": "Token đầu vào",
+      "output": "Token đầu ra",
+      "total": "Tổng token",
+      "operations": "Thao tác",
+      "currentScope": "Phạm vi hiện tại",
+      "cost": "Chi phí ước tính"
+    },
+    "filter": {
+      "project": "Dự án",
+      "allProjects": "Tất cả dự án",
+      "document": "Tài liệu",
+      "allDocuments": "Tất cả tài liệu",
+      "job": "Job",
+      "allJobs": "Tất cả job",
+      "clear": "Xoá bộ lọc"
+    },
+    "byOperation": {
+      "title": "Usage theo thao tác",
+      "subtitle": "Số token và lượt gọi theo từng thao tác AI"
+    },
+    "byModel": {
+      "title": "Usage theo model",
+      "subtitle": "Số token và lượt gọi theo provider / model"
+    },
+    "col": {
+      "operation": "Thao tác",
+      "input": "Đầu vào",
+      "output": "Đầu ra",
+      "total": "Tổng",
+      "calls": "Lượt gọi",
+      "provider": "Provider",
+      "model": "Model"
+    }
+  },
+  "col": {
+    "name": "Tên",
+    "status": "Trạng thái",
+    "progress": "Tiến độ",
+    "docs": "Tài liệu",
+    "createdBy": "Người tạo",
+    "createdAt": "Ngày tạo",
+    "domain": "Lĩnh vực",
+    "sourceLang": "Nguồn",
+    "updatedAt": "Cập nhật",
+    "tm": "TM",
+    "tone": "Giọng điệu"
+  },
+  "status": {
+    "pending": "Chờ",
+    "processing": "Đang xử lý",
+    "completed": "Hoàn tất",
+    "partiallyFailed": "Lỗi một phần",
+    "failed": "Thất bại",
+    "cancelled": "Đã hủy"
+  },
+  "viewAll": "Xem tất cả",
+  "continue": "Tiếp tục",
+  "breadcrumbWorkspace": "Workspace",
+  "live": {
+    "indicator": "Live",
+    "statusOnline": "Dữ liệu thời gian thực",
+    "chartTitle": "Phân tích tài nguyên AI thời gian thực",
+    "chartSubtitle": "Dữ liệu live từ hệ thống theo dõi token",
+    "byOperation": "Theo thao tác",
+    "byModel": "Theo mô hình",
+    "operationsTitle": "Phân bổ tác vụ AI",
+    "balanceTitle": "Cân bằng Token Đầu vào vs Đầu ra",
+    "totalTokens": "Tổng Token",
+    "totalCalls": "Lượt gọi",
+    "totalProjects": "Dự án",
+    "inputTokens": "Đầu vào",
+    "outputTokens": "Đầu ra",
+    "share": "Tỷ trọng",
+    "noData": "Chưa có dữ liệu tiêu thụ AI cho workspace này",
+    "quickLaunch": "Khởi chạy nhanh",
+    "quickNewProject": "Tạo dự án mới",
+    "quickNewBatch": "Dịch hàng loạt",
+    "quickMedia": "Media Studio",
+    "quickGlossary": "Bộ thuật ngữ",
+    "successRate": "Tỷ lệ thành công",
+    "pipelineTitle": "Hàng đợi & Tiến độ xử lý thời gian thực"
+  }
+}
