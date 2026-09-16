@@ -169,6 +169,14 @@ public class MediaJobServiceImpl implements MediaJobService {
     // Database_Design.md §6.3 activation note.
     private boolean isSkippedByDefault(MediaJobStage.StageName name, MediaJob job,
                                         boolean summarize, boolean tts, boolean audioMix) {
+        if (job.getSourceSummaryJobId() != null) {
+            // Arch §7.7 "summary-languages" derived job — only TRANSLATE(script) -> TTS(optional) -> RENDER run.
+            return switch (name) {
+                case TRANSLATE, RENDER -> false;
+                case TTS -> !tts;
+                default -> true;
+            };
+        }
         return switch (name) {
             case SOURCE_SEPARATION -> !job.isSourceSeparationEnabled();
             case SUMMARIZE -> !summarize;
@@ -400,5 +408,67 @@ public class MediaJobServiceImpl implements MediaJobService {
     private MediaJob requireJobInWorkspace(UUID workspaceId, UUID jobId) {
         return mediaJobRepository.findByIdAndWorkspaceId(jobId, workspaceId)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    // ---- summarization support (§2.3) ----
+
+    @Override
+    @Transactional
+    public MediaJob updateSelectedProposal(UUID workspaceId, UUID userId, UUID jobId, UUID proposalId) {
+        MediaJob job = requireJobInWorkspace(workspaceId, jobId);
+        access.requireProjectWriteAccess(workspaceId, userId, job.getProjectId());
+
+        if (proposalId.equals(job.getSelectedProposalId())) {
+            return job;
+        }
+        boolean alreadyTranslated = job.getSelectedProposalId() != null
+                && mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.TRANSLATE)
+                        .map(s -> s.getStatus() == MediaJobStage.StageStatus.COMPLETED)
+                        .orElse(false);
+        if (alreadyTranslated) {
+            throw new AppException(ErrorCode.PROPOSAL_ALREADY_TRANSLATED);
+        }
+        job.setSelectedProposalId(proposalId);
+        return mediaJobRepository.save(job);
+    }
+
+    @Override
+    @Transactional
+    public MediaJob createDerivedSummaryJob(UUID workspaceId, UUID userId, UUID sourceJobId, String targetLang, UUID ttsVoiceId) {
+        MediaJob source = requireJobInWorkspace(workspaceId, sourceJobId);
+        access.requireProjectWriteAccess(workspaceId, userId, source.getProjectId());
+
+        MediaJob.OutputAudioMode outputAudioMode = ttsVoiceId != null
+                ? MediaJob.OutputAudioMode.DUB_REPLACE : MediaJob.OutputAudioMode.ORIGINAL_ONLY;
+        if (ttsVoiceId != null) {
+            requireVoiceLanguageMatches(ttsVoiceId, targetLang);
+        }
+        if (!credit.hasSufficientBalance(userId)) {
+            throw new AppException(ErrorCode.INSUFFICIENT_CREDIT);
+        }
+
+        MediaJob job = new MediaJob();
+        job.setWorkspaceId(workspaceId);
+        job.setProjectId(source.getProjectId());
+        job.setRootAssetId(source.getRootAssetId());
+        job.setRecipeId(MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH);
+        job.setTargetLang(targetLang);
+        job.setRequestedDurationSeconds(source.getRequestedDurationSeconds());
+        job.setSourceSummaryJobId(source.getId());
+        job.setSelectedProposalId(source.getSelectedProposalId());
+        job.setSubtitleMode(source.getSubtitleMode());
+        job.setOutputAudioMode(outputAudioMode);
+        job.setTtsVoiceId(ttsVoiceId);
+        job.setVisualContextEnabled(false);
+        job.setPresetId(source.getPresetId());
+        job.setPresetSnapshot(source.getPresetSnapshot());
+        job.setWorkflowMode(source.getWorkflowMode());
+        job.setPerformedByUserId(userId);
+        job.setCreatedByUserId(userId);
+        job.setStatus(MediaJob.JobStatus.PENDING);
+        job = mediaJobRepository.save(job);
+
+        initializeStages(job);
+        return job;
     }
 }

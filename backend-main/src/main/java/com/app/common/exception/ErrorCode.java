@@ -65,6 +65,7 @@ public enum ErrorCode {
 
     // 30xx - summarization (Member B)
     REFINE_LIMIT_REACHED(3000, "Maximum of 5 refine iterations per session reached", HttpStatus.TOO_MANY_REQUESTS),
+    PROPOSAL_ALREADY_TRANSLATED(3001, "This proposal has already been used to create a translation; rerun TRANSLATE before changing it", HttpStatus.CONFLICT),
 
     // 31xx - batch (Member B)
     BATCH_SIZE_EXCEEDED(3100, "sourceAssetIds must contain between 1 and 20 items", HttpStatus.BAD_REQUEST),
