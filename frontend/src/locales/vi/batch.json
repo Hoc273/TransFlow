@@ -1,0 +1,59 @@
+{
+  "list": {
+    "title": "Xử lý hàng loạt (Batch)",
+    "subtitle": "Các tác vụ dịch theo lô trong không gian làm việc",
+    "create": "Tạo đợt xử lý hàng loạt",
+    "updating": "Đang cập nhật…",
+    "updatedAt": "Cập nhật {{time}}",
+    "emptyTitle": "Chưa có đợt xử lý nào",
+    "emptyDesc": "Tải nhiều tài liệu để dịch tự động và song song theo đợt.",
+    "searchPlaceholder": "Tìm kiếm đợt xử lý hoặc dự án…",
+    "noMatchTitle": "Không tìm thấy đợt xử lý nào",
+    "noMatchDesc": "Không có đợt xử lý nào khớp với từ khóa tìm kiếm.",
+    "clearSearch": "Xóa tìm kiếm",
+    "col": {
+      "project": "Dự án"
+    }
+  },
+  "create": {
+    "title": "Tạo batch",
+    "subtitle": "Tối đa 20 file · 50MB tổng · .txt / .docx",
+    "project": "Dự án",
+    "projectPlaceholder": "Chọn dự án…",
+    "nameOptional": "Tên batch (tuỳ chọn)",
+    "namePlaceholder": "Gói marketing Q3",
+    "sourceLang": "Ngôn ngữ nguồn",
+    "targetLangs": "Ngôn ngữ đích",
+    "targetPlaceholder": "Chọn ngôn ngữ đích",
+    "files": "File",
+    "dropHint": "Bấm hoặc kéo thả file vào đây",
+    "limits": "Tối đa {{maxFiles}} file · {{maxMb}}MB tổng · .txt, .docx",
+    "usage": "{{count}} / {{maxFiles}} file · {{used}} / {{max}}",
+    "tooManyFiles": "Vượt quá {{max}} file",
+    "tooLarge": "Tổng dung lượng vượt {{maxMb}}MB",
+    "invalidType": "Định dạng không hỗ trợ: {{name}}",
+    "targetEqualsSource": "Ngôn ngữ đích phải khác ngôn ngữ nguồn",
+    "rateLimited": "Bạn đã tạo quá nhiều batch trong workspace này, vui lòng thử lại sau.",
+    "noProjects": "Hãy tạo project trước khi upload batch.",
+    "submit": "Bắt đầu batch",
+    "submitting": "Đang tải lên…"
+  },
+  "detail": {
+    "title": "Chi tiết batch",
+    "documents": "Document & job",
+    "failed": "lỗi",
+    "partialTitle": "Thành công một phần",
+    "partialBody": "{{ok}}/{{total}} document thành công, {{failed}} lỗi — không phải cả batch fail. Retry từng document bên dưới.",
+    "retry": "Thử lại",
+    "retrying": "Đang thử lại…",
+    "lastUpdated": "Cập nhật {{relative}}",
+    "noDocuments": "Batch chưa có document",
+    "mobileBanner": "Vui lòng dùng máy tính để có trải nghiệm chi tiết batch đầy đủ.",
+    "col": {
+      "document": "Document",
+      "sourceLang": "Nguồn",
+      "jobs": "Job",
+      "actions": "Thao tác"
+    }
+  }
+}
