@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -425,6 +426,12 @@ public class MediaJobServiceImpl implements MediaJobService {
     private MediaJob requireJobInWorkspace(UUID workspaceId, UUID jobId) {
         return mediaJobRepository.findByIdAndWorkspaceId(jobId, workspaceId)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<SubtitleSegment> findSubtitleSegmentById(UUID segmentId) {
+        return subtitleSegmentRepository.findById(segmentId);
     }
 
     // ---- summarization support (§2.3) ----
