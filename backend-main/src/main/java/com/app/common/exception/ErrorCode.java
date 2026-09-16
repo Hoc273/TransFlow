@@ -69,6 +69,7 @@ public enum ErrorCode {
 
     // 31xx - batch (Member B)
     BATCH_SIZE_EXCEEDED(3100, "sourceAssetIds must contain between 1 and 20 items", HttpStatus.BAD_REQUEST),
+    BATCH_RATE_LIMIT_EXCEEDED(3101, "Too many batches created recently; please wait before creating another", HttpStatus.TOO_MANY_REQUESTS),
 
     // 33xx - qa (Member B)
     QA_BLOCKED(3300, "Blocking QA issues must be resolved or overridden first", HttpStatus.FORBIDDEN),
