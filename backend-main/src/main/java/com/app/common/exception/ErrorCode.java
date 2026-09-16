@@ -54,6 +54,9 @@ public enum ErrorCode {
 
     // 28xx - media_asset (Member B)
     TERMS_NOT_ACCEPTED(2800, "Current terms version has not been accepted for this asset", HttpStatus.FORBIDDEN),
+    MEDIA_FILE_TOO_LARGE(2801, "Uploaded file exceeds the maximum allowed size of 500MB", HttpStatus.BAD_REQUEST),
+    MEDIA_DURATION_EXCEEDED(2802, "Video duration exceeds the maximum allowed length of 30 minutes", HttpStatus.BAD_REQUEST),
+    TERMS_VERSION_MISMATCH(2803, "termsVersion does not match the current terms version", HttpStatus.BAD_REQUEST),
 
     // 29xx - media_job (Member B)
     VOICE_LANGUAGE_MISMATCH(2900, "Selected voice language does not match targetLang", HttpStatus.BAD_REQUEST),
