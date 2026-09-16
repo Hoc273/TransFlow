@@ -13,7 +13,8 @@ public record AppProperties(
         Jwt jwt,
         String feOrigin,
         Oauth oauth,
-        Credit credit
+        Credit credit,
+        Storage storage
 ) {
     public AppProperties {
         if (cors == null) {
@@ -30,6 +31,9 @@ public record AppProperties(
         }
         if (credit == null) {
             credit = new Credit(new BigDecimal("100.0000"));
+        }
+        if (storage == null) {
+            storage = new Storage("http://localhost:9000", "minioadmin", "minioadmin", "transflow-media");
         }
     }
 
@@ -67,6 +71,17 @@ public record AppProperties(
         public Credit {
             if (initialGrantAmount == null) {
                 initialGrantAmount = new BigDecimal("100.0000");
+            }
+        }
+    }
+
+    public record Storage(String endpoint, String accessKey, String secretKey, String mediaBucket) {
+        public Storage {
+            if (endpoint == null || endpoint.isBlank()) {
+                endpoint = "http://localhost:9000";
+            }
+            if (mediaBucket == null || mediaBucket.isBlank()) {
+                mediaBucket = "transflow-media";
             }
         }
     }

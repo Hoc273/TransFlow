@@ -1,0 +1,17 @@
+package com.app.modules.media_job.repository;
+
+import com.app.modules.media_job.entity.MediaJobStage;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+@Repository
+public interface MediaJobStageRepository extends JpaRepository<MediaJobStage, UUID> {
+
+    List<MediaJobStage> findByMediaJobIdOrderByStageOrder(UUID mediaJobId);
+
+    Optional<MediaJobStage> findByMediaJobIdAndStageName(UUID mediaJobId, MediaJobStage.StageName stageName);
+}

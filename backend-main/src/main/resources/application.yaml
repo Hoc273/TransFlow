@@ -24,6 +24,10 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  servlet:
+    multipart:
+      max-file-size: 520MB
+      max-request-size: 520MB
 
 # Namespace app.* — bind vào com.app.common.config.AppProperties.
 # Không hard-code giá trị nhạy cảm ở đây — mọi secret đọc qua biến môi trường (CLAUDE.md §7).
@@ -43,3 +47,8 @@ app:
       redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8080/api/auth/google/callback}
   credit:
     initial-grant-amount: ${CREDIT_INITIAL_GRANT_AMOUNT:100.0000}
+  storage:
+    endpoint: ${MEDIA_STORAGE_ENDPOINT:http://localhost:9000}
+    access-key: ${MEDIA_STORAGE_ACCESS_KEY:minioadmin}
+    secret-key: ${MEDIA_STORAGE_SECRET_KEY:minioadmin}
+    media-bucket: ${MEDIA_STORAGE_BUCKET:transflow-media}
