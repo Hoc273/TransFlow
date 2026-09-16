@@ -19,25 +19,35 @@ public record AppProperties(
         Ai ai
 ) {
     @org.springframework.boot.context.properties.bind.ConstructorBinding
-    public AppProperties(
-            Cors cors,
-            Jwt jwt,
-            String feOrigin,
-            Oauth oauth,
-            Credit credit,
-            Storage storage,
-            Crypto crypto,
-            Ai ai
-    ) {
-        this.cors = cors != null ? cors : new Cors("http://localhost:5173");
-        this.jwt = jwt != null ? jwt : new Jwt(null, 30, 14, null);
-        this.feOrigin = (feOrigin != null && !feOrigin.isBlank()) ? feOrigin : this.cors.allowedOrigin();
-        this.oauth = oauth != null ? oauth : new Oauth(new Oauth.Google(null, null, null, null, null, 10, 120));
-        this.credit = credit != null ? credit : new Credit(new BigDecimal("100.0000"));
-        this.storage = storage != null ? storage : new Storage("http://localhost:9000", "minioadmin", "minioadmin", "transflow-media");
-        this.crypto = crypto != null ? crypto : new Crypto(null);
-        this.ai = ai != null ? ai : new Ai(null, 5000, 30000, 3);
+    public AppProperties {
+    if (cors == null) {
+        cors = new Cors("http://localhost:5173");
     }
+    if (jwt == null) {
+        jwt = new Jwt(null, 30, 14, null);
+    }
+    if (feOrigin == null || feOrigin.isBlank()) {
+        feOrigin = cors.allowedOrigin();
+    }
+    if (oauth == null) {
+        oauth = new Oauth(new Oauth.Google(null, null, null, null, null, 10, 120));
+    }
+    if (credit == null) {
+        credit = new Credit(new BigDecimal("100.0000"));
+    }
+    if (storage == null) {
+        storage = new Storage("http://localhost:9000", "minioadmin", "minioadmin", "transflow-media");
+    }
+    if (crypto == null) {
+        crypto = new Crypto(null);
+    }
+    if (ai == null) {
+        ai = new Ai(null, 5000, 30000, 3);
+    }
+    if (mediaWorker == null) {
+        mediaWorker = new MediaWorker(null);
+    }
+}
 
     public AppProperties(Cors cors, Jwt jwt, String feOrigin, Oauth oauth, Credit credit, Storage storage) {
         this(cors, jwt, feOrigin, oauth, credit, storage, null, null);
