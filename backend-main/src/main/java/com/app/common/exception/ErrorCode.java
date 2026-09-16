@@ -70,6 +70,15 @@ public enum ErrorCode {
     INVALID_PROVIDER_PROTOCOL(2405, "Unsupported AI provider protocol", HttpStatus.BAD_REQUEST),
     TTS_VOICE_NOT_FOUND(2406, "TTS voice not found", HttpStatus.NOT_FOUND),
 
+    // 25xx - preset (Member A)
+    PRESET_NOT_FOUND(2500, "Media preset not found", HttpStatus.NOT_FOUND),
+    PRESET_INACTIVE(2501, "Media preset is inactive", HttpStatus.BAD_REQUEST),
+    PRESET_SCOPE_INVALID(2502, "Invalid preset scope or scope ownership constraint violated", HttpStatus.BAD_REQUEST),
+    CANNOT_DELETE_ONLY_DEFAULT_PRESET(2503, "Cannot delete the default preset in this scope without designating a replacement", HttpStatus.BAD_REQUEST),
+    SYSTEM_PRESET_READ_ONLY(2504, "System presets are managed by the platform and cannot be modified or deleted", HttpStatus.FORBIDDEN),
+    PRESET_DEFAULT_CONFLICT(2505, "A default preset already exists in this scope", HttpStatus.CONFLICT),
+    REPLACEMENT_PRESET_INVALID(2506, "Replacement preset must exist, be active, and belong to the same scope", HttpStatus.BAD_REQUEST),
+
     // 28xx - media_asset (Member B)
     TERMS_NOT_ACCEPTED(2800, "Current terms version has not been accepted for this asset", HttpStatus.FORBIDDEN),
     MEDIA_FILE_TOO_LARGE(2801, "Uploaded file exceeds the maximum allowed size of 500MB", HttpStatus.BAD_REQUEST),
