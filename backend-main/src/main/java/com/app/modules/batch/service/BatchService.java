@@ -25,4 +25,11 @@ public interface BatchService {
 
     /** Reruns a single FAILED child job from its failed stage; does not touch sibling jobs. */
     MediaJob retryChildJob(UUID workspaceId, UUID userId, UUID batchId, UUID jobId);
+
+    /**
+     * Recomputes {@code localization_batches.status} from its child jobs' current statuses (Arch §6/§12).
+     * No-op if the batch is already {@code CANCELLED} (a deliberate user action, never overwritten). Called
+     * by media_job's worker callback (§2.7) whenever a batch child job's status changes.
+     */
+    void recomputeStatus(UUID batchId);
 }

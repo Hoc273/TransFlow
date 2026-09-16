@@ -148,7 +148,9 @@ public class BatchServiceImpl implements BatchService {
 
     // Arch §6/§12 — recomputed in the same transaction as the child-job update that triggered it,
     // under a batch row lock (SELECT ... FOR UPDATE invariant).
-    private void recomputeStatus(UUID batchId) {
+    @Override
+    @Transactional
+    public void recomputeStatus(UUID batchId) {
         LocalizationBatch batch = localizationBatchRepository.findWithLockById(batchId)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
         if (batch.getStatus() == LocalizationBatch.BatchStatus.CANCELLED) {

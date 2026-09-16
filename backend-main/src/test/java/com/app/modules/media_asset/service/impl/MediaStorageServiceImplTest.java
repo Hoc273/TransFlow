@@ -30,7 +30,7 @@ class MediaStorageServiceImplTest {
     @BeforeEach
     void setUp() {
         AppProperties props = new AppProperties(null, null, null, null, null,
-                new AppProperties.Storage("http://localhost:9000", "key", "secret", "test-media-bucket"));
+                new AppProperties.Storage("http://localhost:9000", "key", "secret", "test-media-bucket"), null);
         storageService = new MediaStorageServiceImpl(client, props);
     }
 

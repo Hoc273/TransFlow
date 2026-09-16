@@ -52,3 +52,5 @@ app:
     access-key: ${MEDIA_STORAGE_ACCESS_KEY:minioadmin}
     secret-key: ${MEDIA_STORAGE_SECRET_KEY:minioadmin}
     media-bucket: ${MEDIA_STORAGE_BUCKET:transflow-media}
+  media-worker:
+    hmac-secret: ${MEDIA_WORKER_HMAC_SECRET:}
