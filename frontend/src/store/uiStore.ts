@@ -1,70 +1,39 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 
-/** Light / dark only — system mode removed per product request. */
-export type ThemeMode = 'light' | 'dark'
-export type Language = 'en' | 'vi'
+export type Language = 'vi' | 'en'
+export type Theme = 'light' | 'dark'
 
 interface UiState {
-  theme: ThemeMode
+  theme: Theme
   language: Language
-  sidebarCollapsed: boolean
-  setTheme: (theme: ThemeMode) => void
+  setTheme: (theme: Theme) => void
   cycleTheme: () => void
-  setLanguage: (language: Language) => void
-  setSidebarCollapsed: (collapsed: boolean) => void
-  toggleSidebar: () => void
+  setLanguage: (lang: Language) => void
 }
 
-export function getEffectiveTheme(theme: ThemeMode): 'light' | 'dark' {
-  return theme
-}
-
-function normalizeTheme(raw: unknown): ThemeMode {
-  if (raw === 'dark') return 'dark'
-  // 'system' or anything else → light
-  return 'light'
-}
-
-export const useUiStore = create<UiState>()(
-  persist(
-    (set, get) => ({
-      theme: 'light',
-      language: 'en',
-      sidebarCollapsed: false,
-      setTheme: (theme) => set({ theme: normalizeTheme(theme) }),
-      cycleTheme: () => {
-        const next: ThemeMode = get().theme === 'light' ? 'dark' : 'light'
-        set({ theme: next })
-      },
-      setLanguage: (language) => set({ language }),
-      setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
-      toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
+export const useUiStore = create<UiState>((set) => ({
+  theme: (typeof window !== 'undefined' ? (localStorage.getItem('transflow_theme') as Theme) : null) || 'dark',
+  language: (typeof window !== 'undefined' ? (localStorage.getItem('transflow_language') as Language) : null) || 'vi',
+  setTheme: (theme: Theme) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('transflow_theme', theme)
+      document.documentElement.setAttribute('data-theme', theme)
+    }
+    set({ theme })
+  },
+  cycleTheme: () =>
+    set((state) => {
+      const nextTheme: Theme = state.theme === 'dark' ? 'light' : 'dark'
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('transflow_theme', nextTheme)
+        document.documentElement.setAttribute('data-theme', nextTheme)
+      }
+      return { theme: nextTheme }
     }),
-    {
-      name: 'tf-ui',
-      partialize: (state) => ({
-        theme: state.theme,
-        language: state.language,
-        sidebarCollapsed: state.sidebarCollapsed,
-      }),
-      merge: (persisted, current) => {
-        const p = (persisted ?? {}) as Partial<UiState>
-        return {
-          ...current,
-          ...p,
-          theme: normalizeTheme(p.theme),
-        }
-      },
-    },
-  ),
-)
-
-/** Apply theme class on <html>. Call after rehydrate and on theme change. */
-export function applyThemeToDocument(theme: ThemeMode) {
-  const effective = getEffectiveTheme(theme)
-  const root = document.documentElement
-  root.classList.toggle('dark', effective === 'dark')
-  root.classList.toggle('light', effective === 'light')
-  root.dataset.theme = effective
-}
+  setLanguage: (language: Language) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('transflow_language', language)
+    }
+    set({ language })
+  },
+}))
