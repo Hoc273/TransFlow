@@ -353,6 +353,147 @@ class MediaJobServiceImplTest {
         assertEquals(MediaJobStage.StageStatus.PENDING, render.getStatus());
     }
 
+    // ---- updateSelectedProposal (§2.3 support) ----
+
+    @Test
+    void updateSelectedProposal_sameProposal_isNoOpEvenIfTranslated() {
+        UUID jobId = UUID.randomUUID();
+        UUID proposalId = UUID.randomUUID();
+        MediaJob job = existingJob(jobId);
+        job.setSelectedProposalId(proposalId);
+        when(mediaJobRepository.findByIdAndWorkspaceId(jobId, workspaceId)).thenReturn(Optional.of(job));
+
+        MediaJob result = service.updateSelectedProposal(workspaceId, userId, jobId, proposalId);
+
+        assertSame(job, result);
+        verify(mediaJobStageRepository, never()).findByMediaJobIdAndStageName(any(), any());
+        verify(mediaJobRepository, never()).save(any());
+    }
+
+    @Test
+    void updateSelectedProposal_changingAfterTranslateCompleted_throwsProposalAlreadyTranslated() {
+        UUID jobId = UUID.randomUUID();
+        MediaJob job = existingJob(jobId);
+        job.setSelectedProposalId(UUID.randomUUID());
+        when(mediaJobRepository.findByIdAndWorkspaceId(jobId, workspaceId)).thenReturn(Optional.of(job));
+        MediaJobStage translate = stage(jobId, MediaJobStage.StageName.TRANSLATE, MediaJobStage.StageStatus.COMPLETED);
+        when(mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.TRANSLATE))
+                .thenReturn(Optional.of(translate));
+
+        AppException ex = assertThrows(AppException.class, () ->
+                service.updateSelectedProposal(workspaceId, userId, jobId, UUID.randomUUID()));
+        assertEquals(ErrorCode.PROPOSAL_ALREADY_TRANSLATED, ex.getErrorCode());
+    }
+
+    @Test
+    void updateSelectedProposal_firstSelection_succeeds() {
+        UUID jobId = UUID.randomUUID();
+        UUID proposalId = UUID.randomUUID();
+        MediaJob job = existingJob(jobId);
+        when(mediaJobRepository.findByIdAndWorkspaceId(jobId, workspaceId)).thenReturn(Optional.of(job));
+        when(mediaJobRepository.save(any(MediaJob.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MediaJob result = service.updateSelectedProposal(workspaceId, userId, jobId, proposalId);
+
+        assertEquals(proposalId, result.getSelectedProposalId());
+    }
+
+    // ---- createDerivedSummaryJob (§2.3 support, Arch §7.7) ----
+
+    @Test
+    void createDerivedSummaryJob_copiesSourceAndSkipsExtractAudioSttSummarize() {
+        UUID sourceJobId = UUID.randomUUID();
+        MediaJob source = existingJob(sourceJobId);
+        source.setRecipeId(MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH);
+        source.setRootAssetId(rootAssetId);
+        source.setRequestedDurationSeconds(60);
+        source.setSelectedProposalId(UUID.randomUUID());
+        source.setSubtitleMode(MediaJob.SubtitleMode.HARD_SUB);
+        source.setWorkflowMode(MediaJob.WorkflowMode.AUTO);
+        when(mediaJobRepository.findByIdAndWorkspaceId(sourceJobId, workspaceId)).thenReturn(Optional.of(source));
+        when(credit.hasSufficientBalance(userId)).thenReturn(true);
+        when(mediaJobRepository.save(any(MediaJob.class))).thenAnswer(inv -> {
+            MediaJob j = inv.getArgument(0);
+            if (j.getId() == null) j.setId(UUID.randomUUID());
+            return j;
+        });
+
+        MediaJob derived = service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", null);
+
+        assertEquals(MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH, derived.getRecipeId());
+        assertEquals("vi", derived.getTargetLang());
+        assertEquals(sourceJobId, derived.getSourceSummaryJobId());
+        assertEquals(source.getSelectedProposalId(), derived.getSelectedProposalId());
+        assertEquals(MediaJob.OutputAudioMode.ORIGINAL_ONLY, derived.getOutputAudioMode());
+        assertEquals(MediaJob.SubtitleMode.HARD_SUB, derived.getSubtitleMode());
+        assertEquals(60, derived.getRequestedDurationSeconds());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(MediaJobStage.class);
+        verify(mediaJobStageRepository, times(8)).save(captor.capture());
+        var byName = captor.getAllValues().stream()
+                .collect(java.util.stream.Collectors.toMap(MediaJobStage::getStageName, s -> s));
+        assertEquals(MediaJobStage.StageStatus.SKIPPED, byName.get(MediaJobStage.StageName.EXTRACT_AUDIO).getStatus());
+        assertEquals(MediaJobStage.StageStatus.SKIPPED, byName.get(MediaJobStage.StageName.SOURCE_SEPARATION).getStatus());
+        assertEquals(MediaJobStage.StageStatus.SKIPPED, byName.get(MediaJobStage.StageName.STT).getStatus());
+        assertEquals(MediaJobStage.StageStatus.SKIPPED, byName.get(MediaJobStage.StageName.SUMMARIZE).getStatus());
+        assertEquals(MediaJobStage.StageStatus.PENDING, byName.get(MediaJobStage.StageName.TRANSLATE).getStatus());
+        assertEquals(MediaJobStage.StageStatus.SKIPPED, byName.get(MediaJobStage.StageName.TTS).getStatus());
+        assertEquals(MediaJobStage.StageStatus.SKIPPED, byName.get(MediaJobStage.StageName.AUDIO_MIX).getStatus());
+        assertEquals(MediaJobStage.StageStatus.PENDING, byName.get(MediaJobStage.StageName.RENDER).getStatus());
+    }
+
+    @Test
+    void createDerivedSummaryJob_withVoice_activatesTtsAndValidatesLanguage() {
+        UUID sourceJobId = UUID.randomUUID();
+        MediaJob source = existingJob(sourceJobId);
+        source.setRequestedDurationSeconds(60);
+        when(mediaJobRepository.findByIdAndWorkspaceId(sourceJobId, workspaceId)).thenReturn(Optional.of(source));
+        UUID voiceId = UUID.randomUUID();
+        when(providerResolver.resolveVoiceLanguage(voiceId)).thenReturn(Optional.of("vi"));
+        when(credit.hasSufficientBalance(userId)).thenReturn(true);
+        when(mediaJobRepository.save(any(MediaJob.class))).thenAnswer(inv -> {
+            MediaJob j = inv.getArgument(0);
+            if (j.getId() == null) j.setId(UUID.randomUUID());
+            return j;
+        });
+
+        MediaJob derived = service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", voiceId);
+
+        assertEquals(MediaJob.OutputAudioMode.DUB_REPLACE, derived.getOutputAudioMode());
+        var captor = org.mockito.ArgumentCaptor.forClass(MediaJobStage.class);
+        verify(mediaJobStageRepository, times(8)).save(captor.capture());
+        var tts = captor.getAllValues().stream().filter(s -> s.getStageName() == MediaJobStage.StageName.TTS).findFirst().orElseThrow();
+        assertEquals(MediaJobStage.StageStatus.PENDING, tts.getStatus());
+    }
+
+    @Test
+    void createDerivedSummaryJob_voiceLanguageMismatch_throwsVoiceLanguageMismatch() {
+        UUID sourceJobId = UUID.randomUUID();
+        MediaJob source = existingJob(sourceJobId);
+        source.setRequestedDurationSeconds(60);
+        when(mediaJobRepository.findByIdAndWorkspaceId(sourceJobId, workspaceId)).thenReturn(Optional.of(source));
+        UUID voiceId = UUID.randomUUID();
+        when(providerResolver.resolveVoiceLanguage(voiceId)).thenReturn(Optional.of("fr"));
+
+        AppException ex = assertThrows(AppException.class, () ->
+                service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", voiceId));
+        assertEquals(ErrorCode.VOICE_LANGUAGE_MISMATCH, ex.getErrorCode());
+    }
+
+    @Test
+    void createDerivedSummaryJob_insufficientCredit_throwsInsufficientCredit() {
+        UUID sourceJobId = UUID.randomUUID();
+        MediaJob source = existingJob(sourceJobId);
+        source.setRequestedDurationSeconds(60);
+        when(mediaJobRepository.findByIdAndWorkspaceId(sourceJobId, workspaceId)).thenReturn(Optional.of(source));
+        when(credit.hasSufficientBalance(userId)).thenReturn(false);
+
+        AppException ex = assertThrows(AppException.class, () ->
+                service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", null));
+        assertEquals(ErrorCode.INSUFFICIENT_CREDIT, ex.getErrorCode());
+        verify(mediaJobRepository, never()).save(any());
+    }
+
     // ---- checkpoint ----
 
     @Test

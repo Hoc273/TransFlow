@@ -37,6 +37,22 @@ public interface MediaJobService {
     SubtitleSegment patchSubtitle(UUID workspaceId, UUID userId, UUID jobId, UUID segmentId, PatchSubtitleRequest request);
 
     /**
+     * Sets {@code media_jobs.selected_proposal_id} (owned by this module). Rejects switching away from
+     * a proposal whose TRANSLATE stage already COMPLETED (API_Contract.md §5.1 — re-selecting the same
+     * proposal is a no-op). Callers (summarization module) validate the proposal itself belongs to this
+     * job and isn't archived before calling this.
+     */
+    MediaJob updateSelectedProposal(UUID workspaceId, UUID userId, UUID jobId, UUID proposalId);
+
+    /**
+     * Creates the derived "summary in another language" job (Arch §7.7): copies the source job's asset/
+     * preset/subtitle settings, sets {@code source_summary_job_id}, and only activates
+     * TRANSLATE -> TTS(optional) -> RENDER. Callers (summarization module) validate the source job's
+     * selected proposal is AI-generated before calling this.
+     */
+    MediaJob createDerivedSummaryJob(UUID workspaceId, UUID userId, UUID sourceJobId, String targetLang, UUID ttsVoiceId);
+
+    /**
      * Shared job-ownership rule (System_Architecture.md §4.2): CLIENT always denied, LEAD always
      * allowed, MEMBER only on jobs they created. Reused by the future qa module for issue overrides.
      */
