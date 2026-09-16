@@ -159,4 +159,10 @@ public class MediaAssetServiceImpl implements MediaAssetService {
                     return mediaConsentRepository.save(consent);
                 });
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasCurrentConsent(UUID rootAssetId) {
+        return mediaConsentRepository.existsByRootAssetIdAndTermsVersion(rootAssetId, currentTermsVersion());
+    }
 }

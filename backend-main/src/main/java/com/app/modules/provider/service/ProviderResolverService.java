@@ -1,5 +1,6 @@
 package com.app.modules.provider.service;
 
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -10,6 +11,9 @@ import java.util.UUID;
 public interface ProviderResolverService {
 
     ProviderResolution resolveForCapability(UUID userId, String capability);
+
+    /** Language of a tts_voices row, used to validate targetLang match (API_Contract.md §5). */
+    Optional<String> resolveVoiceLanguage(UUID ttsVoiceId);
 
     record ProviderResolution(
             String providerType,

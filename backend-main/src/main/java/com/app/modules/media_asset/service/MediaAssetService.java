@@ -22,4 +22,7 @@ public interface MediaAssetService {
     String currentTermsVersion();
 
     MediaConsent consent(UUID workspaceId, UUID userId, UUID assetId, String termsVersion);
+
+    /** Whether {@code rootAssetId} has a media_consents row for the currently active terms version. */
+    boolean hasCurrentConsent(UUID rootAssetId);
 }

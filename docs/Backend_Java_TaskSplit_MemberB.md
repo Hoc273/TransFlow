@@ -197,3 +197,68 @@ block — chỉ cần signature đã thống nhất.
 - [ ] Ghi `ai_usage_logs` đầy đủ để Dashboard (A) đọc được.
 - [ ] Mọi controller trả `ApiResponse<T>`, mọi lỗi nghiệp vụ ném qua `AppException(ErrorCode.XXX)` với code
       trong đúng dải của module (CLAUDE.md §4.10), không tự tạo response/exception riêng.
+
+## 7. Ghi chú kiểm thử (cập nhật khi làm 2.1 Media Asset + 2.2 Media Job)
+
+Phần dưới đây ghi lại **những gì đã thực sự verify** và **những gì còn thiếu**, để người làm tiếp (2.3–2.7,
+hoặc review) không phải đoán lại. Cập nhật section này mỗi khi có một vòng test lớn mới (unit/integration/
+real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đã xong.
+
+### 7.1 Đã kiểm thử — 2.1 Media Asset & Consent
+- Unit test (`MediaAssetServiceImplTest`, Mockito) + integration test (`MediaAssetControllerTest`, MockMvc +
+  H2): upload (Lead/Member có assignment thành công; Member không assignment / Client bị 403; file >500MB;
+  duration >30 phút; duration null vẫn cho qua), `terms-version`, list/get, consent (tạo mới, idempotent,
+  version lệch, asset không phải root).
+- **Real-infra smoke test** (Postgres 16 + Redis 7 + MinIO thật qua Docker, `mvn spring-boot:run`, gọi bằng
+  `curl` — không qua MockMvc/H2): xác nhận lại toàn bộ các case trên bằng dữ liệu thật, cụ thể:
+  - Flyway migrate + Hibernate `ddl-auto=validate` pass trên schema Postgres thật (không chỉ H2).
+  - Upload file MP4 thật (dựng bằng `ffmpeg`, 2 giây) qua multipart HTTP thật → lưu đúng object vào MinIO
+    thật (verify bằng `mc ls`) + `ffprobe` thật trả `durationMs=2000` khớp chính xác.
+  - Member có project assignment: list + upload thành công (201); Member không assignment: 403.
+  - Client: đọc list/get asset được (200), nhưng upload/consent bị chặn (403) — đúng ma trận quyền Arch §4.3.
+  - Lead consent thành công (201), asset dùng được ngay để tạo Media Job (xem 7.2).
+- **Kết luận:** 2.1 đã test hoàn thiện cả ở mức logic (unit/integration) lẫn hạ tầng thật (Postgres/MinIO
+  thật), không còn khoảng hở đáng kể trong phạm vi API_Contract.md §4.
+
+### 7.2 Đã kiểm thử — 2.2 Media Job (orchestrator skeleton)
+- Unit test (`MediaJobServiceImplTest`, 19 case) + integration test (`MediaJobControllerTest`, 17 case):
+  tạo job (đủ constraint `ck_job_recipe_mode`/`ck_audio_mode_sep`/`ck_audio_mode_voice`, thiếu credit, thiếu
+  consent, voice sai ngôn ngữ), stage-skip logic đúng theo `sourceSeparationEnabled`/`processingMode`/
+  `outputAudioMode`, list/get, cancel, rerun-from-stage (409 khi chưa sẵn sàng, giữ nguyên stage `SKIPPED`
+  khi rerun), checkpoint theo job-ownership (Lead mọi job / Member chỉ job của mình / Client bị chặn), sửa
+  subtitle cascade `STALE` sau `TTS`/`RENDER`.
+- **Real-infra smoke test** (cùng bộ Postgres/Redis/MinIO ở 7.1): xác nhận lại bằng `curl` + kiểm tra trực
+  tiếp bằng `psql`:
+  - Cột JSONB (`preset_snapshot`, `input_ref`) map đúng `jsonb` thật (`@JdbcTypeCode(SqlTypes.JSON)` — đây
+    là rủi ro lớn nhất giữa H2 và Postgres, đã loại bỏ).
+  - Tạo job từ asset thật (upload+consent thật ở 7.1) → 8 stage được ghi đúng trạng thái `SKIPPED`/`PENDING`.
+  - Checkpoint confirm ghi đúng JSON vào `input_ref` của stage `TRANSLATE`.
+  - Rerun-from-stage: 409 khi stage trước chưa `COMPLETED`; 200 + reset đúng sau khi update `COMPLETED` trực
+    tiếp bằng SQL (mô phỏng worker).
+  - Voice ngôn ngữ lệch (`fr` voice trên `targetLang=en`) → `400 VOICE_LANGUAGE_MISMATCH`; khớp → 201/200.
+  - Cancel: stage `PENDING`/`PROCESSING` → `CANCELLED`, stage `COMPLETED`/`SKIPPED` giữ nguyên.
+- **Kết luận:** phần orchestrator control-flow (state machine, RBAC, validate) đã test hoàn thiện ở cả 2 mức.
+  Đây **không phải** là "pipeline chạy được" — xem 7.3 để biết còn thiếu gì để pipeline thực sự xử lý video.
+
+### 7.3 CHƯA kiểm thử — cần làm ở các phần sau (2.3–2.7) hoặc khi có hạ tầng đầy đủ
+| Phần thiếu | Lý do chưa test | Cần gì để test được |
+|---|---|---|
+| Gọi FastAPI thật cho STT/TRANSLATE/TTS/SUMMARIZE/VISION | Chưa viết HTTP client — không có trong phạm vi 2.2 đã chủ động scope lại, và `backend-ai` chưa expose contract cụ thể trong docs đã đọc | Viết client theo `backend-ai` OpenAPI/route thật, cần `docker compose up` với service `backend-ai` |
+| Ghi `ai_usage_logs` + trừ Credit theo `credit_pricing_config` thật | Phụ thuộc mục trên (chỉ có sau khi có lời gọi AI thật); `CreditServiceImpl.chargeUsage` hiện là stub tính giá cứng `0.001/token` | Cần A hoàn thiện `credit_pricing_config` resolver, rồi test tích hợp giữa media_job và credit |
+| Callback HMAC từ `backend-media-worker` (EXTRACT_AUDIO/SOURCE_SEPARATION/AUDIO_MIX/RENDER) | Thuộc §2.7, chưa viết controller | Viết `media_job.callback` package theo API_Contract §14, test bằng cách tự ký HMAC giả lập worker |
+| RabbitMQ dispatch khi cancel/rerun | Chưa có publisher — cancel/rerun hiện set trạng thái DB trực tiếp, không gửi signal cho worker nào (đã đánh dấu `ponytail:` trong code) | Cần message queue thật + consumer, hoặc ít nhất mock RabbitMQ (Testcontainers) để verify message được publish đúng payload |
+| Provider/Preset/Notification thật của Thành viên A | Interface đang là mock/no-op tôi tự viết (`ProviderResolverServiceImpl.resolveForCapability`, `PresetResolverServiceImpl`, `NotificationServiceImpl`) | Khi A merge implementation thật, phải viết lại test tích hợp — hành vi thật có thể khác giả định hiện tại |
+| Upload file >500MB thật / video >30 phút thật qua MinIO | Chỉ test qua boundary value ở service layer (mock), chưa thử file thật lớn cỡ đó (tốn thời gian tạo file + băng thông) | Có thể bỏ qua an toàn vì logic validate đã chạy qua unit test — chỉ cần thử 1 lần nếu nghi ngờ MinIO có giới hạn khác |
+| Summarization/Batch/Glossary/QA (2.3–2.6) | Ngoài phạm vi buổi làm việc này | Làm theo đúng §2.3–2.6 của tài liệu này |
+| Checkpoint→stage mapping (`CUT_CONFIRMED→TRANSLATE`, `REVIEW_CONFIRMED→TTS`, `PUBLISH_CONFIRMED→RENDER`) | Đây là giả định tôi tự chọn (xem comment trong `Checkpoint.java`), không có trong SRS/Arch §14 | Cần BA xác nhận trước khi FE dựa vào mapping này để quyết định dừng ở đâu trong chế độ Manual |
+
+### 7.4 Môi trường dùng để test real-infra (tham khảo khi cần lặp lại)
+```
+docker run -d --name tfm-postgres -p 55432:5432 -e POSTGRES_DB=transflow_mini -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres postgres:16-alpine
+docker run -d --name tfm-redis -p 56379:6379 redis:7-alpine
+docker run -d --name tfm-minio -p 59000:9000 -p 59001:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin quay.io/minio/minio:latest server /data --console-address ":9001"
+```
+Lưu ý: image `minio/minio` trên Docker Hub bị từ chối pull trong môi trường này (registry access denied) —
+dùng `quay.io/minio/minio` thay thế. Chạy app với `DB_HOST=localhost DB_PORT=55432 ... REDIS_HOST=localhost
+REDIS_PORT=56379 MEDIA_STORAGE_ENDPOINT=http://localhost:59000 ...` rồi `./mvnw spring-boot:run`. Nhớ dọn
+container (`docker rm -f tfm-postgres tfm-redis tfm-minio`) sau khi test xong — không để hạ tầng test chạy nền.
