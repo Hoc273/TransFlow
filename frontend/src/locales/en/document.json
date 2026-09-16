@@ -1,0 +1,35 @@
+{
+  "list": {
+    "title": "Documents",
+    "subtitle": "Documents in this project · newest first",
+    "projects": "Projects",
+    "create": "Add document",
+    "batchUpload": "Batch upload",
+    "emptyTitle": "No documents yet",
+    "emptyDesc": "Paste text or upload a .txt/.docx file to start translating.",
+    "col": {
+      "origin": "Origin"
+    }
+  },
+  "create": {
+    "title": "Add document",
+    "subtitle": "Paste source text or upload .txt / .docx",
+    "tabPaste": "Paste text",
+    "tabUpload": "Upload file",
+    "name": "Document name",
+    "namePlaceholder": "Welcome email",
+    "nameRequired": "Name is required",
+    "sourceLang": "Source language",
+    "content": "Source text",
+    "contentPlaceholder": "Paste the source content here…",
+    "contentRequired": "Source text is required",
+    "file": "File",
+    "fileRequired": "Choose a file to upload",
+    "dropHint": "Click or drop a file here",
+    "fileHint": "Max 10MB · .txt, .docx",
+    "invalidType": "Unsupported file type: {{name}}",
+    "tooLarge": "File exceeds 10MB",
+    "submit": "Create document",
+    "submitting": "Creating…"
+  }
+}

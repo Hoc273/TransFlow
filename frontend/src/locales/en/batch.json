@@ -1,0 +1,59 @@
+{
+  "list": {
+    "title": "Batches",
+    "subtitle": "Batch translation jobs in this workspace",
+    "create": "Create batch",
+    "updating": "Updating…",
+    "updatedAt": "Updated {{time}}",
+    "emptyTitle": "No batches yet",
+    "emptyDesc": "Upload multiple documents as a batch to translate in parallel.",
+    "searchPlaceholder": "Search batches or projects…",
+    "noMatchTitle": "No batches found",
+    "noMatchDesc": "No batches match your search query.",
+    "clearSearch": "Clear search",
+    "col": {
+      "project": "Project"
+    }
+  },
+  "create": {
+    "title": "Create batch",
+    "subtitle": "Up to 20 files · 50MB total · .txt / .docx",
+    "project": "Project",
+    "projectPlaceholder": "Select a project…",
+    "nameOptional": "Batch name (optional)",
+    "namePlaceholder": "Q3 marketing pack",
+    "sourceLang": "Source language",
+    "targetLangs": "Target languages",
+    "targetPlaceholder": "Select target languages",
+    "files": "Files",
+    "dropHint": "Click or drop files here",
+    "limits": "Max {{maxFiles}} files · {{maxMb}}MB total · .txt, .docx",
+    "usage": "{{count}} / {{maxFiles}} files · {{used}} / {{max}}",
+    "tooManyFiles": "Maximum {{max}} files allowed",
+    "tooLarge": "Total size exceeds {{maxMb}}MB",
+    "invalidType": "Unsupported file type: {{name}}",
+    "targetEqualsSource": "Target languages must differ from source language",
+    "rateLimited": "You have created too many batches in this workspace. Please try again later.",
+    "noProjects": "Create a project first before uploading a batch.",
+    "submit": "Start batch",
+    "submitting": "Uploading…"
+  },
+  "detail": {
+    "title": "Batch detail",
+    "documents": "Documents & jobs",
+    "failed": "failed",
+    "partialTitle": "Partially failed",
+    "partialBody": "{{ok}}/{{total}} documents succeeded, {{failed}} failed — the whole batch is not marked fully failed. Retry failed documents below.",
+    "retry": "Retry",
+    "retrying": "Retrying…",
+    "lastUpdated": "Updated {{relative}}",
+    "noDocuments": "No documents in this batch",
+    "mobileBanner": "Please use a desktop computer for the full batch detail experience.",
+    "col": {
+      "document": "Document",
+      "sourceLang": "Source",
+      "jobs": "Jobs",
+      "actions": "Actions"
+    }
+  }
+}

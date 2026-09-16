@@ -1,0 +1,59 @@
+{
+  "title": "Bảng thuật ngữ",
+  "subtitle": "Danh sách thuật ngữ chuẩn hóa · Quản trị viên/PM chỉnh sửa · Thành viên khác chỉ đọc",
+  "sidebar": "Bảng thuật ngữ",
+  "emptyTitle": "Chưa có bảng thuật ngữ",
+  "emptyDesc": "Tạo bảng thuật ngữ để đảm bảo dịch đồng nhất và chính xác trong toàn dự án.",
+  "termCount": "{{count}} thuật ngữ",
+  "delete": "Xóa bảng thuật ngữ",
+  "confirmDelete": "Xóa bảng thuật ngữ \"{{name}}\"? Thao tác này không thể hoàn tác.",
+  "create": {
+    "button": "Tạo bảng thuật ngữ",
+    "title": "Tạo bảng thuật ngữ mới",
+    "name": "Tên bảng thuật ngữ",
+    "nameRequired": "Tên là bắt buộc",
+    "description": "Mô tả (tuỳ chọn)",
+    "submit": "Tạo",
+    "submitting": "Đang tạo…"
+  },
+  "term": {
+    "add": "Thêm term",
+    "addTitle": "Thêm term",
+    "adding": "Đang thêm…",
+    "required": "Source và target bắt buộc",
+    "duplicate": "Đã có term cùng source + part of speech (Q-G5).",
+    "skipped": "{{n}} term bị bỏ qua (trùng)",
+    "emptyTitle": "Chưa có term",
+    "emptyDesc": "Thêm thủ công hoặc import CSV.",
+    "confirmDelete": "Xóa term \"{{term}}\"?",
+    "note": "Ghi chú (tuỳ chọn)",
+    "caseSensitive": "Phân biệt hoa thường",
+    "caseOn": "Phân biệt hoa thường",
+    "caseOff": "Không phân biệt",
+    "col": {
+      "source": "Nguồn",
+      "target": "Đích",
+      "pos": "POS",
+      "case": "Case",
+      "updated": "Cập nhật"
+    },
+    "quickAdd": "Thêm nhanh",
+    "quickAddEnter": "Thêm (Enter)",
+    "sourcePlaceholder": "Thuật ngữ nguồn…",
+    "targetPlaceholder": "Bản dịch chuẩn…",
+    "searchPlaceholder": "Lọc thuật ngữ trong bảng…",
+    "saved": "Đã lưu",
+    "noMatch": "Không tìm thấy thuật ngữ khớp với tìm kiếm."
+  },
+  "export": {
+    "button": "Xuất CSV"
+  },
+  "import": {
+    "button": "Import CSV",
+    "title": "Import term từ CSV",
+    "hint": "Header: source_term,target_term,case_sensitive,part_of_speech,note",
+    "drop": "Bấm để chọn file .csv",
+    "importing": "Đang import…",
+    "result": "Thêm {{added}} · bỏ qua {{skipped}}"
+  }
+}

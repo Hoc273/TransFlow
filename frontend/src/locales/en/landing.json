@@ -1,0 +1,296 @@
+{
+  "pageTitle": "TransFlow – Video Globalization | AI Translation & Dubbing Platform",
+  "nav": {
+    "pipeline": "Pipeline",
+    "productivity": "Productivity & QA",
+    "customers": "Creator Stories",
+    "pricing": "Pricing & Credits",
+    "studio": "Open Studio",
+    "login": "Sign In",
+    "startFree": "Start Free"
+  },
+  "hero": {
+    "flagship": "FLAGSHIP MULTIMODAL PIPELINE",
+    "engine": "Next-Gen Visual & MoE Engine",
+    "title": "TransFlow Video Intelligence",
+    "subtitle": "High-accuracy, ultra-fast automated multilingual video translation and summarization platform.",
+    "translateBtn": "Translate Video",
+    "summarizeBtn": "Summarize"
+  },
+  "pipeline": {
+    "badge": "TransFlow Async Pipeline Architecture",
+    "title": "AI Video Translation & Dubbing Pipeline",
+    "subtitle": "An end-to-end 5-stage automated pipeline: from voice isolation, STT transcription, contextual translation with TM, to multi-voice AI dubbing and 3-way QA auditing.",
+    "tabLocalization": "Translation & Dubbing (5 Steps)",
+    "tabSummarization": "Highlight Summarization (3 Steps)",
+    "ctaStudio": "Open Studio",
+    "ctaDocs": "Architecture Docs",
+    "runningStatus": "Sequential auto-play: Step {{current}}/{{total}} • Hover to pause",
+    "bottomCta": "Start Translating with TransFlow Studio",
+    "stepExtract": {
+      "tab": "Voice & Audio Isolation",
+      "headline": "Audio Extraction & Original Voice Isolation",
+      "details": "The system automatically separates audio streams from the source video. Source separation algorithms split the audio into two independent channels: Vocal and Background Music/SFX (BGM), preserving 100% of the original soundscape for subsequent dubbing.",
+      "metricPrimary": "500MB / 30 mins",
+      "metricPrimaryLabel": "Maximum file size",
+      "metricSecondary": "~3-5 secs",
+      "metricSecondaryLabel": "Audio separation time"
+    },
+    "stepStt": {
+      "tab": "Speech-to-Text (STT)",
+      "headline": "Voice-to-Text Transcription with Precise Timestamps",
+      "details": "Automatically detects the source language, transcribes dialogues, and binds timestamps down to millisecond accuracy (start_ms, end_ms). Deep sanity check mechanisms automatically scan for timing drifts and anomaly gaps.",
+      "metricPrimary": "> 98.6%",
+      "metricPrimaryLabel": "Word accuracy rate",
+      "metricSecondary": "50+ Languages",
+      "metricSecondaryLabel": "Auto language detection"
+    },
+    "stepTranslate": {
+      "tab": "Translation & TM",
+      "headline": "Smart Localization with TM & Project Glossaries",
+      "details": "Translations go through LLM contextual processing while referencing pgvector translation memories to reuse past matches, combined with project glossaries to enforce domain terminology consistency.",
+      "metricPrimary": "Up to 40% Off",
+      "metricPrimaryLabel": "Token cost savings via TM Cache",
+      "metricSecondary": "100% Realtime",
+      "metricSecondaryLabel": "Project term governance"
+    },
+    "stepDubbing": {
+      "tab": "AI Voice Dubbing (TTS)",
+      "headline": "Natural AI Dubbing & Speech Pace Alignment",
+      "details": "Generate natural AI voiceovers in target languages using built-in high-fidelity voice engines (CosyVoice, ElevenLabs, Azure Speech). Automatically time-stretches speech rates to sync seamlessly with video frames without distortion.",
+      "metricPrimary": "100+ Voices",
+      "metricPrimaryLabel": "Expressive multilingual library",
+      "metricSecondary": "Frame Synced",
+      "metricSecondaryLabel": "Auto Time-stretch 0.9x-1.2x"
+    },
+    "stepRender": {
+      "tab": "QA Audit & Export",
+      "headline": "3-Way Quality Assurance & High-Res Export",
+      "details": "Automated QA shields detect overlapping lines, reading speed violations (CPS), and screen boundary overflows. Export high-definition video with hardcoded burn-in or standalone subtitle files (.srt, .vtt).",
+      "metricPrimary": "Rerun-from-stage",
+      "metricPrimaryLabel": "Change voice style without re-translating",
+      "metricSecondary": "Zero-Collision",
+      "metricSecondaryLabel": "Guaranteed subtitle visibility"
+    },
+    "stepSumChunk": {
+      "tab": "Semantic Chunking",
+      "headline": "Dialogue Recognition & Semantic Grouping",
+      "details": "Extract the full dialogue transcript and automatically cluster content into coherent thematic chunks based on natural pauses and vector semantic similarity.",
+      "metricPrimary": "Milliseconds",
+      "metricPrimaryLabel": "Timestamp precision",
+      "metricSecondary": "100% Context",
+      "metricSecondaryLabel": "Never cuts mid-sentence"
+    },
+    "stepSumCutplan": {
+      "tab": "Smart Cut-Plan",
+      "headline": "Core Point Extraction & Automated Cut Planning",
+      "details": "AI models analyze information density and engagement ratings, ranking the best key moments and constructing second-by-second cut plans for recap generation.",
+      "metricPrimary": "Top 20%",
+      "metricPrimaryLabel": "Highest value highlights",
+      "metricSecondary": "Auto Splicing",
+      "metricSecondaryLabel": "Smooth visual transitions"
+    },
+    "stepSumExport": {
+      "tab": "Recap Video & Summary",
+      "headline": "Highlight Video Rendering & Executive Brief",
+      "details": "Automatically stitches highlight moments into a concise 60s - 180s recap video with emphasized keyword subtitles, alongside executive bulleted summary notes.",
+      "metricPrimary": "10x Faster",
+      "metricPrimaryLabel": "Information digest speed",
+      "metricSecondary": "Multi-format",
+      "metricSecondaryLabel": "Short-form video + Summary brief"
+    },
+    "pillarBatchTitle": "High-Throughput Multithreaded Batch",
+    "pillarBatchDesc": "Orchestrate hundreds of video pipelines simultaneously through RabbitMQ queue workers. Automatically isolates and retries failed stages without rerunning the entire pipeline.",
+    "pillarBatchCapacityLabel": "Capacity:",
+    "pillarBatchCapacityValue": "100+ concurrent tasks",
+    "pillarBatchDuration": "Max duration: 120 mins",
+    "pillarBatchRetry": "Auto Retry: 3 times",
+    "pillarTmTitle": "Translation Memory & Terminology",
+    "pillarTmDesc": "Automatically matches similar segments via vector search, reusing past translations to reduce token costs and enforcing domain glossaries.",
+    "pillarTmSavingsLabel": "Token savings:",
+    "pillarTmSavingsValue": "Up to 40% reduction",
+    "pillarTmSimilarity": "Similarity: 94%+",
+    "pillarTmTermLock": "Glossary enforcement: 100%",
+    "pillarSecurityTitle": "Enterprise Security & Data Privacy",
+    "pillarSecurityDesc": "Enterprise-grade data protection with end-to-end AES-256 and TLS 1.3 encryption. Zero Retention guarantee — media is never stored permanently or used for AI model training.",
+    "pillarSecurityEncryptionLabel": "Encryption:",
+    "pillarSecurityEncryptionValue": "AES-256 / TLS 1.3",
+    "pillarSecurityRetention": "Data retention: 0 days",
+    "pillarSecurityTraining": "AI training: Zero-Train (Opt-out)"
+  },
+  "productivity": {
+    "titlePrefix": "Supercharge Productivity & ",
+    "titleHighlight": "Standardize Editorial Quality",
+    "subtitle": "Accelerate video production scale with high-volume batch processing and 3-way subtitle QA inspection.",
+    "batchBadge": "Scale (Batch Localization)",
+    "batchTitle": "Batch Localization & Multilingual Matrix",
+    "batchDesc": "Simultaneously produce 20 videos × 10 target languages with a single batch setup. Automatically separate audio, preserve original BGM, and export full multilingual voiceover packages.",
+    "batchCta": "Explore Batch Workflow",
+    "qaBadge": "Quality (QA & Translation Memory)",
+    "qaTitle": "Translation Memory & 3-Way QA Auditing",
+    "qaDesc": "Optimize token costs and terminology consistency with Translation Memory (TM) & Glossary. The 3-way QA shield automatically flags timeline overlaps and reading speed (CPS) violations.",
+    "qaCta": "Explore QA Standards"
+  },
+  "stories": {
+    "badge": "Real-World Stories",
+    "title": "Empowering Freelancers & Global Creators",
+    "subtitle": "Hear from independent content creators and freelance video editors streamlining video production every day.",
+    "prev": "Previous",
+    "next": "Next",
+    "goToStory": "Go to story {{index}}",
+    "items": {
+      "freelancer1": {
+        "group": "Freelancer",
+        "category": "Translation & Subtitling",
+        "title": "“No more sleepless nights manually aligning subtitle timestamps down to the millisecond”",
+        "content": "Translating a 15-minute video used to take me half a day of listening and manually typing each phrase. With TransFlow, AI pre-generates precise timestamps and initial drafts. I just review terminology and have tripled my project capacity without burnout.",
+        "author": "Hoang Nam",
+        "role": "Freelance Subtitle Translator",
+        "metric": "3x Volume",
+        "metricLabel": "Client projects handled"
+      },
+      "freelancer2": {
+        "group": "Freelancer",
+        "category": "Video Editing & Turnaround",
+        "title": "“Client asked to switch voice tone — it took just 1 minute to re-render the TTS stage”",
+        "content": "The biggest headache in freelance editing is when a client signs off and then says 'can we change to a younger voice?'. With Rerun-from-stage, I just pick a new voice and re-render the TTS step. All aligned subtitles and background tracks stay intact.",
+        "author": "Minh Trang",
+        "role": "Freelance Video Editor",
+        "metric": "1 Minute",
+        "metricLabel": "Voice re-render turnaround"
+      },
+      "freelancer3": {
+        "group": "Freelancer",
+        "category": "Multilingual Localization",
+        "title": "“Delivered 1 video translated into 4 languages in a single morning without extra hires”",
+        "content": "A client wanted video releases localized into Thai, Japanese, and Korean. Working alone, I handled the entire project smoothly using Batch Localization, delivering full .srt packages and dubbed high-res videos in a single morning.",
+        "author": "Tuan Anh",
+        "role": "Content Localization Specialist",
+        "metric": "4 Languages",
+        "metricLabel": "Exported in one morning"
+      },
+      "freelancer4": {
+        "group": "Freelancer",
+        "category": "3-Way QA Auditing",
+        "title": "“Automated QA gives me total confidence delivering to demanding enterprise clients”",
+        "content": "Starting out, my biggest fear was overlapping captions or viewers failing to read fast-paced subtitles. TransFlow's 3-way QA shield automatically catches CPS violations and timeline collisions, guaranteeing broadcast-ready standards every time.",
+        "author": "Thuy Dung",
+        "role": "Junior Video Subtitler",
+        "metric": "100% Pass",
+        "metricLabel": "CPS reading speed score"
+      },
+      "creator1": {
+        "group": "Creator",
+        "category": "Tech Review & Recaps",
+        "title": "“Turned a 30-minute deep dive into 3 viral Shorts with simple chat prompts”",
+        "content": "Starting my Shorts channel, I had no clue which segments would hook viewers. The AI automatically generated smart cut-plans with clean sentence boundaries. Typing 'shorten the intro hook' updated the cut list instantly. Incredibly easy to use.",
+        "author": "Duc Huy",
+        "role": "Tech Reviewer (50k followers)",
+        "metric": "30m ➔ 3 Shorts",
+        "metricLabel": "Instant highlight cuts"
+      },
+      "creator2": {
+        "group": "Creator",
+        "category": "Lifestyle & Vlogs",
+        "title": "“Automatic music separation keeps dubbed voiceovers feeling as cinematic as documentaries”",
+        "content": "When doing voiceovers, robotic TTS wiping out ambient acoustics and music was my main worry. Source separation preserves 100% of background audio and auto-ducks during speech, making the final video sound natural and immersive.",
+        "author": "Bao Ngoc",
+        "role": "Lifestyle Creator & Vlogger",
+        "metric": "100% BGM",
+        "metricLabel": "Original soundscape preserved"
+      },
+      "creator3": {
+        "group": "Creator",
+        "category": "Solo Creator",
+        "title": "“Cut costly editing overhead and published multi-platform video every single day”",
+        "content": "As a solo creator on a budget, hiring full-time editors was impossible. TransFlow Media acts like a 24/7 post-production assistant: upload video, select target languages, and export flawless subtitles and voiceovers to stay on daily publishing schedules.",
+        "author": "Hai Dang",
+        "role": "Solo Edu Creator",
+        "metric": "Daily Video",
+        "metricLabel": "Consistent daily publishing"
+      }
+    }
+  },
+  "pricing": {
+    "title": "Pay-as-you-go Credit Pricing — Only Pay for What You Use",
+    "starter": {
+      "name": "Starter",
+      "desc": "Starter pack for creators exploring AI video & short-form content",
+      "price": "50,000 ₫",
+      "credits": "/ 50,000 Credits",
+      "cta": "Get Starter",
+      "featuresTitle": "What's included:",
+      "features": [
+        "~15–20 mins completed video (STT + Translate + TTS)",
+        "Ideal for short-form clips (Shorts, Reels, TikTok)",
+        "AI Summarizer: 1 Cut-plan proposal & 5 Refine rounds",
+        "Export hardcoded and standalone soft subtitles (.srt, .vtt)"
+      ]
+    },
+    "freelancer": {
+      "bonusBadge": "Bonus +10% Credits",
+      "badge": "Popular",
+      "name": "Freelancer",
+      "desc": "Most popular tier for independent subtitlers & regular video publishers",
+      "price": "200,000 ₫",
+      "credits": "220,000 Credits",
+      "bonus": "+20,000 Bonus Credits",
+      "cta": "Purchase 200,000 VND",
+      "featuresTitle": "Everything in Starter, plus:",
+      "features": [
+        "~80–100 mins completed video (10–15 clips)",
+        "High-throughput Batch matrix (20×10 streams)",
+        "Audio separation preserving original background music",
+        "Project Glossaries & Translation Memory (TM) sync",
+        "3-way automated QA shield for timeline collisions & CPS"
+      ]
+    },
+    "proStudio": {
+      "bonusBadge": "Bonus +20% Credits",
+      "name": "Pro Studio",
+      "desc": "Maximum savings for professional creators & large-scale production",
+      "price": "500,000 ₫",
+      "credits": "600,000 Credits",
+      "bonus": "+100,000 Bonus Credits",
+      "cta": "Purchase 500,000 VND",
+      "featuresTitle": "Everything in Freelancer, plus:",
+      "features": [
+        "~250–300 mins completed video or long-form projects",
+        "Max file limit: 500MB & 30 mins per file",
+        "AI Multimodal Vision context comprehension",
+        "Priority worker queues for rendering & audio mixing",
+        "Unlimited custom subtitle presets"
+      ]
+    }
+  },
+  "ctaBanner": {
+    "pill": "Sign up and claim free trial credits",
+    "pillCta": "Get started →",
+    "headline": "Experience it now.",
+    "desc": "Translate, refine subtitles, and voiceover with native authenticity in minutes. No technical expertise required — start your free trial today.",
+    "btnFree": "Start Free Trial Now",
+    "btnPricing": "View Credit Pricing"
+  },
+  "footer": {
+    "tagline": "Professional AI multilingual video translation and content editing platform. Helping creators and freelancers scale global audiences instantly.",
+    "systemStatus": "All systems operational",
+    "colProduct": "Product",
+    "mediaStudio": "Video Translation (Media Studio)",
+    "aiSummary": "AI Content Summarizer",
+    "batchMatrix": "Batch Matrix 20×10",
+    "glossary": "Project Glossaries",
+    "tm": "Translation Memory (TM)",
+    "colFeatures": "Features",
+    "pipelineSteps": "5-Stage Async Pipeline",
+    "voiceSeparation": "Vocal & BGM Separation",
+    "qaAudit": "3-Way QA & CPS Audit",
+    "pricingTable": "Credit Pricing",
+    "colCompany": "TransFlow",
+    "creatorStories": "Creator Stories",
+    "register": "Create Account",
+    "login": "Sign In",
+    "privacy": "Privacy & Security",
+    "terms": "Terms of Service",
+    "copyright": "© 2026 TransFlow Media. All rights reserved."
+  }
+}
