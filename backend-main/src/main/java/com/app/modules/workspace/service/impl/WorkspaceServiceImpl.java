@@ -94,6 +94,12 @@ public class WorkspaceServiceImpl implements WorkspaceService {
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<UUID> findLeadUserId(UUID workspaceId) {
+        return workspaceRepository.findById(workspaceId).map(Workspace::getOwnerUserId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<Role> getRole(UUID workspaceId, UUID userId) {
         return workspaceMemberRepository.findByWorkspaceIdAndUserId(workspaceId, userId)
                 .map(WorkspaceMember::getRole);
