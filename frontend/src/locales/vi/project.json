@@ -1,0 +1,48 @@
+{
+  "list": {
+    "title": "Dự án",
+    "subtitle": "Quản lý các dự án dịch thuật và bản địa hóa",
+    "create": "Tạo dự án mới",
+    "emptyTitle": "Chưa có dự án nào",
+    "emptyDesc": "Tạo dự án đầu tiên để bắt đầu tổ chức tài liệu và video.",
+    "searchPlaceholder": "Tìm kiếm dự án...",
+    "noMatchTitle": "Không tìm thấy dự án",
+    "noMatchDesc": "Không có dự án nào khớp với từ khóa tìm kiếm.",
+    "clearSearch": "Xóa tìm kiếm",
+    "projectCount_one": "{{count}} dự án",
+    "projectCount_other": "{{count}} dự án",
+    "docsCount_one": "{{count}} tài liệu",
+    "docsCount_other": "{{count}} tài liệu",
+    "stats": {
+      "projects": "Tổng dự án",
+      "documents": "Tài liệu & Media",
+      "languages": "Ngôn ngữ nguồn",
+      "tm": "Độ phủ TM"
+    },
+    "col": {
+      "name": "Tên dự án",
+      "sourceLang": "Ngôn ngữ nguồn",
+      "domain": "Lĩnh vực",
+      "documents": "Tài liệu",
+      "actions": ""
+    },
+    "open": "Vào dự án"
+  },
+  "create": {
+    "title": "Tạo dự án",
+    "subtitle": "Ngôn ngữ nguồn là mặc định cho tài liệu mới",
+    "name": "Tên dự án",
+    "namePlaceholder": "Tài liệu sản phẩm · EN→VI",
+    "nameRequired": "Tên bắt buộc",
+    "sourceLang": "Ngôn ngữ nguồn",
+    "glossary": "Bảng thuật ngữ mặc định",
+    "glossaryNone": "Không",
+    "tmEnabled": "Bật Translation Memory cho dự án này",
+    "domain": "Lĩnh vực (tuỳ chọn)",
+    "domainPlaceholder": "pháp lý / marketing / kỹ thuật",
+    "tone": "Giọng điệu (tuỳ chọn)",
+    "tonePlaceholder": "trang trọng / thân mật",
+    "submit": "Tạo dự án",
+    "submitting": "Đang tạo…"
+  }
+}

@@ -13,9 +13,6 @@ export default function App() {
         <p className="text-[#a1a1aa] text-sm leading-relaxed mb-6">
           Toàn bộ cấu hình hệ thống (React 19, Vite 8, Tailwind CSS v4, TypeScript 6) và cây thư mục chuẩn đã được khởi tạo thành công tại:
           <br />
-          <code className="text-[#c4b5fd] bg-[#16191d] px-2.5 py-1 rounded border border-[#272c35] text-xs inline-block mt-2">
-            D:\Project\Project_Kada\TransFlow\frontend
-          </code>
         </p>
 
         <div className="grid grid-cols-2 gap-3 text-left mb-6">
@@ -29,11 +26,6 @@ export default function App() {
             <div className="text-xs text-[#71717a]">Nhánh gốc: <span className="text-white">feature/frontend</span></div>
             <div className="text-xs text-[#71717a]">Mục tiêu: UI Atoms, Batches, Media Studio</div>
           </div>
-        </div>
-
-        <div className="text-xs text-[#71717a] border-t border-[#1a1e23] pt-4">
-          Tham khảo file kế hoạch đẩy code chi tiết tại: <br />
-          <span className="text-[#f4f4f5] font-mono">C:\Users\nguye\Downloads\KE_HOACH_FRONTEND_1_TUAN_RUOI_TRANSFLOW.md</span>
         </div>
       </div>
     </div>

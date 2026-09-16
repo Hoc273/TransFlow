@@ -1,0 +1,59 @@
+{
+  "title": "Glossaries",
+  "subtitle": "Terminology lists · Admin/PM can edit · others read-only",
+  "sidebar": "Glossaries",
+  "emptyTitle": "No glossary yet",
+  "emptyDesc": "Create a glossary to enforce consistent terminology in translations.",
+  "termCount": "{{count}} terms",
+  "delete": "Delete glossary",
+  "confirmDelete": "Delete glossary \"{{name}}\"? This cannot be undone.",
+  "create": {
+    "button": "New glossary",
+    "title": "Create glossary",
+    "name": "Name",
+    "nameRequired": "Name is required",
+    "description": "Description (optional)",
+    "submit": "Create",
+    "submitting": "Creating…"
+  },
+  "term": {
+    "add": "Add term",
+    "addTitle": "Add term",
+    "adding": "Adding…",
+    "required": "Source and target terms are required",
+    "duplicate": "A term with the same source + part of speech already exists (Q-G5).",
+    "skipped": "{{n}} term(s) skipped (duplicate)",
+    "emptyTitle": "No terms",
+    "emptyDesc": "Add terms manually or import a CSV.",
+    "confirmDelete": "Delete term \"{{term}}\"?",
+    "note": "Note (optional)",
+    "caseSensitive": "Case sensitive",
+    "caseOn": "Case-sensitive",
+    "caseOff": "Ignore case",
+    "col": {
+      "source": "Source",
+      "target": "Target",
+      "pos": "POS",
+      "case": "Case",
+      "updated": "Updated"
+    },
+    "quickAdd": "Quick Add",
+    "quickAddEnter": "Add (Enter)",
+    "sourcePlaceholder": "Source term…",
+    "targetPlaceholder": "Target term…",
+    "searchPlaceholder": "Filter terms in table…",
+    "saved": "Saved",
+    "noMatch": "No terms match your search filter."
+  },
+  "export": {
+    "button": "Export CSV"
+  },
+  "import": {
+    "button": "Import CSV",
+    "title": "Import terms from CSV",
+    "hint": "Header: source_term,target_term,case_sensitive,part_of_speech,note",
+    "drop": "Click to select a .csv file",
+    "importing": "Importing…",
+    "result": "Added {{added}} · skipped {{skipped}}"
+  }
+}
