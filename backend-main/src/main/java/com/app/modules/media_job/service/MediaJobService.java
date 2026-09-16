@@ -18,6 +18,11 @@ public interface MediaJobService {
 
     MediaJob createJob(UUID workspaceId, UUID userId, CreateMediaJobRequest request);
 
+    /** Same validation/creation pipeline as {@link #createJob}, but stamps {@code batch_id} (batch module, §2.4). */
+    MediaJob createBatchChildJob(UUID workspaceId, UUID userId, UUID batchId, CreateMediaJobRequest request);
+
+    List<MediaJob> getJobsByBatch(UUID batchId);
+
     List<MediaJob> listJobs(UUID workspaceId, UUID userId, UUID projectId, MediaJob.JobStatus status, String recipeId);
 
     MediaJob getJob(UUID workspaceId, UUID userId, UUID jobId);

@@ -64,6 +64,22 @@ public class MediaJobServiceImpl implements MediaJobService {
     @Override
     @Transactional
     public MediaJob createJob(UUID workspaceId, UUID userId, CreateMediaJobRequest req) {
+        return createJobInternal(workspaceId, userId, req, null);
+    }
+
+    @Override
+    @Transactional
+    public MediaJob createBatchChildJob(UUID workspaceId, UUID userId, UUID batchId, CreateMediaJobRequest req) {
+        return createJobInternal(workspaceId, userId, req, batchId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MediaJob> getJobsByBatch(UUID batchId) {
+        return mediaJobRepository.findByBatchIdOrderByCreatedAtAsc(batchId);
+    }
+
+    private MediaJob createJobInternal(UUID workspaceId, UUID userId, CreateMediaJobRequest req, UUID batchId) {
         access.requireProjectWriteAccess(workspaceId, userId, req.projectId());
 
         MediaAsset rootAsset = mediaAssetService.getAsset(workspaceId, userId, req.rootAssetId());
@@ -127,6 +143,7 @@ public class MediaJobServiceImpl implements MediaJobService {
         job.setWorkspaceId(workspaceId);
         job.setProjectId(req.projectId());
         job.setRootAssetId(req.rootAssetId());
+        job.setBatchId(batchId);
         job.setRecipeId(req.recipeId());
         job.setProcessingMode(processingMode);
         job.setTargetLang(req.targetLang());

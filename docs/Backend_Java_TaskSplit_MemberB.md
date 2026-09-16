@@ -241,19 +241,6 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
 - **Kết luận:** phần orchestrator control-flow (state machine, RBAC, validate) đã test hoàn thiện ở cả 2 mức.
   Đây **không phải** là "pipeline chạy được" — xem 7.3 để biết còn thiếu gì để pipeline thực sự xử lý video.
 
-### 7.4 CHƯA kiểm thử — cần làm ở các phần sau (2.4–2.7) hoặc khi có hạ tầng đầy đủ
-| Phần thiếu | Lý do chưa test | Cần gì để test được |
-|---|---|---|
-| Gọi FastAPI thật cho STT/TRANSLATE/TTS/SUMMARIZE/VISION (bao gồm `summarize/script`) | Chưa viết HTTP client — không có trong phạm vi 2.2/2.3 đã chủ động scope lại, và `backend-ai` chưa expose contract cụ thể trong docs đã đọc | Viết client theo `backend-ai` OpenAPI/route thật, cần `docker compose up` với service `backend-ai` |
-| Ghi `ai_usage_logs` + trừ Credit theo `credit_pricing_config` thật | Phụ thuộc mục trên (chỉ có sau khi có lời gọi AI thật); `CreditServiceImpl.chargeUsage` hiện là stub tính giá cứng `0.001/token` | Cần A hoàn thiện `credit_pricing_config` resolver, rồi test tích hợp giữa media_job/summarization và credit |
-| Callback HMAC từ `backend-media-worker` (EXTRACT_AUDIO/SOURCE_SEPARATION/AUDIO_MIX/RENDER) | Thuộc §2.7, chưa viết controller | Viết `media_job.callback` package theo API_Contract §14, test bằng cách tự ký HMAC giả lập worker |
-| RabbitMQ dispatch khi cancel/rerun | Chưa có publisher — cancel/rerun hiện set trạng thái DB trực tiếp, không gửi signal cho worker nào (đã đánh dấu `ponytail:` trong code) | Cần message queue thật + consumer, hoặc ít nhất mock RabbitMQ (Testcontainers) để verify message được publish đúng payload |
-| Provider/Preset/Notification thật của Thành viên A | Interface đang là mock/no-op tôi tự viết (`ProviderResolverServiceImpl.resolveForCapability`, `PresetResolverServiceImpl`, `NotificationServiceImpl`) | Khi A merge implementation thật, phải viết lại test tích hợp — hành vi thật có thể khác giả định hiện tại |
-| Upload file >500MB thật / video >30 phút thật qua MinIO | Chỉ test qua boundary value ở service layer (mock), chưa thử file thật lớn cỡ đó (tốn thời gian tạo file + băng thông) | Có thể bỏ qua an toàn vì logic validate đã chạy qua unit test — chỉ cần thử 1 lần nếu nghi ngờ MinIO có giới hạn khác |
-| Batch/Glossary/QA (2.4–2.6) | Ngoài phạm vi buổi làm việc này | Làm theo đúng §2.4–2.6 của tài liệu này |
-| Checkpoint→stage mapping (`CUT_CONFIRMED→TRANSLATE`, `REVIEW_CONFIRMED→TTS`, `PUBLISH_CONFIRMED→RENDER`) | Đây là giả định tôi tự chọn (xem comment trong `Checkpoint.java`), không có trong SRS/Arch §14 | Cần BA xác nhận trước khi FE dựa vào mapping này để quyết định dừng ở đâu trong chế độ Manual |
-| Dung sai thời lượng AI proposal (`DURATION_TOLERANCE_RATIO = 0.2`, `SummarizationServiceImpl`) | Giả định tôi tự chọn — SRS/Arch §7.2 chỉ nói "trong dung sai", không cho số cụ thể | Cần BA xác nhận % dung sai chính xác trước khi dựa vào ngưỡng này để tự động từ chối/chấp nhận proposal |
-| TTL phiên refine (`RefineSessionStoreImpl.SESSION_TTL = 30 phút`) | Arch §7.4 chỉ nói "phiên có TTL", không cho số cụ thể | Cần BA xác nhận thời lượng phiên thật trước khi FE dựa vào đây để hiển thị "còn X phút để refine" |
 
 ### 7.3 Đã kiểm thử — 2.3 Summarization — proposal & refine
 - Unit test (`SummarizationServiceImplTest`, 16 case) + integration test (`SummarizationControllerTest`,
@@ -282,9 +269,48 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
     `selectedProposalId` copy đúng, 8 stage đúng theo Arch §7.7 (chỉ `TRANSLATE`/`RENDER` = `PENDING`, 6
     stage còn lại `SKIPPED`).
 - **Kết luận:** phần CRUD/refine-session/select/summary-languages đã test hoàn thiện ở cả 2 mức (kể cả
-  Redis thật). Phần **AI thực sự soạn/viết lại kịch bản** (`SummaryAiClient`) vẫn là placeholder — xem 7.3.
+  Redis thật). Phần **AI thực sự soạn/viết lại kịch bản** (`SummaryAiClient`) vẫn là placeholder — xem 7.5.
 
-### 7.5 Môi trường dùng để test real-infra (tham khảo khi cần lặp lại)
+### 7.4 Đã kiểm thử — 2.4 Video Batch Localization
+- Unit test (`BatchServiceImplTest`, 9 case) + integration test (`BatchControllerTest`, 7 case): tạo batch
+  (đúng N `media_jobs` con/1 `target_lang` dùng chung, `sourceAssetIds` rỗng/>20 → `400
+  BATCH_SIZE_EXCEEDED`, vượt rate limit → `429 BATCH_RATE_LIMIT_EXCEEDED`), list/get (kèm job con), cancel
+  (chỉ huỷ job con `PENDING`/`PROCESSING`, giữ nguyên job đã `COMPLETED`, batch → `CANCELLED` bất kể trạng
+  thái job con), retry 1 job con (chặn nếu job không `FAILED` hoặc không thuộc batch, rerun đúng từ stage bị
+  `FAILED`, batch tính lại đúng trạng thái `PROCESSING` sau khi retry, batch `CANCELLED` không bị recompute
+  ghi đè).
+- **Real-infra smoke test** (Postgres 16 + Redis 7 + MinIO thật qua Docker, `mvn spring-boot:run`, gọi bằng
+  `curl` — containers **giữ nguyên chạy nền** theo yêu cầu, không tắt sau khi test xong):
+  - Flyway/Hibernate validate xác nhận cột `source_asset_ids UUID[]` map đúng kiểu mảng thật của Postgres
+    (`uuid[]`, không phải text[] hay lỗi kiểu), `shared_config` map đúng `jsonb` thật.
+  - Tạo batch thật 2 video → đúng 2 `media_jobs` con thật, mỗi job `batch_id` trỏ đúng batch, `recipe_id`
+    luôn `localization.full`, `target_lang` = đúng giá trị batch cha (verify bằng `psql`).
+  - Cancel batch thật → batch + cả 2 job con chuyển `CANCELLED` thật trong Postgres.
+  - **Rate limiter dùng Redis thật** (không mock): gọi tạo batch 6 lần liên tiếp qua HTTP thật → 5 lần đầu
+    `201`, lần thứ 6 đúng `429` (code 3101) — xác nhận `BatchCreateRateLimiterImpl` hoạt động đúng với Redis
+    thật, đúng key `batch:create:{userId}`.
+- **Kết luận:** phần tạo/list/get/cancel/retry đã test hoàn thiện ở cả 2 mức (kể cả kiểu cột mảng UUID[]
+  thật trên Postgres — rủi ro tương tự JSONB ở §2.2 nhưng chưa gặp ở module nào trước đó). `download` (gói
+  nén kết quả) chưa làm được — xem 7.5.
+
+### 7.5 CHƯA kiểm thử — cần làm ở các phần sau (2.5–2.7) hoặc khi có hạ tầng đầy đủ
+| Phần thiếu | Lý do chưa test | Cần gì để test được |
+|---|---|---|
+| Gọi FastAPI thật cho STT/TRANSLATE/TTS/SUMMARIZE/VISION (bao gồm `summarize/script`) | Chưa viết HTTP client — không có trong phạm vi 2.2/2.3 đã chủ động scope lại, và `backend-ai` chưa expose contract cụ thể trong docs đã đọc | Viết client theo `backend-ai` OpenAPI/route thật, cần `docker compose up` với service `backend-ai` |
+| Ghi `ai_usage_logs` + trừ Credit theo `credit_pricing_config` thật | Phụ thuộc mục trên (chỉ có sau khi có lời gọi AI thật); `CreditServiceImpl.chargeUsage` hiện là stub tính giá cứng `0.001/token` | Cần A hoàn thiện `credit_pricing_config` resolver, rồi test tích hợp giữa media_job/summarization/batch và credit |
+| Callback HMAC từ `backend-media-worker` (EXTRACT_AUDIO/SOURCE_SEPARATION/AUDIO_MIX/RENDER) | Thuộc §2.7, chưa viết controller | Viết `media_job.callback` package theo API_Contract §14, test bằng cách tự ký HMAC giả lập worker |
+| RabbitMQ dispatch khi cancel/rerun/retry | Chưa có publisher — cancel/rerun/retry hiện set trạng thái DB trực tiếp, không gửi signal cho worker nào (đã đánh dấu `ponytail:` trong code) | Cần message queue thật + consumer, hoặc ít nhất mock RabbitMQ (Testcontainers) để verify message được publish đúng payload |
+| Provider/Preset/Notification thật của Thành viên A | Interface đang là mock/no-op tôi tự viết (`ProviderResolverServiceImpl.resolveForCapability`, `PresetResolverServiceImpl`, `NotificationServiceImpl`) | Khi A merge implementation thật, phải viết lại test tích hợp — hành vi thật có thể khác giả định hiện tại |
+| Upload file >500MB thật / video >30 phút thật qua MinIO | Chỉ test qua boundary value ở service layer (mock), chưa thử file thật lớn cỡ đó (tốn thời gian tạo file + băng thông) | Có thể bỏ qua an toàn vì logic validate đã chạy qua unit test — chỉ cần thử 1 lần nếu nghi ngờ MinIO có giới hạn khác |
+| `GET .../batches/{batchId}/download` | Cần gói nén kết quả các job con `COMPLETED` — không có artifact thật nào vì chưa có stage executor/RENDER thật | Chỉ làm được sau khi có pipeline thực thi thật tạo ra `RENDERED_VIDEO` media_assets |
+| Glossary/QA (2.5–2.6) | Ngoài phạm vi buổi làm việc này | Làm theo đúng §2.5–2.6 của tài liệu này |
+| Checkpoint→stage mapping (`CUT_CONFIRMED→TRANSLATE`, `REVIEW_CONFIRMED→TTS`, `PUBLISH_CONFIRMED→RENDER`) | Đây là giả định tôi tự chọn (xem comment trong `Checkpoint.java`), không có trong SRS/Arch §14 | Cần BA xác nhận trước khi FE dựa vào mapping này để quyết định dừng ở đâu trong chế độ Manual |
+| Dung sai thời lượng AI proposal (`DURATION_TOLERANCE_RATIO = 0.2`, `SummarizationServiceImpl`) | Giả định tôi tự chọn — SRS/Arch §7.2 chỉ nói "trong dung sai", không cho số cụ thể | Cần BA xác nhận % dung sai chính xác trước khi dựa vào ngưỡng này để tự động từ chối/chấp nhận proposal |
+| TTL phiên refine (`RefineSessionStoreImpl.SESSION_TTL = 30 phút`) | Arch §7.4 chỉ nói "phiên có TTL", không cho số cụ thể | Cần BA xác nhận thời lượng phiên thật trước khi FE dựa vào đây để hiển thị "còn X phút để refine" |
+| Rate limit tạo batch (`BatchCreateRateLimiterImpl` = 5 lần/10 phút/user) | API_Contract §6 chỉ nói "429 nếu vượt rate limit", không cho ngưỡng cụ thể | Cần BA xác nhận ngưỡng thật trước khi FE dựa vào đây để hiển thị thông báo giới hạn |
+
+
+### 7.6 Môi trường dùng để test real-infra (tham khảo khi cần lặp lại)
 ```
 docker run -d --name tfm-postgres -p 55432:5432 -e POSTGRES_DB=transflow_mini -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres postgres:16-alpine
 docker run -d --name tfm-redis -p 56379:6379 redis:7-alpine
@@ -292,5 +318,7 @@ docker run -d --name tfm-minio -p 59000:9000 -p 59001:9001 -e MINIO_ROOT_USER=mi
 ```
 Lưu ý: image `minio/minio` trên Docker Hub bị từ chối pull trong môi trường này (registry access denied) —
 dùng `quay.io/minio/minio` thay thế. Chạy app với `DB_HOST=localhost DB_PORT=55432 ... REDIS_HOST=localhost
-REDIS_PORT=56379 MEDIA_STORAGE_ENDPOINT=http://localhost:59000 ...` rồi `./mvnw spring-boot:run`. Nhớ dọn
-container (`docker rm -f tfm-postgres tfm-redis tfm-minio`) sau khi test xong — không để hạ tầng test chạy nền.
+REDIS_PORT=56379 MEDIA_STORAGE_ENDPOINT=http://localhost:59000 ...` rồi `./mvnw spring-boot:run`. Mặc định
+nên dọn container (`docker rm -f tfm-postgres tfm-redis tfm-minio`) sau khi test xong để không chạy hạ tầng
+test dư thừa nền máy — chỉ giữ lại khi người yêu cầu chủ động nói không cần tắt (như vòng test §2.4, dữ liệu
+batch mẫu vẫn còn trong Postgres thật ở container `tfm-postgres` lúc viết dòng này).

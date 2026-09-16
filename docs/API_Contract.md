@@ -329,7 +329,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `media_asset` | 2800–2899 | `TERMS_NOT_ACCEPTED` = 2800, `MEDIA_FILE_TOO_LARGE` = 2801, `MEDIA_DURATION_EXCEEDED` = 2802, `TERMS_VERSION_MISMATCH` = 2803 |
 | `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902 |
 | `summarization` | 3000–3099 | `REFINE_LIMIT_REACHED` = 3000, `PROPOSAL_ALREADY_TRANSLATED` = 3001 |
-| `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100 |
+| `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100, `BATCH_RATE_LIMIT_EXCEEDED` = 3101 |
 | `glossary` | 3200–3299 | — |
 | `qa` | 3300–3399 | `QA_BLOCKED` = 3300, `OVERRIDE_NOT_ALLOWED` = 3301 |
 
@@ -347,7 +347,8 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `INSUFFICIENT_CREDIT` | 2300 | 402 | Số dư không đủ khi tạo job — hành vi mặc định `BLOCK_UPFRONT` (Arch §10.4, cấu hình được). |
 | `REFINE_LIMIT_REACHED` | 3000 | 429 | Vượt 5 lần refine/phiên Summarization. |
 | `PROPOSAL_ALREADY_TRANSLATED` | 3001 | 409 | Đổi `selected_proposal_id` hoặc refine phương án đang chọn khi stage `TRANSLATE` của job đã `COMPLETED` từ phương án đó (SRS §5.5 — phải rerun-from-stage `TRANSLATE` trước). |
-| `BATCH_SIZE_EXCEEDED` | 3100 | 400 | `sourceAssetIds` > 20 khi tạo batch. |
+| `BATCH_SIZE_EXCEEDED` | 3100 | 400 | `sourceAssetIds` rỗng hoặc > 20 khi tạo batch. |
+| `BATCH_RATE_LIMIT_EXCEEDED` | 3101 | 429 | Vượt giới hạn tạo batch/khoảng thời gian của user (mặc định 5 lần/10 phút — cần BA xác nhận). |
 | `QA_BLOCKED` | 3300 | 403 | Xuất bản/dựng video/publish-package khi còn `qa_issues` chặn hành động tương ứng chưa resolve/override. |
 | `OVERRIDE_NOT_ALLOWED` | 3301 | 403 | Cố override `issue_type` thuộc nhóm không bao giờ override được. |
 
