@@ -14,7 +14,8 @@ public record AppProperties(
         String feOrigin,
         Oauth oauth,
         Credit credit,
-        Storage storage
+        Storage storage,
+        MediaWorker mediaWorker
 ) {
     public AppProperties {
         if (cors == null) {
@@ -34,6 +35,9 @@ public record AppProperties(
         }
         if (storage == null) {
             storage = new Storage("http://localhost:9000", "minioadmin", "minioadmin", "transflow-media");
+        }
+        if (mediaWorker == null) {
+            mediaWorker = new MediaWorker(null);
         }
     }
 
@@ -82,6 +86,15 @@ public record AppProperties(
             }
             if (mediaBucket == null || mediaBucket.isBlank()) {
                 mediaBucket = "transflow-media";
+            }
+        }
+    }
+
+    /** Shared secret for HMAC-signed callbacks from backend-media-worker (API_Contract.md §14). */
+    public record MediaWorker(String hmacSecret) {
+        public MediaWorker {
+            if (hmacSecret == null || hmacSecret.isBlank()) {
+                hmacSecret = "dev-only-media-worker-hmac-secret-change-me";
             }
         }
     }

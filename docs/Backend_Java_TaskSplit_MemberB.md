@@ -239,7 +239,7 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
   - Voice ngôn ngữ lệch (`fr` voice trên `targetLang=en`) → `400 VOICE_LANGUAGE_MISMATCH`; khớp → 201/200.
   - Cancel: stage `PENDING`/`PROCESSING` → `CANCELLED`, stage `COMPLETED`/`SKIPPED` giữ nguyên.
 - **Kết luận:** phần orchestrator control-flow (state machine, RBAC, validate) đã test hoàn thiện ở cả 2 mức.
-  Đây **không phải** là "pipeline chạy được" — xem 7.7 để biết còn thiếu gì để pipeline thực sự xử lý video.
+  Đây **không phải** là "pipeline chạy được" — xem 7.8 để biết còn thiếu gì để pipeline thực sự xử lý video.
 
 
 ### 7.3 Đã kiểm thử — 2.3 Summarization — proposal & refine
@@ -269,7 +269,7 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
     `selectedProposalId` copy đúng, 8 stage đúng theo Arch §7.7 (chỉ `TRANSLATE`/`RENDER` = `PENDING`, 6
     stage còn lại `SKIPPED`).
 - **Kết luận:** phần CRUD/refine-session/select/summary-languages đã test hoàn thiện ở cả 2 mức (kể cả
-  Redis thật). Phần **AI thực sự soạn/viết lại kịch bản** (`SummaryAiClient`) vẫn là placeholder — xem 7.7.
+  Redis thật). Phần **AI thực sự soạn/viết lại kịch bản** (`SummaryAiClient`) vẫn là placeholder — xem 7.8.
 
 ### 7.4 Đã kiểm thử — 2.4 Video Batch Localization
 - Unit test (`BatchServiceImplTest`, 9 case) + integration test (`BatchControllerTest`, 7 case): tạo batch
@@ -291,7 +291,7 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
     thật, đúng key `batch:create:{userId}`.
 - **Kết luận:** phần tạo/list/get/cancel/retry đã test hoàn thiện ở cả 2 mức (kể cả kiểu cột mảng UUID[]
   thật trên Postgres — rủi ro tương tự JSONB ở §2.2 nhưng chưa gặp ở module nào trước đó). `download` (gói
-  nén kết quả) chưa làm được — xem 7.7.
+  nén kết quả) chưa làm được — xem 7.8.
 
 ### 7.5 Đã kiểm thử — 2.5 Glossary
 - Unit test (`GlossaryServiceImplTest`, 9 case) + integration test (`GlossaryControllerTest`, 7 case):
@@ -330,14 +330,44 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
     `qa_issue_overrides` có đúng 1 dòng audit — xác nhận invariant "issue nghiêm trọng không bao giờ resolve
     được, issue thường thì override xong tự resolve" đúng trên dữ liệu Postgres thật, không chỉ trong test.
 - **Kết luận:** phần list/override đã test hoàn thiện ở cả 2 mức. Phần sinh issue tự động
-  (`recordIssue`/rule engine) chưa có gì gọi tới vì chưa có stage executor — xem 7.7.
+  (`recordIssue`/rule engine) chưa có gì gọi tới vì chưa có stage executor — xem 7.8.
 
-### 7.7 CHƯA kiểm thử — cần làm ở phần sau (2.7) hoặc khi có hạ tầng đầy đủ
+### 7.7 Đã kiểm thử — 2.7 Callback nội bộ Worker → Spring
+- Unit test (`HmacVerifierTest`, 6 case + `MediaCallbackServiceImplTest`, 8 case) + integration test
+  (`MediaCallbackControllerTest`, 8 case): HMAC hợp lệ/sai secret/body bị sửa/timestamp lệch quá ±5 phút,
+  path `{stage}` không hợp lệ → `400`, thiếu header bắt buộc → `400` (bổ sung
+  `MissingRequestHeaderException` vào `GlobalExceptionHandler` — sửa `common`, xem ghi chú dưới), progress
+  cập nhật đúng `PENDING→PROCESSING` + `progress_percent`, complete thành công/thất bại cập nhật đúng
+  `media_job_stages`/`media_jobs`, dedupeKey lặp lại không xử lý lại lần 2, job có `batch_id` → gọi đúng
+  `BatchService.recomputeStatus` (đã đổi `private`→public trên interface để callback gọi được).
+- **Real-infra smoke test** (cùng bộ Postgres/Redis/MinIO ở 7.1–7.6, containers giữ nguyên chạy nền, restart
+  app với `MEDIA_WORKER_HMAC_SECRET` thật): ký HMAC thật bằng Python (`hmac`/`hashlib`, độc lập với code Java
+  — xác nhận định dạng `"<timestamp>.<rawBody>"` hoạt động đúng từ một client hoàn toàn khác ngôn ngữ, không
+  chỉ tự ký rồi tự verify trong cùng JVM):
+  - `progress` + `complete` thật cho `EXTRACT_AUDIO` → `media_job_stages.output_ref` lưu đúng `jsonb` thật,
+    `media_jobs.status` chuyển đúng `PROCESSING` (còn stage sau chưa xong).
+  - Gọi lại `progress` với cùng `dedupeKey` nhưng `progressPercent` khác → bị bỏ qua thật (giá trị trong
+    Postgres không đổi), xác nhận Redis dedupe thật (`GET media_job:callback:dedupe:{key}` tồn tại, TTL
+    ~86400s).
+  - Sai secret → `401` thật; timestamp lệch 10 phút → `401` thật.
+  - Tạo 1 batch thật (1 video) → gọi `complete` thất bại cho job con → xác nhận cascade thật qua 3 tầng
+    Postgres: `media_job_stages.status=FAILED` → `media_jobs.status=FAILED` → `localization_batches.status`
+    tự động recompute thành `FAILED` (không cần gọi API batch nào thêm) — đây là lần đầu tiên trong toàn bộ
+    §2.2–2.7 một hành động ở tầng thấp nhất (callback) được xác nhận lan đúng lên toàn bộ chuỗi phụ thuộc
+    thật, không phải mock.
+- **Sửa `common` (cần báo A theo CLAUDE.md §4.8):** thêm `AppProperties.MediaWorker(hmacSecret)` (field mới,
+  không đổi field cũ) và handler `MissingRequestHeaderException` trong `GlobalExceptionHandler` (thêm mới,
+  không sửa handler cũ nào) — cả hai đều additive, không phá vỡ shape hiện có, nhưng vẫn là thay đổi trong
+  package `common`.
+- **Kết luận:** đây là module đầu tiên xác nhận được **toàn bộ chuỗi phụ thuộc thật** (stage → job → batch)
+  phản ứng đúng trước 1 sự kiện từ bên ngoài (giả lập worker), không chỉ từng lớp riêng lẻ. Phần còn thiếu
+  duy nhất: chưa có `backend-media-worker` thật gọi vào (chỉ giả lập bằng script Python) — xem 7.8.
+
+### 7.8 CHƯA kiểm thử — còn lại ngoài phạm vi 2.1–2.7 (cần A/BA/hạ tầng khác)
 | Phần thiếu | Lý do chưa test | Cần gì để test được |
 |---|---|---|
 | Gọi FastAPI thật cho STT/TRANSLATE/TTS/SUMMARIZE/VISION (bao gồm `summarize/script`) | Chưa viết HTTP client — không có trong phạm vi 2.2/2.3 đã chủ động scope lại, và `backend-ai` chưa expose contract cụ thể trong docs đã đọc | Viết client theo `backend-ai` OpenAPI/route thật, cần `docker compose up` với service `backend-ai` |
 | Ghi `ai_usage_logs` + trừ Credit theo `credit_pricing_config` thật | Phụ thuộc mục trên (chỉ có sau khi có lời gọi AI thật); `CreditServiceImpl.chargeUsage` hiện là stub tính giá cứng `0.001/token` | Cần A hoàn thiện `credit_pricing_config` resolver, rồi test tích hợp giữa media_job/summarization/batch và credit |
-| Callback HMAC từ `backend-media-worker` (EXTRACT_AUDIO/SOURCE_SEPARATION/AUDIO_MIX/RENDER) | Thuộc §2.7, chưa viết controller | Viết `media_job.callback` package theo API_Contract §14, test bằng cách tự ký HMAC giả lập worker |
 | RabbitMQ dispatch khi cancel/rerun/retry | Chưa có publisher — cancel/rerun/retry hiện set trạng thái DB trực tiếp, không gửi signal cho worker nào (đã đánh dấu `ponytail:` trong code) | Cần message queue thật + consumer, hoặc ít nhất mock RabbitMQ (Testcontainers) để verify message được publish đúng payload |
 | Provider/Preset/Notification thật của Thành viên A | Interface đang là mock/no-op tôi tự viết (`ProviderResolverServiceImpl.resolveForCapability`, `PresetResolverServiceImpl`, `NotificationServiceImpl`) | Khi A merge implementation thật, phải viết lại test tích hợp — hành vi thật có thể khác giả định hiện tại |
 | Upload file >500MB thật / video >30 phút thật qua MinIO | Chỉ test qua boundary value ở service layer (mock), chưa thử file thật lớn cỡ đó (tốn thời gian tạo file + băng thông) | Có thể bỏ qua an toàn vì logic validate đã chạy qua unit test — chỉ cần thử 1 lần nếu nghi ngờ MinIO có giới hạn khác |
@@ -349,7 +379,7 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
 | Rate limit tạo batch (`BatchCreateRateLimiterImpl` = 5 lần/10 phút/user) | API_Contract §6 chỉ nói "429 nếu vượt rate limit", không cho ngưỡng cụ thể | Cần BA xác nhận ngưỡng thật trước khi FE dựa vào đây để hiển thị thông báo giới hạn |
 
 
-### 7.8 Môi trường dùng để test real-infra (tham khảo khi cần lặp lại)
+### 7.9 Môi trường dùng để test real-infra (tham khảo khi cần lặp lại)
 ```
 docker run -d --name tfm-postgres -p 55432:5432 -e POSTGRES_DB=transflow_mini -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres postgres:16-alpine
 docker run -d --name tfm-redis -p 56379:6379 redis:7-alpine
