@@ -38,7 +38,8 @@ Code dùng chung cả 2 module trở lên (`BaseEntity`, `ApiResponse`/`ErrorCod
 dải của module đang code, cập nhật đồng thời bảng §15.3: `media_asset` 2800–2899 (đã dùng
 `TERMS_NOT_ACCEPTED`=2800), `media_job` 2900–2999 (đã dùng `VOICE_LANGUAGE_MISMATCH`=2900,
 `JOB_OWNERSHIP_REQUIRED`=2901, `STAGE_NOT_READY`=2902), `summarization` 3000–3099 (đã dùng
-`REFINE_LIMIT_REACHED`=3000), `batch` 3100–3199 (đã dùng `BATCH_SIZE_EXCEEDED`=3100), `glossary`
+`REFINE_LIMIT_REACHED`=3000, `PROPOSAL_ALREADY_TRANSLATED`=3001), `batch` 3100–3199 (đã dùng
+`BATCH_SIZE_EXCEEDED`=3100), `glossary`
 3200–3299, `qa` 3300–3399 (đã dùng `QA_BLOCKED`=3300, `OVERRIDE_NOT_ALLOWED`=3301).
 
 ## 2. Việc cần làm theo từng module
@@ -240,19 +241,50 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
 - **Kết luận:** phần orchestrator control-flow (state machine, RBAC, validate) đã test hoàn thiện ở cả 2 mức.
   Đây **không phải** là "pipeline chạy được" — xem 7.3 để biết còn thiếu gì để pipeline thực sự xử lý video.
 
-### 7.3 CHƯA kiểm thử — cần làm ở các phần sau (2.3–2.7) hoặc khi có hạ tầng đầy đủ
+### 7.4 CHƯA kiểm thử — cần làm ở các phần sau (2.4–2.7) hoặc khi có hạ tầng đầy đủ
 | Phần thiếu | Lý do chưa test | Cần gì để test được |
 |---|---|---|
-| Gọi FastAPI thật cho STT/TRANSLATE/TTS/SUMMARIZE/VISION | Chưa viết HTTP client — không có trong phạm vi 2.2 đã chủ động scope lại, và `backend-ai` chưa expose contract cụ thể trong docs đã đọc | Viết client theo `backend-ai` OpenAPI/route thật, cần `docker compose up` với service `backend-ai` |
-| Ghi `ai_usage_logs` + trừ Credit theo `credit_pricing_config` thật | Phụ thuộc mục trên (chỉ có sau khi có lời gọi AI thật); `CreditServiceImpl.chargeUsage` hiện là stub tính giá cứng `0.001/token` | Cần A hoàn thiện `credit_pricing_config` resolver, rồi test tích hợp giữa media_job và credit |
+| Gọi FastAPI thật cho STT/TRANSLATE/TTS/SUMMARIZE/VISION (bao gồm `summarize/script`) | Chưa viết HTTP client — không có trong phạm vi 2.2/2.3 đã chủ động scope lại, và `backend-ai` chưa expose contract cụ thể trong docs đã đọc | Viết client theo `backend-ai` OpenAPI/route thật, cần `docker compose up` với service `backend-ai` |
+| Ghi `ai_usage_logs` + trừ Credit theo `credit_pricing_config` thật | Phụ thuộc mục trên (chỉ có sau khi có lời gọi AI thật); `CreditServiceImpl.chargeUsage` hiện là stub tính giá cứng `0.001/token` | Cần A hoàn thiện `credit_pricing_config` resolver, rồi test tích hợp giữa media_job/summarization và credit |
 | Callback HMAC từ `backend-media-worker` (EXTRACT_AUDIO/SOURCE_SEPARATION/AUDIO_MIX/RENDER) | Thuộc §2.7, chưa viết controller | Viết `media_job.callback` package theo API_Contract §14, test bằng cách tự ký HMAC giả lập worker |
 | RabbitMQ dispatch khi cancel/rerun | Chưa có publisher — cancel/rerun hiện set trạng thái DB trực tiếp, không gửi signal cho worker nào (đã đánh dấu `ponytail:` trong code) | Cần message queue thật + consumer, hoặc ít nhất mock RabbitMQ (Testcontainers) để verify message được publish đúng payload |
 | Provider/Preset/Notification thật của Thành viên A | Interface đang là mock/no-op tôi tự viết (`ProviderResolverServiceImpl.resolveForCapability`, `PresetResolverServiceImpl`, `NotificationServiceImpl`) | Khi A merge implementation thật, phải viết lại test tích hợp — hành vi thật có thể khác giả định hiện tại |
 | Upload file >500MB thật / video >30 phút thật qua MinIO | Chỉ test qua boundary value ở service layer (mock), chưa thử file thật lớn cỡ đó (tốn thời gian tạo file + băng thông) | Có thể bỏ qua an toàn vì logic validate đã chạy qua unit test — chỉ cần thử 1 lần nếu nghi ngờ MinIO có giới hạn khác |
-| Summarization/Batch/Glossary/QA (2.3–2.6) | Ngoài phạm vi buổi làm việc này | Làm theo đúng §2.3–2.6 của tài liệu này |
+| Batch/Glossary/QA (2.4–2.6) | Ngoài phạm vi buổi làm việc này | Làm theo đúng §2.4–2.6 của tài liệu này |
 | Checkpoint→stage mapping (`CUT_CONFIRMED→TRANSLATE`, `REVIEW_CONFIRMED→TTS`, `PUBLISH_CONFIRMED→RENDER`) | Đây là giả định tôi tự chọn (xem comment trong `Checkpoint.java`), không có trong SRS/Arch §14 | Cần BA xác nhận trước khi FE dựa vào mapping này để quyết định dừng ở đâu trong chế độ Manual |
+| Dung sai thời lượng AI proposal (`DURATION_TOLERANCE_RATIO = 0.2`, `SummarizationServiceImpl`) | Giả định tôi tự chọn — SRS/Arch §7.2 chỉ nói "trong dung sai", không cho số cụ thể | Cần BA xác nhận % dung sai chính xác trước khi dựa vào ngưỡng này để tự động từ chối/chấp nhận proposal |
+| TTL phiên refine (`RefineSessionStoreImpl.SESSION_TTL = 30 phút`) | Arch §7.4 chỉ nói "phiên có TTL", không cho số cụ thể | Cần BA xác nhận thời lượng phiên thật trước khi FE dựa vào đây để hiển thị "còn X phút để refine" |
 
-### 7.4 Môi trường dùng để test real-infra (tham khảo khi cần lặp lại)
+### 7.3 Đã kiểm thử — 2.3 Summarization — proposal & refine
+- Unit test (`SummarizationServiceImplTest`, 16 case) + integration test (`SummarizationControllerTest`,
+  9 case) + unit test bổ sung cho `MediaJobServiceImpl.updateSelectedProposal`/`createDerivedSummaryJob`
+  (7 case): Custom Proposal CRUD (tạo/sửa, chặn sửa proposal AI, validate segment thứ tự), list active
+  proposal (đúng "AI round mới nhất + mọi Custom Proposal" nhờ bất biến "refine luôn archive round AI cũ"),
+  select (chặn proposal archived, no-op khi chọn lại chính nó, `409 PROPOSAL_ALREADY_TRANSLATED` khi đổi
+  proposal sau khi `TRANSLATE` đã `COMPLETED`), refine (404 khi chưa có proposal AI nào, chặn refine phương
+  án đã dùng để dịch, giới hạn 5 lần/phiên qua `RefineSessionStore`, validate script/segment/dung sai thời
+  lượng của `generateAiProposal`/`refine`), `summary-languages` (chặn khi chưa chọn phương án hoặc phương án
+  là HUMAN, tạo job phái sinh đúng field + đúng stage bị SKIPPED).
+- **Real-infra smoke test** (Postgres 16 + Redis 7 thật + MinIO thật qua Docker, `mvn spring-boot:run`,
+  gọi bằng `curl`):
+  - Cột JSONB (`warnings`, `source_sentence_refs`) map đúng `jsonb` thật; response API trả JSON array thật
+    (nhờ `@JsonRawValue`) chứ không phải chuỗi JSON bị escape.
+  - Tạo Custom Proposal thật → chọn (`select`) → job thật cập nhật đúng `selected_proposal_id` (xuyên
+    module `summarization` → `media_job` qua `MediaJobService.updateSelectedProposal`, verify bằng `psql`).
+  - **Redis thật** (không mock) cho refine: gọi `refine` 6 lần liên tiếp qua HTTP thật → lần 1–5 tăng đúng
+    counter Redis (`GET summarization:refine:{jobId}` khớp số lần gọi, `TTL` ≈ 1800s), lần 6 trả đúng
+    `429 REFINE_LIMIT_REACHED` (code 3000) — xác nhận `RefineSessionStoreImpl` hoạt động đúng với Redis thật,
+    không chỉ với mock trong test.
+  - `refine` thật sự thất bại ở bước gọi `SummaryAiClient` (500, vì chưa có implementation thật) — đúng như
+    dự kiến, không phải lỗi của phần tôi đã build; đã ghi lại ở bảng 7.3.
+  - `summary-languages` thật: chọn proposal AI (seed round-1 trực tiếp bằng SQL vì chưa có endpoint sinh AI
+    proposal đầu tiên) → tạo job phái sinh `targetLang=vi`, `sourceSummaryJobId` trỏ đúng job gốc,
+    `selectedProposalId` copy đúng, 8 stage đúng theo Arch §7.7 (chỉ `TRANSLATE`/`RENDER` = `PENDING`, 6
+    stage còn lại `SKIPPED`).
+- **Kết luận:** phần CRUD/refine-session/select/summary-languages đã test hoàn thiện ở cả 2 mức (kể cả
+  Redis thật). Phần **AI thực sự soạn/viết lại kịch bản** (`SummaryAiClient`) vẫn là placeholder — xem 7.3.
+
+### 7.5 Môi trường dùng để test real-infra (tham khảo khi cần lặp lại)
 ```
 docker run -d --name tfm-postgres -p 55432:5432 -e POSTGRES_DB=transflow_mini -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres postgres:16-alpine
 docker run -d --name tfm-redis -p 56379:6379 redis:7-alpine
