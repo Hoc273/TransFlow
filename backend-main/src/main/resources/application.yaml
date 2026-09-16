@@ -52,6 +52,8 @@ app:
     access-key: ${MEDIA_STORAGE_ACCESS_KEY:minioadmin}
     secret-key: ${MEDIA_STORAGE_SECRET_KEY:minioadmin}
     media-bucket: ${MEDIA_STORAGE_BUCKET:transflow-media}
+  media-worker:
+    hmac-secret: ${MEDIA_WORKER_HMAC_SECRET:}
   crypto:
     provider-key-secret: ${PROVIDER_KEY_ENC_SECRET:MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=}
   ai:
@@ -59,4 +61,3 @@ app:
     connect-timeout-ms: 5000
     read-timeout-ms: 30000
     max-retries: 3
-
