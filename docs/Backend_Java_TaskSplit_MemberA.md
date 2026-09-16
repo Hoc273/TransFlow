@@ -90,13 +90,16 @@ dải của module đang code, cập nhật đồng thời bảng §15.3: `auth`
 - [x] Triển khai quản lý default preset tự động chuyển giao và kiểm soát xóa default preset (`CANNOT_DELETE_ONLY_DEFAULT_PRESET`, `replacementPresetId`).
 - [x] Migration `V6__seed_system_presets.sql` seed platform default preset và danh mục template công khai.
 
-### 2.6 Notification & Dashboard
-- Copy `NotificationController`, `DashboardController`, `NotificationService`.
-- `notifications` được tạo bởi B khi job/batch đổi trạng thái (`JOB_COMPLETED/JOB_FAILED/...`) — A chỉ cần
-  cung cấp `NotificationService.notify(workspaceId, userId, type, refId, message)` cho B gọi, còn API
-  đọc/đánh dấu-đã-đọc do A làm toàn bộ.
-- Dashboard usage (`GET /workspaces/{workspaceId}/usage`) đọc `ai_usage_logs` — bảng do B ghi khi AI xử lý
-  xong; A chỉ viết query/aggregation, không tạo dữ liệu.
+### 2.6 Notification & Dashboard [COMPLETED]
+- [x] Triển khai `NotificationController` (`/api/workspaces/{workspaceId}/notifications/**`) và `DashboardController` (`/api/workspaces/{workspaceId}/dashboard`, `/api/workspaces/{workspaceId}/usage`).
+- [x] Entity `Notification` mapping bảng `notifications` (CHECK constraint: 6 types, index unread partial), DTO `NotificationResponse`, `MarkAllNotificationsReadResponse`.
+- [x] Triển khai `NotificationServiceImpl`:
+  - `notify(workspaceId, userId, type, refId, message)` lưu thông báo thật vào DB, xử lý dedup, bỏ qua an toàn nếu user không còn là thành viên (AC-NOTIF-02).
+  - `listNotifications(workspaceId, userId, unreadOnly, page, size)` phân trang chuẩn API Contract §0.
+  - `markAsRead(workspaceId, userId, notificationId)` và `markAllAsRead(workspaceId, userId)`.
+- [x] Triển khai `DashboardServiceImpl`:
+  - `getDashboard(workspaceId, userId)`: tổng hợp số lượng job theo status (`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, `CANCELLED`), batch đang chạy (`running`, `completed`, `failed`, `partiallyFailed`), số dư Credit theo role (`LEAD` vs `MEMBER/CLIENT`) và `cost_mode` (`LEAD_PAYS_ALL` vs `PAY_PER_USER`).
+  - `getUsage(workspaceId, userId, groupBy, from, to)`: đọc read-only bảng `ai_usage_logs` qua `AiUsageLog` (`@Immutable`) & `AiUsageLogReadOnlyRepository`, tổng hợp tokens/credit/operations theo `project`, `user`, `operation` và lọc theo khoảng thời gian. Phân quyền: LEAD toàn workspace, MEMBER chỉ project được gán, CLIENT bị cấm (`UNAUTHORIZED`).
 
 ## 3. Migration do A phụ trách (thứ tự tạo bảng — theo `Database_Design.md` §13)
 1. `users` → `workspaces` → `workspace_members` → `projects` → `project_members`.
@@ -137,7 +140,7 @@ thẳng mà không chờ A xong toàn bộ module.
       người *thực hiện*, `SELECT ... FOR UPDATE` khi trừ Credit.
 - [x] BYOK CRUD + test connection; platform provider fallback; TTS voices cache theo provider.
 - [x] Preset 3 cấp, đúng 1 default/scope, resolver theo thứ tự ưu tiên, SYSTEM template public catalog.
-- [ ] Notification list/read; Dashboard usage aggregation.
+- [x] Notification list/read; Dashboard usage aggregation.
 - [ ] Mọi controller trả `ApiResponse<T>`, mọi lỗi nghiệp vụ ném qua `AppException(ErrorCode.XXX)` với code
       trong đúng dải của module (CLAUDE.md §4.10), không tự tạo response/exception riêng.
 - [ ] 4 interface ở §4 đã có signature ổn định, đã thông báo cho B.

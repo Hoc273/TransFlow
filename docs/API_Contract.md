@@ -324,8 +324,8 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303 |
 | `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406 |
 | `preset` | 2500–2599 | `PRESET_NOT_FOUND` = 2500, `PRESET_INACTIVE` = 2501, `PRESET_SCOPE_INVALID` = 2502, `CANNOT_DELETE_ONLY_DEFAULT_PRESET` = 2503, `SYSTEM_PRESET_READ_ONLY` = 2504, `PRESET_DEFAULT_CONFLICT` = 2505, `REPLACEMENT_PRESET_INVALID` = 2506 |
-| `notification` | 2600–2699 | — |
-| `dashboard` | 2700–2799 | — |
+| `notification` | 2600–2699 | `NOTIFICATION_NOT_FOUND` = 2600, `NOTIFICATION_TYPE_INVALID` = 2601 |
+| `dashboard` | 2700–2799 | `DASHBOARD_DATE_RANGE_INVALID` = 2700, `DASHBOARD_GROUP_BY_INVALID` = 2701 |
 | `media_asset` | 2800–2899 | `TERMS_NOT_ACCEPTED` = 2800, `MEDIA_FILE_TOO_LARGE` = 2801, `MEDIA_DURATION_EXCEEDED` = 2802, `TERMS_VERSION_MISMATCH` = 2803 |
 | `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902 |
 | `summarization` | 3000–3099 | `REFINE_LIMIT_REACHED` = 3000, `PROPOSAL_ALREADY_TRANSLATED` = 3001 |
@@ -380,6 +380,10 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `SYSTEM_PRESET_READ_ONLY` | 2504 | 403 | Preset cấp hệ thống do nền tảng quản trị, không thể tạo, sửa hoặc xóa qua API tenant. |
 | `PRESET_DEFAULT_CONFLICT` | 2505 | 409 | Đã tồn tại preset mặc định trong scope này. |
 | `REPLACEMENT_PRESET_INVALID` | 2506 | 400 | Preset thay thế phải tồn tại, đang active và thuộc cùng scope. |
+| `NOTIFICATION_NOT_FOUND` | 2600 | 404 | Không tìm thấy thông báo hoặc không thuộc quyền sở hữu của người dùng. |
+| `NOTIFICATION_TYPE_INVALID` | 2601 | 400 | Loại thông báo không hợp lệ. |
+| `DASHBOARD_DATE_RANGE_INVALID` | 2700 | 400 | Khoảng thời gian không hợp lệ: 'from' phải trước hoặc bằng 'to'. |
+| `DASHBOARD_GROUP_BY_INVALID` | 2701 | 400 | Tham số groupBy không hợp lệ (chỉ hỗ trợ 'project', 'user', 'operation'). |
 
 Thêm mã mới: phụ trách module nào tự thêm `ErrorCode` trong đúng dải của mình (§15.2), cập nhật bảng §15.3
 trong cùng PR — không để `ErrorCode` trong code lệch với bảng ở đây.

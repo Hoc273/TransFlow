@@ -79,6 +79,14 @@ public enum ErrorCode {
     PRESET_DEFAULT_CONFLICT(2505, "A default preset already exists in this scope", HttpStatus.CONFLICT),
     REPLACEMENT_PRESET_INVALID(2506, "Replacement preset must exist, be active, and belong to the same scope", HttpStatus.BAD_REQUEST),
 
+    // 26xx - notification (Member A)
+    NOTIFICATION_NOT_FOUND(2600, "Notification not found", HttpStatus.NOT_FOUND),
+    NOTIFICATION_TYPE_INVALID(2601, "Invalid notification type", HttpStatus.BAD_REQUEST),
+
+    // 27xx - dashboard (Member A)
+    DASHBOARD_DATE_RANGE_INVALID(2700, "Invalid date range: 'from' must be before or equal to 'to'", HttpStatus.BAD_REQUEST),
+    DASHBOARD_GROUP_BY_INVALID(2701, "Invalid groupBy parameter; supported values are 'project', 'user', 'operation'", HttpStatus.BAD_REQUEST),
+
     // 28xx - media_asset (Member B)
     TERMS_NOT_ACCEPTED(2800, "Current terms version has not been accepted for this asset", HttpStatus.FORBIDDEN),
     MEDIA_FILE_TOO_LARGE(2801, "Uploaded file exceeds the maximum allowed size of 500MB", HttpStatus.BAD_REQUEST),
