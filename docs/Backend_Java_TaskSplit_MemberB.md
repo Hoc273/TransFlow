@@ -239,7 +239,7 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
   - Voice ngôn ngữ lệch (`fr` voice trên `targetLang=en`) → `400 VOICE_LANGUAGE_MISMATCH`; khớp → 201/200.
   - Cancel: stage `PENDING`/`PROCESSING` → `CANCELLED`, stage `COMPLETED`/`SKIPPED` giữ nguyên.
 - **Kết luận:** phần orchestrator control-flow (state machine, RBAC, validate) đã test hoàn thiện ở cả 2 mức.
-  Đây **không phải** là "pipeline chạy được" — xem 7.3 để biết còn thiếu gì để pipeline thực sự xử lý video.
+  Đây **không phải** là "pipeline chạy được" — xem 7.6 để biết còn thiếu gì để pipeline thực sự xử lý video.
 
 
 ### 7.3 Đã kiểm thử — 2.3 Summarization — proposal & refine
@@ -269,7 +269,7 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
     `selectedProposalId` copy đúng, 8 stage đúng theo Arch §7.7 (chỉ `TRANSLATE`/`RENDER` = `PENDING`, 6
     stage còn lại `SKIPPED`).
 - **Kết luận:** phần CRUD/refine-session/select/summary-languages đã test hoàn thiện ở cả 2 mức (kể cả
-  Redis thật). Phần **AI thực sự soạn/viết lại kịch bản** (`SummaryAiClient`) vẫn là placeholder — xem 7.5.
+  Redis thật). Phần **AI thực sự soạn/viết lại kịch bản** (`SummaryAiClient`) vẫn là placeholder — xem 7.6.
 
 ### 7.4 Đã kiểm thử — 2.4 Video Batch Localization
 - Unit test (`BatchServiceImplTest`, 9 case) + integration test (`BatchControllerTest`, 7 case): tạo batch
@@ -291,9 +291,26 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
     thật, đúng key `batch:create:{userId}`.
 - **Kết luận:** phần tạo/list/get/cancel/retry đã test hoàn thiện ở cả 2 mức (kể cả kiểu cột mảng UUID[]
   thật trên Postgres — rủi ro tương tự JSONB ở §2.2 nhưng chưa gặp ở module nào trước đó). `download` (gói
-  nén kết quả) chưa làm được — xem 7.5.
+  nén kết quả) chưa làm được — xem 7.6.
 
-### 7.5 CHƯA kiểm thử — cần làm ở các phần sau (2.5–2.7) hoặc khi có hạ tầng đầy đủ
+### 7.5 Đã kiểm thử — 2.5 Glossary
+- Unit test (`GlossaryServiceImplTest`, 9 case) + integration test (`GlossaryControllerTest`, 7 case):
+  get-or-create glossary (idempotent — gọi nhiều lần không tạo trùng, đúng `UNIQUE(project_id)`), quyền đọc
+  cho Client, term CRUD (tạo/sửa/xoá, 404 khi không tồn tại, Client bị chặn ghi), import CSV (có/không có
+  header, dòng lỗi bị skip và báo lại trong `errors[]`, dòng hợp lệ vẫn được import).
+- **Real-infra smoke test** (cùng bộ Postgres/Redis/MinIO ở 7.1–7.4, containers giữ nguyên chạy nền):
+  - Flyway/Hibernate validate xác nhận schema `glossaries`/`glossary_terms` khớp — không migration nào
+    thiếu, không lệch kiểu cột.
+  - Gọi `GET .../glossary` nhiều lần qua HTTP thật → luôn trả về đúng 1 row (`glossaries.count()=1`, verify
+    bằng `psql`) — xác nhận `UNIQUE(project_id)` không bị vi phạm bởi race "gọi lần đầu" thực tế.
+  - Import CSV thật (file `.csv` thật qua multipart) → `imported=2, skipped=1`, đúng dòng lỗi báo trong
+    `errors[]`; verify tổng số dòng thật trong `glossary_terms` bằng `psql` khớp `1 (tạo tay) + 2 (import) = 3`.
+  - Xác nhận index `glossaries_project_id_key` (UNIQUE) tồn tại thật trên Postgres qua `pg_indexes`.
+- **Kết luận:** module Glossary không phụ thuộc AI/queue/worker nào — đã test hoàn thiện ở cả 2 mức, không
+  có khoảng hở nào cần ghi vào bảng 7.6 (khác các module trước, module này không có phần nào phải chờ
+  backend-ai/RabbitMQ).
+
+### 7.6 CHƯA kiểm thử — cần làm ở các phần sau (2.6–2.7) hoặc khi có hạ tầng đầy đủ
 | Phần thiếu | Lý do chưa test | Cần gì để test được |
 |---|---|---|
 | Gọi FastAPI thật cho STT/TRANSLATE/TTS/SUMMARIZE/VISION (bao gồm `summarize/script`) | Chưa viết HTTP client — không có trong phạm vi 2.2/2.3 đã chủ động scope lại, và `backend-ai` chưa expose contract cụ thể trong docs đã đọc | Viết client theo `backend-ai` OpenAPI/route thật, cần `docker compose up` với service `backend-ai` |
@@ -303,14 +320,14 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
 | Provider/Preset/Notification thật của Thành viên A | Interface đang là mock/no-op tôi tự viết (`ProviderResolverServiceImpl.resolveForCapability`, `PresetResolverServiceImpl`, `NotificationServiceImpl`) | Khi A merge implementation thật, phải viết lại test tích hợp — hành vi thật có thể khác giả định hiện tại |
 | Upload file >500MB thật / video >30 phút thật qua MinIO | Chỉ test qua boundary value ở service layer (mock), chưa thử file thật lớn cỡ đó (tốn thời gian tạo file + băng thông) | Có thể bỏ qua an toàn vì logic validate đã chạy qua unit test — chỉ cần thử 1 lần nếu nghi ngờ MinIO có giới hạn khác |
 | `GET .../batches/{batchId}/download` | Cần gói nén kết quả các job con `COMPLETED` — không có artifact thật nào vì chưa có stage executor/RENDER thật | Chỉ làm được sau khi có pipeline thực thi thật tạo ra `RENDERED_VIDEO` media_assets |
-| Glossary/QA (2.5–2.6) | Ngoài phạm vi buổi làm việc này | Làm theo đúng §2.5–2.6 của tài liệu này |
+| QA (2.6) | Ngoài phạm vi buổi làm việc này | Làm theo đúng §2.6 của tài liệu này |
 | Checkpoint→stage mapping (`CUT_CONFIRMED→TRANSLATE`, `REVIEW_CONFIRMED→TTS`, `PUBLISH_CONFIRMED→RENDER`) | Đây là giả định tôi tự chọn (xem comment trong `Checkpoint.java`), không có trong SRS/Arch §14 | Cần BA xác nhận trước khi FE dựa vào mapping này để quyết định dừng ở đâu trong chế độ Manual |
 | Dung sai thời lượng AI proposal (`DURATION_TOLERANCE_RATIO = 0.2`, `SummarizationServiceImpl`) | Giả định tôi tự chọn — SRS/Arch §7.2 chỉ nói "trong dung sai", không cho số cụ thể | Cần BA xác nhận % dung sai chính xác trước khi dựa vào ngưỡng này để tự động từ chối/chấp nhận proposal |
 | TTL phiên refine (`RefineSessionStoreImpl.SESSION_TTL = 30 phút`) | Arch §7.4 chỉ nói "phiên có TTL", không cho số cụ thể | Cần BA xác nhận thời lượng phiên thật trước khi FE dựa vào đây để hiển thị "còn X phút để refine" |
 | Rate limit tạo batch (`BatchCreateRateLimiterImpl` = 5 lần/10 phút/user) | API_Contract §6 chỉ nói "429 nếu vượt rate limit", không cho ngưỡng cụ thể | Cần BA xác nhận ngưỡng thật trước khi FE dựa vào đây để hiển thị thông báo giới hạn |
 
 
-### 7.6 Môi trường dùng để test real-infra (tham khảo khi cần lặp lại)
+### 7.7 Môi trường dùng để test real-infra (tham khảo khi cần lặp lại)
 ```
 docker run -d --name tfm-postgres -p 55432:5432 -e POSTGRES_DB=transflow_mini -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres postgres:16-alpine
 docker run -d --name tfm-redis -p 56379:6379 redis:7-alpine
