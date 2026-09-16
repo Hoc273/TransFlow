@@ -44,4 +44,9 @@ public interface WorkspaceAccessService {
      * Requires the user to be the LEAD in the specified workspace.
      */
     void requireWorkspaceLead(UUID workspaceId, UUID userId);
+
+    /**
+     * Resolves the user ID of the LEAD in the specified workspace.
+     */
+    java.util.Optional<UUID> findLeadUserId(UUID workspaceId);
 }

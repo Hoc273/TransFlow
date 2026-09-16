@@ -107,4 +107,11 @@ public class WorkspaceAccessServiceImpl implements WorkspaceAccessService {
     public void requireWorkspaceLead(UUID workspaceId, UUID userId) {
         requireRole(workspaceId, userId, Role.LEAD);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Optional<UUID> findLeadUserId(UUID workspaceId) {
+        return workspaceMemberRepository.findByWorkspaceIdAndRole(workspaceId, Role.LEAD)
+                .map(WorkspaceMember::getUserId);
+    }
 }

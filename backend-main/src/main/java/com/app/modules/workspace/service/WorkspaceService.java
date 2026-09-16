@@ -19,6 +19,8 @@ public interface WorkspaceService {
 
     Optional<Workspace> findById(UUID workspaceId);
 
+    Optional<UUID> findLeadUserId(UUID workspaceId);
+
     Optional<Role> getRole(UUID workspaceId, UUID userId);
 
     boolean isMember(UUID workspaceId, UUID userId);

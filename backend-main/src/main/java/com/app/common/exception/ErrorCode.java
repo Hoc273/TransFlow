@@ -57,6 +57,9 @@ public enum ErrorCode {
 
     // 23xx - credit (Member A)
     INSUFFICIENT_CREDIT(2300, "Insufficient credit balance", HttpStatus.PAYMENT_REQUIRED),
+    CREDIT_PACKAGE_NOT_FOUND(2301, "Credit package not found", HttpStatus.NOT_FOUND),
+    CREDIT_PACKAGE_INACTIVE(2302, "Credit package is not active", HttpStatus.BAD_REQUEST),
+    CREDIT_ACCOUNT_NOT_FOUND(2303, "Credit account not found", HttpStatus.NOT_FOUND),
 
     // 28xx - media_asset (Member B)
     TERMS_NOT_ACCEPTED(2800, "Current terms version has not been accepted for this asset", HttpStatus.FORBIDDEN),
