@@ -218,8 +218,15 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
   - Member có project assignment: list + upload thành công (201); Member không assignment: 403.
   - Client: đọc list/get asset được (200), nhưng upload/consent bị chặn (403) — đúng ma trận quyền Arch §4.3.
   - Lead consent thành công (201), asset dùng được ngay để tạo Media Job (xem 7.2).
+  - **Bổ sung sau khi rà lại bảng "chưa test" (§7.8):** upload file thật **501MB** (tạo bằng `dd`) → bị chặn
+    thật ở tầng service **trước khi chạm MinIO** (`400 MEDIA_FILE_TOO_LARGE`, ~4.6s, verify bằng `mc ls`
+    không có object nào được tạo); encode 2 video thật bằng `ffmpeg` đúng ranh giới 30 phút
+    (`d=1790`/29:50 và `d=1810`/30:10, không phải giả lập `ffprobe`) → 29:50 được chấp nhận
+    (`durationMs=1790000`), 30:10 bị `400 MEDIA_DURATION_EXCEEDED` — xác nhận ranh giới đúng bằng dữ liệu
+    ffprobe thật, không chỉ mock trong unit test.
 - **Kết luận:** 2.1 đã test hoàn thiện cả ở mức logic (unit/integration) lẫn hạ tầng thật (Postgres/MinIO
-  thật), không còn khoảng hở đáng kể trong phạm vi API_Contract.md §4.
+  thật, kể cả 2 boundary case dung lượng/thời lượng bằng file thật), không còn khoảng hở đáng kể trong
+  phạm vi API_Contract.md §4.
 
 ### 7.2 Đã kiểm thử — 2.2 Media Job (orchestrator skeleton)
 - Unit test (`MediaJobServiceImplTest`, 19 case) + integration test (`MediaJobControllerTest`, 17 case):
@@ -367,10 +374,9 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
 | Phần thiếu | Lý do chưa test | Cần gì để test được |
 |---|---|---|
 | Gọi FastAPI thật cho STT/TRANSLATE/TTS/SUMMARIZE/VISION (bao gồm `summarize/script`) | Chưa viết HTTP client — không có trong phạm vi 2.2/2.3 đã chủ động scope lại, và `backend-ai` chưa expose contract cụ thể trong docs đã đọc | Viết client theo `backend-ai` OpenAPI/route thật, cần `docker compose up` với service `backend-ai` |
-| Ghi `ai_usage_logs` + trừ Credit theo `credit_pricing_config` thật | Phụ thuộc mục trên (chỉ có sau khi có lời gọi AI thật); `CreditServiceImpl.chargeUsage` hiện là stub tính giá cứng `0.001/token` | Cần A hoàn thiện `credit_pricing_config` resolver, rồi test tích hợp giữa media_job/summarization/batch và credit |
-| RabbitMQ dispatch khi cancel/rerun/retry | Chưa có publisher — cancel/rerun/retry hiện set trạng thái DB trực tiếp, không gửi signal cho worker nào (đã đánh dấu `ponytail:` trong code) | Cần message queue thật + consumer, hoặc ít nhất mock RabbitMQ (Testcontainers) để verify message được publish đúng payload |
-| Provider/Preset/Notification thật của Thành viên A | Interface đang là mock/no-op tôi tự viết (`ProviderResolverServiceImpl.resolveForCapability`, `PresetResolverServiceImpl`, `NotificationServiceImpl`) | Khi A merge implementation thật, phải viết lại test tích hợp — hành vi thật có thể khác giả định hiện tại |
-| Upload file >500MB thật / video >30 phút thật qua MinIO | Chỉ test qua boundary value ở service layer (mock), chưa thử file thật lớn cỡ đó (tốn thời gian tạo file + băng thông) | Có thể bỏ qua an toàn vì logic validate đã chạy qua unit test — chỉ cần thử 1 lần nếu nghi ngờ MinIO có giới hạn khác |
+| Ghi `ai_usage_logs` khi có lời gọi AI thật | **Cập nhật:** A đã merge `credit_pricing_config` + `CreditServiceImpl.chargeUsage` thật (Case 1/2 theo `infra_coefficient_x`/`token_coefficient_y`, migration V4 seed pricing) — không còn là stub `0.001/token`. Nhưng vẫn chưa test được từ phía tôi vì **không có gì trong media_job/summarization/batch gọi `chargeUsage`** — chính vì lời gọi FastAPI thật (mục trên) chưa tồn tại | Sau khi có mục trên: gọi `chargeUsage` thật sau mỗi lời gọi FastAPI + ghi `ai_usage_logs`, rồi mới test tích hợp được |
+| RabbitMQ dispatch khi cancel/rerun/retry | Vẫn chưa có publisher/dependency nào trong `pom.xml` (đã kiểm tra lại) — cancel/rerun/retry hiện set trạng thái DB trực tiếp (đã đánh dấu `ponytail:` trong code) | Cần message queue thật + consumer, hoặc ít nhất mock RabbitMQ (Testcontainers) để verify message được publish đúng payload |
+| Provider/Preset/Notification thật của Thành viên A | **Đã kiểm tra lại — vẫn chưa đổi:** `ProviderResolverServiceImpl.resolveForCapability`, `PresetResolverServiceImpl`, `NotificationServiceImpl` vẫn đúng là mock/no-op tôi tự viết (chỉ `credit` module có bản thật mới, xem dòng trên) | Khi A merge implementation thật, phải viết lại test tích hợp — hành vi thật có thể khác giả định hiện tại |
 | `GET .../batches/{batchId}/download` | Cần gói nén kết quả các job con `COMPLETED` — không có artifact thật nào vì chưa có stage executor/RENDER thật | Chỉ làm được sau khi có pipeline thực thi thật tạo ra `RENDERED_VIDEO` media_assets |
 | `recordIssue`/rule engine QA thật (phát hiện `subtitle_overlap`, `translation_mismatch`...) | Chưa có stage executor gọi hàm này sau TRANSLATE/SUMMARIZE — logic phát hiện lỗi cụ thể không có trong SRS/Arch để hiện thực | Cần: (1) stage executor thật, (2) BA/QA lead định nghĩa rule cụ thể cho từng `issue_type` |
 | Checkpoint→stage mapping (`CUT_CONFIRMED→TRANSLATE`, `REVIEW_CONFIRMED→TTS`, `PUBLISH_CONFIRMED→RENDER`) | Đây là giả định tôi tự chọn (xem comment trong `Checkpoint.java`), không có trong SRS/Arch §14 | Cần BA xác nhận trước khi FE dựa vào mapping này để quyết định dừng ở đâu trong chế độ Manual |
