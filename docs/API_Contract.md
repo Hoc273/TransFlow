@@ -319,8 +319,8 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | Module | Dải `code` | Đã dùng |
 |---|---|---|
 | `auth` | 2000–2099 | — |
-| `workspace` | 2100–2199 | — |
-| `project` | 2200–2299 | — |
+| `workspace` | 2100–2199 | `WORKSPACE_NOT_FOUND` = 2100, `WORKSPACE_MEMBER_NOT_FOUND` = 2101, `LEAD_CANNOT_BE_REMOVED` = 2102, `WORKSPACE_MEMBER_ALREADY_EXISTS` = 2103, `CANNOT_ASSIGN_LEAD_ROLE` = 2104, `WORKSPACE_SLUG_ALREADY_EXISTS` = 2105 |
+| `project` | 2200–2299 | `PROJECT_NOT_FOUND` = 2200, `PROJECT_MEMBER_NOT_FOUND` = 2201, `PROJECT_ACCESS_DENIED` = 2202, `USER_NOT_WORKSPACE_MEMBER` = 2203, `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` = 2204, `PROJECT_MEMBER_ALREADY_EXISTS` = 2205 |
 | `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300 |
 | `provider` | 2400–2499 | — |
 | `preset` | 2500–2599 | — |
@@ -337,6 +337,18 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 
 | `ErrorCode` | `code` | HTTP | Khi nào |
 |---|---|---|---|
+| `WORKSPACE_NOT_FOUND` | 2100 | 404 | Workspace không tồn tại hoặc user không có quyền xem. |
+| `WORKSPACE_MEMBER_NOT_FOUND` | 2101 | 404 | Thành viên không tồn tại trong Workspace. |
+| `LEAD_CANNOT_BE_REMOVED` | 2102 | 400 | Cố xoá hoặc hạ role của Workspace Lead. |
+| `WORKSPACE_MEMBER_ALREADY_EXISTS` | 2103 | 409 | User đã là thành viên trong Workspace. |
+| `CANNOT_ASSIGN_LEAD_ROLE` | 2104 | 400 | Cố mời hoặc đổi role thành Lead (chỉ đúng 1 Lead/workspace). |
+| `WORKSPACE_SLUG_ALREADY_EXISTS` | 2105 | 409 | Slug của Workspace đã được sử dụng. |
+| `PROJECT_NOT_FOUND` | 2200 | 404 | Project không tồn tại hoặc không thuộc Workspace. |
+| `PROJECT_MEMBER_NOT_FOUND` | 2201 | 404 | User không được gán vào Project này. |
+| `PROJECT_ACCESS_DENIED` | 2202 | 403 | User không có quyền truy cập Project. |
+| `USER_NOT_WORKSPACE_MEMBER` | 2203 | 400 | User phải là thành viên Workspace trước khi được gán vào Project. |
+| `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` | 2204 | 400 | Workspace Lead đã có toàn quyền truy cập Project, không thể gán qua project_members. |
+| `PROJECT_MEMBER_ALREADY_EXISTS` | 2205 | 409 | User đã được gán vào Project này. |
 | `VOICE_LANGUAGE_MISMATCH` | 2900 | 400 | Giọng chọn không cùng ngôn ngữ với `target_lang`. |
 | `JOB_OWNERSHIP_REQUIRED` | 2901 | 403 | Member cố QA/override/checkpoint trên job không do mình tạo. |
 | `STAGE_NOT_READY` | 2902 | 409 | Rerun-from-stage khi stage trước chưa `COMPLETED/SKIPPED`. |

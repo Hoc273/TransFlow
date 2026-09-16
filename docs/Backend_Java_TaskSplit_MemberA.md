@@ -133,7 +133,7 @@ thẳng mà không chờ A xong toàn bộ module.
 
 ## 6. Checklist hoàn thành
 - [ ] Auth register/login/refresh/me + Google OAuth2, kèm auto-init Workspace/Project/Credit 1 transaction.
-- [ ] RBAC 3 role, đúng 1 Lead/workspace, `project_members` không có cột role.
+- [x] RBAC 3 role, đúng 1 Lead/workspace, `project_members` không có cột role.
 - [ ] Credit: cấp ban đầu, mua gói (chưa cổng thanh toán thật), 2 cost_mode, công thức x/x+y đúng theo
       người *thực hiện*, `SELECT ... FOR UPDATE` khi trừ Credit.
 - [ ] BYOK CRUD + test connection; platform provider fallback; TTS voices cache theo provider.

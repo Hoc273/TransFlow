@@ -17,6 +17,10 @@ public interface CreditService {
 
     WorkspaceBillingConfig initWorkspaceBillingConfig(UUID workspaceId, UUID configuredByUserId, CostMode costMode);
 
+    WorkspaceBillingConfig getWorkspaceBillingConfig(UUID workspaceId);
+
+    WorkspaceBillingConfig updateCostMode(UUID workspaceId, UUID configuredByUserId, CostMode costMode);
+
     Optional<CreditAccount> findByUserId(UUID userId);
 
     boolean hasSufficientBalance(UUID userId);

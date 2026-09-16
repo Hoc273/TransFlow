@@ -21,9 +21,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Locale;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class AuthServiceImpl implements AuthService {
@@ -128,6 +127,35 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         return UserResponse.from(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<UserResponse> findUserById(UUID userId) {
+        if (userId == null) {
+            return Optional.empty();
+        }
+        return userRepository.findById(userId).map(UserResponse::from);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, UserResponse> findUsersByIds(Collection<UUID> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, UserResponse::from));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<UserResponse> findUserByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return Optional.empty();
+        }
+        return userRepository.findByEmailIgnoreCase(email.trim().toLowerCase(Locale.ROOT))
+                .map(UserResponse::from);
     }
 
     @Override

@@ -86,4 +86,25 @@ public class WorkspaceAccessServiceImpl implements WorkspaceAccessService {
                 .map(WorkspaceMember::getRole)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void requireRole(UUID workspaceId, UUID userId, Role... allowedRoles) {
+        Role actualRole = getRole(workspaceId, userId);
+        if (allowedRoles == null || allowedRoles.length == 0) {
+            return;
+        }
+        for (Role allowed : allowedRoles) {
+            if (actualRole == allowed) {
+                return;
+            }
+        }
+        throw new AppException(ErrorCode.UNAUTHORIZED);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void requireWorkspaceLead(UUID workspaceId, UUID userId) {
+        requireRole(workspaceId, userId, Role.LEAD);
+    }
 }
