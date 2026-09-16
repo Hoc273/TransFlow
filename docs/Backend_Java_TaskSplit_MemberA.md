@@ -83,13 +83,12 @@ dải của module đang code, cập nhật đồng thời bảng §15.3: `auth`
 - [x] Tích hợp `AiGatewayClient` gọi FastAPI (`/ai/validate/auth` để test connection probe, `/media/tts/voices` để discover/refresh cache TTS voices).
 - [x] Flyway migration `V5__seed_platform_ai_providers_and_voices.sql` seed platform provider và danh mục giọng TTS mặc định.
 
-### 2.5 Preset
-- Copy `WorkflowPresetController` → đổi thành `PresetController` theo route `API_Contract.md §9`.
-- Entity `MediaPreset` theo `Database_Design.md` §9 (scope `SYSTEM/WORKSPACE/PROJECT`, đúng 1 default/scope
-  — partial unique index).
-- Viết `PresetResolverService.resolveForJobCreation(explicitPresetId, projectId, workspaceId)` — trả preset
-  đã resolve theo thứ tự ưu tiên (SRS §5.7) để B snapshot vào `media_jobs.preset_snapshot` lúc tạo job.
-  **Đây là 1 trong 2 hàm B cần từ A trước khi B code xong Media Job creation.**
+### 2.5 Preset [COMPLETED]
+- [x] Triển khai `PresetController` (`/api/workspaces/{workspaceId}/presets/**`) và `PresetTemplateController` (`/api/media/presets/templates`).
+- [x] Entity `MediaPreset` theo `Database_Design.md` §9 (scope `SYSTEM/WORKSPACE/PROJECT`, đúng 1 default/scope — partial unique index).
+- [x] Triển khai `PresetResolverService.resolveForJobCreation(explicitPresetId, projectId, workspaceId)` — giải quyết preset theo thứ tự ưu tiên 4 cấp (`explicit -> project default -> workspace default -> system default -> null`) để Member B snapshot vào `media_jobs.preset_snapshot` khi tạo job.
+- [x] Triển khai quản lý default preset tự động chuyển giao và kiểm soát xóa default preset (`CANNOT_DELETE_ONLY_DEFAULT_PRESET`, `replacementPresetId`).
+- [x] Migration `V6__seed_system_presets.sql` seed platform default preset và danh mục template công khai.
 
 ### 2.6 Notification & Dashboard
 - Copy `NotificationController`, `DashboardController`, `NotificationService`.
@@ -136,8 +135,8 @@ thẳng mà không chờ A xong toàn bộ module.
 - [x] RBAC 3 role, đúng 1 Lead/workspace, `project_members` không có cột role.
 - [x] Credit: cấp ban đầu, mua gói (chưa cổng thanh toán thật), 2 cost_mode, công thức x/x+y đúng theo
       người *thực hiện*, `SELECT ... FOR UPDATE` khi trừ Credit.
-- [ ] BYOK CRUD + test connection; platform provider fallback; TTS voices cache theo provider.
-- [ ] Preset 3 cấp, đúng 1 default/scope, resolver theo thứ tự ưu tiên, SYSTEM template public catalog.
+- [x] BYOK CRUD + test connection; platform provider fallback; TTS voices cache theo provider.
+- [x] Preset 3 cấp, đúng 1 default/scope, resolver theo thứ tự ưu tiên, SYSTEM template public catalog.
 - [ ] Notification list/read; Dashboard usage aggregation.
 - [ ] Mọi controller trả `ApiResponse<T>`, mọi lỗi nghiệp vụ ném qua `AppException(ErrorCode.XXX)` với code
       trong đúng dải của module (CLAUDE.md §4.10), không tự tạo response/exception riêng.
