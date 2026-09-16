@@ -1,0 +1,153 @@
+{
+  "list": {
+    "title": "Job dịch",
+    "subtitle": "Mỗi job = 1 ngôn ngữ đích · bấm dòng để mở Editor",
+    "create": "Tạo job",
+    "emptyTitle": "Chưa có job",
+    "emptyDesc": "Tạo job dịch để dịch tài liệu này sang một ngôn ngữ đích.",
+    "col": {
+      "targetLang": "Đích",
+      "provider": "Provider",
+      "model": "Model"
+    }
+  },
+  "create": {
+    "title": "Tạo job dịch",
+    "subtitle": "Chạy pipeline AI cho một ngôn ngữ đích (có thể mất chút thời gian).",
+    "targetLang": "Ngôn ngữ đích",
+    "langRequired": "Bắt buộc chọn ngôn ngữ đích",
+    "duplicateActive": "Đã có job đang chạy cho ngôn ngữ đích này",
+    "active": "đang chạy",
+    "hint": "Không tạo hai job active cùng target language.",
+    "submit": "Bắt đầu dịch",
+    "submitting": "Đang dịch…",
+    "streamFailed": "Không thể bắt đầu luồng dịch trực tiếp.",
+    "streamInterrupted": "Kết nối trực tiếp bị gián đoạn. Job vẫn tiếp tục trên server.",
+    "openJob": "Mở job",
+    "pipelineStage": "Pipeline",
+    "completedSegments": "Hoàn tất",
+    "currentSegment": "Hiện tại",
+    "liveOutput": "Bản dịch trực tiếp",
+    "waitingTokens": "Đang chờ nội dung dịch…",
+    "streamStatus": {
+      "idle": "Sẵn sàng",
+      "connecting": "Đang kết nối",
+      "open": "Đang stream",
+      "reconnecting": "Đang kết nối lại (lần {{attempt}})",
+      "done": "Hoàn tất",
+      "error": "Kết nối bị gián đoạn"
+    }
+  },
+  "qa": {
+    "title": "Lỗi QA",
+    "emptyTitle": "Không có lỗi QA",
+    "emptyDesc": "Các issue mở của segment sẽ hiện ở đây.",
+    "showResolved": "Hiện đã xử lý",
+    "hideResolved": "Ẩn đã xử lý",
+    "suggestion": "Gợi ý",
+    "resolved": "Đã xử lý",
+    "open": "Mở",
+    "resolve": "Resolve",
+    "apply": "Áp dụng",
+    "applyAndResolve": "Áp dụng gợi ý và resolve",
+    "override": "Override",
+    "overrideSoon": "Override cần BE (feature flag tắt)",
+    "overridden": "Blocking action này đã được override",
+    "overriddenShort": "đã override",
+    "overrideModal": {
+      "title": "Override blocking action",
+      "description": "Override một blocking action QA để luồng tiếp tục. Thao tác này được ghi vào audit log.",
+      "cancel": "Huỷ",
+      "submit": "Override",
+      "submitting": "Đang override…",
+      "actionLabel": "Blocking action cần override",
+      "reasonLabel": "Lý do",
+      "reasonPlaceholder": "Lý do blocking action này nên được override…",
+      "reasonHint": "Tối thiểu {{min}} ký tự",
+      "reasonOk": "Lý do đạt độ dài tối thiểu",
+      "allOverridden": "Tất cả blocking action của issue này đã được override."
+    },
+    "criticalMediaOnly": "CRITICAL chỉ dùng runtime media",
+    "severity": {
+      "low": "Thấp",
+      "medium": "Trung bình",
+      "high": "Cao",
+      "critical": "Nghiêm trọng"
+    },
+    "col": {
+      "type": "Loại",
+      "severity": "Mức",
+      "message": "Mô tả",
+      "blocking": "Chặn",
+      "state": "Trạng thái"
+    }
+  },
+  "history": {
+    "pickSegment": "Chọn segment để xem lịch sử",
+    "emptyTitle": "Chưa có lịch sử",
+    "emptyDesc": "Sửa, QA, approve sẽ được ghi lại. MVP không có rollback.",
+    "actorAi": "AI",
+    "actorHuman": "Người dùng"
+  },
+  "editor": {
+    "title": "Editor dịch",
+    "mobileBanner": "Vui lòng dùng máy tính để có trải nghiệm Editor đầy đủ.",
+    "shortcuts": "Phím tắt",
+    "shortcutsTitle": "Phím tắt bàn phím",
+    "shortcutsDesc": "Phím tắt tuân theo role. Client chỉ xem.",
+    "pipeline": "Pipeline",
+    "searchPlaceholder": "Tìm segment… (/)",
+    "filterAll": "Mọi trạng thái",
+    "filterHasQa": "Có QA mở",
+    "segments": "Segment",
+    "noSegments": "Job chưa có segment",
+    "noMatch": "Không tìm thấy segment",
+    "noMatchDesc": "Thử xoá bộ lọc hoặc từ khoá.",
+    "clearFilters": "Xoá bộ lọc",
+    "source": "Nguồn",
+    "target": "Bản dịch",
+    "targetPlaceholder": "Sửa bản dịch…",
+    "pickSegment": "Chọn một segment",
+    "hasQa": "Có QA mở",
+    "unsaved": "Chưa lưu",
+    "saving": "Đang lưu…",
+    "saved": "Đã lưu {{relative}}",
+    "ready": "Sẵn sàng",
+    "roleHint": "Chế độ chỉnh sửa",
+    "applyQa": "Áp dụng gợi ý QA",
+    "next": "Segment sau",
+    "approve": "Approve",
+    "approveBlocked": "Approve bị chặn do còn issue HIGH chưa resolve",
+    "discardConfirm": "Huỷ thay đổi chưa lưu của segment này?",
+    "leaveConfirm": "Bạn còn thay đổi chưa lưu. Rời trang?",
+    "versionPreview": "Bảng phiên bản",
+    "versionPreviewDesc": "Preview — Phase 2. MVP không có diff/rollback thật.",
+    "commentPreview": "Bình luận",
+    "commentPreviewDesc": "Preview — Phase 2. Không có API comment ở text MVP.",
+    "tab": {
+      "qa": "QA",
+      "history": "Lịch sử",
+      "version": "Phiên bản",
+      "comment": "Bình luận"
+    }
+  },
+  "pipeline": {
+    "queued": "Hàng đợi",
+    "tm": "TM",
+    "translating": "Đang dịch",
+    "qa": "QA",
+    "autoFix": "Auto-fix",
+    "awaitingReview": "Review",
+    "approved": "Đã duyệt"
+  },
+  "shortcuts": {
+    "prevNext": "Segment trước / sau",
+    "edit": "Focus ô bản dịch",
+    "escape": "Thoát edit / huỷ chưa lưu",
+    "save": "Lưu ngay",
+    "approve": "Approve segment",
+    "applyQa": "Áp dụng gợi ý QA đầu tiên",
+    "search": "Focus ô tìm",
+    "help": "Hiện bảng phím tắt"
+  }
+}
