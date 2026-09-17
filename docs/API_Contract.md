@@ -319,17 +319,17 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | Module | Dải `code` | Đã dùng |
 |---|---|---|
 | `auth` | 2000–2099 | — |
-| `workspace` | 2100–2199 | — |
-| `project` | 2200–2299 | — |
-| `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300 |
-| `provider` | 2400–2499 | — |
-| `preset` | 2500–2599 | — |
-| `notification` | 2600–2699 | — |
-| `dashboard` | 2700–2799 | — |
+| `workspace` | 2100–2199 | `WORKSPACE_NOT_FOUND` = 2100, `WORKSPACE_MEMBER_NOT_FOUND` = 2101, `LEAD_CANNOT_BE_REMOVED` = 2102, `WORKSPACE_MEMBER_ALREADY_EXISTS` = 2103, `CANNOT_ASSIGN_LEAD_ROLE` = 2104, `WORKSPACE_SLUG_ALREADY_EXISTS` = 2105 |
+| `project` | 2200–2299 | `PROJECT_NOT_FOUND` = 2200, `PROJECT_MEMBER_NOT_FOUND` = 2201, `PROJECT_ACCESS_DENIED` = 2202, `USER_NOT_WORKSPACE_MEMBER` = 2203, `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` = 2204, `PROJECT_MEMBER_ALREADY_EXISTS` = 2205 |
+| `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303 |
+| `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406 |
+| `preset` | 2500–2599 | `PRESET_NOT_FOUND` = 2500, `PRESET_INACTIVE` = 2501, `PRESET_SCOPE_INVALID` = 2502, `CANNOT_DELETE_ONLY_DEFAULT_PRESET` = 2503, `SYSTEM_PRESET_READ_ONLY` = 2504, `PRESET_DEFAULT_CONFLICT` = 2505, `REPLACEMENT_PRESET_INVALID` = 2506 |
+| `notification` | 2600–2699 | `NOTIFICATION_NOT_FOUND` = 2600, `NOTIFICATION_TYPE_INVALID` = 2601 |
+| `dashboard` | 2700–2799 | `DASHBOARD_DATE_RANGE_INVALID` = 2700, `DASHBOARD_GROUP_BY_INVALID` = 2701 |
 | `media_asset` | 2800–2899 | `TERMS_NOT_ACCEPTED` = 2800, `MEDIA_FILE_TOO_LARGE` = 2801, `MEDIA_DURATION_EXCEEDED` = 2802, `TERMS_VERSION_MISMATCH` = 2803 |
 | `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902 |
 | `summarization` | 3000–3099 | `REFINE_LIMIT_REACHED` = 3000, `PROPOSAL_ALREADY_TRANSLATED` = 3001 |
-| `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100 |
+| `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100, `BATCH_RATE_LIMIT_EXCEEDED` = 3101 |
 | `glossary` | 3200–3299 | — |
 | `qa` | 3300–3399 | `QA_BLOCKED` = 3300, `OVERRIDE_NOT_ALLOWED` = 3301 |
 
@@ -337,6 +337,18 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 
 | `ErrorCode` | `code` | HTTP | Khi nào |
 |---|---|---|---|
+| `WORKSPACE_NOT_FOUND` | 2100 | 404 | Workspace không tồn tại hoặc user không có quyền xem. |
+| `WORKSPACE_MEMBER_NOT_FOUND` | 2101 | 404 | Thành viên không tồn tại trong Workspace. |
+| `LEAD_CANNOT_BE_REMOVED` | 2102 | 400 | Cố xoá hoặc hạ role của Workspace Lead. |
+| `WORKSPACE_MEMBER_ALREADY_EXISTS` | 2103 | 409 | User đã là thành viên trong Workspace. |
+| `CANNOT_ASSIGN_LEAD_ROLE` | 2104 | 400 | Cố mời hoặc đổi role thành Lead (chỉ đúng 1 Lead/workspace). |
+| `WORKSPACE_SLUG_ALREADY_EXISTS` | 2105 | 409 | Slug của Workspace đã được sử dụng. |
+| `PROJECT_NOT_FOUND` | 2200 | 404 | Project không tồn tại hoặc không thuộc Workspace. |
+| `PROJECT_MEMBER_NOT_FOUND` | 2201 | 404 | User không được gán vào Project này. |
+| `PROJECT_ACCESS_DENIED` | 2202 | 403 | User không có quyền truy cập Project. |
+| `USER_NOT_WORKSPACE_MEMBER` | 2203 | 400 | User phải là thành viên Workspace trước khi được gán vào Project. |
+| `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` | 2204 | 400 | Workspace Lead đã có toàn quyền truy cập Project, không thể gán qua project_members. |
+| `PROJECT_MEMBER_ALREADY_EXISTS` | 2205 | 409 | User đã được gán vào Project này. |
 | `VOICE_LANGUAGE_MISMATCH` | 2900 | 400 | Giọng chọn không cùng ngôn ngữ với `target_lang`. |
 | `JOB_OWNERSHIP_REQUIRED` | 2901 | 403 | Member cố QA/override/checkpoint trên job không do mình tạo. |
 | `STAGE_NOT_READY` | 2902 | 409 | Rerun-from-stage khi stage trước chưa `COMPLETED/SKIPPED`. |
@@ -344,12 +356,35 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `MEDIA_FILE_TOO_LARGE` | 2801 | 400 | Upload video vượt 500MB (SRS §6), enforce ở service layer. |
 | `MEDIA_DURATION_EXCEEDED` | 2802 | 400 | Video vượt 30 phút (SRS §6), enforce ở service layer sau khi ffprobe. |
 | `TERMS_VERSION_MISMATCH` | 2803 | 400 | `termsVersion` gửi lên không khớp `terms_versions.is_current` tại thời điểm consent. |
-| `INSUFFICIENT_CREDIT` | 2300 | 402 | Số dư không đủ khi tạo job — hành vi mặc định `BLOCK_UPFRONT` (Arch §10.4, cấu hình được). |
+| `INSUFFICIENT_CREDIT` | 2300 | 402 | Số dư không đủ khi tạo job hoặc trừ credit. |
+| `CREDIT_PACKAGE_NOT_FOUND` | 2301 | 404 | Gói credit không tồn tại. |
+| `CREDIT_PACKAGE_INACTIVE` | 2302 | 400 | Gói credit đang tạm ngưng không khả dụng để mua. |
+| `CREDIT_ACCOUNT_NOT_FOUND` | 2303 | 404 | Không tìm thấy tài khoản credit của người dùng. |
 | `REFINE_LIMIT_REACHED` | 3000 | 429 | Vượt 5 lần refine/phiên Summarization. |
 | `PROPOSAL_ALREADY_TRANSLATED` | 3001 | 409 | Đổi `selected_proposal_id` hoặc refine phương án đang chọn khi stage `TRANSLATE` của job đã `COMPLETED` từ phương án đó (SRS §5.5 — phải rerun-from-stage `TRANSLATE` trước). |
-| `BATCH_SIZE_EXCEEDED` | 3100 | 400 | `sourceAssetIds` > 20 khi tạo batch. |
+| `BATCH_SIZE_EXCEEDED` | 3100 | 400 | `sourceAssetIds` rỗng hoặc > 20 khi tạo batch. |
+| `BATCH_RATE_LIMIT_EXCEEDED` | 3101 | 429 | Vượt giới hạn tạo batch/khoảng thời gian của user (mặc định 5 lần/10 phút — cần BA xác nhận). |
 | `QA_BLOCKED` | 3300 | 403 | Xuất bản/dựng video/publish-package khi còn `qa_issues` chặn hành động tương ứng chưa resolve/override. |
 | `OVERRIDE_NOT_ALLOWED` | 3301 | 403 | Cố override `issue_type` thuộc nhóm không bao giờ override được. |
+| `PROVIDER_NOT_FOUND` | 2400 | 404 | Nguồn AI (BYOK) không tồn tại hoặc không thuộc quyền sở hữu của user. |
+| `PROVIDER_CAPABILITY_NOT_SUPPORTED` | 2401 | 400 | Nguồn AI không hỗ trợ capability được yêu cầu (ví dụ cố refresh voice trên provider không hỗ trợ TTS). |
+| `PROVIDER_TEST_FAILED` | 2402 | 400 | Thử nghiệm kết nối tới nhà cung cấp AI thất bại. |
+| `PROVIDER_VOICES_FETCH_FAILED` | 2403 | 502 | Không thể đồng bộ danh sách giọng đọc từ nhà cung cấp AI. |
+| `PLATFORM_PROVIDER_NOT_CONFIGURED` | 2404 | 400 | Hệ thống chưa cấu hình nguồn AI nền tảng cho capability này. |
+| `INVALID_PROVIDER_PROTOCOL` | 2405 | 400 | Giao thức provider không hợp lệ hoặc không được hỗ trợ. |
+| `TTS_VOICE_NOT_FOUND` | 2406 | 404 | Giọng đọc TTS không tồn tại. |
+| `PRESET_NOT_FOUND` | 2500 | 404 | Preset không tồn tại hoặc không thuộc quyền xem của user. |
+| `PRESET_INACTIVE` | 2501 | 400 | Preset đang ở trạng thái ngừng kích hoạt. |
+| `PRESET_SCOPE_INVALID` | 2502 | 400 | Scope hoặc ràng buộc sở hữu workspace/project của preset không hợp lệ. |
+| `CANNOT_DELETE_ONLY_DEFAULT_PRESET` | 2503 | 400 | Không thể xóa preset mặc định duy nhất trong scope nếu không chỉ định preset thay thế. |
+| `SYSTEM_PRESET_READ_ONLY` | 2504 | 403 | Preset cấp hệ thống do nền tảng quản trị, không thể tạo, sửa hoặc xóa qua API tenant. |
+| `PRESET_DEFAULT_CONFLICT` | 2505 | 409 | Đã tồn tại preset mặc định trong scope này. |
+| `REPLACEMENT_PRESET_INVALID` | 2506 | 400 | Preset thay thế phải tồn tại, đang active và thuộc cùng scope. |
+| `NOTIFICATION_NOT_FOUND` | 2600 | 404 | Không tìm thấy thông báo hoặc không thuộc quyền sở hữu của người dùng. |
+| `NOTIFICATION_TYPE_INVALID` | 2601 | 400 | Loại thông báo không hợp lệ. |
+| `DASHBOARD_DATE_RANGE_INVALID` | 2700 | 400 | Khoảng thời gian không hợp lệ: 'from' phải trước hoặc bằng 'to'. |
+| `DASHBOARD_GROUP_BY_INVALID` | 2701 | 400 | Tham số groupBy không hợp lệ (chỉ hỗ trợ 'project', 'user', 'operation'). |
 
 Thêm mã mới: phụ trách module nào tự thêm `ErrorCode` trong đúng dải của mình (§15.2), cập nhật bảng §15.3
 trong cùng PR — không để `ErrorCode` trong code lệch với bảng ở đây.
+

@@ -8,6 +8,7 @@ import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.entity.SubtitleSegment;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -17,6 +18,11 @@ import java.util.UUID;
 public interface MediaJobService {
 
     MediaJob createJob(UUID workspaceId, UUID userId, CreateMediaJobRequest request);
+
+    /** Same validation/creation pipeline as {@link #createJob}, but stamps {@code batch_id} (batch module, §2.4). */
+    MediaJob createBatchChildJob(UUID workspaceId, UUID userId, UUID batchId, CreateMediaJobRequest request);
+
+    List<MediaJob> getJobsByBatch(UUID batchId);
 
     List<MediaJob> listJobs(UUID workspaceId, UUID userId, UUID projectId, MediaJob.JobStatus status, String recipeId);
 
@@ -54,7 +60,10 @@ public interface MediaJobService {
 
     /**
      * Shared job-ownership rule (System_Architecture.md §4.2): CLIENT always denied, LEAD always
-     * allowed, MEMBER only on jobs they created. Reused by the future qa module for issue overrides.
+     * allowed, MEMBER only on jobs they created. Reused by the qa module for issue overrides.
      */
     void requireJobOwnership(UUID workspaceId, UUID userId, MediaJob job);
+
+    /** No auth check — for the qa module to resolve which job a {@code subtitle_segments} row belongs to. */
+    Optional<SubtitleSegment> findSubtitleSegmentById(UUID segmentId);
 }

@@ -1,10 +1,15 @@
 package com.app.modules.credit.service;
 
+import com.app.common.dto.PageResponse;
+import com.app.modules.credit.dto.*;
 import com.app.modules.credit.entity.CostMode;
 import com.app.modules.credit.entity.CreditAccount;
+import com.app.modules.credit.entity.CreditTransactionType;
 import com.app.modules.credit.entity.WorkspaceBillingConfig;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,11 +22,23 @@ public interface CreditService {
 
     WorkspaceBillingConfig initWorkspaceBillingConfig(UUID workspaceId, UUID configuredByUserId, CostMode costMode);
 
+    WorkspaceBillingConfig getWorkspaceBillingConfig(UUID workspaceId);
+
+    WorkspaceBillingConfig updateCostMode(UUID workspaceId, UUID configuredByUserId, CostMode costMode);
+
     Optional<CreditAccount> findByUserId(UUID userId);
+
+    BigDecimal getBalance(UUID userId);
 
     boolean hasSufficientBalance(UUID userId);
 
     boolean hasSufficientBalance(UUID userId, BigDecimal requiredAmount);
 
-    void chargeUsage(UUID workspaceId, UUID performedByUserId, String capability, long tokensUsed, boolean hasPersonalApiKey);
+    BigDecimal chargeUsage(UUID workspaceId, UUID performedByUserId, String capability, long tokensUsed, boolean hasPersonalApiKey);
+
+    PageResponse<CreditTransactionResponse> getTransactions(UUID userId, CreditTransactionType type, Instant from, Instant to, int page, int size);
+
+    List<CreditPackageResponse> listActivePackages();
+
+    PurchaseCreditPackageResponse purchasePackage(UUID userId, UUID packageId, PurchaseCreditPackageRequest req);
 }
