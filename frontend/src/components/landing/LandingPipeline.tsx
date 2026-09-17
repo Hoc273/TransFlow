@@ -400,7 +400,7 @@ export function LandingPipeline() {
                 <span className="font-semibold text-neutral-200">{currentStep.headline}</span>
               </div>
               <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-neutral-400 font-mono">
-                Interactive Preview
+                {t('pipeline.interactivePreview')}
               </span>
             </div>
 
@@ -579,6 +579,7 @@ function AnimationStep1Separation({
   activeTrack: 'both' | 'vocal' | 'bgm'
   setActiveTrack: (t: 'both' | 'vocal' | 'bgm') => void
 }) {
+  const { t } = useTranslation('landing')
   const isVocalActive = activeTrack === 'vocal' || activeTrack === 'both'
   const isBgmActive = activeTrack === 'bgm' || activeTrack === 'both'
 
@@ -602,7 +603,7 @@ function AnimationStep1Separation({
           <div className="w-6 h-6 rounded-md bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-violet-300">
             <IconWaveSine size={15} />
           </div>
-          <span className="font-bold tracking-tight">Tách âm thanh (Neural Demucs v4)</span>
+          <span className="font-bold tracking-tight">{t('pipeline.sim.extract.title')}</span>
         </div>
 
         {/* Interactive Filter Pills */}
@@ -616,7 +617,7 @@ function AnimationStep1Separation({
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
-            Tất cả
+            {t('pipeline.sim.extract.all')}
           </button>
           <button
             type="button"
@@ -627,7 +628,7 @@ function AnimationStep1Separation({
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
-            Chỉ giọng nói
+            {t('pipeline.sim.extract.vocalOnly')}
           </button>
           <button
             type="button"
@@ -638,7 +639,7 @@ function AnimationStep1Separation({
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
-            Chỉ nhạc nền
+            {t('pipeline.sim.extract.bgmOnly')}
           </button>
         </div>
       </div>
@@ -662,20 +663,20 @@ function AnimationStep1Separation({
               <IconMicrophone size={13} />
             </div>
             <div>
-              <span className="text-xs font-bold text-purple-200">Giọng nói gốc (Vocals)</span>
+              <span className="text-xs font-bold text-purple-200">{t('pipeline.sim.extract.vocalTrack')}</span>
               <span className="hidden sm:inline-block ml-2 text-[10px] text-neutral-400">
-                Đã tách sạch
+                {t('pipeline.sim.extract.vocalClean')}
               </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {isVocalActive ? (
               <span className="text-[10px] text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded font-mono">
-                99.4% trong trẻo
+                {t('pipeline.sim.extract.vocalClarity')}
               </span>
             ) : (
               <span className="text-[10px] text-neutral-400 bg-white/5 px-2 py-0.5 rounded font-mono">
-                [Tạm tắt]
+                {t('pipeline.sim.extract.muted')}
               </span>
             )}
           </div>
@@ -730,21 +731,21 @@ function AnimationStep1Separation({
             </div>
             <div>
               <span className="text-xs font-bold text-blue-200">
-                Nhạc nền & Hiệu ứng (BGM & SFX)
+                {t('pipeline.sim.extract.bgmTrack')}
               </span>
               <span className="hidden sm:inline-block ml-2 text-[10px] text-neutral-400">
-                Không lẫn giọng nói
+                {t('pipeline.sim.extract.bgmClean')}
               </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {isBgmActive ? (
               <span className="text-[10px] text-cyan-300 bg-cyan-500/20 border border-cyan-500/30 px-2 py-0.5 rounded font-mono">
-                Tách sạch 100%
+                {t('pipeline.sim.extract.bgmClarity')}
               </span>
             ) : (
               <span className="text-[10px] text-neutral-400 bg-white/5 px-2 py-0.5 rounded font-mono">
-                [Tạm tắt]
+                {t('pipeline.sim.extract.muted')}
               </span>
             )}
           </div>
@@ -787,7 +788,7 @@ function AnimationStep1Separation({
         </div>
         <div className="flex items-center gap-1.5 text-emerald-400 font-medium">
           <IconCheck size={13} />
-          <span>Bảo toàn 100% âm sắc gốc</span>
+          <span>{t('pipeline.sim.extract.timbrePreserved')}</span>
         </div>
       </div>
     </div>
@@ -802,6 +803,7 @@ function AnimationStep2STT({
   isPlaying: boolean
   setIsPlaying: (p: boolean) => void
 }) {
+  const { t } = useTranslation('landing')
   return (
     <div className="space-y-3.5">
       {/* Header */}
@@ -811,10 +813,10 @@ function AnimationStep2STT({
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
           </span>
-          <span className="font-semibold text-neutral-200">Nhận diện giọng nói (Whisper Turbo)</span>
+          <span className="font-semibold text-neutral-200">{t('pipeline.sim.stt.title')}</span>
         </div>
         <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-mono">
-          Tiếng Anh (99.8%) ✓
+          {t('pipeline.sim.stt.detectedLang')}
         </span>
       </div>
 
@@ -856,7 +858,7 @@ function AnimationStep2STT({
               [00:01.20 - 00:04.50]
             </span>
             <span className="px-2 py-0.5 rounded bg-purple-500/30 text-purple-200 text-[10px] border border-purple-400/40">
-              Khớp chuẩn từng từ
+              {t('pipeline.sim.stt.wordAlignment')}
             </span>
           </div>
 
@@ -888,7 +890,7 @@ function AnimationStep2STT({
         <div className="p-2.5 rounded-lg bg-white/5 border border-white/5 text-xs text-neutral-500 flex items-center justify-between">
           <span className="font-mono text-[11px] text-neutral-600">[00:04.60]</span>
           <span>"Preserving background acoustics with frame accuracy..."</span>
-          <span className="text-[10px] text-neutral-400 font-mono">Đang chờ</span>
+          <span className="text-[10px] text-neutral-400 font-mono">{t('pipeline.sim.stt.pending')}</span>
         </div>
       </div>
 
@@ -900,9 +902,9 @@ function AnimationStep2STT({
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 transition-colors text-white cursor-pointer shadow-sm"
         >
           {isPlaying ? <IconPlayerPause size={14} /> : <IconPlayerPlay size={14} />}
-          <span>{isPlaying ? 'Tạm dừng' : 'Xem tiếp'}</span>
+          <span>{isPlaying ? t('pipeline.sim.stt.pause') : t('pipeline.sim.stt.play')}</span>
         </button>
-        <span className="text-neutral-400 font-mono text-[11px]">Đồng bộ mốc thời gian: ±2ms</span>
+        <span className="text-neutral-400 font-mono text-[11px]">{t('pipeline.sim.stt.syncDelta')}</span>
       </div>
     </div>
   )
@@ -910,6 +912,7 @@ function AnimationStep2STT({
 
 /** BƯỚC 3: DỊCH THUẬT NGỮ CẢNH & TRANSLATION MEMORY (TM) */
 function AnimationStep3Translation() {
+  const { t } = useTranslation('landing')
   const [isGlossaryLocked, setIsGlossaryLocked] = useState(true)
 
   return (
@@ -921,7 +924,7 @@ function AnimationStep3Translation() {
             <IconLanguage size={15} />
           </div>
           <span className="font-bold text-neutral-200">
-            Dịch thuật ngữ cảnh & Bộ nhớ TM
+            {t('pipeline.sim.trans.title')}
           </span>
         </div>
 
@@ -940,7 +943,7 @@ function AnimationStep3Translation() {
               }`}
             />
             <span>
-              Khớp bộ nhớ dịch: {isGlossaryLocked ? '94.8%' : '52.0%'}
+              {t('pipeline.sim.trans.tmMatch', { rate: isGlossaryLocked ? '94.8%' : '52.0%' })}
             </span>
           </div>
 
@@ -953,17 +956,17 @@ function AnimationStep3Translation() {
                 ? 'bg-purple-600/30 border-purple-500/50 text-purple-200 hover:bg-purple-600/50 shadow-sm'
                 : 'bg-white/5 border-white/15 text-neutral-400 hover:text-white'
             }`}
-            title="Nhấp để chuyển đổi thử nghiệm khoá thuật ngữ"
+            title={t('pipeline.sim.trans.toggleTitle')}
           >
             {isGlossaryLocked ? (
               <>
                 <IconLock size={12} className="text-purple-300" />
-                <span>Đã khoá TM</span>
+                <span>{t('pipeline.sim.trans.tmLocked')}</span>
               </>
             ) : (
               <>
                 <IconLockOpen size={12} className="text-neutral-400" />
-                <span>Dịch tự do</span>
+                <span>{t('pipeline.sim.trans.tmFree')}</span>
               </>
             )}
           </button>
@@ -979,19 +982,19 @@ function AnimationStep3Translation() {
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-[10px] font-bold flex items-center gap-1.5 tracking-wider uppercase">
               <IconLock size={12} className="text-amber-400 animate-lock-pulse" />
-              KHOÁ THUẬT NGỮ CHUYÊN NGÀNH
+              {t('pipeline.sim.trans.shieldTitle')}
             </span>
           </div>
 
           {isGlossaryLocked ? (
             <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 font-mono text-[10px] font-bold flex items-center gap-1">
               <IconCheck size={11} />
-              Chính xác 100%
+              {t('pipeline.sim.trans.accurate100')}
             </span>
           ) : (
             <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-amber-400 font-mono text-[10px] font-bold flex items-center gap-1">
               <IconAlertTriangle size={11} />
-              Chưa bảo vệ
+              {t('pipeline.sim.trans.unprotected')}
             </span>
           )}
         </div>
@@ -1001,8 +1004,8 @@ function AnimationStep3Translation() {
           {/* Source EN Term */}
           <div className="p-2.5 rounded-lg bg-black/40 border border-white/10 hover:border-amber-500/40 transition-colors">
             <div className="text-[9px] font-mono text-neutral-400 uppercase tracking-wider mb-0.5 flex items-center justify-between">
-              <span>EN (Source Term)</span>
-              <span className="text-neutral-500">Global Tech Glossary</span>
+              <span>{t('pipeline.sim.trans.srcTermLabel', 'EN (Source Term)')}</span>
+              <span className="text-neutral-500">{t('pipeline.sim.trans.srcTermSub')}</span>
             </div>
             <div className="text-amber-200 font-mono font-semibold text-[11px] sm:text-[12px] truncate">
               "high-concurrency batch processing"
@@ -1026,10 +1029,10 @@ function AnimationStep3Translation() {
           >
             <div className="text-[9px] font-mono uppercase tracking-wider mb-0.5 flex items-center justify-between">
               <span className={isGlossaryLocked ? 'text-purple-300' : 'text-amber-300'}>
-                {isGlossaryLocked ? 'VI (Target Locked)' : 'VI (Dịch thô)'}
+                {isGlossaryLocked ? t('pipeline.sim.trans.targetLockedLabel') : t('pipeline.sim.trans.targetRawLabel')}
               </span>
               <span className="text-[9px] font-mono text-neutral-500">
-                {isGlossaryLocked ? 'Khớp tuyệt đối' : 'Cảnh báo dịch máy'}
+                {isGlossaryLocked ? t('pipeline.sim.trans.exactMatch') : t('pipeline.sim.trans.warnMt')}
               </span>
             </div>
             <div
@@ -1038,8 +1041,8 @@ function AnimationStep3Translation() {
               }`}
             >
               {isGlossaryLocked
-                ? '"xử lý hàng loạt đồng thời cao"'
-                : '"xử lý mẻ đồng thời cao"'}
+                ? t('pipeline.sim.trans.lockedVI')
+                : t('pipeline.sim.trans.rawVI')}
             </div>
           </div>
         </div>
@@ -1052,7 +1055,7 @@ function AnimationStep3Translation() {
           <div className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider flex items-center justify-between border-b border-white/5 pb-1.5">
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-              <span>Câu gốc (Tiếng Anh)</span>
+              <span>{t('pipeline.sim.trans.srcSentenceLabel')}</span>
             </div>
             <span className="font-mono text-neutral-400 text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10">
               EN-US
@@ -1074,7 +1077,7 @@ function AnimationStep3Translation() {
           <div className="text-[10px] text-purple-300 font-bold uppercase tracking-wider flex items-center justify-between border-b border-white/5 pb-1.5">
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-              <span>Bản dịch (Tiếng Việt)</span>
+              <span>{t('pipeline.sim.trans.tgtSentenceLabel')}</span>
             </div>
             <span className="font-mono text-purple-300 text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-400/30">
               VI-VN
@@ -1083,20 +1086,20 @@ function AnimationStep3Translation() {
           <div className="text-white font-sans font-medium leading-relaxed text-[12px]">
             {isGlossaryLocked ? (
               <>
-                "Chúng tôi đã tích hợp trực tiếp khả năng{' '}
+                "{t('pipeline.sim.trans.translatedLockedPrefix')}
                 <span className="text-purple-200 font-bold bg-purple-500/30 px-1.5 py-0.5 rounded border border-purple-400/60 inline-flex items-center gap-1 animate-shimmer animate-term-highlight shadow-sm">
                   <IconCheck size={11} className="text-emerald-400 inline" />
-                  xử lý hàng loạt đồng thời cao
-                </span>{' '}
-                vào quy trình đám mây của mình."
+                  {t('pipeline.sim.trans.translatedLockedHighlight')}
+                </span>
+                {t('pipeline.sim.trans.translatedLockedSuffix')}"
               </>
             ) : (
               <>
-                "Chúng tôi đã tích hợp trực tiếp khả năng{' '}
+                "{t('pipeline.sim.trans.translatedLockedPrefix')}
                 <span className="text-amber-300 font-medium bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-400/40 line-through">
-                  xử lý mẻ đồng thời cao
-                </span>{' '}
-                vào quy trình đám mây của mình."
+                  {t('pipeline.sim.trans.translatedRawHighlight')}
+                </span>
+                {t('pipeline.sim.trans.translatedLockedSuffix')}"
               </>
             )}
           </div>
@@ -1115,6 +1118,7 @@ function AnimationStep4Dubbing({
   activeVoice: 'ban_mai' | 'minh_quang'
   setActiveVoice: (v: 'ban_mai' | 'minh_quang') => void
 }) {
+  const { t } = useTranslation('landing')
   const [isPlayingSample, setIsPlayingSample] = useState(true)
 
   // Voice acoustic profiles: Ban Mai (Mezzo-Soprano/Bright) vs Minh Quang (Baritone/Deep)
@@ -1129,18 +1133,18 @@ function AnimationStep4Dubbing({
           <div className="w-6 h-6 rounded-md bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-violet-300">
             <IconVolume size={15} />
           </div>
-          <span className="font-bold text-neutral-200">Lồng tiếng AI (Neural TTS)</span>
+          <span className="font-bold text-neutral-200">{t('pipeline.sim.dub.title')}</span>
         </div>
         <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold self-start sm:self-auto flex items-center gap-1.5 animate-tm-glow">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          Tốc độ đọc: Chuẩn khung hình
+          {t('pipeline.sim.dub.pacingStatus')}
         </span>
       </div>
 
       {/* Voice Talent Selection */}
       <div className="space-y-2">
         <div className="text-[11px] text-neutral-400 font-medium">
-          Chọn diễn viên lồng tiếng AI:
+          {t('pipeline.sim.dub.selectActor')}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
@@ -1170,8 +1174,8 @@ function AnimationStep4Dubbing({
                   <IconHeadphones size={15} />
                 </div>
                 <div>
-                  <div className="text-sm font-bold text-white leading-none">Ban Mai</div>
-                  <div className="text-[10px] text-purple-300 font-mono mt-0.5">Nữ miền Bắc</div>
+                  <div className="text-sm font-bold text-white leading-none">{t('pipeline.sim.dub.banMaiName')}</div>
+                  <div className="text-[10px] text-purple-300 font-mono mt-0.5">{t('pipeline.sim.dub.banMaiAccent')}</div>
                 </div>
               </div>
               {activeVoice === 'ban_mai' && (
@@ -1182,7 +1186,7 @@ function AnimationStep4Dubbing({
             </div>
 
             <div className="text-[11px] text-neutral-300 leading-snug">
-              Truyền cảm, tự nhiên, tin tức & phóng sự.
+              {t('pipeline.sim.dub.banMaiDesc')}
             </div>
 
             {/* Live Audio Frequency Spectrogram */}
@@ -1230,8 +1234,8 @@ function AnimationStep4Dubbing({
                   <IconHeadphones size={15} />
                 </div>
                 <div>
-                  <div className="text-sm font-bold text-white leading-none">Minh Quang</div>
-                  <div className="text-[10px] text-purple-300 font-mono mt-0.5">Nam miền Nam</div>
+                  <div className="text-sm font-bold text-white leading-none">{t('pipeline.sim.dub.minhQuangName')}</div>
+                  <div className="text-[10px] text-purple-300 font-mono mt-0.5">{t('pipeline.sim.dub.minhQuangAccent')}</div>
                 </div>
               </div>
               {activeVoice === 'minh_quang' && (
@@ -1242,7 +1246,7 @@ function AnimationStep4Dubbing({
             </div>
 
             <div className="text-[11px] text-neutral-300 leading-snug">
-              Trầm ấm, đĩnh đạc, tài liệu & thuyết trình.
+              {t('pipeline.sim.dub.minhQuangDesc')}
             </div>
 
             {/* Live Audio Frequency Spectrogram */}
@@ -1273,9 +1277,9 @@ function AnimationStep4Dubbing({
           <div className="flex items-center justify-between text-[11px]">
             <span className="text-neutral-300 font-semibold flex items-center gap-1.5">
               <IconClock size={13} className="text-purple-400" />
-              Tốc độ đọc video:
+              {t('pipeline.sim.dub.videoPaceLabel')}
             </span>
-            <span className="text-emerald-400 font-mono font-bold">Chuẩn xác theo khung hình</span>
+            <span className="text-emerald-400 font-mono font-bold">{t('pipeline.sim.dub.videoPaceValue')}</span>
           </div>
 
           {/* Dual-Track Visual Timeline with playhead */}
@@ -1290,10 +1294,10 @@ function AnimationStep4Dubbing({
         <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
           <div className="flex items-center gap-1.5 text-neutral-300">
             <IconVolume2 size={13} className="text-purple-400" />
-            <span>Tự động né nhạc nền:</span>
+            <span>{t('pipeline.sim.dub.duckingLabel')}</span>
           </div>
           <span className="text-purple-300 font-mono font-bold bg-purple-500/20 border border-purple-500/30 px-2.5 py-0.5 rounded-full text-[10px] animate-pulse">
-            -14 dB khi có lời thoại
+            {t('pipeline.sim.dub.duckingValue')}
           </span>
         </div>
       </div>
@@ -1308,7 +1312,7 @@ function AnimationStep4Dubbing({
           <div className="w-5 h-5 rounded-full bg-purple-500/20 group-hover:bg-purple-500/40 border border-purple-400/40 flex items-center justify-center text-purple-300 transition-all shadow-sm">
             {isPlayingSample ? <IconPlayerPause size={12} /> : <IconPlayerPlay size={12} />}
           </div>
-          <span className="font-medium">Giọng đọc mẫu: Đã sẵn sàng</span>
+          <span className="font-medium">{t('pipeline.sim.dub.sampleReady')}</span>
         </button>
 
         {/* Live Acoustic Bars Indicator */}
@@ -1338,6 +1342,7 @@ function AnimationStep5QA({
   subtitleMode: 'hard' | 'soft'
   setSubtitleMode: (m: 'hard' | 'soft') => void
 }) {
+  const { t } = useTranslation('landing')
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null)
 
   const handleDownload = (format: string) => {
@@ -1355,14 +1360,14 @@ function AnimationStep5QA({
           <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.3)]">
             <IconShieldCheck size={16} />
           </div>
-          <span className="font-bold text-neutral-100 text-sm">Kiểm định chất lượng 3 lớp & Xuất bản</span>
+          <span className="font-bold text-neutral-100 text-sm">{t('pipeline.sim.qa.title')}</span>
         </div>
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-mono text-[11px] font-bold shadow-[0_0_12px_rgba(16,185,129,0.25)] self-start sm:self-auto">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
           </span>
-          <span>Đạt chuẩn 3/3 tiêu chí ✓</span>
+          <span>{t('pipeline.sim.qa.passedCriteria')}</span>
         </div>
       </div>
 
@@ -1373,7 +1378,7 @@ function AnimationStep5QA({
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 text-neutral-200 font-bold">
               <IconVideo size={14} className="text-purple-400" />
-              <span>Xem trước phụ đề video:</span>
+              <span>{t('pipeline.sim.qa.previewLabel')}</span>
             </div>
             <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
@@ -1469,14 +1474,14 @@ function AnimationStep5QA({
                 <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-400/25 text-amber-300 border border-amber-400/40">
                   HARD-SUB
                 </span>
-                "Quy trình dịch thuật và lồng tiếng hoàn tất 100%."
+                "{t('pipeline.sim.qa.subtitleSample')}"
               </span>
             ) : (
               <span className="text-xs sm:text-[13px] px-3.5 py-1 rounded-md transition-all text-center text-white font-medium bg-neutral-900/85 backdrop-blur-xl border border-white/25 shadow-[0_4px_24px_rgba(0,0,0,0.8)] inline-flex items-center gap-2 animate-subtitle-glow">
                 <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-white/20 text-neutral-200 border border-white/30">
                   CC • SRT
                 </span>
-                "Quy trình dịch thuật và lồng tiếng hoàn tất 100%."
+                "{t('pipeline.sim.qa.subtitleSample')}"
               </span>
             )}
           </div>
@@ -1494,12 +1499,12 @@ function AnimationStep5QA({
           {downloadStatus === 'mp4' ? (
             <>
               <IconCheck size={15} className="text-emerald-300 animate-bounce" />
-              <span>Đang tải Video 4K...</span>
+              <span>{t('pipeline.sim.qa.downloadingMp4')}</span>
             </>
           ) : (
             <>
               <IconDownload size={15} className="group-hover:translate-y-0.5 transition-transform text-white" />
-              <span>Tải Video Thành Phẩm 4K (.MP4)</span>
+              <span>{t('pipeline.sim.qa.downloadMp4')}</span>
               <span className="text-[10px] font-mono font-normal px-1.5 py-0.5 rounded bg-white/20">
                 H.265
               </span>
@@ -1544,15 +1549,16 @@ function AnimationStep5QA({
 // --------------------------------------------------------------------------
 
 function AnimationSumStep1() {
+  const { t } = useTranslation('landing')
   const [selectedTopic, setSelectedTopic] = useState<number>(0)
   const [revealedCount, setRevealedCount] = useState<number>(1)
   const [isManual, setIsManual] = useState<boolean>(false)
 
   const topics = useMemo(() => [
-    { id: 1, title: 'Giới thiệu kiến trúc đám mây AI', time: '00:00 - 05:20', duration: '5m 20s' },
-    { id: 2, title: 'Tối ưu độ trễ với pgvector cache', time: '05:21 - 12:40', duration: '7m 19s' },
-    { id: 3, title: 'Đánh giá hiệu năng và kết luận', time: '12:41 - 18:30', duration: '5m 49s' }
-  ], [])
+    { id: 1, title: t('pipeline.sim.sum1.topic1Title'), time: '00:00 - 05:20', duration: '5m 20s' },
+    { id: 2, title: t('pipeline.sim.sum1.topic2Title'), time: '05:21 - 12:40', duration: '7m 19s' },
+    { id: 3, title: t('pipeline.sim.sum1.topic3Title'), time: '12:41 - 18:30', duration: '5m 49s' }
+  ], [t])
 
   // Sequential topic reveal & cyclic inspection
   useEffect(() => {
@@ -1590,7 +1596,7 @@ function AnimationSumStep1() {
           <div className="w-7 h-7 rounded-lg bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.3)]">
             <IconFileText size={16} />
           </div>
-          <span className="font-bold text-neutral-100 text-sm">Semantic Topic Chunking</span>
+          <span className="font-bold text-neutral-100 text-sm">{t('pipeline.sim.sum1.title')}</span>
         </div>
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/40 text-purple-300 font-mono text-[11px] font-bold shadow-[0_0_12px_rgba(168,85,247,0.25)]">
           <span className="relative flex h-2 w-2">
@@ -1598,7 +1604,7 @@ function AnimationSumStep1() {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500" />
           </span>
           <span>
-            {revealedCount < 3 ? `Phát hiện ${revealedCount}/3 chủ đề...` : '✓ 3 Topics Extracted'}
+            {revealedCount < 3 ? t('pipeline.sim.sum1.detecting', { count: revealedCount }) : t('pipeline.sim.sum1.done')}
           </span>
         </div>
       </div>
@@ -1682,20 +1688,20 @@ function AnimationSumStep1() {
 
       {/* Interactive Topics List (Sequentially Revealed) */}
       <div className="space-y-1.5 text-xs">
-        {topics.map((t, idx) => {
+        {topics.map((tItem, idx) => {
           const isRevealed = idx < revealedCount
           const isSelected = selectedTopic === idx
 
           if (!isRevealed) {
             return (
               <div
-                key={t.id}
+                key={tItem.id}
                 className="w-full p-2.5 rounded-xl border border-dashed border-purple-500/25 bg-purple-950/15 text-neutral-400 flex items-center justify-between transition-all duration-500 opacity-60 animate-pulse"
               >
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-400/60" />
                   <span className="font-mono text-[11px] text-purple-300/60">
-                    Đang quét phân đoạn Topic 0{t.id}...
+                    {t('pipeline.sim.sum1.scanning', { id: tItem.id })}
                   </span>
                 </div>
                 <span className="font-mono text-[10px] text-purple-400/50">Scanning...</span>
@@ -1705,7 +1711,7 @@ function AnimationSumStep1() {
 
           return (
             <button
-              key={t.id}
+              key={tItem.id}
               type="button"
               onClick={() => {
                 setSelectedTopic(idx)
@@ -1720,9 +1726,9 @@ function AnimationSumStep1() {
             >
               <div className="flex items-center gap-2">
                 <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-purple-400 animate-ping' : 'bg-neutral-500'}`} />
-                <span className="font-medium">Topic 0{t.id}: {t.title}</span>
+                <span className="font-medium">Topic 0{tItem.id}: {tItem.title}</span>
               </div>
-              <span className="font-mono text-[11px] text-purple-300/90">{t.time}</span>
+              <span className="font-mono text-[11px] text-purple-300/90">{tItem.time}</span>
             </button>
           )
         })}
@@ -1732,6 +1738,7 @@ function AnimationSumStep1() {
 }
 
 function AnimationSumStep2() {
+  const { t } = useTranslation('landing')
   const [activeHighlight, setActiveHighlight] = useState<number>(0)
   const [revealedCount, setRevealedCount] = useState<number>(1)
   const [isManual, setIsManual] = useState<boolean>(false)
@@ -1739,7 +1746,7 @@ function AnimationSumStep2() {
   const highlights = useMemo(() => [
     {
       id: 1,
-      title: 'Điểm đột phá về tốc độ suy luận',
+      title: t('pipeline.sim.sum2.highlight1Title'),
       time: '02:15 - 03:05',
       timestamp: '02:15',
       duration: '50s',
@@ -1749,7 +1756,7 @@ function AnimationSumStep2() {
     },
     {
       id: 2,
-      title: 'So sánh chi phí hạ tầng giảm 60%',
+      title: t('pipeline.sim.sum2.highlight2Title'),
       time: '08:40 - 09:25',
       timestamp: '08:40',
       duration: '45s',
@@ -1759,7 +1766,7 @@ function AnimationSumStep2() {
     },
     {
       id: 3,
-      title: 'Demo thực tế quy trình tự động',
+      title: t('pipeline.sim.sum2.highlight3Title'),
       time: '14:10 - 14:55',
       timestamp: '14:10',
       duration: '45s',
@@ -1767,7 +1774,7 @@ function AnimationSumStep2() {
       rank: 'Top #3',
       tag: 'LIVE WORKFLOW'
     }
-  ], [])
+  ], [t])
 
   // Auto-cycle: Highlights appear sequentially directly on the video monitor!
   useEffect(() => {
@@ -1805,14 +1812,19 @@ function AnimationSumStep2() {
           <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.3)]">
             <IconScissors size={16} />
           </div>
-          <span className="font-bold text-neutral-100 text-sm">AI Highlight Ranking & Cut-Plan</span>
+          <span className="font-bold text-neutral-100 text-sm">{t('pipeline.sim.sum2.title')}</span>
         </div>
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 font-mono text-[11px] font-bold shadow-[0_0_12px_rgba(245,158,11,0.25)]">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
           </span>
-          <span>Cut-Plan: {revealedCount}/3 Moments ({revealedCount === 3 ? '120s' : `${revealedCount * 45}s`})</span>
+          <span>
+            {t('pipeline.sim.sum2.cutPlanStatus', {
+              count: revealedCount,
+              duration: revealedCount === 3 ? '120s' : `${revealedCount * 45}s`
+            })}
+          </span>
         </div>
       </div>
 
@@ -1897,7 +1909,7 @@ function AnimationSumStep2() {
               ★ {highlights[activeHighlight].title}
             </div>
             <div className="flex items-center justify-center gap-3 mt-1 text-[10px] font-mono text-neutral-300">
-              <span>Thời lượng: <strong className="text-amber-300">{highlights[activeHighlight].duration}</strong></span>
+              <span>{t('pipeline.sim.sum2.durationLabel')} <strong className="text-amber-300">{highlights[activeHighlight].duration}</strong></span>
               <span>•</span>
               <span>AI Density: <strong className="text-amber-300">{highlights[activeHighlight].score}</strong></span>
             </div>
@@ -1953,7 +1965,7 @@ function AnimationSumStep2() {
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400/60" />
                   <span className="font-mono text-[11px] text-amber-300/60">
-                    Đang trích xuất Highlight {h.rank}...
+                    {t('pipeline.sim.sum2.extracting', { rank: h.rank })}
                   </span>
                 </div>
                 <span className="font-mono text-[10px] text-amber-400/50">Analyzing...</span>
@@ -1993,14 +2005,15 @@ function AnimationSumStep2() {
 
       {/* Footer Stats */}
       <div className="text-[11px] text-neutral-400 pt-2 border-t border-white/10 flex justify-between">
-        <span>Compression ratio: 18 min ➔ 2 min</span>
-        <span className="text-amber-400 font-bold">92% Information Density</span>
+        <span>{t('pipeline.sim.sum2.compressionRatio')}</span>
+        <span className="text-amber-400 font-bold">{t('pipeline.sim.sum2.densityStat')}</span>
       </div>
     </div>
   )
 }
 
 function AnimationSumStep3() {
+  const { t } = useTranslation('landing')
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null)
 
   const handleDownload = (format: string) => {
@@ -2018,14 +2031,14 @@ function AnimationSumStep3() {
           <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.3)]">
             <IconPlayerPlay size={16} />
           </div>
-          <span className="font-bold text-neutral-100 text-sm">Recap Reel & Executive Summary</span>
+          <span className="font-bold text-neutral-100 text-sm">{t('pipeline.sim.sum3.title')}</span>
         </div>
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-mono text-[11px] font-bold shadow-[0_0_12px_rgba(16,185,129,0.25)]">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
           </span>
-          <span>Render Complete ✓</span>
+          <span>{t('pipeline.sim.sum3.renderComplete')}</span>
         </div>
       </div>
 
@@ -2070,7 +2083,7 @@ function AnimationSumStep3() {
             <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-400/25 text-emerald-300 border border-emerald-400/40">
               KEY TAKEAWAY
             </span>
-            "TransFlow tự động cắt ghép 3 phân cảnh đắt giá nhất thành video tóm tắt 120s."
+            "{t('pipeline.sim.sum3.takeawayCaption')}"
           </span>
         </div>
       </div>
@@ -2079,11 +2092,11 @@ function AnimationSumStep3() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
         <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-neutral-300">
           <IconCheck size={14} className="text-emerald-400 shrink-0" />
-          <span className="text-[11px]">Giảm 80% thời lượng theo dõi mà không mất ý then chốt</span>
+          <span className="text-[11px]">{t('pipeline.sim.sum3.bullet1')}</span>
         </div>
         <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-neutral-300">
           <IconCheck size={14} className="text-emerald-400 shrink-0" />
-          <span className="text-[11px]">Tự động tạo phụ đề keyword highlight đồng bộ theo luận điểm</span>
+          <span className="text-[11px]">{t('pipeline.sim.sum3.bullet2')}</span>
         </div>
       </div>
 
@@ -2098,12 +2111,12 @@ function AnimationSumStep3() {
           {downloadStatus === 'recap' ? (
             <>
               <IconCheck size={15} className="text-white animate-bounce" />
-              <span>Đang tải Recap Video...</span>
+              <span>{t('pipeline.sim.sum3.downloadingRecap')}</span>
             </>
           ) : (
             <>
               <IconDownload size={15} className="group-hover:translate-y-0.5 transition-transform text-white" />
-              <span>Tải Recap Video (.MP4)</span>
+              <span>{t('pipeline.sim.sum3.downloadRecapBtn')}</span>
               <span className="text-[10px] font-mono font-normal px-1.5 py-0.5 rounded bg-white/20">
                 1080p
               </span>
@@ -2121,7 +2134,7 @@ function AnimationSumStep3() {
           }`}
         >
           {downloadStatus === 'report' ? <IconCheck size={13} /> : <IconFileText size={13} className="text-emerald-400" />}
-          <span>Tải Báo Cáo (.PDF / .MD)</span>
+          <span>{t('pipeline.sim.sum3.downloadReportBtn')}</span>
         </button>
       </div>
     </div>
