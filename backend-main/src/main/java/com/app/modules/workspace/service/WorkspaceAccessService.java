@@ -34,4 +34,19 @@ public interface WorkspaceAccessService {
      * Throws AppException(ErrorCode.UNAUTHORIZED) if user is not a member of the workspace.
      */
     Role getRole(UUID workspaceId, UUID userId);
+
+    /**
+     * Requires the user to have one of the specified roles in the workspace.
+     */
+    void requireRole(UUID workspaceId, UUID userId, Role... allowedRoles);
+
+    /**
+     * Requires the user to be the LEAD in the specified workspace.
+     */
+    void requireWorkspaceLead(UUID workspaceId, UUID userId);
+
+    /**
+     * Resolves the user ID of the LEAD in the specified workspace.
+     */
+    java.util.Optional<UUID> findLeadUserId(UUID workspaceId);
 }

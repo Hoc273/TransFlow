@@ -74,30 +74,32 @@ dải của module đang code, cập nhật đồng thời bảng §15.3: `auth`
 - Endpoint mua gói Credit: chưa có cổng thanh toán thật (ghi rõ trong response/log), chỉ ghi nhận
   `payment_reference` do FE gửi.
 
-### 2.4 Nguồn AI cá nhân (BYOK) + TTS voices
-- Copy `ProviderConfigController`, `TtsProviderConfigController` và service liên quan.
-- Entity mới/đổi tên theo `Database_Design.md` §5: `UserAiProvider`, `PlatformAiProvider`, `TtsVoice` (đối
-  chiếu `capabilities <@ ARRAY['STT','TRANSLATE','TTS','VISION']`).
-- API key mã hoá AES-GCM (giữ nguyên cơ chế gốc).
-- Cung cấp cho B: `ProviderResolverService.resolveForCapability(userId, capability)` → trả provider cá nhân
-  nếu có và active, ngược lại `platform_ai_providers` — B dùng kết quả này để gọi FastAPI và biết
-  `used_personal_api_key` (field cần cho `ai_usage_logs`).
+### 2.4 Nguồn AI cá nhân (BYOK) + TTS voices [COMPLETED]
+- [x] Triển khai `UserAiProviderController` (`/api/users/me/providers/**`) và `TtsVoiceController` (`/api/tts-voices`).
+- [x] Entity ánh xạ đầy đủ theo `Database_Design.md` §5: `UserAiProvider`, `PlatformAiProvider`, `TtsVoice` (validate `capabilities` thuộc `STT`, `TRANSLATE`, `TTS`, `VISION`).
+- [x] API key mã hoá AES-256-GCM với IV ngẫu nhiên 12 bytes, auth tag 128 bits, secret key từ `AppProperties` (biến môi trường `PROVIDER_KEY_ENC_SECRET`), tạo hint `sk-...xxxx`, che giấu an toàn, không lộ plain-text.
+- [x] Triển khai `ProviderResolverService.resolveForCapability(userId, capability)` → ưu tiên provider cá nhân active (BYOK), fallback sang `platform_ai_providers`, cung cấp flag `isPersonalApiKey` để B ghi `ai_usage_logs`.
+- [x] Triển khai `ProviderResolverService.resolveVoiceLanguage(ttsVoiceId)` → trả về ngôn ngữ giọng đọc cho Member B (`MediaJobService`).
+- [x] Tích hợp `AiGatewayClient` gọi FastAPI (`/ai/validate/auth` để test connection probe, `/media/tts/voices` để discover/refresh cache TTS voices).
+- [x] Flyway migration `V5__seed_platform_ai_providers_and_voices.sql` seed platform provider và danh mục giọng TTS mặc định.
 
-### 2.5 Preset
-- Copy `WorkflowPresetController` → đổi thành `PresetController` theo route `API_Contract.md §9`.
-- Entity `MediaPreset` theo `Database_Design.md` §9 (scope `SYSTEM/WORKSPACE/PROJECT`, đúng 1 default/scope
-  — partial unique index).
-- Viết `PresetResolverService.resolveForJobCreation(explicitPresetId, projectId, workspaceId)` — trả preset
-  đã resolve theo thứ tự ưu tiên (SRS §5.7) để B snapshot vào `media_jobs.preset_snapshot` lúc tạo job.
-  **Đây là 1 trong 2 hàm B cần từ A trước khi B code xong Media Job creation.**
+### 2.5 Preset [COMPLETED]
+- [x] Triển khai `PresetController` (`/api/workspaces/{workspaceId}/presets/**`) và `PresetTemplateController` (`/api/media/presets/templates`).
+- [x] Entity `MediaPreset` theo `Database_Design.md` §9 (scope `SYSTEM/WORKSPACE/PROJECT`, đúng 1 default/scope — partial unique index).
+- [x] Triển khai `PresetResolverService.resolveForJobCreation(explicitPresetId, projectId, workspaceId)` — giải quyết preset theo thứ tự ưu tiên 4 cấp (`explicit -> project default -> workspace default -> system default -> null`) để Member B snapshot vào `media_jobs.preset_snapshot` khi tạo job.
+- [x] Triển khai quản lý default preset tự động chuyển giao và kiểm soát xóa default preset (`CANNOT_DELETE_ONLY_DEFAULT_PRESET`, `replacementPresetId`).
+- [x] Migration `V6__seed_system_presets.sql` seed platform default preset và danh mục template công khai.
 
-### 2.6 Notification & Dashboard
-- Copy `NotificationController`, `DashboardController`, `NotificationService`.
-- `notifications` được tạo bởi B khi job/batch đổi trạng thái (`JOB_COMPLETED/JOB_FAILED/...`) — A chỉ cần
-  cung cấp `NotificationService.notify(workspaceId, userId, type, refId, message)` cho B gọi, còn API
-  đọc/đánh dấu-đã-đọc do A làm toàn bộ.
-- Dashboard usage (`GET /workspaces/{workspaceId}/usage`) đọc `ai_usage_logs` — bảng do B ghi khi AI xử lý
-  xong; A chỉ viết query/aggregation, không tạo dữ liệu.
+### 2.6 Notification & Dashboard [COMPLETED]
+- [x] Triển khai `NotificationController` (`/api/workspaces/{workspaceId}/notifications/**`) và `DashboardController` (`/api/workspaces/{workspaceId}/dashboard`, `/api/workspaces/{workspaceId}/usage`).
+- [x] Entity `Notification` mapping bảng `notifications` (CHECK constraint: 6 types, index unread partial), DTO `NotificationResponse`, `MarkAllNotificationsReadResponse`.
+- [x] Triển khai `NotificationServiceImpl`:
+  - `notify(workspaceId, userId, type, refId, message)` lưu thông báo thật vào DB, xử lý dedup, bỏ qua an toàn nếu user không còn là thành viên (AC-NOTIF-02).
+  - `listNotifications(workspaceId, userId, unreadOnly, page, size)` phân trang chuẩn API Contract §0.
+  - `markAsRead(workspaceId, userId, notificationId)` và `markAllAsRead(workspaceId, userId)`.
+- [x] Triển khai `DashboardServiceImpl`:
+  - `getDashboard(workspaceId, userId)`: tổng hợp số lượng job theo status (`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, `CANCELLED`), batch đang chạy (`running`, `completed`, `failed`, `partiallyFailed`), số dư Credit theo role (`LEAD` vs `MEMBER/CLIENT`) và `cost_mode` (`LEAD_PAYS_ALL` vs `PAY_PER_USER`).
+  - `getUsage(workspaceId, userId, groupBy, from, to)`: đọc read-only bảng `ai_usage_logs` qua `AiUsageLog` (`@Immutable`) & `AiUsageLogReadOnlyRepository`, tổng hợp tokens/credit/operations theo `project`, `user`, `operation` và lọc theo khoảng thời gian. Phân quyền: LEAD toàn workspace, MEMBER chỉ project được gán, CLIENT bị cấm (`UNAUTHORIZED`).
 
 ## 3. Migration do A phụ trách (thứ tự tạo bảng — theo `Database_Design.md` §13)
 1. `users` → `workspaces` → `workspace_members` → `projects` → `project_members`.
@@ -133,12 +135,12 @@ thẳng mà không chờ A xong toàn bộ module.
 
 ## 6. Checklist hoàn thành
 - [ ] Auth register/login/refresh/me + Google OAuth2, kèm auto-init Workspace/Project/Credit 1 transaction.
-- [ ] RBAC 3 role, đúng 1 Lead/workspace, `project_members` không có cột role.
-- [ ] Credit: cấp ban đầu, mua gói (chưa cổng thanh toán thật), 2 cost_mode, công thức x/x+y đúng theo
+- [x] RBAC 3 role, đúng 1 Lead/workspace, `project_members` không có cột role.
+- [x] Credit: cấp ban đầu, mua gói (chưa cổng thanh toán thật), 2 cost_mode, công thức x/x+y đúng theo
       người *thực hiện*, `SELECT ... FOR UPDATE` khi trừ Credit.
-- [ ] BYOK CRUD + test connection; platform provider fallback; TTS voices cache theo provider.
-- [ ] Preset 3 cấp, đúng 1 default/scope, resolver theo thứ tự ưu tiên, SYSTEM template public catalog.
-- [ ] Notification list/read; Dashboard usage aggregation.
+- [x] BYOK CRUD + test connection; platform provider fallback; TTS voices cache theo provider.
+- [x] Preset 3 cấp, đúng 1 default/scope, resolver theo thứ tự ưu tiên, SYSTEM template public catalog.
+- [x] Notification list/read; Dashboard usage aggregation.
 - [ ] Mọi controller trả `ApiResponse<T>`, mọi lỗi nghiệp vụ ném qua `AppException(ErrorCode.XXX)` với code
       trong đúng dải của module (CLAUDE.md §4.10), không tự tạo response/exception riêng.
 - [ ] 4 interface ở §4 đã có signature ổn định, đã thông báo cho B.

@@ -43,14 +43,49 @@ public enum ErrorCode {
     WORKSPACE_NOT_FOUND(2100, "Workspace not found", HttpStatus.NOT_FOUND),
     WORKSPACE_MEMBER_NOT_FOUND(2101, "Workspace member not found", HttpStatus.NOT_FOUND),
     LEAD_CANNOT_BE_REMOVED(2102, "Workspace Lead cannot be removed or demoted", HttpStatus.BAD_REQUEST),
+    WORKSPACE_MEMBER_ALREADY_EXISTS(2103, "User is already a member of this workspace", HttpStatus.CONFLICT),
+    CANNOT_ASSIGN_LEAD_ROLE(2104, "Cannot invite or change role to Lead", HttpStatus.BAD_REQUEST),
+    WORKSPACE_SLUG_ALREADY_EXISTS(2105, "Workspace slug already exists", HttpStatus.CONFLICT),
 
     // 22xx - project (Member A)
     PROJECT_NOT_FOUND(2200, "Project not found", HttpStatus.NOT_FOUND),
     PROJECT_MEMBER_NOT_FOUND(2201, "Project member not found", HttpStatus.NOT_FOUND),
     PROJECT_ACCESS_DENIED(2202, "Project access denied", HttpStatus.FORBIDDEN),
+    USER_NOT_WORKSPACE_MEMBER(2203, "User must be a workspace member before being assigned to a project", HttpStatus.BAD_REQUEST),
+    LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS(2204, "Workspace Lead already has full access to all projects and cannot be assigned", HttpStatus.BAD_REQUEST),
+    PROJECT_MEMBER_ALREADY_EXISTS(2205, "User is already assigned to this project", HttpStatus.CONFLICT),
 
     // 23xx - credit (Member A)
     INSUFFICIENT_CREDIT(2300, "Insufficient credit balance", HttpStatus.PAYMENT_REQUIRED),
+    CREDIT_PACKAGE_NOT_FOUND(2301, "Credit package not found", HttpStatus.NOT_FOUND),
+    CREDIT_PACKAGE_INACTIVE(2302, "Credit package is not active", HttpStatus.BAD_REQUEST),
+    CREDIT_ACCOUNT_NOT_FOUND(2303, "Credit account not found", HttpStatus.NOT_FOUND),
+
+    // 24xx - provider (Member A)
+    PROVIDER_NOT_FOUND(2400, "AI provider not found", HttpStatus.NOT_FOUND),
+    PROVIDER_CAPABILITY_NOT_SUPPORTED(2401, "AI provider does not support this capability", HttpStatus.BAD_REQUEST),
+    PROVIDER_TEST_FAILED(2402, "AI provider connection test failed", HttpStatus.BAD_REQUEST),
+    PROVIDER_VOICES_FETCH_FAILED(2403, "Failed to fetch voices from AI provider", HttpStatus.BAD_GATEWAY),
+    PLATFORM_PROVIDER_NOT_CONFIGURED(2404, "No platform AI provider configured for this capability", HttpStatus.BAD_REQUEST),
+    INVALID_PROVIDER_PROTOCOL(2405, "Unsupported AI provider protocol", HttpStatus.BAD_REQUEST),
+    TTS_VOICE_NOT_FOUND(2406, "TTS voice not found", HttpStatus.NOT_FOUND),
+
+    // 25xx - preset (Member A)
+    PRESET_NOT_FOUND(2500, "Media preset not found", HttpStatus.NOT_FOUND),
+    PRESET_INACTIVE(2501, "Media preset is inactive", HttpStatus.BAD_REQUEST),
+    PRESET_SCOPE_INVALID(2502, "Invalid preset scope or scope ownership constraint violated", HttpStatus.BAD_REQUEST),
+    CANNOT_DELETE_ONLY_DEFAULT_PRESET(2503, "Cannot delete the default preset in this scope without designating a replacement", HttpStatus.BAD_REQUEST),
+    SYSTEM_PRESET_READ_ONLY(2504, "System presets are managed by the platform and cannot be modified or deleted", HttpStatus.FORBIDDEN),
+    PRESET_DEFAULT_CONFLICT(2505, "A default preset already exists in this scope", HttpStatus.CONFLICT),
+    REPLACEMENT_PRESET_INVALID(2506, "Replacement preset must exist, be active, and belong to the same scope", HttpStatus.BAD_REQUEST),
+
+    // 26xx - notification (Member A)
+    NOTIFICATION_NOT_FOUND(2600, "Notification not found", HttpStatus.NOT_FOUND),
+    NOTIFICATION_TYPE_INVALID(2601, "Invalid notification type", HttpStatus.BAD_REQUEST),
+
+    // 27xx - dashboard (Member A)
+    DASHBOARD_DATE_RANGE_INVALID(2700, "Invalid date range: 'from' must be before or equal to 'to'", HttpStatus.BAD_REQUEST),
+    DASHBOARD_GROUP_BY_INVALID(2701, "Invalid groupBy parameter; supported values are 'project', 'user', 'operation'", HttpStatus.BAD_REQUEST),
 
     // 28xx - media_asset (Member B)
     TERMS_NOT_ACCEPTED(2800, "Current terms version has not been accepted for this asset", HttpStatus.FORBIDDEN),
@@ -69,6 +104,7 @@ public enum ErrorCode {
 
     // 31xx - batch (Member B)
     BATCH_SIZE_EXCEEDED(3100, "sourceAssetIds must contain between 1 and 20 items", HttpStatus.BAD_REQUEST),
+    BATCH_RATE_LIMIT_EXCEEDED(3101, "Too many batches created recently; please wait before creating another", HttpStatus.TOO_MANY_REQUESTS),
 
     // 33xx - qa (Member B)
     QA_BLOCKED(3300, "Blocking QA issues must be resolved or overridden first", HttpStatus.FORBIDDEN),

@@ -26,4 +26,6 @@ public interface MediaJobRepository extends JpaRepository<MediaJob, UUID> {
 
     List<MediaJob> findByWorkspaceIdAndProjectIdAndStatusAndRecipeId(
             UUID workspaceId, UUID projectId, MediaJob.JobStatus status, String recipeId);
+
+    List<MediaJob> findByBatchIdOrderByCreatedAtAsc(UUID batchId);
 }
