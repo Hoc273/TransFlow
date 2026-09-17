@@ -10,9 +10,9 @@
     "startFree": "Bắt đầu miễn phí"
   },
   "hero": {
-    "flagship": "FLAGSHIP MULTIMODAL PIPELINE",
-    "engine": "Next-Gen Visual & MoE Engine",
-    "title": "TransFlow Video Intelligence",
+    "flagship": "PIPELINE ĐA PHƯƠNG THỨC TIÊN PHONG",
+    "engine": "Engine Thị giác & MoE Thế hệ Mới",
+    "title": "Trí tuệ Nhân tạo Video TransFlow",
     "subtitle": "Nền tảng dịch video và tóm tắt nội dung tự động đa ngôn ngữ với độ chính xác cao và tốc độ xử lý vượt trội.",
     "translateBtn": "Dịch video",
     "summarizeBtn": "Tóm tắt"
@@ -37,7 +37,7 @@
       "metricSecondaryLabel": "Thời gian bóc tách audio"
     },
     "stepStt": {
-      "tab": "Nhận diện lời thoại STT",
+      "tab": "Nhận diện lời thoại",
       "headline": "Chuyển đổi giọng nói thành văn bản & Mốc thời gian chính xác",
       "details": "Tự động phát hiện ngôn ngữ nguồn, nhận diện lời thoại và gắn mốc thời gian chính xác từng mili-giây (start_ms, end_ms). Hệ thống tự động quét lỗi logic (khoảng lặng bất thường, lệch thời gian) qua cơ chế Sanity Check chuyên sâu.",
       "metricPrimary": "> 98.6%",
@@ -46,7 +46,7 @@
       "metricSecondaryLabel": "Tự động nhận diện"
     },
     "stepTranslate": {
-      "tab": "Dịch thuật & TM",
+      "tab": "Dịch thuật",
       "headline": "Bản địa hóa thông minh với TM & Bảng thuật ngữ độc quyền",
       "details": "Bản dịch không chỉ qua LLM mà được đối chiếu qua bộ nhớ dịch thuật (vector search pgvector) để tái sử dụng câu tương đồng, kết hợp bảng thuật ngữ độc quyền (Glossary) của dự án để đảm bảo tính đồng nhất thuật ngữ chuyên ngành.",
       "metricPrimary": "Giảm tới 40%",
@@ -55,7 +55,7 @@
       "metricSecondaryLabel": "Kiểm soát thuật ngữ dự án"
     },
     "stepDubbing": {
-      "tab": "Lồng tiếng AI (TTS)",
+      "tab": "Lồng tiếng AI",
       "headline": "Lồng tiếng AI & Căn chỉnh nhịp đọc tự nhiên",
       "details": "Tạo giọng đọc AI tự nhiên theo đúng ngôn ngữ đích bằng kho giọng chất lượng cao (CosyVoice, ElevenLabs, Azure Speech) tích hợp sẵn trên nền tảng. Tự động nén/giãn tốc độ đọc để khớp hoàn hảo với khung hình gốc mà không làm méo tiếng.",
       "metricPrimary": "100+ Giọng đọc",
@@ -116,7 +116,111 @@
     "pillarSecurityEncryptionLabel": "Mã hóa:",
     "pillarSecurityEncryptionValue": "AES-256 / TLS 1.3",
     "pillarSecurityRetention": "Chính sách lưu trữ: 0 ngày",
-    "pillarSecurityTraining": "Đào tạo AI: Zero-Train (Không dùng)"
+    "pillarSecurityTraining": "Đào tạo AI: Zero-Train (Không dùng)",
+    "interactivePreview": "Mô phỏng tương tác",
+    "sim": {
+      "extract": {
+        "title": "Tách âm thanh (Neural Demucs v4)",
+        "all": "Tất cả",
+        "vocalOnly": "Chỉ giọng nói",
+        "bgmOnly": "Chỉ nhạc nền",
+        "vocalTrack": "Giọng nói gốc (Vocals)",
+        "vocalClean": "Đã tách sạch",
+        "vocalClarity": "99.4% trong trẻo",
+        "muted": "[Tạm tắt]",
+        "bgmTrack": "Nhạc nền & Hiệu ứng (BGM & SFX)",
+        "bgmClean": "Không lẫn giọng nói",
+        "bgmClarity": "Tách sạch 100%",
+        "timbrePreserved": "Bảo toàn 100% âm sắc gốc"
+      },
+      "stt": {
+        "title": "Nhận diện giọng nói (Whisper Turbo)",
+        "detectedLang": "Tiếng Anh (99.8%) ✓",
+        "wordAlignment": "Khớp chuẩn từng từ",
+        "pending": "Đang chờ",
+        "pause": "Tạm dừng",
+        "play": "Xem tiếp",
+        "syncDelta": "Đồng bộ mốc thời gian: ±2ms"
+      },
+      "trans": {
+        "title": "Dịch thuật ngữ cảnh & Bộ nhớ TM",
+        "tmMatch": "Khớp bộ nhớ dịch: {{rate}}",
+        "toggleTitle": "Nhấp để chuyển đổi thử nghiệm khoá thuật ngữ",
+        "tmLocked": "Đã khoá TM",
+        "tmFree": "Dịch tự do",
+        "shieldTitle": "KHOÁ THUẬT NGỮ CHUYÊN NGÀNH",
+        "accurate100": "Chính xác 100%",
+        "unprotected": "Chưa bảo vệ",
+        "srcTerm": "high-concurrency batch processing",
+        "srcTermSub": "Global Tech Glossary",
+        "targetLockedLabel": "VI (Target Locked)",
+        "targetRawLabel": "VI (Dịch thô)",
+        "exactMatch": "Khớp tuyệt đối",
+        "warnMt": "Cảnh báo dịch máy",
+        "lockedVI": "\"xử lý hàng loạt đồng thời cao\"",
+        "rawVI": "\"xử lý mẻ đồng thời cao\"",
+        "srcSentenceLabel": "Câu gốc (Tiếng Anh)",
+        "tgtSentenceLabel": "Bản dịch (Tiếng Việt)",
+        "translatedLockedPrefix": "Chúng tôi đã tích hợp trực tiếp khả năng ",
+        "translatedLockedHighlight": "xử lý hàng loạt đồng thời cao",
+        "translatedLockedSuffix": " vào quy trình đám mây của mình.",
+        "translatedRawHighlight": "xử lý mẻ đồng thời cao"
+      },
+      "dub": {
+        "title": "Lồng tiếng AI (Neural TTS)",
+        "pacingStatus": "Tốc độ đọc: Chuẩn khung hình",
+        "selectActor": "Chọn diễn viên lồng tiếng AI:",
+        "banMaiName": "Ban Mai",
+        "banMaiAccent": "Nữ miền Bắc",
+        "banMaiDesc": "Truyền cảm, tự nhiên, tin tức & phóng sự.",
+        "minhQuangName": "Minh Quang",
+        "minhQuangAccent": "Nam miền Nam",
+        "minhQuangDesc": "Trầm ấm, đĩnh đạc, tài liệu & thuyết trình.",
+        "videoPaceLabel": "Tốc độ đọc video:",
+        "videoPaceValue": "Chuẩn xác theo khung hình",
+        "duckingLabel": "Tự động né nhạc nền:",
+        "duckingValue": "-14 dB khi có lời thoại",
+        "sampleReady": "Giọng đọc mẫu: Đã sẵn sàng"
+      },
+      "qa": {
+        "title": "Kiểm định chất lượng 3 lớp & Xuất bản",
+        "passedCriteria": "Đạt chuẩn 3/3 tiêu chí ✓",
+        "previewLabel": "Xem trước phụ đề video:",
+        "subtitleSample": "Quy trình dịch thuật và lồng tiếng hoàn tất 100%.",
+        "downloadingMp4": "Đang tải Video 4K...",
+        "downloadMp4": "Tải Video Thành Phẩm 4K (.MP4)"
+      },
+      "sum1": {
+        "title": "Semantic Topic Chunking",
+        "detecting": "Phát hiện {{count}}/3 chủ đề...",
+        "done": "✓ 3 Topics Extracted",
+        "scanning": "Đang quét phân đoạn Topic 0{{id}}...",
+        "topic1Title": "Giới thiệu kiến trúc đám mây AI",
+        "topic2Title": "Tối ưu độ trễ với pgvector cache",
+        "topic3Title": "Đánh giá hiệu năng và kết luận"
+      },
+      "sum2": {
+        "title": "AI Highlight Ranking & Cut-Plan",
+        "cutPlanStatus": "Cut-Plan: {{count}}/3 Moments ({{duration}})",
+        "durationLabel": "Thời lượng:",
+        "extracting": "Đang trích xuất Highlight {{rank}}...",
+        "compressionRatio": "Tỷ lệ cô đọng: 18 phút ➔ 2 phút",
+        "densityStat": "92% Mật độ thông tin",
+        "highlight1Title": "Điểm đột phá về tốc độ suy luận",
+        "highlight2Title": "So sánh chi phí hạ tầng giảm 60%",
+        "highlight3Title": "Demo thực tế quy trình tự động"
+      },
+      "sum3": {
+        "title": "Recap Reel & Executive Summary",
+        "renderComplete": "Hoàn tất Render ✓",
+        "takeawayCaption": "TransFlow tự động cắt ghép 3 phân cảnh đắt giá nhất thành video tóm tắt 120s.",
+        "bullet1": "Giảm 80% thời lượng theo dõi mà không mất ý then chốt",
+        "bullet2": "Tự động tạo phụ đề keyword highlight đồng bộ theo luận điểm",
+        "downloadingRecap": "Đang tải Recap Video...",
+        "downloadRecapBtn": "Tải Recap Video (.MP4)",
+        "downloadReportBtn": "Tải Báo Cáo (.PDF / .MD)"
+      }
+    }
   },
   "productivity": {
     "titlePrefix": "Nâng cao năng suất & ",

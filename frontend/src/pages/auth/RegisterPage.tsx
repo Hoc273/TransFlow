@@ -186,23 +186,6 @@ export function RegisterPage() {
           </label>
         </div>
 
-        <div className="mb-4 flex justify-end">
-          <button
-            type="button"
-            onClick={() => {
-              const rand = Math.floor(100 + Math.random() * 900)
-              setFullName(`Thành Viên Mới ${rand}`)
-              setEmail(`newuser${rand}@transflow.io`)
-              setPassword('TransFlow@2026')
-              setAgree(true)
-              setErrors({})
-            }}
-            className="flex cursor-pointer items-center gap-1 border-none bg-transparent text-xs font-medium text-[var(--color-accent)] hover:underline"
-          >
-            <span>⚡ Điền nhanh tài khoản mới (Demo)</span>
-          </button>
-        </div>
-
         <button
           type="submit"
           disabled={register.isPending}

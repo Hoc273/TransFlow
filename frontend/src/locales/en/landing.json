@@ -37,7 +37,7 @@
       "metricSecondaryLabel": "Audio separation time"
     },
     "stepStt": {
-      "tab": "Speech-to-Text (STT)",
+      "tab": "Speech-to-Text",
       "headline": "Voice-to-Text Transcription with Precise Timestamps",
       "details": "Automatically detects the source language, transcribes dialogues, and binds timestamps down to millisecond accuracy (start_ms, end_ms). Deep sanity check mechanisms automatically scan for timing drifts and anomaly gaps.",
       "metricPrimary": "> 98.6%",
@@ -46,7 +46,7 @@
       "metricSecondaryLabel": "Auto language detection"
     },
     "stepTranslate": {
-      "tab": "Translation & TM",
+      "tab": "Translation",
       "headline": "Smart Localization with TM & Project Glossaries",
       "details": "Translations go through LLM contextual processing while referencing pgvector translation memories to reuse past matches, combined with project glossaries to enforce domain terminology consistency.",
       "metricPrimary": "Up to 40% Off",
@@ -55,7 +55,7 @@
       "metricSecondaryLabel": "Project term governance"
     },
     "stepDubbing": {
-      "tab": "AI Voice Dubbing (TTS)",
+      "tab": "AI Voice Dubbing",
       "headline": "Natural AI Dubbing & Speech Pace Alignment",
       "details": "Generate natural AI voiceovers in target languages using built-in high-fidelity voice engines (CosyVoice, ElevenLabs, Azure Speech). Automatically time-stretches speech rates to sync seamlessly with video frames without distortion.",
       "metricPrimary": "100+ Voices",
@@ -116,7 +116,111 @@
     "pillarSecurityEncryptionLabel": "Encryption:",
     "pillarSecurityEncryptionValue": "AES-256 / TLS 1.3",
     "pillarSecurityRetention": "Data retention: 0 days",
-    "pillarSecurityTraining": "AI training: Zero-Train (Opt-out)"
+    "pillarSecurityTraining": "AI training: Zero-Train (Opt-out)",
+    "interactivePreview": "Interactive Preview",
+    "sim": {
+      "extract": {
+        "title": "Audio Separation (Neural Demucs v4)",
+        "all": "All",
+        "vocalOnly": "Vocals only",
+        "bgmOnly": "BGM only",
+        "vocalTrack": "Original Vocals",
+        "vocalClean": "Cleanly isolated",
+        "vocalClarity": "99.4% clarity",
+        "muted": "[Muted]",
+        "bgmTrack": "Background Music & SFX",
+        "bgmClean": "Zero vocal bleed",
+        "bgmClarity": "100% isolated",
+        "timbrePreserved": "100% original acoustics preserved"
+      },
+      "stt": {
+        "title": "Speech Recognition (Whisper Turbo)",
+        "detectedLang": "English (99.8%) ✓",
+        "wordAlignment": "Word-level alignment",
+        "pending": "Pending",
+        "pause": "Pause",
+        "play": "Resume",
+        "syncDelta": "Timestamp sync: ±2ms"
+      },
+      "trans": {
+        "title": "Contextual Translation & TM",
+        "tmMatch": "TM Memory Match: {{rate}}",
+        "toggleTitle": "Click to toggle glossary lock test",
+        "tmLocked": "TM Locked",
+        "tmFree": "Free Translation",
+        "shieldTitle": "LOCKED DOMAIN TERMINOLOGY",
+        "accurate100": "100% Accurate",
+        "unprotected": "Unprotected",
+        "srcTerm": "high-concurrency batch processing",
+        "srcTermSub": "Global Tech Glossary",
+        "targetLockedLabel": "VI (Target Locked)",
+        "targetRawLabel": "VI (Raw MT)",
+        "exactMatch": "Exact Match",
+        "warnMt": "MT Warning",
+        "lockedVI": "\"xử lý hàng loạt đồng thời cao\"",
+        "rawVI": "\"xử lý mẻ đồng thời cao\"",
+        "srcSentenceLabel": "Source Sentence (English)",
+        "tgtSentenceLabel": "Translation (Vietnamese)",
+        "translatedLockedPrefix": "Chúng tôi đã tích hợp trực tiếp khả năng ",
+        "translatedLockedHighlight": "xử lý hàng loạt đồng thời cao",
+        "translatedLockedSuffix": " vào quy trình đám mây của mình.",
+        "translatedRawHighlight": "xử lý mẻ đồng thời cao"
+      },
+      "dub": {
+        "title": "AI Voice Dubbing (Neural TTS)",
+        "pacingStatus": "Pacing: Frame-aligned",
+        "selectActor": "Select AI Voice Actor:",
+        "banMaiName": "Ban Mai",
+        "banMaiAccent": "Northern Female (Expressive)",
+        "banMaiDesc": "Expressive, natural, news & documentaries.",
+        "minhQuangName": "Minh Quang",
+        "minhQuangAccent": "Southern Male (Warm)",
+        "minhQuangDesc": "Warm, authoritative, narration & presentations.",
+        "videoPaceLabel": "Video reading pace:",
+        "videoPaceValue": "Frame-accurate sync",
+        "duckingLabel": "Smart auto-ducking:",
+        "duckingValue": "-14 dB on dialogue",
+        "sampleReady": "Sample voice: Ready"
+      },
+      "qa": {
+        "title": "3-Way QA Inspection & Export",
+        "passedCriteria": "Passed 3/3 criteria ✓",
+        "previewLabel": "Video Subtitle Preview:",
+        "subtitleSample": "Video translation and dubbing pipeline completed 100%.",
+        "downloadingMp4": "Downloading 4K Video...",
+        "downloadMp4": "Download Final 4K Video (.MP4)"
+      },
+      "sum1": {
+        "title": "Semantic Topic Chunking",
+        "detecting": "Detecting {{count}}/3 topics...",
+        "done": "✓ 3 Topics Extracted",
+        "scanning": "Scanning Topic 0{{id}} segment...",
+        "topic1Title": "Introduction to AI Cloud Architecture",
+        "topic2Title": "Latency Optimization with pgvector Cache",
+        "topic3Title": "Performance Benchmark & Conclusion"
+      },
+      "sum2": {
+        "title": "AI Highlight Ranking & Cut-Plan",
+        "cutPlanStatus": "Cut-Plan: {{count}}/3 Moments ({{duration}})",
+        "durationLabel": "Duration:",
+        "extracting": "Extracting Highlight {{rank}}...",
+        "compressionRatio": "Compression ratio: 18 min ➔ 2 min",
+        "densityStat": "92% Information Density",
+        "highlight1Title": "Breakthrough in Inference Speed",
+        "highlight2Title": "60% Infrastructure Cost Reduction",
+        "highlight3Title": "Live Automated Workflow Demo"
+      },
+      "sum3": {
+        "title": "Recap Reel & Executive Summary",
+        "renderComplete": "Render Complete ✓",
+        "takeawayCaption": "TransFlow automatically stitches the 3 highest-value moments into a 120s recap video.",
+        "bullet1": "Reduce viewing time by 80% without losing key insights",
+        "bullet2": "Auto-generate synchronized keyword highlight subtitles per key argument",
+        "downloadingRecap": "Downloading Recap Video...",
+        "downloadRecapBtn": "Download Recap Video (.MP4)",
+        "downloadReportBtn": "Download Report (.PDF / .MD)"
+      }
+    }
   },
   "productivity": {
     "titlePrefix": "Supercharge Productivity & ",

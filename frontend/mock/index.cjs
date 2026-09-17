@@ -281,7 +281,28 @@ function buildRoutes() {
   // ---- Auth ----
   r('/auth/login', 'POST', async (ctx) => {
     const body = await readJson(ctx.req)
-    const user = d.users.find((u) => u.email === body.email) ?? d.users[0]
+    const inputEmail = (body?.email || '').trim().toLowerCase()
+    let user = d.users.find((u) => u.email.toLowerCase() === inputEmail)
+    if (!user) {
+      // Default to normal user (non-admin) unless email is admin
+      user = {
+        id: d.uuid('u'),
+        email: body?.email || 'user@transflow.io',
+        fullName: body?.email ? body.email.split('@')[0] : 'Standard User',
+        isPlatformAdmin: false,
+        password: body?.password || 'password123',
+      }
+      d.users.push(user)
+      if (d.membersByWs && d.membersByWs['ws_1']) {
+        d.membersByWs['ws_1'].push({
+          memberId: d.uuid('m'),
+          userId: user.id,
+          email: user.email,
+          fullName: user.fullName,
+          role: 'ADMIN',
+        })
+      }
+    }
     sendJson(ctx.res, 200, makeAuthResponse(user))
   })
   r('/auth/register', 'POST', async (ctx) => {
@@ -294,6 +315,15 @@ function buildRoutes() {
       password: body.password,
     }
     d.users.push(user)
+    if (d.membersByWs && d.membersByWs['ws_1']) {
+      d.membersByWs['ws_1'].push({
+        memberId: d.uuid('m'),
+        userId: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: 'ADMIN',
+      })
+    }
     sendJson(ctx.res, 201, makeAuthResponse(user))
   })
   r('/auth/me', 'GET', (ctx) => {
