@@ -1,10 +1,15 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import '@/i18n'
+import { applyThemeToDocument, useUiStore } from '@/store/uiStore'
 import './index.css'
-import App from './App'
+import App from './App.tsx'
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+// Apply theme as early as possible to avoid flash
+applyThemeToDocument(useUiStore.getState().theme)
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
     <App />
-  </React.StrictMode>,
+  </StrictMode>,
 )
