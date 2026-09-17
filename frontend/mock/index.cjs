@@ -293,6 +293,15 @@ function buildRoutes() {
         password: body?.password || 'password123',
       }
       d.users.push(user)
+      if (d.membersByWs && d.membersByWs['ws_1']) {
+        d.membersByWs['ws_1'].push({
+          memberId: d.uuid('m'),
+          userId: user.id,
+          email: user.email,
+          fullName: user.fullName,
+          role: 'ADMIN',
+        })
+      }
     }
     sendJson(ctx.res, 200, makeAuthResponse(user))
   })
@@ -306,6 +315,15 @@ function buildRoutes() {
       password: body.password,
     }
     d.users.push(user)
+    if (d.membersByWs && d.membersByWs['ws_1']) {
+      d.membersByWs['ws_1'].push({
+        memberId: d.uuid('m'),
+        userId: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: 'ADMIN',
+      })
+    }
     sendJson(ctx.res, 201, makeAuthResponse(user))
   })
   r('/auth/me', 'GET', (ctx) => {

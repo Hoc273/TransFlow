@@ -37,7 +37,7 @@
       "metricSecondaryLabel": "Audio separation time"
     },
     "stepStt": {
-      "tab": "Speech-to-Text (STT)",
+      "tab": "Speech-to-Text",
       "headline": "Voice-to-Text Transcription with Precise Timestamps",
       "details": "Automatically detects the source language, transcribes dialogues, and binds timestamps down to millisecond accuracy (start_ms, end_ms). Deep sanity check mechanisms automatically scan for timing drifts and anomaly gaps.",
       "metricPrimary": "> 98.6%",
@@ -46,7 +46,7 @@
       "metricSecondaryLabel": "Auto language detection"
     },
     "stepTranslate": {
-      "tab": "Translation & TM",
+      "tab": "Translation",
       "headline": "Smart Localization with TM & Project Glossaries",
       "details": "Translations go through LLM contextual processing while referencing pgvector translation memories to reuse past matches, combined with project glossaries to enforce domain terminology consistency.",
       "metricPrimary": "Up to 40% Off",
@@ -55,7 +55,7 @@
       "metricSecondaryLabel": "Project term governance"
     },
     "stepDubbing": {
-      "tab": "AI Voice Dubbing (TTS)",
+      "tab": "AI Voice Dubbing",
       "headline": "Natural AI Dubbing & Speech Pace Alignment",
       "details": "Generate natural AI voiceovers in target languages using built-in high-fidelity voice engines (CosyVoice, ElevenLabs, Azure Speech). Automatically time-stretches speech rates to sync seamlessly with video frames without distortion.",
       "metricPrimary": "100+ Voices",

@@ -23,7 +23,7 @@ export const featureFlags = {
 } as const
 
 export const apiBaseUrl =
-  (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api').replace(/\/$/, '')
+  (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '')
 
 export const defaultLanguage = (import.meta.env.VITE_DEFAULT_LANGUAGE === 'vi' ? 'vi' : 'en') as
   | 'en'

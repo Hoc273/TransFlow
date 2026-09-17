@@ -219,7 +219,7 @@ export function LegacyLandingPage() {
       <nav className="lp-nav-blur fixed inset-x-0 top-0 z-50">
         <div className="mx-auto grid h-16 max-w-[1700px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 px-4 sm:px-6">
           <div className="flex min-w-0 items-center justify-start">
-            <Logo badge="MVP" />
+            <Logo />
           </div>
           <div className="hidden items-center justify-center gap-6 whitespace-nowrap text-[13.5px] xl:flex 2xl:gap-7">
             <a href="#features" className="lp-nav-link">
