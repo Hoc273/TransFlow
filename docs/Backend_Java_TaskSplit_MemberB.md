@@ -218,8 +218,15 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
   - Member có project assignment: list + upload thành công (201); Member không assignment: 403.
   - Client: đọc list/get asset được (200), nhưng upload/consent bị chặn (403) — đúng ma trận quyền Arch §4.3.
   - Lead consent thành công (201), asset dùng được ngay để tạo Media Job (xem 7.2).
+  - **Bổ sung sau khi rà lại bảng "chưa test" (§7.8):** upload file thật **501MB** (tạo bằng `dd`) → bị chặn
+    thật ở tầng service **trước khi chạm MinIO** (`400 MEDIA_FILE_TOO_LARGE`, ~4.6s, verify bằng `mc ls`
+    không có object nào được tạo); encode 2 video thật bằng `ffmpeg` đúng ranh giới 30 phút
+    (`d=1790`/29:50 và `d=1810`/30:10, không phải giả lập `ffprobe`) → 29:50 được chấp nhận
+    (`durationMs=1790000`), 30:10 bị `400 MEDIA_DURATION_EXCEEDED` — xác nhận ranh giới đúng bằng dữ liệu
+    ffprobe thật, không chỉ mock trong unit test.
 - **Kết luận:** 2.1 đã test hoàn thiện cả ở mức logic (unit/integration) lẫn hạ tầng thật (Postgres/MinIO
-  thật), không còn khoảng hở đáng kể trong phạm vi API_Contract.md §4.
+  thật, kể cả 2 boundary case dung lượng/thời lượng bằng file thật), không còn khoảng hở đáng kể trong
+  phạm vi API_Contract.md §4.
 
 ### 7.2 Đã kiểm thử — 2.2 Media Job (orchestrator skeleton)
 - Unit test (`MediaJobServiceImplTest`, 19 case) + integration test (`MediaJobControllerTest`, 17 case):
@@ -239,21 +246,8 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
   - Voice ngôn ngữ lệch (`fr` voice trên `targetLang=en`) → `400 VOICE_LANGUAGE_MISMATCH`; khớp → 201/200.
   - Cancel: stage `PENDING`/`PROCESSING` → `CANCELLED`, stage `COMPLETED`/`SKIPPED` giữ nguyên.
 - **Kết luận:** phần orchestrator control-flow (state machine, RBAC, validate) đã test hoàn thiện ở cả 2 mức.
-  Đây **không phải** là "pipeline chạy được" — xem 7.3 để biết còn thiếu gì để pipeline thực sự xử lý video.
+  Đây **không phải** là "pipeline chạy được" — xem 7.8 để biết còn thiếu gì để pipeline thực sự xử lý video.
 
-### 7.4 CHƯA kiểm thử — cần làm ở các phần sau (2.4–2.7) hoặc khi có hạ tầng đầy đủ
-| Phần thiếu | Lý do chưa test | Cần gì để test được |
-|---|---|---|
-| Gọi FastAPI thật cho STT/TRANSLATE/TTS/SUMMARIZE/VISION (bao gồm `summarize/script`) | Chưa viết HTTP client — không có trong phạm vi 2.2/2.3 đã chủ động scope lại, và `backend-ai` chưa expose contract cụ thể trong docs đã đọc | Viết client theo `backend-ai` OpenAPI/route thật, cần `docker compose up` với service `backend-ai` |
-| Ghi `ai_usage_logs` + trừ Credit theo `credit_pricing_config` thật | Phụ thuộc mục trên (chỉ có sau khi có lời gọi AI thật); `CreditServiceImpl.chargeUsage` hiện là stub tính giá cứng `0.001/token` | Cần A hoàn thiện `credit_pricing_config` resolver, rồi test tích hợp giữa media_job/summarization và credit |
-| Callback HMAC từ `backend-media-worker` (EXTRACT_AUDIO/SOURCE_SEPARATION/AUDIO_MIX/RENDER) | Thuộc §2.7, chưa viết controller | Viết `media_job.callback` package theo API_Contract §14, test bằng cách tự ký HMAC giả lập worker |
-| RabbitMQ dispatch khi cancel/rerun | Chưa có publisher — cancel/rerun hiện set trạng thái DB trực tiếp, không gửi signal cho worker nào (đã đánh dấu `ponytail:` trong code) | Cần message queue thật + consumer, hoặc ít nhất mock RabbitMQ (Testcontainers) để verify message được publish đúng payload |
-| Provider/Preset/Notification thật của Thành viên A | Interface đang là mock/no-op tôi tự viết (`ProviderResolverServiceImpl.resolveForCapability`, `PresetResolverServiceImpl`, `NotificationServiceImpl`) | Khi A merge implementation thật, phải viết lại test tích hợp — hành vi thật có thể khác giả định hiện tại |
-| Upload file >500MB thật / video >30 phút thật qua MinIO | Chỉ test qua boundary value ở service layer (mock), chưa thử file thật lớn cỡ đó (tốn thời gian tạo file + băng thông) | Có thể bỏ qua an toàn vì logic validate đã chạy qua unit test — chỉ cần thử 1 lần nếu nghi ngờ MinIO có giới hạn khác |
-| Batch/Glossary/QA (2.4–2.6) | Ngoài phạm vi buổi làm việc này | Làm theo đúng §2.4–2.6 của tài liệu này |
-| Checkpoint→stage mapping (`CUT_CONFIRMED→TRANSLATE`, `REVIEW_CONFIRMED→TTS`, `PUBLISH_CONFIRMED→RENDER`) | Đây là giả định tôi tự chọn (xem comment trong `Checkpoint.java`), không có trong SRS/Arch §14 | Cần BA xác nhận trước khi FE dựa vào mapping này để quyết định dừng ở đâu trong chế độ Manual |
-| Dung sai thời lượng AI proposal (`DURATION_TOLERANCE_RATIO = 0.2`, `SummarizationServiceImpl`) | Giả định tôi tự chọn — SRS/Arch §7.2 chỉ nói "trong dung sai", không cho số cụ thể | Cần BA xác nhận % dung sai chính xác trước khi dựa vào ngưỡng này để tự động từ chối/chấp nhận proposal |
-| TTL phiên refine (`RefineSessionStoreImpl.SESSION_TTL = 30 phút`) | Arch §7.4 chỉ nói "phiên có TTL", không cho số cụ thể | Cần BA xác nhận thời lượng phiên thật trước khi FE dựa vào đây để hiển thị "còn X phút để refine" |
 
 ### 7.3 Đã kiểm thử — 2.3 Summarization — proposal & refine
 - Unit test (`SummarizationServiceImplTest`, 16 case) + integration test (`SummarizationControllerTest`,
@@ -282,9 +276,116 @@ real-infra), không chỉ dựa vào "test pass" trong CI để kết luận đ�
     `selectedProposalId` copy đúng, 8 stage đúng theo Arch §7.7 (chỉ `TRANSLATE`/`RENDER` = `PENDING`, 6
     stage còn lại `SKIPPED`).
 - **Kết luận:** phần CRUD/refine-session/select/summary-languages đã test hoàn thiện ở cả 2 mức (kể cả
-  Redis thật). Phần **AI thực sự soạn/viết lại kịch bản** (`SummaryAiClient`) vẫn là placeholder — xem 7.3.
+  Redis thật). Phần **AI thực sự soạn/viết lại kịch bản** (`SummaryAiClient`) vẫn là placeholder — xem 7.8.
 
-### 7.5 Môi trường dùng để test real-infra (tham khảo khi cần lặp lại)
+### 7.4 Đã kiểm thử — 2.4 Video Batch Localization
+- Unit test (`BatchServiceImplTest`, 9 case) + integration test (`BatchControllerTest`, 7 case): tạo batch
+  (đúng N `media_jobs` con/1 `target_lang` dùng chung, `sourceAssetIds` rỗng/>20 → `400
+  BATCH_SIZE_EXCEEDED`, vượt rate limit → `429 BATCH_RATE_LIMIT_EXCEEDED`), list/get (kèm job con), cancel
+  (chỉ huỷ job con `PENDING`/`PROCESSING`, giữ nguyên job đã `COMPLETED`, batch → `CANCELLED` bất kể trạng
+  thái job con), retry 1 job con (chặn nếu job không `FAILED` hoặc không thuộc batch, rerun đúng từ stage bị
+  `FAILED`, batch tính lại đúng trạng thái `PROCESSING` sau khi retry, batch `CANCELLED` không bị recompute
+  ghi đè).
+- **Real-infra smoke test** (Postgres 16 + Redis 7 + MinIO thật qua Docker, `mvn spring-boot:run`, gọi bằng
+  `curl` — containers **giữ nguyên chạy nền** theo yêu cầu, không tắt sau khi test xong):
+  - Flyway/Hibernate validate xác nhận cột `source_asset_ids UUID[]` map đúng kiểu mảng thật của Postgres
+    (`uuid[]`, không phải text[] hay lỗi kiểu), `shared_config` map đúng `jsonb` thật.
+  - Tạo batch thật 2 video → đúng 2 `media_jobs` con thật, mỗi job `batch_id` trỏ đúng batch, `recipe_id`
+    luôn `localization.full`, `target_lang` = đúng giá trị batch cha (verify bằng `psql`).
+  - Cancel batch thật → batch + cả 2 job con chuyển `CANCELLED` thật trong Postgres.
+  - **Rate limiter dùng Redis thật** (không mock): gọi tạo batch 6 lần liên tiếp qua HTTP thật → 5 lần đầu
+    `201`, lần thứ 6 đúng `429` (code 3101) — xác nhận `BatchCreateRateLimiterImpl` hoạt động đúng với Redis
+    thật, đúng key `batch:create:{userId}`.
+- **Kết luận:** phần tạo/list/get/cancel/retry đã test hoàn thiện ở cả 2 mức (kể cả kiểu cột mảng UUID[]
+  thật trên Postgres — rủi ro tương tự JSONB ở §2.2 nhưng chưa gặp ở module nào trước đó). `download` (gói
+  nén kết quả) chưa làm được — xem 7.8.
+
+### 7.5 Đã kiểm thử — 2.5 Glossary
+- Unit test (`GlossaryServiceImplTest`, 9 case) + integration test (`GlossaryControllerTest`, 7 case):
+  get-or-create glossary (idempotent — gọi nhiều lần không tạo trùng, đúng `UNIQUE(project_id)`), quyền đọc
+  cho Client, term CRUD (tạo/sửa/xoá, 404 khi không tồn tại, Client bị chặn ghi), import CSV (có/không có
+  header, dòng lỗi bị skip và báo lại trong `errors[]`, dòng hợp lệ vẫn được import).
+- **Real-infra smoke test** (cùng bộ Postgres/Redis/MinIO ở 7.1–7.4, containers giữ nguyên chạy nền):
+  - Flyway/Hibernate validate xác nhận schema `glossaries`/`glossary_terms` khớp — không migration nào
+    thiếu, không lệch kiểu cột.
+  - Gọi `GET .../glossary` nhiều lần qua HTTP thật → luôn trả về đúng 1 row (`glossaries.count()=1`, verify
+    bằng `psql`) — xác nhận `UNIQUE(project_id)` không bị vi phạm bởi race "gọi lần đầu" thực tế.
+  - Import CSV thật (file `.csv` thật qua multipart) → `imported=2, skipped=1`, đúng dòng lỗi báo trong
+    `errors[]`; verify tổng số dòng thật trong `glossary_terms` bằng `psql` khớp `1 (tạo tay) + 2 (import) = 3`.
+  - Xác nhận index `glossaries_project_id_key` (UNIQUE) tồn tại thật trên Postgres qua `pg_indexes`.
+- **Kết luận:** module Glossary không phụ thuộc AI/queue/worker nào — đã test hoàn thiện ở cả 2 mức, không
+  có khoảng hở nào cần ghi vào bảng 7.6 (khác các module trước, module này không có phần nào phải chờ
+  backend-ai/RabbitMQ).
+
+### 7.6 Đã kiểm thử — 2.6 QA
+- Unit test (`QaServiceImplTest`, 10 case) + integration test (`QaControllerTest`, 9 case): list issues
+  (không filter trả hết, `resolved=false` chỉ trả chưa xử lý, Client đọc được), override (issue_type nghiêm
+  trọng — `subtitle_overlap` CRITICAL — luôn bị chặn `403 OVERRIDE_NOT_ALLOWED` **kể cả Lead**, reason <10
+  ký tự bị chặn `VALIDATION_ERROR`, Lead override được mọi job, Member không phải người tạo job bị chặn
+  `JOB_OWNERSHIP_REQUIRED`, Client luôn bị chặn, override thành công tự đánh dấu `resolved_at`), `recordIssue`
+  (ghi đúng field, dùng bởi stage executor tương lai).
+- **Real-infra smoke test** (cùng bộ Postgres/Redis/MinIO ở 7.1–7.5, containers giữ nguyên chạy nền, restart
+  app để nạp code QA + code A vừa merge — workspace/project RBAC — vào cùng branch):
+  - Flyway/Hibernate validate xác nhận `qa_issues.blocking_actions` map đúng `character varying[]` thật,
+    `detail` map đúng `jsonb` thật — không migration nào thiếu.
+  - Seed 1 subtitle segment + 2 QA issue thật bằng SQL (chưa có stage executor sinh tự động) → `GET
+    qa-issues` qua HTTP thật trả đúng `blockingActions` dạng mảng JSON thật và `detail` dạng object JSON
+    thật (nhờ `@JsonRawValue`), không bị escape thành chuỗi.
+  - Override `subtitle_overlap` CRITICAL qua HTTP thật bằng chính Lead → đúng `403` code 3301, **không** ghi
+    gì vào `qa_issue_overrides` thật (verify bằng `psql`).
+  - Override `translation_mismatch` HIGH qua HTTP thật → `200`, `qa_issues.resolved_at` được set thật và
+    `qa_issue_overrides` có đúng 1 dòng audit — xác nhận invariant "issue nghiêm trọng không bao giờ resolve
+    được, issue thường thì override xong tự resolve" đúng trên dữ liệu Postgres thật, không chỉ trong test.
+- **Kết luận:** phần list/override đã test hoàn thiện ở cả 2 mức. Phần sinh issue tự động
+  (`recordIssue`/rule engine) chưa có gì gọi tới vì chưa có stage executor — xem 7.8.
+
+### 7.7 Đã kiểm thử — 2.7 Callback nội bộ Worker → Spring
+- Unit test (`HmacVerifierTest`, 6 case + `MediaCallbackServiceImplTest`, 8 case) + integration test
+  (`MediaCallbackControllerTest`, 8 case): HMAC hợp lệ/sai secret/body bị sửa/timestamp lệch quá ±5 phút,
+  path `{stage}` không hợp lệ → `400`, thiếu header bắt buộc → `400` (bổ sung
+  `MissingRequestHeaderException` vào `GlobalExceptionHandler` — sửa `common`, xem ghi chú dưới), progress
+  cập nhật đúng `PENDING→PROCESSING` + `progress_percent`, complete thành công/thất bại cập nhật đúng
+  `media_job_stages`/`media_jobs`, dedupeKey lặp lại không xử lý lại lần 2, job có `batch_id` → gọi đúng
+  `BatchService.recomputeStatus` (đã đổi `private`→public trên interface để callback gọi được).
+- **Real-infra smoke test** (cùng bộ Postgres/Redis/MinIO ở 7.1–7.6, containers giữ nguyên chạy nền, restart
+  app với `MEDIA_WORKER_HMAC_SECRET` thật): ký HMAC thật bằng Python (`hmac`/`hashlib`, độc lập với code Java
+  — xác nhận định dạng `"<timestamp>.<rawBody>"` hoạt động đúng từ một client hoàn toàn khác ngôn ngữ, không
+  chỉ tự ký rồi tự verify trong cùng JVM):
+  - `progress` + `complete` thật cho `EXTRACT_AUDIO` → `media_job_stages.output_ref` lưu đúng `jsonb` thật,
+    `media_jobs.status` chuyển đúng `PROCESSING` (còn stage sau chưa xong).
+  - Gọi lại `progress` với cùng `dedupeKey` nhưng `progressPercent` khác → bị bỏ qua thật (giá trị trong
+    Postgres không đổi), xác nhận Redis dedupe thật (`GET media_job:callback:dedupe:{key}` tồn tại, TTL
+    ~86400s).
+  - Sai secret → `401` thật; timestamp lệch 10 phút → `401` thật.
+  - Tạo 1 batch thật (1 video) → gọi `complete` thất bại cho job con → xác nhận cascade thật qua 3 tầng
+    Postgres: `media_job_stages.status=FAILED` → `media_jobs.status=FAILED` → `localization_batches.status`
+    tự động recompute thành `FAILED` (không cần gọi API batch nào thêm) — đây là lần đầu tiên trong toàn bộ
+    §2.2–2.7 một hành động ở tầng thấp nhất (callback) được xác nhận lan đúng lên toàn bộ chuỗi phụ thuộc
+    thật, không phải mock.
+- **Sửa `common` (cần báo A theo CLAUDE.md §4.8):** thêm `AppProperties.MediaWorker(hmacSecret)` (field mới,
+  không đổi field cũ) và handler `MissingRequestHeaderException` trong `GlobalExceptionHandler` (thêm mới,
+  không sửa handler cũ nào) — cả hai đều additive, không phá vỡ shape hiện có, nhưng vẫn là thay đổi trong
+  package `common`.
+- **Kết luận:** đây là module đầu tiên xác nhận được **toàn bộ chuỗi phụ thuộc thật** (stage → job → batch)
+  phản ứng đúng trước 1 sự kiện từ bên ngoài (giả lập worker), không chỉ từng lớp riêng lẻ. Phần còn thiếu
+  duy nhất: chưa có `backend-media-worker` thật gọi vào (chỉ giả lập bằng script Python) — xem 7.8.
+
+### 7.8 CHƯA kiểm thử — còn lại ngoài phạm vi 2.1–2.7 (cần A/BA/hạ tầng khác)
+| Phần thiếu | Lý do chưa test | Cần gì để test được |
+|---|---|---|
+| Gọi FastAPI thật cho STT/TRANSLATE/TTS/SUMMARIZE/VISION (bao gồm `summarize/script`) | Chưa viết HTTP client — không có trong phạm vi 2.2/2.3 đã chủ động scope lại, và `backend-ai` chưa expose contract cụ thể trong docs đã đọc | Viết client theo `backend-ai` OpenAPI/route thật, cần `docker compose up` với service `backend-ai` |
+| Ghi `ai_usage_logs` khi có lời gọi AI thật | **Cập nhật:** A đã merge `credit_pricing_config` + `CreditServiceImpl.chargeUsage` thật (Case 1/2 theo `infra_coefficient_x`/`token_coefficient_y`, migration V4 seed pricing) — không còn là stub `0.001/token`. Nhưng vẫn chưa test được từ phía tôi vì **không có gì trong media_job/summarization/batch gọi `chargeUsage`** — chính vì lời gọi FastAPI thật (mục trên) chưa tồn tại | Sau khi có mục trên: gọi `chargeUsage` thật sau mỗi lời gọi FastAPI + ghi `ai_usage_logs`, rồi mới test tích hợp được |
+| RabbitMQ dispatch khi cancel/rerun/retry | Vẫn chưa có publisher/dependency nào trong `pom.xml` (đã kiểm tra lại) — cancel/rerun/retry hiện set trạng thái DB trực tiếp (đã đánh dấu `ponytail:` trong code) | Cần message queue thật + consumer, hoặc ít nhất mock RabbitMQ (Testcontainers) để verify message được publish đúng payload |
+| Provider/Preset/Notification thật của Thành viên A | **Đã kiểm tra lại — vẫn chưa đổi:** `ProviderResolverServiceImpl.resolveForCapability`, `PresetResolverServiceImpl`, `NotificationServiceImpl` vẫn đúng là mock/no-op tôi tự viết (chỉ `credit` module có bản thật mới, xem dòng trên) | Khi A merge implementation thật, phải viết lại test tích hợp — hành vi thật có thể khác giả định hiện tại |
+| `GET .../batches/{batchId}/download` | Cần gói nén kết quả các job con `COMPLETED` — không có artifact thật nào vì chưa có stage executor/RENDER thật | Chỉ làm được sau khi có pipeline thực thi thật tạo ra `RENDERED_VIDEO` media_assets |
+| `recordIssue`/rule engine QA thật (phát hiện `subtitle_overlap`, `translation_mismatch`...) | Chưa có stage executor gọi hàm này sau TRANSLATE/SUMMARIZE — logic phát hiện lỗi cụ thể không có trong SRS/Arch để hiện thực | Cần: (1) stage executor thật, (2) BA/QA lead định nghĩa rule cụ thể cho từng `issue_type` |
+| Checkpoint→stage mapping (`CUT_CONFIRMED→TRANSLATE`, `REVIEW_CONFIRMED→TTS`, `PUBLISH_CONFIRMED→RENDER`) | Đây là giả định tôi tự chọn (xem comment trong `Checkpoint.java`), không có trong SRS/Arch §14 | Cần BA xác nhận trước khi FE dựa vào mapping này để quyết định dừng ở đâu trong chế độ Manual |
+| Dung sai thời lượng AI proposal (`DURATION_TOLERANCE_RATIO = 0.2`, `SummarizationServiceImpl`) | Giả định tôi tự chọn — SRS/Arch §7.2 chỉ nói "trong dung sai", không cho số cụ thể | Cần BA xác nhận % dung sai chính xác trước khi dựa vào ngưỡng này để tự động từ chối/chấp nhận proposal |
+| TTL phiên refine (`RefineSessionStoreImpl.SESSION_TTL = 30 phút`) | Arch §7.4 chỉ nói "phiên có TTL", không cho số cụ thể | Cần BA xác nhận thời lượng phiên thật trước khi FE dựa vào đây để hiển thị "còn X phút để refine" |
+| Rate limit tạo batch (`BatchCreateRateLimiterImpl` = 5 lần/10 phút/user) | API_Contract §6 chỉ nói "429 nếu vượt rate limit", không cho ngưỡng cụ thể | Cần BA xác nhận ngưỡng thật trước khi FE dựa vào đây để hiển thị thông báo giới hạn |
+
+
+### 7.9 Môi trường dùng để test real-infra (tham khảo khi cần lặp lại)
 ```
 docker run -d --name tfm-postgres -p 55432:5432 -e POSTGRES_DB=transflow_mini -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres postgres:16-alpine
 docker run -d --name tfm-redis -p 56379:6379 redis:7-alpine
@@ -292,5 +393,7 @@ docker run -d --name tfm-minio -p 59000:9000 -p 59001:9001 -e MINIO_ROOT_USER=mi
 ```
 Lưu ý: image `minio/minio` trên Docker Hub bị từ chối pull trong môi trường này (registry access denied) —
 dùng `quay.io/minio/minio` thay thế. Chạy app với `DB_HOST=localhost DB_PORT=55432 ... REDIS_HOST=localhost
-REDIS_PORT=56379 MEDIA_STORAGE_ENDPOINT=http://localhost:59000 ...` rồi `./mvnw spring-boot:run`. Nhớ dọn
-container (`docker rm -f tfm-postgres tfm-redis tfm-minio`) sau khi test xong — không để hạ tầng test chạy nền.
+REDIS_PORT=56379 MEDIA_STORAGE_ENDPOINT=http://localhost:59000 ...` rồi `./mvnw spring-boot:run`. Mặc định
+nên dọn container (`docker rm -f tfm-postgres tfm-redis tfm-minio`) sau khi test xong để không chạy hạ tầng
+test dư thừa nền máy — chỉ giữ lại khi người yêu cầu chủ động nói không cần tắt (như vòng test §2.4, dữ liệu
+batch mẫu vẫn còn trong Postgres thật ở container `tfm-postgres` lúc viết dòng này).

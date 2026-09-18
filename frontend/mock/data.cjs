@@ -37,7 +37,7 @@ const users = [
     email: 'pm@transflow.io',
     fullName: 'Minh Tran',
     isPlatformAdmin: false,
-    password: 'pm12345',
+    password: 'pm123456',
   },
   {
     id: 'u_translator',

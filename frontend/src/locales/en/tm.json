@@ -1,0 +1,28 @@
+{
+  "title": "Translation Memory",
+  "subtitle": "Search and manage workspace TM entries · Admin/PM can delete",
+  "sourceLang": "Source language",
+  "targetLang": "Target language",
+  "sourceQuery": "Source text (optional lookup)",
+  "sourcePlaceholder": "Exact / fuzzy lookup text…",
+  "search": "Search",
+  "sameLang": "Source and target languages must differ",
+  "idleTitle": "Choose a language pair",
+  "idleDesc": "Select source/target languages and search to list recent TM entries.",
+  "emptyTitle": "No TM entries",
+  "emptyDesc": "No entries for this language pair yet. TM fills as jobs are approved.",
+  "lookupTitle": "Lookup matches",
+  "exact": "Exact",
+  "resultCount": "{{count}} entries",
+  "updating": "Updating…",
+  "delete": "Delete entry",
+  "confirmDelete": "Delete this TM entry permanently?\n\n\"{{preview}}\"",
+  "col": {
+    "source": "Source",
+    "target": "Target",
+    "origin": "Origin",
+    "domain": "Domain",
+    "quality": "Quality",
+    "updated": "Updated"
+  }
+}

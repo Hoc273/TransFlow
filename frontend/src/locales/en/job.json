@@ -1,0 +1,153 @@
+{
+  "list": {
+    "title": "Translation jobs",
+    "subtitle": "One job per target language · click a row to open the editor",
+    "create": "New job",
+    "emptyTitle": "No jobs yet",
+    "emptyDesc": "Create a translation job to translate this document into a target language.",
+    "col": {
+      "targetLang": "Target",
+      "provider": "Provider",
+      "model": "Model"
+    }
+  },
+  "create": {
+    "title": "Create translation job",
+    "subtitle": "Runs the AI pipeline for one target language (may take a moment).",
+    "targetLang": "Target language",
+    "langRequired": "Target language is required",
+    "duplicateActive": "An active job for this target language already exists",
+    "active": "active",
+    "hint": "Cannot start two active jobs for the same target language.",
+    "submit": "Start translation",
+    "submitting": "Translating…",
+    "streamFailed": "Could not start the live translation stream.",
+    "streamInterrupted": "The live connection was interrupted. The job continues on the server.",
+    "openJob": "Open job",
+    "pipelineStage": "Pipeline",
+    "completedSegments": "Completed",
+    "currentSegment": "Current",
+    "liveOutput": "Live output",
+    "waitingTokens": "Waiting for translated text…",
+    "streamStatus": {
+      "idle": "Ready",
+      "connecting": "Connecting",
+      "open": "Streaming",
+      "reconnecting": "Reconnecting (attempt {{attempt}})",
+      "done": "Completed",
+      "error": "Connection interrupted"
+    }
+  },
+  "qa": {
+    "title": "QA issues",
+    "emptyTitle": "No QA issues",
+    "emptyDesc": "Open issues for this segment will appear here.",
+    "showResolved": "Show resolved",
+    "hideResolved": "Hide resolved",
+    "suggestion": "Suggestion",
+    "resolved": "Resolved",
+    "open": "Open",
+    "resolve": "Resolve",
+    "apply": "Apply",
+    "applyAndResolve": "Apply suggestion and resolve",
+    "override": "Override",
+    "overrideSoon": "Override requires BE (feature flag off)",
+    "overridden": "This blocking action was overridden",
+    "overriddenShort": "overridden",
+    "overrideModal": {
+      "title": "Override blocking action",
+      "description": "Override a QA blocking action so the workflow can proceed. This is recorded in the audit log.",
+      "cancel": "Cancel",
+      "submit": "Override",
+      "submitting": "Overriding…",
+      "actionLabel": "Blocking action to override",
+      "reasonLabel": "Reason",
+      "reasonPlaceholder": "Why this blocking action should be overridden…",
+      "reasonHint": "Minimum {{min}} characters required",
+      "reasonOk": "Reason meets minimum length",
+      "allOverridden": "All blocking actions for this issue have already been overridden."
+    },
+    "criticalMediaOnly": "CRITICAL is media-pipeline only at runtime",
+    "severity": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical"
+    },
+    "col": {
+      "type": "Type",
+      "severity": "Severity",
+      "message": "Message",
+      "blocking": "Blocking",
+      "state": "State"
+    }
+  },
+  "history": {
+    "pickSegment": "Select a segment to view history",
+    "emptyTitle": "No history",
+    "emptyDesc": "Edits, QA, and approvals will be listed here. No rollback in MVP.",
+    "actorAi": "AI",
+    "actorHuman": "User"
+  },
+  "editor": {
+    "title": "Translation editor",
+    "mobileBanner": "Please use a desktop computer for the full editor experience.",
+    "shortcuts": "Shortcuts",
+    "shortcutsTitle": "Keyboard shortcuts",
+    "shortcutsDesc": "Shortcuts respect your role. Client is view-only.",
+    "pipeline": "Pipeline",
+    "searchPlaceholder": "Search segments… (/)",
+    "filterAll": "All statuses",
+    "filterHasQa": "Has open QA",
+    "segments": "Segments",
+    "noSegments": "No segments in this job",
+    "noMatch": "No matching segments",
+    "noMatchDesc": "Try clearing search or filters.",
+    "clearFilters": "Clear filters",
+    "source": "Source",
+    "target": "Target",
+    "targetPlaceholder": "Edit the translation…",
+    "pickSegment": "Select a segment",
+    "hasQa": "Open QA issues",
+    "unsaved": "Unsaved changes",
+    "saving": "Saving…",
+    "saved": "Saved {{relative}}",
+    "ready": "Ready",
+    "roleHint": "Edit mode",
+    "applyQa": "Apply QA suggestion",
+    "next": "Next segment",
+    "approve": "Approve",
+    "approveBlocked": "Approve is blocked by unresolved HIGH QA issues",
+    "discardConfirm": "Discard unsaved changes on this segment?",
+    "leaveConfirm": "You have unsaved changes. Leave this page?",
+    "versionPreview": "Version panel",
+    "versionPreviewDesc": "Preview — Phase 2. Full diff/rollback is not available in MVP.",
+    "commentPreview": "Comments",
+    "commentPreviewDesc": "Preview — Phase 2. No comment API in text MVP.",
+    "tab": {
+      "qa": "QA",
+      "history": "History",
+      "version": "Version",
+      "comment": "Comment"
+    }
+  },
+  "pipeline": {
+    "queued": "Queued",
+    "tm": "TM",
+    "translating": "Translating",
+    "qa": "QA",
+    "autoFix": "Auto-fix",
+    "awaitingReview": "Review",
+    "approved": "Approved"
+  },
+  "shortcuts": {
+    "prevNext": "Previous / next segment",
+    "edit": "Focus target editor",
+    "escape": "Exit edit / cancel unsaved",
+    "save": "Save now",
+    "approve": "Approve segment",
+    "applyQa": "Apply first QA suggestion",
+    "search": "Focus search",
+    "help": "Show this help"
+  }
+}

@@ -32,3 +32,5 @@ app:
       token-uri: https://oauth2.googleapis.com/token
       state-ttl-minutes: 10
       exchange-ttl-seconds: 120
+  media-worker:
+    hmac-secret: test-media-worker-hmac-secret

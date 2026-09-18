@@ -1,0 +1,348 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { IconLoader2, IconMicrophone2, IconPlayerPlay } from '@tabler/icons-react'
+import { useTtsVoices, useVoicePreview } from '@/hooks/useProviders'
+import {
+  filterCompatibleActiveVoices,
+  isTtsProvider,
+  providerDisplayName,
+  providerSwitchReset,
+  selectDefaultVoice,
+  type VoiceSelection,
+} from '@/lib/media/voiceSelection'
+import { cn } from '@/lib/cn'
+import type { ProviderConfig } from '@/types/provider'
+
+type Props = {
+  workspaceId: string
+  /** TTS-capable providers (enabled or not — the selector hides disabled ones). */
+  providers: ProviderConfig[]
+  targetLang?: string | null
+  /** Pre-selected provider (job binding for Job Studio, default for create). */
+  selectedProviderId?: string | null
+  /** Pre-selected voice row id (job binding for Job Studio). */
+  selectedVoiceId?: string | null
+  disabled?: boolean
+  /**
+   * C2 UX (docs/19 §1.8.2): when true a "Preview" (Nghe thử) button renders
+   * next to the voice select — plays the selected voice through the workspace
+   * preview endpoint; never part of the create payload. Create form uses it;
+   * Job Studio keeps the plain selector.
+   */
+  showPreview?: boolean
+  /**
+   * When true the "Keep original voice" action is offered (deselect →
+   * providerId/voiceId null). Create Job keeps this OFF: the backend always
+   * resolves a dubbed binding on create — original-only is achieved by
+   * deselecting later in Job Studio.
+   */
+  allowOriginal?: boolean
+  /**
+   * When true the selector auto-selects the first compatible voice after a
+   * provider switch and emits the complete pair through `onChange`. Create
+   * Job uses this so the form is always ready to submit. Job Studio leaves it
+   * OFF: the bound job must stay untouched until the user explicitly picks a
+   * voice (C4 — never auto-bind over the current binding).
+   */
+  autoSelect?: boolean
+  /**
+   * Committed selection — emitted ONLY on a complete pair (provider+voice) or
+   * an explicit "Keep original voice" ({null, null} when allowOriginal).
+   * Job Studio calls the authoritative API on this.
+   */
+  onChange: (selection: VoiceSelection) => void
+  /**
+   * Transient notification that the previous selection is no longer valid —
+   * emitted while a provider switch is in flight (voices loading) or the new
+   * provider has no compatible voice. It is NOT a deselect intent and must
+   * never be sent to the backend. Create gates on it; Job Studio ignores it.
+   */
+  onPendingChange?: (selection: VoiceSelection) => void
+}
+
+/**
+ * Phase C — shared TTS provider + voice selector (C3).
+ *
+ * Rules enforced here (mirroring backend Phase B validation):
+ * - providers shown are enabled + TTS-capable only; local_piper renders as
+ *   "Piper (Local)" through the normal provider catalog — no hardcoded catalog.
+ * - voices shown are active + target-language compatible only.
+ * - `onChange` only ever receives an all-or-nothing COMMITTED selection:
+ *   a complete pair, or an explicit deselect (Keep original). Provider
+ *   switches emit through `onPendingChange` so callers can gate without ever
+ *   sending a transient reset to the backend (BA re-review vòng 3 P1 fix).
+ * - when a provider has no compatible voice the empty state is explicit and
+ *   no committed selection is emitted.
+ * - a pre-selected provider that is no longer in the workspace is surfaced as
+ *   a read-only notice — never silently replaced by the workspace default.
+ */
+export function VoiceSelector({
+  workspaceId,
+  providers,
+  targetLang,
+  selectedProviderId,
+  selectedVoiceId,
+  disabled,
+  showPreview = false,
+  allowOriginal = false,
+  autoSelect = false,
+  onChange,
+  onPendingChange,
+}: Props) {
+  const { t } = useTranslation(['media', 'common'])
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  const onPendingRef = useRef(onPendingChange)
+  onPendingRef.current = onPendingChange
+  // C2 UX: inline (create form) preview — plays the selected voice through
+  // the workspace preview endpoint; never part of the create payload.
+  const preview = useVoicePreview(workspaceId)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+
+  const selectableProviders = useMemo(
+    () => providers.filter((p) => p.enabled && isTtsProvider(p)),
+    [providers],
+  )
+
+  // The bound provider may be missing from the list (deleted / moved out of
+  // workspace) — keep showing it as a read-only notice instead of falling back.
+  const boundProviderMissing =
+    selectedProviderId != null
+    && !selectableProviders.some((p) => p.id === selectedProviderId)
+
+  const [providerId, setProviderId] = useState<string | null>(
+    selectedProviderId != null && selectableProviders.some((p) => p.id === selectedProviderId)
+      ? selectedProviderId
+      : null,
+  )
+  const [voiceId, setVoiceId] = useState<string | null>(null)
+  const [pendingProviderId, setPendingProviderId] = useState<string | null>(null)
+
+  // Re-sync external selection (job binding reload, create-flow default) into
+  // local state — without clobbering a user in-flight choice.
+  useEffect(() => {
+    if (selectedProviderId != null && selectableProviders.some((p) => p.id === selectedProviderId)) {
+      setProviderId(selectedProviderId)
+    }
+  }, [selectedProviderId, selectableProviders])
+
+  useEffect(() => {
+    if (selectedVoiceId != null) {
+      setVoiceId(selectedVoiceId)
+    }
+  }, [selectedVoiceId])
+
+  const activeProviderId = pendingProviderId ?? providerId
+  const voicesQuery = useTtsVoices(workspaceId, activeProviderId ?? undefined)
+
+  const compatibleVoices = useMemo(
+    () => filterCompatibleActiveVoices(voicesQuery.data, targetLang),
+    [voicesQuery.data, targetLang],
+  )
+
+  // Provider changed → the previous selection is no longer valid. This is a
+  // TRANSIENT reset: it goes through onPendingChange (never onChange) so the
+  // backend is never called with a deselect during a provider switch. With
+  // autoSelect (Create), the first compatible voice is picked once voices
+  // load and a committed pair is emitted through onChange.
+  const handleProviderChange = (next: string) => {
+    setPendingProviderId(next)
+    setProviderId(null)
+    setVoiceId(null)
+    onPendingRef.current?.(providerSwitchReset())
+  }
+
+  // Voices for the newly selected provider arrived:
+  // - autoSelect (Create): auto-select the first compatible voice and emit
+  //   the committed pair. No compatible voice → stay on the empty state, no
+  //   committed selection (the caller's gate blocks submission).
+  // - Job Studio (autoSelect=false): the bound job stays untouched — no
+  //   committed selection is emitted until the user picks a voice.
+  useEffect(() => {
+    if (!pendingProviderId || voicesQuery.isPending) return
+    const first = autoSelect ? selectDefaultVoice(voicesQuery.data, targetLang) : null
+    if (first) {
+      setPendingProviderId(null)
+      setProviderId(pendingProviderId)
+      setVoiceId(first.id)
+      onChangeRef.current({ providerId: pendingProviderId, voiceId: first.id })
+    } else if (!autoSelect) {
+      // Job Studio: provider is now selected but no voice was auto-picked —
+      // surface the new provider's voices for the user to choose; the bound
+      // job remains unchanged until a voice is explicitly selected.
+      setPendingProviderId(null)
+      setProviderId(pendingProviderId)
+      setVoiceId(null)
+      onPendingRef.current?.(providerSwitchReset())
+    } else {
+      // Create with no compatible voice: keep the provider (empty state),
+      // never emit provider-without-voice.
+      setPendingProviderId(null)
+      setProviderId(pendingProviderId)
+      setVoiceId(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingProviderId, compatibleVoices.length, voicesQuery.isPending, autoSelect])
+
+  const handleVoiceChange = (next: string) => {
+    if (!providerId) return
+    const value = next || null
+    setVoiceId(value)
+    // A user-picked voice always forms a committed pair.
+    onChangeRef.current({ providerId, voiceId: value })
+  }
+
+  const handleOriginal = () => {
+    setProviderId(null)
+    setVoiceId(null)
+    onChangeRef.current({ providerId: null, voiceId: null })
+  }
+
+  const noProviders = selectableProviders.length === 0
+  const loading = Boolean(activeProviderId && voicesQuery.isPending)
+  const noCompatible = !loading && !noProviders && providerId != null && compatibleVoices.length === 0
+
+  const selectedVoice = useMemo(
+    () => compatibleVoices.find((v) => v.id === voiceId) ?? null,
+    [compatibleVoices, voiceId],
+  )
+
+  const handlePreview = () => {
+    if (!providerId || !selectedVoice || disabled || preview.isPending) return
+    setPreviewError(null)
+    void preview
+      .mutateAsync({
+        providerId,
+        voiceId: selectedVoice.voiceId,
+        language: targetLang,
+      })
+      .catch(() => setPreviewError(t('media:voice.preview.error')))
+  }
+
+
+  return (
+    <div className="space-y-2" data-testid="voice-selector">
+      <div
+        className={cn(
+          'grid gap-3 items-end',
+          showPreview
+            ? 'grid-cols-1 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_auto]'
+            : 'grid-cols-1 sm:grid-cols-2',
+        )}
+      >
+        {/* Col 1: Provider */}
+        <div className="min-w-0">
+          <label className="field-label mb-1">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-secondary)]">
+              <IconMicrophone2 size={13} className="text-[var(--color-media)]" />
+              {t('media:voice.providerLabel')}
+            </span>
+            <select
+              className="field-input mt-1 w-full"
+              data-testid="voice-provider-select"
+              value={providerId ?? ''}
+              disabled={disabled || loading || boundProviderMissing}
+              onChange={(e) => handleProviderChange(e.target.value)}
+            >
+              {!providerId && <option value="">{t('media:voice.providerPlaceholder')}</option>}
+              {selectableProviders.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {providerDisplayName(provider, t) ?? provider.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {/* Col 2: Voice */}
+        <div className="min-w-0">
+          <label className="field-label mb-1">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-secondary)]">
+              <IconMicrophone2 size={13} className="text-[var(--color-media)]" />
+              {t('media:voice.label')}
+            </span>
+            {loading ? (
+              <div className="field-input mt-1 flex items-center gap-2 text-xs text-[var(--color-text-tertiary)] bg-[var(--color-bg-surface-2)]">
+                <IconLoader2 size={14} className="animate-spin text-[var(--color-media)]" />
+                <span>{t('common:loading')}</span>
+              </div>
+            ) : (
+              <select
+                className="field-input mt-1 w-full"
+                data-testid="voice-voice-select"
+                value={voiceId ?? ''}
+                disabled={disabled || !providerId}
+                onChange={(e) => handleVoiceChange(e.target.value)}
+              >
+                {!voiceId && <option value="">{t('media:voice.voicePlaceholder')}</option>}
+                {compatibleVoices.map((voice) => (
+                  <option key={voice.id} value={voice.id}>
+                    {voice.displayName || voice.voiceId}
+                    {' · '}
+                    {voice.gender}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+        </div>
+
+        {/* Col 3: Preview button */}
+        {showPreview && (
+          <div className="shrink-0 pb-[1px]">
+            <button
+              type="button"
+              className="btn-media-secondary btn-sm h-[38px] px-3.5 inline-flex items-center justify-center gap-1.5 whitespace-nowrap w-full sm:w-auto"
+              data-testid="voice-preview-button"
+              disabled={disabled || !providerId || !voiceId || preview.isPending}
+              onClick={handlePreview}
+            >
+              {preview.isPending ? (
+                <IconLoader2 size={15} className="animate-spin" />
+              ) : (
+                <IconPlayerPlay size={15} />
+              )}
+              <span>{t('media:voice.preview.action')}</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {boundProviderMissing && (
+        <p className="field-error m-0" data-testid="voice-bound-provider-missing">
+          {t('media:voice.boundProviderMissing')}
+        </p>
+      )}
+
+      {noProviders ? (
+        <p className="field-error m-0" data-testid="voice-no-providers">
+          {t('media:voice.noProviderSelectable')}
+        </p>
+      ) : null}
+
+      {noCompatible && (
+        <p className="field-error m-0" data-testid="voice-no-compatible">
+          {t('media:voice.emptyCompat')}
+        </p>
+      )}
+
+      {previewError && (
+        <p className="field-error m-0" data-testid="voice-preview-error">
+          {previewError}
+        </p>
+      )}
+
+      {allowOriginal && (
+        <button
+          type="button"
+          className="btn-media-secondary btn-sm mt-1"
+          data-testid="voice-keep-original"
+          disabled={disabled || (!providerId && !voiceId)}
+          onClick={handleOriginal}
+        >
+          {t('media:voice.original')}
+        </button>
+      )}
+    </div>
+  )
+}
