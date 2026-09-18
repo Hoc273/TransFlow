@@ -33,35 +33,33 @@ export function TopNav({ onMobileMenu }: TopNavProps) {
 
   return (
     <header className="app-topnav">
-      <button
-        type="button"
-        className="app-icon-btn"
-        onClick={() => {
-          toggleSidebar()
-          onMobileMenu?.()
-        }}
-        title="Toggle sidebar"
-        aria-label="Toggle sidebar"
-      >
-        <IconMenu2 size={18} />
-      </button>
+      {/* Brand & sidebar toggle: fixed width (236px + 16px padding + 12px gap = 264px) to align search box vertically with main content */}
+      <div className="flex items-center gap-2.5 sm:w-[236px] shrink-0">
+        <button
+          type="button"
+          className="app-icon-btn shrink-0"
+          onClick={() => {
+            toggleSidebar()
+            onMobileMenu?.()
+          }}
+          title="Toggle sidebar"
+          aria-label="Toggle sidebar"
+        >
+          <IconMenu2 size={18} />
+        </button>
 
-      <Link
-        to={`/w/${workspaceId}`}
-        className="flex items-center gap-2.5 no-underline text-[var(--color-accent)]"
-      >
-        <img src="/favicon.svg" alt="TransFlow" className="h-7 w-7 object-contain drop-shadow-[0_0_8px_rgba(0,192,255,0.45)]" />
-        <span className="text-[16px] font-bold tracking-tight text-[var(--color-text-primary)]">
-          {t('appName')}
-        </span>
-        <span className="hidden rounded bg-[var(--color-bg-surface-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-text-tertiary)] sm:inline">
-          B.5
-        </span>
-      </Link>
+        <Link
+          to={`/w/${workspaceId}`}
+          className="flex items-center gap-2.5 no-underline text-[var(--color-accent)] shrink-0"
+        >
+          <img src="/favicon.svg" alt="TransFlow" className="h-7 w-7 object-contain drop-shadow-[0_0_8px_rgba(0,192,255,0.45)]" />
+          <span className="text-[16px] font-bold tracking-tight text-[var(--color-text-primary)]">
+            {t('appName')}
+          </span>
+        </Link>
+      </div>
 
-      <div className="flex-1" />
-
-      {/* Global search trigger — Active for Projects, Batches, Glossaries & Tools (⌘K / Ctrl K) */}
+      {/* Global search trigger — vertically aligned with Media Localization Studio / Bảng điều khiển (264px) */}
       <button
         type="button"
         onClick={() => setSearchOpen(true)}
@@ -77,6 +75,8 @@ export function TopNav({ onMobileMenu }: TopNavProps) {
           {typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent) ? '⌘K' : 'Ctrl K'}
         </kbd>
       </button>
+
+      <div className="flex-1" />
 
       {/* Mobile search icon button */}
       <button
