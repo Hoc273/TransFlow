@@ -5,7 +5,7 @@ spring:
   application:
     name: backend-main
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:transflow_mini}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:transflow}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:postgres}
   jpa:
@@ -20,14 +20,47 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+    validate-on-migrate: true
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  # RabbitMQ — pipeline media.stage.* (System_Architecture.md §2). Chưa có listener/
+  # publisher nào ở iteration này (chỉ khởi tạo ConnectionFactory + health indicator),
+  # dispatch thật sẽ nối vào MediaJobService khi worker queue được bật.
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:transflow}
+    password: ${RABBITMQ_PASSWORD:transflow}
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          initial-interval: 500ms
+          max-attempts: 3
+          multiplier: 2.0
   servlet:
     multipart:
+      # Media asset (SRS §5.2): video ≤500MB — cap giữ cao hơn chút để service trả lỗi
+      # nghiệp vụ thay vì container trả 413.
       max-file-size: 520MB
       max-request-size: 520MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    org.flywaydb: INFO
 
 # Namespace app.* — bind vào com.app.common.config.AppProperties.
 # Không hard-code giá trị nhạy cảm ở đây — mọi secret đọc qua biến môi trường (CLAUDE.md §7).
@@ -45,6 +78,10 @@ app:
       client-id: ${GOOGLE_CLIENT_ID:}
       client-secret: ${GOOGLE_CLIENT_SECRET:}
       redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8080/api/auth/google/callback}
+      authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+      token-uri: https://oauth2.googleapis.com/token
+      state-ttl-minutes: 10
+      exchange-ttl-seconds: 120
   credit:
     initial-grant-amount: ${CREDIT_INITIAL_GRANT_AMOUNT:100.0000}
   storage:

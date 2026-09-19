@@ -94,3 +94,5 @@ Subtitlr/
 stt_segments.json
 /backend-ai-tmp/
 /backend-media-worker-tmp/
+/backend-smoke-results.json
+/backend-smoke.ps1

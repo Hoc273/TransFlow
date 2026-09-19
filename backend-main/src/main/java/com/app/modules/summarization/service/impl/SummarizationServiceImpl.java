@@ -108,6 +108,7 @@ public class SummarizationServiceImpl implements SummarizationService {
         proposal.setReasoningNote(reasoningNote);
         proposal = summaryProposalRepository.save(proposal);
         summaryProposalSegmentRepository.deleteByProposalId(proposal.getId());
+        summaryProposalSegmentRepository.flush();
         persistSegments(proposal.getId(), segments);
         return proposal;
     }
