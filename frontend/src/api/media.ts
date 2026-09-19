@@ -63,6 +63,6 @@ export type TermsVersionResponse = {
 /** Fetch live terms version from backend (H9 — never hardcode on FE). */
 export function getMediaTermsVersionApi(workspaceId: string) {
   return apiRequest<TermsVersionResponse>(
-    buildWorkspacePath(workspaceId, '/transformation/terms-version'),
+    buildWorkspacePath(workspaceId, '/media/terms-version'),
   )
 }

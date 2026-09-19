@@ -56,4 +56,49 @@ describe('parseError error codes', () => {
 
     await expect(apiRequest('/x')).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
+
+  it('surfaces numeric error codes as strings and extracts validation data', async () => {
+    mockErrorResponse(400, {
+      code: 9998,
+      message: 'Validation failed',
+      data: { targetLang: 'must not be blank' },
+    })
+
+    await expect(apiRequest('/x')).rejects.toMatchObject({
+      status: 400,
+      code: '9998',
+      fieldErrors: { targetLang: 'must not be blank' },
+    })
+  })
 })
+
+describe('apiRequest ApiResponse unwrapping', () => {
+  it('unwraps ApiResponse { code: 1000, data: ... }', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ code: 1000, data: { id: 'ws-1', name: 'Test' } }),
+      }),
+    )
+
+    const res = await apiRequest('/workspaces/ws-1')
+    expect(res).toEqual({ id: 'ws-1', name: 'Test' })
+  })
+
+  it('keeps raw object if not wrapped in ApiResponse', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: 'ws-1', name: 'Test' }),
+      }),
+    )
+
+    const res = await apiRequest('/workspaces/ws-1')
+    expect(res).toEqual({ id: 'ws-1', name: 'Test' })
+  })
+})
+

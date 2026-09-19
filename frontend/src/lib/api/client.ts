@@ -42,10 +42,17 @@ async function parseError(res: Response, requestPath: string): Promise<ApiError>
   // `errorCode` is the ProviderErrorResponse shape; `code` is the ApiError shape
   // used by coded endpoints (e.g. STYLE_NOT_FOUND) — without it those collapse
   // into a generic NOT_FOUND and callers cannot branch on them.
-  const errorCode = body?.errorCode || body?.code || codeFromStatus(res.status)
+  const rawCode = body?.errorCode || body?.code
+  const errorCode = rawCode !== undefined ? String(rawCode) : codeFromStatus(res.status)
 
   const isBatchCreate =
     res.status === 429 && /\/batches(?:\?|$)/.test(requestPath) && !requestPath.includes('/documents/')
+
+  const fieldErrors =
+    body?.fieldErrors ??
+    (body && 'data' in body && typeof (body as any).data === 'object' && !Array.isArray((body as any).data)
+      ? ((body as any).data as Record<string, string>)
+      : undefined)
 
   return new ApiError({
     status: res.status,
@@ -60,7 +67,7 @@ async function parseError(res: Response, requestPath: string): Promise<ApiError>
     retryable: body?.retryable ?? undefined,
     recommendedAction: body?.recommendedAction ?? undefined,
     documentation: body?.documentation ?? undefined,
-    fieldErrors: body?.fieldErrors ?? undefined,
+    fieldErrors,
     path: body?.path || requestPath,
   })
 }
@@ -168,7 +175,22 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   const text = await res.text()
   if (!text) return undefined as T
-  return JSON.parse(text) as T
+
+  try {
+    const json = JSON.parse(text)
+    // Automatically unwrap Spring Boot ApiResponse envelope: { code: 1000, data: T }
+    if (
+      json !== null &&
+      typeof json === 'object' &&
+      typeof json.code === 'number' &&
+      'data' in json
+    ) {
+      return json.data as T
+    }
+    return json as T
+  } catch {
+    return text as unknown as T
+  }
 }
 
 export function buildWorkspacePath(workspaceId: string, suffix = ''): string {
