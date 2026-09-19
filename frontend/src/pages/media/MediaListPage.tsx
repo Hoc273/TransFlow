@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   IconChevronLeft,
@@ -47,13 +47,23 @@ export function MediaListPage() {
   const { t } = useTranslation(['media', 'common'])
   const { workspaceId = '' } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const queryProjectId = searchParams.get('projectId') || ''
+
   const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const language = useUiStore((s) => s.language)
 
   const { data: projects = [] } = useProjects(workspaceId)
-  const [projectId, setProjectId] = useState('')
+  const [projectId, setProjectId] = useState(queryProjectId)
   const [openPanel, setOpenPanel] = useState<string | null>('overview')
   const [page, setPage] = useState(0)
+
+  // Sync state if query param in URL changes
+  useEffect(() => {
+    if (queryProjectId !== projectId) {
+      setProjectId(queryProjectId)
+    }
+  }, [queryProjectId])
 
   useDocumentTitle(t('media:title'))
 
@@ -218,8 +228,21 @@ export function MediaListPage() {
           className="field-input media-project-picker-select"
           value={projectId}
           onChange={(e) => {
-            setProjectId(e.target.value)
+            const nextId = e.target.value
+            setProjectId(nextId)
             setOpenPanel('overview')
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev)
+                if (nextId) {
+                  next.set('projectId', nextId)
+                } else {
+                  next.delete('projectId')
+                }
+                return next
+              },
+              { replace: true },
+            )
           }}
           aria-label={t('media:selectProject')}
         >

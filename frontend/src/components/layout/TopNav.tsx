@@ -78,17 +78,6 @@ export function TopNav({ onMobileMenu }: TopNavProps) {
 
       <div className="flex-1" />
 
-      {/* Mobile search icon button */}
-      <button
-        type="button"
-        onClick={() => setSearchOpen(true)}
-        className="sm:hidden app-icon-btn text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-        title={t('search')}
-        aria-label={t('search')}
-      >
-        <IconSearch size={18} />
-      </button>
-
       <LanguageSwitcher />
 
       <ThemeToggle className="h-[34px] w-[34px] rounded-md border-0 bg-transparent hover:bg-[var(--color-bg-hover)]" />
