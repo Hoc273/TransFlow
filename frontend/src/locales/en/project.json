@@ -4,7 +4,7 @@
     "subtitle": "Manage workspace translation and localization projects",
     "create": "New project",
     "emptyTitle": "No projects yet",
-    "emptyDesc": "Create your first project to organize documents and media.",
+    "emptyDesc": "Create your first project to organize your videos.",
     "searchPlaceholder": "Search projects...",
     "noMatchTitle": "No projects found",
     "noMatchDesc": "No projects match your search query.",
@@ -13,6 +13,8 @@
     "projectCount_other": "{{count}} projects",
     "docsCount_one": "{{count}} doc",
     "docsCount_other": "{{count}} docs",
+    "videoCount_one": "{{count}} video",
+    "videoCount_other": "{{count}} videos",
     "stats": {
       "projects": "Projects",
       "documents": "Documents & Media",
@@ -24,15 +26,16 @@
       "sourceLang": "Source",
       "domain": "Domain",
       "documents": "Documents",
+      "media": "Videos",
       "actions": ""
     },
     "open": "Open"
   },
   "create": {
     "title": "Create project",
-    "subtitle": "Source language is the default for new documents",
+    "subtitle": "Source language is the default for new videos",
     "name": "Project name",
-    "namePlaceholder": "Product docs · EN→VI",
+    "namePlaceholder": "Product video · EN→VI",
     "nameRequired": "Name is required",
     "sourceLang": "Source language",
     "glossary": "Default glossary",

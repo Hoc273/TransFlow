@@ -517,7 +517,10 @@ export function LandingPipeline() {
         </div>
 
         {/* Card 3: Enterprise Security & Data Privacy */}
-        <div className="rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-[#fbfbfe] dark:bg-[#13151b] p-6 shadow-sm dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:shadow-md dark:hover:border-white/20 transition-all flex flex-col justify-between">
+        <div
+          id="privacy"
+          className="rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-[#fbfbfe] dark:bg-[#13151b] p-6 shadow-sm dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:shadow-md dark:hover:border-white/20 transition-all flex flex-col justify-between scroll-mt-24"
+        >
           <div className="space-y-4">
             <div className="flex items-center gap-1.5">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">

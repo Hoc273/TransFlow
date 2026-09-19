@@ -25,40 +25,40 @@ export function listWorkflowPresetsApi(
   const params = new URLSearchParams({ scope })
   if (projectId) params.set('projectId', projectId)
   return apiRequest<WorkflowPreset[]>(
-    `${buildWorkspacePath(workspaceId, '/workflow-presets')}?${params.toString()}`,
+    `${buildWorkspacePath(workspaceId, '/presets')}?${params.toString()}`,
   )
 }
 
-/** POST /workspaces/{ws}/workflow-presets — ADMIN/PM only (backend authority). */
+/** POST /workspaces/{ws}/presets */
 export function createWorkflowPresetApi(
   workspaceId: string,
   body: WorkflowPresetRequest,
 ): Promise<WorkflowPreset> {
   return apiRequest<WorkflowPreset>(
-    buildWorkspacePath(workspaceId, '/workflow-presets'),
+    buildWorkspacePath(workspaceId, '/presets'),
     { method: 'POST', body },
   )
 }
 
-/** PUT /workspaces/{ws}/workflow-presets/{id} — partial update (ADMIN/PM only). */
+/** PUT /workspaces/{ws}/presets/{id} */
 export function updateWorkflowPresetApi(
   workspaceId: string,
   presetId: string,
   body: WorkflowPresetRequest,
 ): Promise<WorkflowPreset> {
   return apiRequest<WorkflowPreset>(
-    buildWorkspacePath(workspaceId, `/workflow-presets/${presetId}`),
+    buildWorkspacePath(workspaceId, `/presets/${presetId}`),
     { method: 'PUT', body },
   )
 }
 
-/** DELETE /workspaces/{ws}/workflow-presets/{id} — hard delete (ADMIN/PM only). */
+/** DELETE /workspaces/{ws}/presets/{id} */
 export function deleteWorkflowPresetApi(
   workspaceId: string,
   presetId: string,
 ): Promise<void> {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/workflow-presets/${presetId}`),
+    buildWorkspacePath(workspaceId, `/presets/${presetId}`),
     { method: 'DELETE' },
   )
 }

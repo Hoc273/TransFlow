@@ -964,6 +964,11 @@
   color: #fff;
   background: color-mix(in srgb, var(--color-media, var(--color-accent)) 88%, #0f172a);
   min-width: 14px;
+  cursor: pointer;
+}
+.media-narrative-timeline-seg:hover,
+.media-narrative-timeline-seg:focus-within {
+  z-index: 30;
 }
 .media-narrative-engine-cuts {
   padding-top: 8px;

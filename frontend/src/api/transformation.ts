@@ -86,25 +86,25 @@ export function getTransformationCapabilitiesApi() {
 
 export function createTransformationJobApi(workspaceId: string, body: CreateMediaJobBody) {
   // Pass object only — apiRequest already JSON.stringifies non-raw bodies.
-  return apiRequest<MediaJob>(buildWorkspacePath(workspaceId, '/transformation/jobs'), {
+  return apiRequest<MediaJob>(buildWorkspacePath(workspaceId, '/media/jobs'), {
     method: 'POST',
     body,
   })
 }
 
 export function getTransformationJobApi(workspaceId: string, jobId: string) {
-  return apiRequest<MediaJob>(buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}`))
+  return apiRequest<MediaJob>(buildWorkspacePath(workspaceId, `/media/jobs/${jobId}`))
 }
 
 export function listTransformationJobsApi(workspaceId: string, projectId: string) {
   return apiRequest<MediaJob[]>(
-    buildWorkspacePath(workspaceId, `/projects/${projectId}/transformation/jobs`),
+    buildWorkspacePath(workspaceId, `/projects/${projectId}/media/jobs`),
   )
 }
 
 export function cancelTransformationJobApi(workspaceId: string, jobId: string) {
   return apiRequest<MediaJob>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/cancel`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/cancel`),
     { method: 'POST' },
   )
 }
@@ -115,7 +115,7 @@ export function exportTransformationJobApi(
   format: MediaExportFormat,
 ) {
   return apiRequest<MediaExportResponse>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/export?format=${format}`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/export?format=${format}`),
   )
 }
 
@@ -123,13 +123,13 @@ export function exportTransformationJobApi(
 
 export function getTransformationTermsVersionApi(workspaceId: string) {
   return apiRequest<TermsVersionResponse>(
-    buildWorkspacePath(workspaceId, '/transformation/terms-version'),
+    buildWorkspacePath(workspaceId, '/media/terms-version'),
   )
 }
 
 export function consentTransformationAssetApi(workspaceId: string, assetId: string) {
   return apiRequest<ConsentResponse>(
-    buildWorkspacePath(workspaceId, `/transformation/assets/${assetId}/consent`),
+    buildWorkspacePath(workspaceId, `/media/assets/${assetId}/consent`),
     { method: 'POST' },
   )
 }
@@ -142,7 +142,7 @@ export function overrideTransformationSourceLangApi(
   body: OverrideSourceLangBody,
 ) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/override-source-lang`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/override-source-lang`),
     { method: 'POST', body },
   )
 }
@@ -152,7 +152,7 @@ export function selectTransformationVoiceApi(
   jobId: string,
   body: SelectVoiceBody,
 ) {
-  return apiRequest<void>(buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/voice`), {
+  return apiRequest<void>(buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/voice`), {
     method: 'POST',
     // Phase C: always send the explicit provider + voice pair (both or neither —
     // the backend rejects a partial pair with 422). Both null = deselect (keep
@@ -167,7 +167,7 @@ export function selectTransformationVoiceApi(
 
 export function getTransformationRenderConfigApi(workspaceId: string, jobId: string) {
   return apiRequest<import('@/types/media').RenderConfig>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/render-config`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/render-config`),
   )
 }
 
@@ -177,14 +177,14 @@ export function updateTransformationRenderConfigApi(
   body: import('@/types/media').UpdateRenderConfigBody,
 ) {
   return apiRequest<import('@/types/media').RenderConfig>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/render-config`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/render-config`),
     { method: 'PUT', body },
   )
 }
 
 export function confirmTransformationRenderApi(workspaceId: string, jobId: string) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/confirm-render`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/confirm-render`),
     { method: 'POST' },
   )
 }
@@ -202,7 +202,7 @@ export function batchEditTransformationSegmentsApi(
   body: BatchEditMediaSegmentsBody,
 ) {
   return apiRequest<BatchEditMediaSegmentsResponse>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/segments/batch`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/segments/batch`),
     { method: 'PUT', body },
   )
 }
@@ -211,14 +211,14 @@ export function batchEditTransformationSegmentsApi(
 
 export function continueWorkflowApi(workspaceId: string, jobId: string, checkpoint: string) {
   return apiRequest<import('@/types/media').WorkflowCheckpoint>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/workflow/continue`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/workflow/continue`),
     { method: 'POST', body: { checkpoint } },
   )
 }
 
 export function resumeWorkflowApi(workspaceId: string, jobId: string) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/workflow/resume`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/workflow/resume`),
     { method: 'POST' },
   )
 }
@@ -227,7 +227,7 @@ export function resumeWorkflowApi(workspaceId: string, jobId: string) {
 
 export function listTransformationProposalsApi(workspaceId: string, jobId: string) {
   return apiRequest<MediaSummaryProposal[]>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/proposals`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals`),
   )
 }
 
@@ -248,7 +248,7 @@ export function createTransformationCustomProposalApi(
   body: CreateCustomProposalBody,
 ) {
   return apiRequest<MediaSummaryProposal>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/proposals`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals/custom`),
     { method: 'POST', body: toProposalPayload(body) },
   )
 }
@@ -260,7 +260,7 @@ export function updateTransformationCustomProposalApi(
   body: UpdateCustomProposalBody,
 ) {
   return apiRequest<MediaSummaryProposal>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/proposals/${proposalId}`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals/${proposalId}`),
     { method: 'PUT', body: toProposalPayload(body) },
   )
 }
@@ -271,7 +271,7 @@ export function selectTransformationProposalApi(
   proposalId: string,
 ) {
   return apiRequest<MediaSummaryProposal>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/proposals/${proposalId}/select`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals/${proposalId}/select`),
     { method: 'POST' },
   )
 }
@@ -282,21 +282,21 @@ export function refineTransformationNarrativePlanApi(
   feedback: string,
 ) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/refine`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/refine`),
     { method: 'POST', body: { feedback } },
   )
 }
 
 export function rerunTransformationSummarizeApi(workspaceId: string, jobId: string) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/summarize`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/summarize`),
     { method: 'POST' },
   )
 }
 
 export function rerunTransformationTtsRenderApi(workspaceId: string, jobId: string) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/rerun-tts-render`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/rerun-tts-render`),
     { method: 'POST' },
   )
 }
@@ -307,7 +307,7 @@ export function rerunTransformationRenderApi(
   body?: import('@/types/media').UpdateRenderConfigBody,
 ) {
   return apiRequest<import('@/types/media').RenderConfig>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/rerun-render`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/rerun-render`),
     { method: 'POST', body },
   )
 }
@@ -318,7 +318,7 @@ export function rerunTransformationStageApi(
   stageName: string,
 ) {
   return apiRequest<MediaJob>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/stages/${stageName}/rerun`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/stages/${stageName}/rerun`),
     { method: 'POST' },
   )
 }
@@ -327,13 +327,13 @@ export function rerunTransformationStageApi(
 
 export function getOutputPackageApi(workspaceId: string, jobId: string) {
   return apiRequest<OutputPackage>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/output-package`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/output-package`),
   )
 }
 
 export function getPublishPackageApi(workspaceId: string, jobId: string) {
   return apiRequest<PublishPackage>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/publish-package`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/publish-package`),
   )
 }
 
@@ -343,7 +343,7 @@ export function updatePublishPackageApi(
   body: UpdatePublishPackageBody,
 ) {
   return apiRequest<PublishPackage>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/publish-package`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/publish-package`),
     {
       method: 'PUT',
       body,
@@ -370,7 +370,7 @@ export function uploadTransformationMediaApi(
   form.append('file', file)
   if (opts.name?.trim()) form.append('name', opts.name.trim())
 
-  const path = buildWorkspacePath(workspaceId, `/projects/${projectId}/transformation/upload`)
+  const path = buildWorkspacePath(workspaceId, `/projects/${projectId}/media/assets`)
   const url = `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`
 
   return new Promise<MediaUploadResponse>((resolve, reject) => {
@@ -449,7 +449,11 @@ export function uploadTransformationMediaApi(
         return
       }
 
-      resolve((body ?? {}) as MediaUploadResponse)
+      const resolvedData =
+        body && typeof body === 'object' && typeof (body as any).code === 'number' && 'data' in body
+          ? (body as any).data
+          : (body ?? {})
+      resolve(resolvedData as MediaUploadResponse)
     }
 
     xhr.onerror = () => {
