@@ -1,14 +1,12 @@
 package com.app.modules.auth.controller;
 
 import com.app.common.dto.ApiResponse;
-import com.app.common.exception.AppException;
 import com.app.modules.auth.dto.AuthResponse;
 import com.app.modules.auth.dto.GoogleExchangeRequest;
 import com.app.modules.auth.service.oauth.GoogleOAuthService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 
@@ -30,12 +28,8 @@ public class GoogleAuthController {
     public void start(@RequestParam(value = "mode", required = false) String mode,
                       @RequestParam(value = "redirect", required = false) String redirect,
                       HttpServletResponse response) throws IOException {
-        try {
-            String authorizeUrl = googleOAuthService.buildAuthorizationUrl(mode, redirect);
-            response.sendRedirect(authorizeUrl);
-        } catch (AppException ex) {
-            throw new ResponseStatusException(ex.getErrorCode().getHttpStatusCode(), ex.getMessage(), ex);
-        }
+        String authorizeUrl = googleOAuthService.buildAuthorizationUrl(mode, redirect);
+        response.sendRedirect(authorizeUrl);
     }
 
     @GetMapping("/callback")

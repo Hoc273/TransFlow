@@ -172,6 +172,9 @@ public class DashboardServiceImpl implements DashboardService {
             }
         }
 
+        if (from == null) from = Instant.EPOCH;
+        if (to == null) to = Instant.parse("9999-12-31T00:00:00Z");
+
         if (role == Role.LEAD) {
             return aggregateForLead(workspaceId, normalizedGroupBy, from, to);
         } else {
