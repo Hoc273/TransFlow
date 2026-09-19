@@ -42,7 +42,12 @@ async function parseError(res: Response, requestPath: string): Promise<ApiError>
   // `errorCode` is the ProviderErrorResponse shape; `code` is the ApiError shape
   // used by coded endpoints (e.g. STYLE_NOT_FOUND) — without it those collapse
   // into a generic NOT_FOUND and callers cannot branch on them.
-  const errorCode = body?.errorCode || body?.code || codeFromStatus(res.status)
+  const rawCode = body?.errorCode || body?.code
+  const errorCode = rawCode !== undefined && rawCode !== null ? String(rawCode) : codeFromStatus(res.status)
+  const fieldErrors =
+    body?.code === 9998 && body?.data && typeof body.data === 'object'
+      ? (body.data as Record<string, string>)
+      : body?.fieldErrors ?? undefined
 
   const isBatchCreate =
     res.status === 429 && /\/batches(?:\?|$)/.test(requestPath) && !requestPath.includes('/documents/')
@@ -50,7 +55,7 @@ async function parseError(res: Response, requestPath: string): Promise<ApiError>
   return new ApiError({
     status: res.status,
     errorCode: isBatchCreate ? 'RATE_LIMITED' : errorCode,
-    code: isBatchCreate ? 'RATE_LIMITED' : errorCode,
+    code: isBatchCreate ? 'RATE_LIMITED' : (rawCode as any) ?? errorCode,
     title: body?.title,
     message: body?.message || res.statusText || 'Request failed',
     details: body?.details ?? undefined,
@@ -60,7 +65,7 @@ async function parseError(res: Response, requestPath: string): Promise<ApiError>
     retryable: body?.retryable ?? undefined,
     recommendedAction: body?.recommendedAction ?? undefined,
     documentation: body?.documentation ?? undefined,
-    fieldErrors: body?.fieldErrors ?? undefined,
+    fieldErrors,
     path: body?.path || requestPath,
   })
 }
@@ -81,11 +86,12 @@ async function tryRefreshAccessToken(): Promise<boolean> {
         body: JSON.stringify({ refreshToken }),
       })
       if (!res.ok) return false
-      const data = (await res.json()) as AuthResponse
+      const json = await res.json()
+      const data = (json && typeof json === 'object' && 'data' in json ? json.data : json) as any
       useAuthStore.getState().setSession({
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
-        user: data.user,
+        user: data.user ?? useAuthStore.getState().user,
       })
       return true
     } catch {
@@ -168,7 +174,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   const text = await res.text()
   if (!text) return undefined as T
-  return JSON.parse(text) as T
+  const json = JSON.parse(text)
+  if (json && typeof json === 'object' && 'code' in json && 'data' in json) {
+    return json.data as T
+  }
+  return json as T
 }
 
 export function buildWorkspacePath(workspaceId: string, suffix = ''): string {

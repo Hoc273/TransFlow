@@ -153,7 +153,11 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     // W0/M-C (BLOCKER M-C-01 fix): workflowMode + workflowPresetId MUST reach
     // the HTTP body — the backend resolves explicit request fields first.
     mutationFn: (body: CreateJobApiInput) =>
-      createTransformationJobApi(workspaceId, createJobApiBody(body)),
+      createTransformationJobApi(workspaceId, {
+        ...createJobApiBody(body),
+        projectId,
+        rootAssetId: body.documentId,
+      }),
     onSuccess: (job) => {
       void qc.invalidateQueries({ queryKey: queryKeys.mediaJobs(workspaceId, projectId) })
       void qc.setQueryData(queryKeys.mediaJob(workspaceId, job.id), job)

@@ -17,48 +17,65 @@ import type {
  * scopes through {@link useWorkflowPresets} and filters active rows locally
  * (the backend exposes the `active` flag on every row).
  */
-export function listWorkflowPresetsApi(
+function normalizePreset(p: any): WorkflowPreset {
+  return {
+    ...p,
+    description: p.description ?? null,
+    schemaVersion: p.schemaVersion ?? 1,
+    config: p.config ?? {
+      ...(p.renderConfig || {}),
+      presentation: p.renderConfig?.presentation ?? null,
+      ttsVoiceId: p.voiceConfig?.ttsVoiceId ?? null,
+      ttsProviderId: p.voiceConfig?.ttsProviderId ?? null,
+    },
+  }
+}
+
+export async function listWorkflowPresetsApi(
   workspaceId: string,
   scope: WorkflowPresetScope,
   projectId?: string,
 ): Promise<WorkflowPreset[]> {
   const params = new URLSearchParams({ scope })
   if (projectId) params.set('projectId', projectId)
-  return apiRequest<WorkflowPreset[]>(
-    `${buildWorkspacePath(workspaceId, '/workflow-presets')}?${params.toString()}`,
+  const list = await apiRequest<any[]>(
+    `${buildWorkspacePath(workspaceId, '/presets')}?${params.toString()}`,
   )
+  return (list || []).map(normalizePreset)
 }
 
-/** POST /workspaces/{ws}/workflow-presets — ADMIN/PM only (backend authority). */
-export function createWorkflowPresetApi(
+/** POST /workspaces/{ws}/presets — LEAD/MEMBER only. */
+export async function createWorkflowPresetApi(
   workspaceId: string,
   body: WorkflowPresetRequest,
 ): Promise<WorkflowPreset> {
-  return apiRequest<WorkflowPreset>(
-    buildWorkspacePath(workspaceId, '/workflow-presets'),
+  const res = await apiRequest<any>(
+    buildWorkspacePath(workspaceId, '/presets'),
     { method: 'POST', body },
   )
+  return normalizePreset(res)
 }
 
-/** PUT /workspaces/{ws}/workflow-presets/{id} — partial update (ADMIN/PM only). */
-export function updateWorkflowPresetApi(
+/** PUT /workspaces/{ws}/presets/{id} — partial update. */
+export async function updateWorkflowPresetApi(
   workspaceId: string,
   presetId: string,
   body: WorkflowPresetRequest,
 ): Promise<WorkflowPreset> {
-  return apiRequest<WorkflowPreset>(
-    buildWorkspacePath(workspaceId, `/workflow-presets/${presetId}`),
+  const res = await apiRequest<any>(
+    buildWorkspacePath(workspaceId, `/presets/${presetId}`),
     { method: 'PUT', body },
   )
+  return normalizePreset(res)
 }
 
-/** DELETE /workspaces/{ws}/workflow-presets/{id} — hard delete (ADMIN/PM only). */
+/** DELETE /workspaces/{ws}/presets/{id} — hard delete. */
 export function deleteWorkflowPresetApi(
   workspaceId: string,
   presetId: string,
 ): Promise<void> {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/workflow-presets/${presetId}`),
+    buildWorkspacePath(workspaceId, `/presets/${presetId}`),
     { method: 'DELETE' },
   )
 }

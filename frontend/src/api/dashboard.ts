@@ -16,3 +16,7 @@ export function getUsageApi(workspaceId: string, query: UsageQuery = {}) {
   const path = buildWorkspacePath(workspaceId, `/dashboard/usage${qs ? `?${qs}` : ''}`)
   return apiRequest<UsageSummary>(path)
 }
+
+export function getDashboardApi(workspaceId: string) {
+  return apiRequest<any>(buildWorkspacePath(workspaceId, '/dashboard'))
+}

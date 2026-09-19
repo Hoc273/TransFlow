@@ -56,4 +56,31 @@ describe('parseError error codes', () => {
 
     await expect(apiRequest('/x')).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
+
+  it('unwraps ApiResponse { code: 1000, data: ... } on success', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ code: 1000, data: { id: 'ws_123', name: 'My Workspace' } }),
+      }),
+    )
+
+    const result = await apiRequest<{ id: string; name: string }>('/workspaces/ws_123')
+    expect(result).toEqual({ id: 'ws_123', name: 'My Workspace' })
+  })
+
+  it('extracts fieldErrors from code 9998 validation errors', async () => {
+    mockErrorResponse(400, {
+      code: 9998,
+      data: { targetLang: 'must not be blank', email: 'invalid email' },
+    })
+
+    await expect(apiRequest('/test')).rejects.toMatchObject({
+      status: 400,
+      code: 9998,
+      fieldErrors: { targetLang: 'must not be blank', email: 'invalid email' },
+    })
+  })
 })

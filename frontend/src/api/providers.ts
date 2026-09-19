@@ -22,30 +22,54 @@ export function listPresetsApi(workspaceId: string, category?: ProviderPresetCat
   )
 }
 
-export function listProvidersApi(workspaceId: string) {
-  return apiRequest<ProviderConfig[]>(buildWorkspacePath(workspaceId, '/providers'))
+function normalizeProvider(p: any): ProviderConfig {
+  return {
+    ...p,
+    displayName: p.displayName || p.defaultModel || p.protocol || 'Provider',
+    enabled: p.enabled ?? p.isActive ?? true,
+    defaultFor: p.defaultFor ?? p.capabilities ?? [],
+  }
 }
 
-export function createProviderApi(workspaceId: string, body: CreateProviderRequest) {
-  return apiRequest<ProviderConfig>(buildWorkspacePath(workspaceId, '/providers'), {
+function normalizeVoice(v: any): TtsVoice {
+  return {
+    ...v,
+    displayName: v.displayName || v.voiceId,
+    languages: v.languages || (v.language ? [v.language] : ['vi']),
+  }
+}
+
+export async function listProvidersApi(_workspaceId?: string) {
+  try {
+    const list = await apiRequest<any[]>('/users/me/providers')
+    return (list || []).map(normalizeProvider)
+  } catch {
+    return []
+  }
+}
+
+export async function createProviderApi(_workspaceId: string, body: CreateProviderRequest) {
+  const res = await apiRequest<any>('/users/me/providers', {
     method: 'POST',
     body,
   })
+  return normalizeProvider(res)
 }
 
-export function updateProviderApi(
-  workspaceId: string,
+export async function updateProviderApi(
+  _workspaceId: string,
   providerId: string,
   body: UpdateProviderRequest,
 ) {
-  return apiRequest<ProviderConfig>(buildWorkspacePath(workspaceId, `/providers/${providerId}`), {
+  const res = await apiRequest<any>(`/users/me/providers/${providerId}`, {
     method: 'PUT',
     body,
   })
+  return normalizeProvider(res)
 }
 
-export function deleteProviderApi(workspaceId: string, providerId: string) {
-  return apiRequest<void>(buildWorkspacePath(workspaceId, `/providers/${providerId}`), {
+export function deleteProviderApi(_workspaceId: string, providerId: string) {
+  return apiRequest<void>(`/users/me/providers/${providerId}`, {
     method: 'DELETE',
   })
 }
@@ -73,28 +97,40 @@ export function unsetDefaultProviderApi(
 }
 
 export function testProviderApi(
-  workspaceId: string,
+  _workspaceId: string,
   providerId: string,
-  capability?: ProviderCapability,
+  _capability?: ProviderCapability,
 ) {
-  const query = capability ? `?capability=${encodeURIComponent(capability)}` : ''
-  return apiRequest<TestConnectionResponse>(
-    buildWorkspacePath(workspaceId, `/providers/${providerId}/test${query}`),
-    { method: 'POST' },
-  )
+  return apiRequest<TestConnectionResponse>(`/users/me/providers/${providerId}/test`, {
+    method: 'POST',
+  })
 }
 
-export function listTtsVoicesApi(workspaceId: string, providerId: string) {
-  return apiRequest<TtsVoice[]>(
-    buildWorkspacePath(workspaceId, `/providers/${providerId}/voices`),
-  )
+export async function listTtsVoicesApi(_workspaceId?: string, providerId?: string) {
+  try {
+    const path = providerId && providerId !== 'platform' && providerId !== 'undefined'
+      ? `/users/me/providers/${providerId}/voices`
+      : '/tts-voices'
+    const list = await apiRequest<any[]>(path)
+    return (list || []).map(normalizeVoice)
+  } catch {
+    return []
+  }
 }
 
 /** Languages available in this provider's ACTIVE cached voice catalog. */
-export function listTtsVoiceLanguagesApi(workspaceId: string, providerId: string) {
-  return apiRequest<{ languages: TtsVoiceLanguage[] }>(
-    buildWorkspacePath(workspaceId, `/providers/${providerId}/voice-languages`),
-  )
+export async function listTtsVoiceLanguagesApi(workspaceId?: string, providerId?: string) {
+  const voices = await listTtsVoicesApi(workspaceId, providerId)
+  const langSet = new Set<string>()
+  voices.forEach((v) => {
+    ;(v.languages || []).forEach((l) => langSet.add(l))
+    if (v.language) langSet.add(v.language)
+  })
+  const languages: TtsVoiceLanguage[] = Array.from(langSet).map((code) => ({
+    code,
+    voiceCount: voices.filter((v) => v.languages?.includes(code) || v.language === code).length,
+  }))
+  return { languages }
 }
 
 export function upsertTtsVoiceApi(
@@ -108,11 +144,10 @@ export function upsertTtsVoiceApi(
   )
 }
 
-export function refreshTtsVoicesApi(workspaceId: string, providerId: string) {
-  return apiRequest<TtsVoice[]>(
-    buildWorkspacePath(workspaceId, `/providers/${providerId}/refresh-voices`),
-    { method: 'POST' },
-  )
+export function refreshTtsVoicesApi(_workspaceId: string, providerId: string) {
+  return apiRequest<TtsVoice[]>(`/users/me/providers/${providerId}/voices/refresh`, {
+    method: 'POST',
+  })
 }
 
 export function previewTtsVoiceApi(

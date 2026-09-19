@@ -12,6 +12,7 @@ import {
   getTransformationCapabilitiesApi,
   listTransformationJobsApi,
   listTransformationProposalsApi,
+  listSubtitlesApi,
   continueWorkflowApi,
   resumeWorkflowApi,
   overrideTransformationSourceLangApi,
@@ -94,15 +95,44 @@ export function useMediaProposals(workspaceId: string | undefined, jobId: string
   })
 }
 
-/** Linked text translation job (segments + QA) once TRANSLATE has run. */
+/** Linked text translation job (segments + QA) once TRANSLATE has run or direct media subtitles. */
 export function useMediaLinkedJob(
   workspaceId: string | undefined,
-  translationJobId: string | null | undefined,
+  jobId: string | null | undefined,
 ) {
   return useQuery({
-    queryKey: queryKeys.job(workspaceId ?? '', translationJobId ?? ''),
-    queryFn: () => getJobApi(workspaceId!, translationJobId!),
-    enabled: !!workspaceId && !!translationJobId,
+    queryKey: queryKeys.job(workspaceId ?? '', jobId ?? ''),
+    queryFn: async () => {
+      if (!jobId) return null
+      try {
+        const subtitles = await listSubtitlesApi(workspaceId!, jobId)
+        if (subtitles && Array.isArray(subtitles)) {
+          return {
+            id: jobId,
+            documentId: '',
+            targetLang: '',
+            status: 'COMPLETED',
+            providerUsed: null,
+            modelUsed: null,
+            segments: subtitles.map((s: any) => ({
+              id: String(s.id),
+              seq: s.seq,
+              sourceText: s.sourceText,
+              targetText: s.targetText,
+              status: s.status || 'APPROVED',
+              tmScore: s.tmScore ?? null,
+              qaIssues: s.qaIssues ?? [],
+              startMs: s.startMs,
+              endMs: s.endMs,
+            })),
+          } as import('@/types/job').JobDetail
+        }
+      } catch {
+        // Fallback to getJobApi
+      }
+      return getJobApi(workspaceId!, jobId)
+    },
+    enabled: !!workspaceId && !!jobId,
     staleTime: STALE.semiLive,
   })
 }
@@ -150,12 +180,13 @@ export function useEditMediaSegment(
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ segmentId, body }: { segmentId: string; body: EditMediaSegmentBody }) =>
-      editMediaSegmentApi(workspaceId, segmentId, body),
+      editMediaSegmentApi(workspaceId, segmentId, body, mediaJobId),
     onSuccess: () => {
       if (translationJobId) {
         void qc.invalidateQueries({ queryKey: queryKeys.job(workspaceId, translationJobId) })
       }
       void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, mediaJobId) })
+      void qc.invalidateQueries({ queryKey: ['mediaSubtitles', workspaceId, mediaJobId] })
     },
   })
 }
@@ -178,6 +209,7 @@ export function useBatchEditMediaSegments(
         void qc.invalidateQueries({ queryKey: queryKeys.job(workspaceId, translationJobId) })
       }
       void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, mediaJobId) })
+      void qc.invalidateQueries({ queryKey: ['mediaSubtitles', workspaceId, mediaJobId] })
     },
   })
 }

@@ -134,7 +134,10 @@ export function MediaSubtitleEditor({
 }: Props) {
   const { t } = useTranslation(['media', 'common'])
   const isManual = resolveWorkflowMode(job) === 'MANUAL'
-  const { data: linkedJob, isLoading } = useMediaLinkedJob(workspaceId, job.translationJobId)
+  const { data: linkedJob, isLoading } = useMediaLinkedJob(
+    workspaceId,
+    job.translationJobId || job.id,
+  )
   const edit = useEditMediaSegment(workspaceId, job.id, job.translationJobId)
   const batch = useBatchEditMediaSegments(workspaceId, job.id, job.translationJobId)
   const rerun = useRerunTtsRender(workspaceId, job.id)

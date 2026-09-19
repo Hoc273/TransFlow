@@ -1,14 +1,27 @@
 import { apiRequest, buildWorkspacePath } from '@/lib/api/client'
 import type { CreateWorkspaceRequest, Workspace } from '@/types/workspace'
 
-export function listWorkspacesApi() {
-  return apiRequest<Workspace[]>('/workspaces')
+export async function listWorkspacesApi() {
+  const list = await apiRequest<(Workspace & { role?: any })[]>('/workspaces')
+  return (list || []).map((ws) => ({
+    ...ws,
+    myRole: ws.myRole || ws.role || 'MEMBER',
+  }))
 }
 
-export function getWorkspaceApi(workspaceId: string) {
-  return apiRequest<Workspace>(buildWorkspacePath(workspaceId))
+export async function getWorkspaceApi(workspaceId: string) {
+  const ws = await apiRequest<Workspace & { role?: any }>(buildWorkspacePath(workspaceId))
+  if (!ws) return ws
+  return {
+    ...ws,
+    myRole: ws.myRole || ws.role || 'MEMBER',
+  }
 }
 
-export function createWorkspaceApi(body: CreateWorkspaceRequest) {
-  return apiRequest<Workspace>('/workspaces', { method: 'POST', body })
+export async function createWorkspaceApi(body: CreateWorkspaceRequest) {
+  const ws = await apiRequest<Workspace & { role?: any }>('/workspaces', { method: 'POST', body })
+  return {
+    ...ws,
+    myRole: ws.myRole || ws.role || 'LEAD',
+  }
 }

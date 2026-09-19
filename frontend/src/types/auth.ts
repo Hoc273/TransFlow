@@ -10,6 +10,8 @@ export type AuthResponse = {
   accessToken: string
   refreshToken: string
   user: User
+  workspaceId?: string
+  projectId?: string
 }
 
 export type LoginRequest = {

@@ -35,7 +35,21 @@ export function editMediaSegmentApi(
   workspaceId: string,
   segmentId: string,
   body: EditMediaSegmentBody,
+  jobId?: string,
 ) {
+  if (jobId) {
+    return apiRequest(
+      buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/subtitles/${segmentId}`),
+      {
+        method: 'PATCH',
+        body: {
+          targetText: body.targetText,
+          startMs: body.startMs,
+          endMs: body.endMs,
+        },
+      },
+    )
+  }
   return apiRequest(
     buildWorkspacePath(workspaceId, `/media/segments/${segmentId}`),
     {
@@ -52,7 +66,7 @@ export function editMediaSegmentApi(
 export function refineNarrativePlanApi(workspaceId: string, jobId: string, feedback: string) {
   return apiRequest<void>(buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/refine`), {
     method: 'POST',
-    body: { feedback },
+    body: { feedbackText: feedback, feedback },
   })
 }
 
@@ -63,6 +77,6 @@ export type TermsVersionResponse = {
 /** Fetch live terms version from backend (H9 — never hardcode on FE). */
 export function getMediaTermsVersionApi(workspaceId: string) {
   return apiRequest<TermsVersionResponse>(
-    buildWorkspacePath(workspaceId, '/transformation/terms-version'),
+    buildWorkspacePath(workspaceId, '/media/terms-version'),
   )
 }

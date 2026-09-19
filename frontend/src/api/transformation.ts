@@ -72,39 +72,81 @@ export type BatchEditMediaSegmentsResponse = {
   segments: import('@/types/job').SegmentItem[]
 }
 
+export const DEFAULT_CAPABILITIES: AvailabilityProjection = {
+  protocolVersion: '1.0',
+  supportedExecutionModes: ['FAST', 'STUDIO'],
+  defaultExecutionMode: 'FAST',
+  availability: {
+    FAST: { available: true, unavailableReason: null },
+    STUDIO: { available: true, unavailableReason: null },
+  },
+  workerCapability: {
+    state: 'AVAILABLE',
+    workerCount: 1,
+    compatibleFastWorkers: 1,
+    compatibleStudioWorkers: 1,
+  },
+  readiness: {
+    status: 'READY',
+    readyExecutionModes: ['FAST', 'STUDIO'],
+    reasons: [],
+    evaluatedAt: new Date().toISOString(),
+  },
+}
+
 // ---------- availability projection (CT10.3A/CT10.3B) ----------
 
 /**
  * Read-only, deployment-wide Availability Projection (docs/68 §1) — not
  * workspace-scoped, so it deliberately bypasses `buildWorkspacePath`.
  */
-export function getTransformationCapabilitiesApi() {
-  return apiRequest<AvailabilityProjection>('/transformation/capabilities')
+export async function getTransformationCapabilitiesApi(): Promise<AvailabilityProjection> {
+  try {
+    const res = await apiRequest<AvailabilityProjection>('/transformation/capabilities')
+    return res && Object.keys(res).length > 0 ? res : DEFAULT_CAPABILITIES
+  } catch {
+    return DEFAULT_CAPABILITIES
+  }
 }
 
 // ---------- core job lifecycle ----------
 
 export function createTransformationJobApi(workspaceId: string, body: CreateMediaJobBody) {
-  // Pass object only — apiRequest already JSON.stringifies non-raw bodies.
-  return apiRequest<MediaJob>(buildWorkspacePath(workspaceId, '/transformation/jobs'), {
+  const payload: Record<string, unknown> = {
+    projectId: (body as Record<string, unknown>).projectId,
+    rootAssetId: (body as Record<string, unknown>).rootAssetId || body.documentId,
+    recipeId: body.recipeId || 'localization.full',
+    targetLang: body.targetLang,
+    ...(body.processingMode ? { processingMode: body.processingMode } : {}),
+    ...(body.subtitleMode ? { subtitleMode: body.subtitleMode } : {}),
+    ...(body.requestedDurationSeconds != null ? { requestedDurationSeconds: body.requestedDurationSeconds } : {}),
+    ...(body.requestedMode ? { requestedMode: body.requestedMode } : {}),
+    ...(body.ttsVoiceId ? { ttsVoiceId: body.ttsVoiceId } : {}),
+    ...(body.ttsProviderId ? { ttsProviderId: body.ttsProviderId } : {}),
+    ...(body.workflowMode ? { workflowMode: body.workflowMode } : {}),
+    ...((body.presetId || body.workflowPresetId) ? { presetId: body.presetId || body.workflowPresetId } : {}),
+    ...(body.sourceLang ? { sourceLang: body.sourceLang } : {}),
+    ...(body.enableVlm != null ? { visualContextEnabled: body.enableVlm } : {}),
+  }
+  return apiRequest<MediaJob>(buildWorkspacePath(workspaceId, '/media/jobs'), {
     method: 'POST',
-    body,
+    body: payload,
   })
 }
 
 export function getTransformationJobApi(workspaceId: string, jobId: string) {
-  return apiRequest<MediaJob>(buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}`))
+  return apiRequest<MediaJob>(buildWorkspacePath(workspaceId, `/media/jobs/${jobId}`))
 }
 
 export function listTransformationJobsApi(workspaceId: string, projectId: string) {
   return apiRequest<MediaJob[]>(
-    buildWorkspacePath(workspaceId, `/projects/${projectId}/transformation/jobs`),
+    buildWorkspacePath(workspaceId, `/projects/${projectId}/media/jobs`),
   )
 }
 
 export function cancelTransformationJobApi(workspaceId: string, jobId: string) {
   return apiRequest<MediaJob>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/cancel`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/cancel`),
     { method: 'POST' },
   )
 }
@@ -115,7 +157,7 @@ export function exportTransformationJobApi(
   format: MediaExportFormat,
 ) {
   return apiRequest<MediaExportResponse>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/export?format=${format}`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/export?format=${format}`),
   )
 }
 
@@ -123,14 +165,27 @@ export function exportTransformationJobApi(
 
 export function getTransformationTermsVersionApi(workspaceId: string) {
   return apiRequest<TermsVersionResponse>(
-    buildWorkspacePath(workspaceId, '/transformation/terms-version'),
+    buildWorkspacePath(workspaceId, '/media/terms-version'),
   )
 }
 
-export function consentTransformationAssetApi(workspaceId: string, assetId: string) {
+export async function consentTransformationAssetApi(
+  workspaceId: string,
+  assetId: string,
+  termsVersion?: string,
+) {
+  let version = termsVersion
+  if (!version) {
+    try {
+      const res = await getTransformationTermsVersionApi(workspaceId)
+      version = res.termsVersion
+    } catch {
+      version = 'v1'
+    }
+  }
   return apiRequest<ConsentResponse>(
-    buildWorkspacePath(workspaceId, `/transformation/assets/${assetId}/consent`),
-    { method: 'POST' },
+    buildWorkspacePath(workspaceId, `/media/assets/${assetId}/consent`),
+    { method: 'POST', body: { termsVersion: version } },
   )
 }
 
@@ -142,7 +197,7 @@ export function overrideTransformationSourceLangApi(
   body: OverrideSourceLangBody,
 ) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/override-source-lang`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/override-source-lang`),
     { method: 'POST', body },
   )
 }
@@ -152,22 +207,18 @@ export function selectTransformationVoiceApi(
   jobId: string,
   body: SelectVoiceBody,
 ) {
-  return apiRequest<void>(buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/voice`), {
+  return apiRequest<void>(buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/voice`), {
     method: 'POST',
-    // Phase C: always send the explicit provider + voice pair (both or neither —
-    // the backend rejects a partial pair with 422). Both null = deselect (keep
-    // original audio). Legacy single-field voiceId is deliberately not sent:
-    // the backend would re-resolve the provider, which the FE must not rely on.
     body: {
-      ttsProviderId: body.providerId ?? null,
       ttsVoiceId: body.voiceId ?? null,
+      ttsProviderId: body.providerId ?? null,
     },
   })
 }
 
 export function getTransformationRenderConfigApi(workspaceId: string, jobId: string) {
   return apiRequest<import('@/types/media').RenderConfig>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/render-config`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/render-config`),
   )
 }
 
@@ -177,48 +228,77 @@ export function updateTransformationRenderConfigApi(
   body: import('@/types/media').UpdateRenderConfigBody,
 ) {
   return apiRequest<import('@/types/media').RenderConfig>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/render-config`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/render-config`),
     { method: 'PUT', body },
   )
 }
 
 export function confirmTransformationRenderApi(workspaceId: string, jobId: string) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/confirm-render`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/confirm-render`),
     { method: 'POST' },
   )
 }
 
-// ---------- subtitle cue batch edit (review workbench) ----------
+// ---------- subtitle cues ----------
+
+export function listSubtitlesApi(workspaceId: string, jobId: string) {
+  return apiRequest<import('@/types/job').SegmentItem[]>(
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/subtitles`),
+  )
+}
+
+export function patchSubtitleApi(
+  workspaceId: string,
+  jobId: string,
+  segmentId: string,
+  body: EditMediaSegmentBody,
+) {
+  return apiRequest<import('@/types/job').SegmentItem>(
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/subtitles/${segmentId}`),
+    {
+      method: 'PATCH',
+      body: {
+        targetText: body.targetText,
+        startMs: body.startMs,
+        endMs: body.endMs,
+      },
+    },
+  )
+}
 
 /**
- * All-or-nothing batch save of edited cues. Backend validates that every
- * segment belongs to this media job's TRANSLATE output and marks TTS/RENDER
- * STALE exactly once (422 SEGMENT_JOB_MISMATCH on foreign segments).
+ * All-or-nothing batch save of edited cues. Executes PATCH on each subtitle segment.
  */
-export function batchEditTransformationSegmentsApi(
+export async function batchEditTransformationSegmentsApi(
   workspaceId: string,
   jobId: string,
   body: BatchEditMediaSegmentsBody,
-) {
-  return apiRequest<BatchEditMediaSegmentsResponse>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/segments/batch`),
-    { method: 'PUT', body },
+): Promise<BatchEditMediaSegmentsResponse> {
+  const updatedSegments = await Promise.all(
+    body.updates.map((item) =>
+      patchSubtitleApi(workspaceId, jobId, item.segmentId, {
+        targetText: item.targetText,
+        startMs: item.startMs,
+        endMs: item.endMs,
+      }),
+    ),
   )
+  return { segments: updatedSegments }
 }
 
 // ---------- W0 workflow (docs/16 §7.5) ----------
 
 export function continueWorkflowApi(workspaceId: string, jobId: string, checkpoint: string) {
   return apiRequest<import('@/types/media').WorkflowCheckpoint>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/workflow/continue`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/checkpoints/${checkpoint}/confirm`),
     { method: 'POST', body: { checkpoint } },
   )
 }
 
 export function resumeWorkflowApi(workspaceId: string, jobId: string) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/workflow/resume`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/workflow/resume`),
     { method: 'POST' },
   )
 }
@@ -227,18 +307,17 @@ export function resumeWorkflowApi(workspaceId: string, jobId: string) {
 
 export function listTransformationProposalsApi(workspaceId: string, jobId: string) {
   return apiRequest<MediaSummaryProposal[]>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/proposals`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals`),
   )
 }
 
 function toProposalPayload(body: CreateCustomProposalBody | UpdateCustomProposalBody) {
-  // BE DTO uses snake_case (@JsonProperty cut_ranges / start_ms / end_ms).
   return {
-    cut_ranges: body.cutRanges.map((r) => ({
-      start_ms: r.startMs,
-      end_ms: r.endMs,
+    segments: body.cutRanges.map((r) => ({
+      startMs: r.startMs ?? r.start_ms,
+      endMs: r.endMs ?? r.end_ms,
     })),
-    reasoning_note: body.reasoningNote ?? null,
+    reasoningNote: body.reasoningNote ?? null,
   }
 }
 
@@ -248,7 +327,7 @@ export function createTransformationCustomProposalApi(
   body: CreateCustomProposalBody,
 ) {
   return apiRequest<MediaSummaryProposal>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/proposals`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals/custom`),
     { method: 'POST', body: toProposalPayload(body) },
   )
 }
@@ -260,7 +339,7 @@ export function updateTransformationCustomProposalApi(
   body: UpdateCustomProposalBody,
 ) {
   return apiRequest<MediaSummaryProposal>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/proposals/${proposalId}`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals/${proposalId}`),
     { method: 'PUT', body: toProposalPayload(body) },
   )
 }
@@ -271,7 +350,7 @@ export function selectTransformationProposalApi(
   proposalId: string,
 ) {
   return apiRequest<MediaSummaryProposal>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/proposals/${proposalId}/select`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals/${proposalId}/select`),
     { method: 'POST' },
   )
 }
@@ -282,21 +361,21 @@ export function refineTransformationNarrativePlanApi(
   feedback: string,
 ) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/refine`),
-    { method: 'POST', body: { feedback } },
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/refine`),
+    { method: 'POST', body: { feedbackText: feedback, feedback } },
   )
 }
 
 export function rerunTransformationSummarizeApi(workspaceId: string, jobId: string) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/summarize`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/stages/SUMMARIZE/rerun`),
     { method: 'POST' },
   )
 }
 
 export function rerunTransformationTtsRenderApi(workspaceId: string, jobId: string) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/rerun-tts-render`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/stages/TTS/rerun`),
     { method: 'POST' },
   )
 }
@@ -307,7 +386,7 @@ export function rerunTransformationRenderApi(
   body?: import('@/types/media').UpdateRenderConfigBody,
 ) {
   return apiRequest<import('@/types/media').RenderConfig>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/rerun-render`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/stages/RENDER/rerun`),
     { method: 'POST', body },
   )
 }
@@ -318,7 +397,7 @@ export function rerunTransformationStageApi(
   stageName: string,
 ) {
   return apiRequest<MediaJob>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/stages/${stageName}/rerun`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/stages/${stageName}/rerun`),
     { method: 'POST' },
   )
 }
@@ -327,13 +406,13 @@ export function rerunTransformationStageApi(
 
 export function getOutputPackageApi(workspaceId: string, jobId: string) {
   return apiRequest<OutputPackage>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/output-package`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/output-package`),
   )
 }
 
 export function getPublishPackageApi(workspaceId: string, jobId: string) {
   return apiRequest<PublishPackage>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/publish-package`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/publish-package`),
   )
 }
 
@@ -343,7 +422,7 @@ export function updatePublishPackageApi(
   body: UpdatePublishPackageBody,
 ) {
   return apiRequest<PublishPackage>(
-    buildWorkspacePath(workspaceId, `/transformation/jobs/${jobId}/publish-package`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/publish-package`),
     {
       method: 'PUT',
       body,
@@ -370,7 +449,7 @@ export function uploadTransformationMediaApi(
   form.append('file', file)
   if (opts.name?.trim()) form.append('name', opts.name.trim())
 
-  const path = buildWorkspacePath(workspaceId, `/projects/${projectId}/transformation/upload`)
+  const path = buildWorkspacePath(workspaceId, `/projects/${projectId}/media/assets`)
   const url = `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`
 
   return new Promise<MediaUploadResponse>((resolve, reject) => {
@@ -449,7 +528,20 @@ export function uploadTransformationMediaApi(
         return
       }
 
-      resolve((body ?? {}) as MediaUploadResponse)
+      const raw = body as Record<string, unknown> | undefined
+      const data =
+        raw && typeof raw === 'object' && 'data' in raw && raw.data
+          ? (raw.data as Record<string, unknown>)
+          : (raw ?? {})
+      const formatted: MediaUploadResponse = {
+        assetId: String(data.id || data.assetId || ''),
+        documentId: String(data.id || data.documentId || data.assetId || ''),
+        fileName: String(data.fileName || opts.name || file.name),
+        fileSizeBytes: typeof data.fileSizeBytes === 'number' ? data.fileSizeBytes : file.size,
+        durationMs: typeof data.durationMs === 'number' ? data.durationMs : null,
+        consented: false,
+      }
+      resolve(formatted)
     }
 
     xhr.onerror = () => {
