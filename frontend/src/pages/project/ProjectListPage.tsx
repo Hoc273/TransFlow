@@ -4,9 +4,9 @@ import { useTranslation } from 'react-i18next'
 import {
   IconArrowRight,
   IconChevronRight,
-  IconFileText,
   IconFolder,
   IconPlus,
+  IconVideo,
 } from '@tabler/icons-react'
 import { CreateProjectModal } from '@/components/project/CreateProjectModal'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -121,14 +121,14 @@ export function ProjectListPage() {
                   <th className="w-2/5">{t('project:list.col.name')}</th>
                   <th className="col-hide-mobile">{t('project:list.col.sourceLang')}</th>
                   <th className="col-hide-tablet">{t('project:list.col.domain')}</th>
-                  <th>{t('project:list.col.documents')}</th>
+                  <th>{t('project:list.col.media')}</th>
                   <th className="w-12 text-right"></th>
                 </tr>
               </thead>
               <tbody>
                 {projects.map((p) => {
                   const targetPath = `/w/${workspaceId}/media?projectId=${p.id}`
-                  const docCount = p.documentCount ?? 0
+                  const videoCount = p.mediaCount ?? p.documentCount ?? 0
 
                   return (
                     <tr
@@ -163,11 +163,11 @@ export function ProjectListPage() {
                         {p.domain || '—'}
                       </td>
 
-                      {/* Documents count */}
+                      {/* Videos count */}
                       <td>
                         <div className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
-                          <IconFileText size={14} className="text-[var(--color-text-tertiary)]" />
-                          <span>{t('project:list.docsCount', { count: docCount })}</span>
+                          <IconVideo size={14} className="text-[var(--color-text-tertiary)]" />
+                          <span>{t('project:list.videoCount', { count: videoCount })}</span>
                         </div>
                       </td>
 
@@ -190,6 +190,7 @@ export function ProjectListPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         workspaceId={workspaceId}
+        onCreated={(newProjectId) => navigate(`/w/${workspaceId}/media?projectId=${newProjectId}`)}
       />
     </div>
   )
