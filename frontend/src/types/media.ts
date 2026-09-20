@@ -457,6 +457,9 @@ export type TransformationPlanKind =
 
 export type CreateMediaJobBody = {
   documentId: string
+  /** Spring Boot backend required fields */
+  projectId?: string | null
+  rootAssetId?: string | null
   /**
    * Preferred UL field (CT4.4 prep). First-party FE always sends this;
    * BE soft dual still accepts processingMode-only until CT4.4 hard.

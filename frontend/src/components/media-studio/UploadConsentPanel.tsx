@@ -81,6 +81,8 @@ type Props = {
  * preset/system default freezes at create.
  */
 export type CreateJobApiInput = {
+  projectId?: string
+  rootAssetId?: string
   documentId: string
   recipeId: string
   sourceLang?: string
@@ -102,6 +104,8 @@ export type CreateJobApiInput = {
  */
 export function createJobApiBody(body: CreateJobApiInput): CreateMediaJobBody {
   return {
+    projectId: body.projectId,
+    rootAssetId: body.rootAssetId || body.documentId,
     documentId: body.documentId,
     recipeId: body.recipeId,
     sourceLang: body.sourceLang,
@@ -339,7 +343,10 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     if (!uploaded || !consentChecked) return
     setError(null)
     try {
-      await consent.mutateAsync(uploaded.assetId)
+      await consent.mutateAsync({
+        assetId: uploaded.assetId,
+        termsVersion: termsQuery.data?.termsVersion || 'v1.0',
+      })
       setConsented(true)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('common:error.generic'))
@@ -376,6 +383,8 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
 
     try {
       const job = await createMediaJobWithSelection({
+        projectId,
+        rootAssetId: uploaded.assetId,
         documentId: uploaded.documentId,
         recipeId,
         sourceLang: sourceLang || undefined,
@@ -1183,6 +1192,8 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
 }
 
 export type CreateJobSelection = {
+  projectId?: string
+  rootAssetId?: string
   documentId: string
   recipeId: string
   sourceLang?: string
@@ -1206,6 +1217,8 @@ export type CreateJobSelection = {
   deps: {
     createJob: {
       mutateAsync: (body: {
+        projectId?: string
+        rootAssetId?: string
         documentId: string
         recipeId: string
         sourceLang?: string
@@ -1260,6 +1273,8 @@ export async function createMediaJobWithSelection(selection: CreateJobSelection)
   }
   const sendPair = !presetBindsVoice && hasProvider && hasVoice
   return deps.createJob.mutateAsync({
+    projectId: selection.projectId,
+    rootAssetId: selection.rootAssetId,
     documentId: selection.documentId,
     recipeId: selection.recipeId,
     sourceLang: selection.sourceLang,

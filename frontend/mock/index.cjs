@@ -682,7 +682,47 @@ function buildRoutes() {
     sendNoContent(ctx.res)
   })
 
-  // ---- Providers ----
+  // ---- Providers (both /workspaces/:id/providers and /users/me/providers) ----
+  r('/users/me/providers', 'GET', json(d.providers))
+  r('/users/me/providers', 'POST', async (ctx) => {
+    const body = await readJson(ctx.req)
+    const p = {
+      id: d.uuid('prov'),
+      displayName: body.displayName || 'Provider',
+      protocol: body.protocol || 'openai_compatible',
+      capabilities: body.capabilities ?? [],
+      defaultFor: body.defaultForCapabilities ?? [],
+      baseUrl: body.baseUrl || '',
+      apiKeyHint: body.apiKey ? 'sk-...mock' : null,
+      defaultModel: body.defaultModel || '',
+      enabled: body.enabled ?? true,
+      temperature: body.temperature ?? null,
+    }
+    d.providers.push(p)
+    sendJson(ctx.res, 201, p)
+  })
+  r('/users/me/providers/:providerId', 'GET', (ctx) => {
+    const p = d.providers.find((x) => x.id === ctx.params.providerId)
+    sendJson(ctx.res, p ? 200 : 404, p ?? { errorCode: 'NOT_FOUND', message: 'Provider not found' })
+  })
+  r('/users/me/providers/:providerId', 'PUT', async (ctx) => {
+    const body = await readJson(ctx.req)
+    const p = d.providers.find((x) => x.id === ctx.params.providerId)
+    if (p) {
+      Object.assign(p, body)
+      p.apiKeyHint = body.apiKey ? 'sk-...mock' : p.apiKeyHint
+    }
+    sendJson(ctx.res, 200, p ?? { errorCode: 'NOT_FOUND', message: 'Provider not found' })
+  })
+  r('/users/me/providers/:providerId', 'DELETE', (ctx) => sendNoContent(ctx.res))
+  r('/users/me/providers/:providerId/test', 'POST', json({ ok: true, model: 'gpt-4o-mini', message: 'Connection successful' }))
+  r('/users/me/providers/:providerId/voices', 'GET', (ctx) =>
+    sendJson(ctx.res, 200, d.voices.filter((v) => v.providerId === ctx.params.providerId)),
+  )
+  r('/users/me/providers/:providerId/voices/refresh', 'POST', (ctx) =>
+    sendJson(ctx.res, 200, d.voices.filter((v) => v.providerId === ctx.params.providerId)),
+  )
+
   r('/workspaces/:workspaceId/providers/presets', 'GET', (ctx) =>
     sendJson(ctx.res, 200, ctx.query.get('category') ? d.providerPresets.filter((p) => p.category === ctx.query.get('category')) : d.providerPresets),
   )
@@ -939,6 +979,7 @@ function buildRoutes() {
     sendJson(ctx.res, 200, { ...makeRenderConfig(ctx.params.jobId), ...body })
   })
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/confirm-render', '/workspaces/:workspaceId/transformation/jobs/:jobId/confirm-render', 'POST', (ctx) => sendNoContent(ctx.res))
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/checkpoints/:checkpoint/confirm', '/workspaces/:workspaceId/transformation/jobs/:jobId/checkpoints/:checkpoint/confirm', 'POST', (ctx) => sendNoContent(ctx.res))
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/workflow/continue', '/workspaces/:workspaceId/transformation/jobs/:jobId/workflow/continue', 'POST', json({ id: 'CUT', state: 'CONFIRMED', canContinue: false }))
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/workflow/resume', '/workspaces/:workspaceId/transformation/jobs/:jobId/workflow/resume', 'POST', (ctx) => sendNoContent(ctx.res))
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/proposals', '/workspaces/:workspaceId/transformation/jobs/:jobId/proposals', 'GET', json(d.proposals))

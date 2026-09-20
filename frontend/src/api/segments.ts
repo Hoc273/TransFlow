@@ -60,3 +60,16 @@ export function overrideQaIssueApi(
     { method: 'POST', body },
   )
 }
+
+/** GET /api/workspaces/{workspaceId}/media/jobs/{jobId}/qa-issues (QaController) */
+export function listMediaJobQaIssuesApi(
+  workspaceId: string,
+  jobId: string,
+  resolved?: boolean,
+) {
+  const query = resolved != null ? `?resolved=${resolved}` : ''
+  return apiRequest<any[]>(
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/qa-issues${query}`),
+  )
+}
+
