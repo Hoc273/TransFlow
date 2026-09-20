@@ -55,10 +55,10 @@
   align-items: center;
 }
 
-/* Center Hero: Airy, minimal, decorative */
+/* Hero Section: Positioned close to top logo */
 .auth-brand-hero {
   max-width: 460px;
-  margin: auto 0;
+  margin: 36px 0 auto 0;
 }
 
 .auth-hero-title {
