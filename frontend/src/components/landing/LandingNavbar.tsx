@@ -41,10 +41,18 @@ export function LandingNavbar() {
           : 'bg-white/50 dark:bg-[#09090a]/50 backdrop-blur-xs border-b border-black/5 dark:border-white/10'
       }`}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-        {/* Brand Logo matching original site */}
-        <div className="flex items-center gap-6 shrink-0">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+        {/* Brand Logo & Mobile Hamburger next to Logo */}
+        <div className="flex items-center gap-2.5 sm:gap-6 shrink-0">
           <Logo to="/" />
+          {/* Mobile hamburger on the right side of the logo (hidden on desktop/web) */}
+          <button
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="md:hidden p-1.5 rounded-lg text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? <IconX size={20} /> : <IconMenu2 size={20} />}
+          </button>
         </div>
 
         {/* Center Nav Items */}
@@ -85,7 +93,7 @@ export function LandingNavbar() {
           {accessToken ? (
             <Link
               to={studioTarget}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 text-xs sm:text-sm font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all shadow-xs hover:scale-[1.02]"
+              className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 text-xs sm:text-sm font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all shadow-xs hover:scale-[1.02]"
             >
               <span>{t('nav.studio')}</span>
               <IconArrowRight size={14} stroke={2} />
@@ -100,22 +108,13 @@ export function LandingNavbar() {
               </Link>
               <Link
                 to="/register"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 text-xs sm:text-sm font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all shadow-xs hover:scale-[1.02]"
+                className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 text-xs sm:text-sm font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all shadow-xs hover:scale-[1.02]"
               >
                 <span>{t('nav.startFree')}</span>
                 <IconArrowRight size={14} stroke={2} />
               </Link>
             </>
           )}
-
-          {/* Mobile hamburger */}
-          <button
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden p-1.5 text-neutral-700 dark:text-neutral-200 cursor-pointer"
-            aria-label="Toggle menu"
-          >
-            {mobileOpen ? <IconX size={20} /> : <IconMenu2 size={20} />}
-          </button>
         </div>
       </div>
 
