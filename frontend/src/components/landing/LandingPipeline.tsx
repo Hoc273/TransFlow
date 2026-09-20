@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -24,7 +24,9 @@ import {
   IconLock,
   IconLockOpen,
   IconAlertTriangle,
-  IconVideo
+  IconVideo,
+  IconChevronDown,
+  IconChevronUp
 } from '@tabler/icons-react'
 import { useAuthStore } from '@/store/authStore'
 
@@ -161,6 +163,7 @@ export function LandingPipeline() {
   const [subtitleMode, setSubtitleMode] = useState<'hard' | 'soft'>('hard')
   const [activeVoice, setActiveVoice] = useState<'ban_mai' | 'minh_quang'>('ban_mai')
   const [isPlayingDemo, setIsPlayingDemo] = useState(true)
+  const [showAllTechDetails, setShowAllTechDetails] = useState(false)
 
   const accessToken = useAuthStore((s) => s.accessToken)
   const currentWorkspace = useAuthStore((s) => s.currentWorkspace)
@@ -174,6 +177,21 @@ export function LandingPipeline() {
   const summarizationSteps = useMemo(() => getSummarizationSteps(t), [t])
   const steps = workflow === 'localization' ? localizationSteps : summarizationSteps
   const currentStep = steps[currentStepIndex] || steps[0]
+
+  const tabsContainerRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll active tab into view on mobile
+  useEffect(() => {
+    if (!tabsContainerRef.current) return
+    const activeTab = tabsContainerRef.current.children[currentStepIndex] as HTMLElement
+    if (activeTab) {
+      activeTab.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'center'
+      })
+    }
+  }, [currentStepIndex])
 
   // Deterministic Sequential Auto-play Timeline (Strictly 1 -> 2 -> 3 -> 4 -> 5 -> 1)
   useEffect(() => {
@@ -203,6 +221,7 @@ export function LandingPipeline() {
   const handleStepClick = (index: number) => {
     setCurrentStepIndex(index)
     setProgress(0)
+    setShowAllTechDetails(false)
   }
 
   // Handle workflow change (Localization vs Summarization)
@@ -210,6 +229,7 @@ export function LandingPipeline() {
     setWorkflow(newWf)
     setCurrentStepIndex(0)
     setProgress(0)
+    setShowAllTechDetails(false)
   }
 
   return (
@@ -229,7 +249,7 @@ export function LandingPipeline() {
       </div>
 
       {/* Workflow Switcher (Localization 5 bước vs Summarization 3 bước) */}
-      <div className="flex justify-center mb-8">
+      <div className="flex justify-center mb-6 sm:mb-8">
         <div className="inline-flex p-1.5 rounded-full bg-neutral-100/90 dark:bg-[#13151b] border border-neutral-200/80 dark:border-white/10 shadow-xs backdrop-blur-sm">
           <button
             type="button"
@@ -259,8 +279,12 @@ export function LandingPipeline() {
         </div>
       </div>
 
+
       {/* 5 Sequential Category Tabs (1 -> 2 -> 3 -> 4 -> 5) */}
-      <div className="flex items-center justify-center flex-wrap gap-2 sm:gap-2.5 mb-10">
+      <div
+        ref={tabsContainerRef}
+        className="flex items-center md:justify-center overflow-x-auto no-scrollbar scroll-smooth gap-2 sm:gap-2.5 mb-8 sm:mb-10 px-4 sm:px-0 py-1 -mx-4 sm:mx-0"
+      >
         {steps.map((step, idx) => {
           const isActive = idx === currentStepIndex
           return (
@@ -268,7 +292,7 @@ export function LandingPipeline() {
               key={step.id}
               type="button"
               onClick={() => handleStepClick(idx)}
-              className={`relative inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer overflow-hidden ${
+              className={`relative shrink-0 inline-flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer overflow-hidden ${
                 isActive
                   ? 'bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 shadow-md ring-1 ring-black/5 dark:ring-white/10 scale-[1.02] border border-transparent'
                   : 'bg-neutral-100/90 dark:bg-white/[0.06] border border-neutral-200/90 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200/90 dark:hover:bg-white/10 hover:text-neutral-950 dark:hover:text-white hover:border-neutral-300 dark:hover:border-white/20 shadow-xs backdrop-blur-xs'
@@ -310,17 +334,17 @@ export function LandingPipeline() {
       <div
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        className="rounded-[32px] border border-neutral-200/90 dark:border-white/10 bg-[#f8f9fd] dark:bg-[#13151b] p-6 sm:p-10 shadow-md dark:shadow-[0_12px_40px_rgba(0,0,0,0.6)] transition-all mb-12"
+        className="rounded-2xl sm:rounded-[32px] border border-neutral-200/90 dark:border-white/10 bg-[#f8f9fd] dark:bg-[#13151b] p-4 sm:p-8 lg:p-10 shadow-md dark:shadow-[0_12px_40px_rgba(0,0,0,0.6)] transition-all mb-12"
       >
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          {/* Left Column: Stage Explanation & Specs */}
-          <div className="lg:col-span-5 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
+          {/* Left Column: Stage Explanation & Specs (Order 2 on mobile -> Visual First) */}
+          <div className="order-2 lg:order-1 lg:col-span-5 space-y-4 sm:space-y-6">
             {/* Stage Tags */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               {currentStep.tags.map((tag, i) => (
                 <span
                   key={tag}
-                  className={`px-3 py-1 rounded-full text-[11px] font-semibold ${
+                  className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-semibold ${
                     i === 0
                       ? 'bg-violet-100 dark:bg-violet-950/60 text-[#714ffc] dark:text-[#a78bff]'
                       : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300'
@@ -332,54 +356,72 @@ export function LandingPipeline() {
             </div>
 
             {/* Stage Headline */}
-            <h3 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-white tracking-tight leading-snug">
+            <h3 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-neutral-900 dark:text-white tracking-tight leading-snug">
               {currentStep.headline}
             </h3>
 
             {/* Technical Detail Paragraph */}
-            <p className="text-neutral-600 dark:text-neutral-300 text-sm sm:text-base leading-relaxed">
-              {currentStep.technicalDetails}
-            </p>
+            <div className="space-y-1.5">
+              <p
+                className={`text-neutral-600 dark:text-neutral-300 text-xs sm:text-sm lg:text-base leading-relaxed ${
+                  showAllTechDetails ? '' : 'line-clamp-2 sm:line-clamp-none'
+                }`}
+              >
+                {currentStep.technicalDetails}
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowAllTechDetails(!showAllTechDetails)}
+                className="sm:hidden text-[11px] font-semibold text-[#714ffc] dark:text-[#a78bff] hover:underline cursor-pointer inline-flex items-center gap-1 pt-0.5"
+              >
+                <span>
+                  {showAllTechDetails
+                    ? (t('pipeline.collapseDetails', 'Thu gọn') || 'Thu gọn')
+                    : (t('pipeline.expandDetails', 'Xem chi tiết thuật toán ▾') || 'Xem chi tiết thuật toán ▾')}
+                </span>
+                {showAllTechDetails ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />}
+              </button>
+            </div>
 
             {/* Specs Metric Cards */}
-            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-neutral-200/70 dark:border-white/10">
-              <div className="p-3.5 rounded-2xl bg-white dark:bg-[#1a1d26] border border-neutral-200/60 dark:border-white/[0.08] shadow-xs">
-                <div className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-4 pt-2 border-t border-neutral-200/70 dark:border-white/10">
+              <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white dark:bg-[#1a1d26] border border-neutral-200/60 dark:border-white/[0.08] shadow-xs">
+                <div className="text-[10px] sm:text-[11px] text-neutral-500 dark:text-neutral-400 mb-0.5 sm:mb-1">
                   {currentStep.metricPrimaryLabel}
                 </div>
-                <div className="text-base sm:text-lg font-bold text-neutral-900 dark:text-white tracking-tight">
+                <div className="text-sm sm:text-base lg:text-lg font-bold text-neutral-900 dark:text-white tracking-tight">
                   {currentStep.metricPrimary}
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-white dark:bg-[#1a1d26] border border-neutral-200/60 dark:border-white/[0.08] shadow-xs">
-                <div className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1">
+              <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white dark:bg-[#1a1d26] border border-neutral-200/60 dark:border-white/[0.08] shadow-xs">
+                <div className="text-[10px] sm:text-[11px] text-neutral-500 dark:text-neutral-400 mb-0.5 sm:mb-1">
                   {currentStep.metricSecondaryLabel}
                 </div>
-                <div className="text-base sm:text-lg font-bold text-neutral-900 dark:text-white tracking-tight">
+                <div className="text-sm sm:text-base lg:text-lg font-bold text-neutral-900 dark:text-white tracking-tight">
                   {currentStep.metricSecondary}
                 </div>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 pt-2">
               <Link
                 to={authTarget}
-                className="inline-flex items-center justify-center px-6 py-2.5 rounded-full bg-neutral-950 text-white dark:bg-white dark:text-neutral-950 font-semibold text-xs sm:text-sm hover:opacity-90 transition-opacity shadow-sm cursor-pointer"
+                className="inline-flex items-center justify-center px-6 py-2.5 rounded-full bg-neutral-950 text-white dark:bg-white dark:text-neutral-950 font-semibold text-xs sm:text-sm hover:opacity-90 transition-opacity shadow-sm cursor-pointer w-full sm:w-auto text-center"
               >
                 {t('pipeline.ctaStudio')}
               </Link>
               <a
                 href="#pipeline"
-                className="inline-flex items-center justify-center px-6 py-2.5 rounded-full border border-neutral-300 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 font-semibold text-xs sm:text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                className="hidden sm:inline-flex items-center justify-center px-6 py-2.5 rounded-full border border-neutral-300 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 font-semibold text-xs sm:text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
               >
                 {t('pipeline.ctaDocs')}
               </a>
             </div>
 
             {/* Navigation hint */}
-            <div className="flex items-center gap-2 text-xs text-neutral-400 pt-1">
+            <div className="hidden sm:flex items-center gap-2 text-xs text-neutral-400 pt-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span>
                 {t('pipeline.runningStatus', { current: currentStepIndex + 1, total: steps.length })}
@@ -387,8 +429,8 @@ export function LandingPipeline() {
             </div>
           </div>
 
-          {/* Right Column: Interactive Animated Stage Simulation */}
-          <div className="lg:col-span-7 bg-[#09090a] dark:bg-[#0a0c12] rounded-2xl border border-white/10 ring-1 ring-white/5 p-5 sm:p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.8),inset_0_1px_0_0_rgba(255,255,255,0.08)] text-white min-h-[420px] flex flex-col justify-between relative overflow-hidden">
+          {/* Right Column: Interactive Animated Stage Simulation (Order 1 on mobile -> Visual First) */}
+          <div className="order-1 lg:order-2 lg:col-span-7 bg-[#09090a] dark:bg-[#0a0c12] rounded-2xl border border-white/10 ring-1 ring-white/5 p-4 sm:p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.8),inset_0_1px_0_0_rgba(255,255,255,0.08)] text-white min-h-[340px] sm:min-h-[420px] flex flex-col justify-between relative overflow-hidden">
             {/* Ambient subtle glow inside simulation */}
             <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute bottom-0 left-0 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -443,37 +485,37 @@ export function LandingPipeline() {
       </div>
 
       {/* 3 COMPACT TRANSFLOW PLATFORM PILLARS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-6 pt-2 sm:pt-4">
         {/* Card 1: Batch Processing Engine */}
-        <div className="rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-[#fbfbfe] dark:bg-[#13151b] p-6 shadow-sm dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:shadow-md dark:hover:border-white/20 transition-all flex flex-col justify-between">
-          <div className="space-y-4">
+        <div className="rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-[#fbfbfe] dark:bg-[#13151b] p-4 sm:p-6 shadow-sm dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:shadow-md dark:hover:border-white/20 transition-all flex flex-col justify-between">
+          <div className="space-y-2.5 sm:space-y-4">
             <div className="flex items-center gap-1.5">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
+              <span className="px-2 sm:px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
                 Batch API
               </span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+              <span className="px-2 sm:px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
                 100+ Streams
               </span>
             </div>
 
-            <h4 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-              <IconLayersLinked size={20} className="text-purple-500" />
+            <h4 className="text-base sm:text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+              <IconLayersLinked size={18} className="text-purple-500 shrink-0" />
               <span>{t('pipeline.pillarBatchTitle')}</span>
             </h4>
 
-            <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+            <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed line-clamp-2 sm:line-clamp-none">
               {t('pipeline.pillarBatchDesc')}
             </p>
           </div>
 
-          <div className="pt-6 border-t border-neutral-200/70 dark:border-white/10 space-y-3 mt-4">
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+          <div className="pt-3 sm:pt-6 border-t border-neutral-200/70 dark:border-white/10 space-y-1.5 sm:space-y-3 mt-3 sm:mt-4">
+            <div className="text-[10px] sm:text-[11px] text-neutral-500 dark:text-neutral-400">
               {t('pipeline.pillarBatchCapacityLabel')}{' '}
               <strong className="text-neutral-900 dark:text-white">
                 {t('pipeline.pillarBatchCapacityValue')}
               </strong>
             </div>
-            <div className="flex items-center justify-between text-xs font-bold text-neutral-900 dark:text-white">
+            <div className="flex items-center justify-between text-[11px] sm:text-xs font-bold text-neutral-900 dark:text-white">
               <span>{t('pipeline.pillarBatchDuration')}</span>
               <span>{t('pipeline.pillarBatchRetry')}</span>
             </div>
@@ -481,35 +523,35 @@ export function LandingPipeline() {
         </div>
 
         {/* Card 2: pgvector Translation Memory & Glossary */}
-        <div className="rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-[#fbfbfe] dark:bg-[#13151b] p-6 shadow-sm dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:shadow-md dark:hover:border-white/20 transition-all flex flex-col justify-between">
-          <div className="space-y-4">
+        <div className="rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-[#fbfbfe] dark:bg-[#13151b] p-4 sm:p-6 shadow-sm dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:shadow-md dark:hover:border-white/20 transition-all flex flex-col justify-between">
+          <div className="space-y-2.5 sm:space-y-4">
             <div className="flex items-center gap-1.5">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+              <span className="px-2 sm:px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
                 pgvector TM
               </span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300">
+              <span className="px-2 sm:px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300">
                 Glossary Shield
               </span>
             </div>
 
-            <h4 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-              <IconDatabase size={20} className="text-emerald-500" />
+            <h4 className="text-base sm:text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+              <IconDatabase size={18} className="text-emerald-500 shrink-0" />
               <span>{t('pipeline.pillarTmTitle')}</span>
             </h4>
 
-            <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+            <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed line-clamp-2 sm:line-clamp-none">
               {t('pipeline.pillarTmDesc')}
             </p>
           </div>
 
-          <div className="pt-6 border-t border-neutral-200/70 dark:border-white/10 space-y-3 mt-4">
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+          <div className="pt-3 sm:pt-6 border-t border-neutral-200/70 dark:border-white/10 space-y-1.5 sm:space-y-3 mt-3 sm:mt-4">
+            <div className="text-[10px] sm:text-[11px] text-neutral-500 dark:text-neutral-400">
               {t('pipeline.pillarTmSavingsLabel')}{' '}
               <strong className="text-neutral-900 dark:text-white">
                 {t('pipeline.pillarTmSavingsValue')}
               </strong>
             </div>
-            <div className="flex items-center justify-between text-xs font-bold text-neutral-900 dark:text-white">
+            <div className="flex items-center justify-between text-[11px] sm:text-xs font-bold text-neutral-900 dark:text-white">
               <span>{t('pipeline.pillarTmSimilarity')}</span>
               <span>{t('pipeline.pillarTmTermLock')}</span>
             </div>
@@ -519,36 +561,36 @@ export function LandingPipeline() {
         {/* Card 3: Enterprise Security & Data Privacy */}
         <div
           id="privacy"
-          className="rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-[#fbfbfe] dark:bg-[#13151b] p-6 shadow-sm dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:shadow-md dark:hover:border-white/20 transition-all flex flex-col justify-between scroll-mt-24"
+          className="rounded-2xl border border-neutral-200/80 dark:border-white/10 bg-[#fbfbfe] dark:bg-[#13151b] p-4 sm:p-6 shadow-sm dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:shadow-md dark:hover:border-white/20 transition-all flex flex-col justify-between scroll-mt-24"
         >
-          <div className="space-y-4">
+          <div className="space-y-2.5 sm:space-y-4">
             <div className="flex items-center gap-1.5">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
+              <span className="px-2 sm:px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
                 Enterprise Security
               </span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+              <span className="px-2 sm:px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
                 Zero Retention
               </span>
             </div>
 
-            <h4 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-              <IconShieldCheck size={20} className="text-blue-500" />
+            <h4 className="text-base sm:text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+              <IconShieldCheck size={18} className="text-blue-500 shrink-0" />
               <span>{t('pipeline.pillarSecurityTitle')}</span>
             </h4>
 
-            <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+            <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed line-clamp-2 sm:line-clamp-none">
               {t('pipeline.pillarSecurityDesc')}
             </p>
           </div>
 
-          <div className="pt-6 border-t border-neutral-200/70 dark:border-white/10 space-y-3 mt-4">
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+          <div className="pt-3 sm:pt-6 border-t border-neutral-200/70 dark:border-white/10 space-y-1.5 sm:space-y-3 mt-3 sm:mt-4">
+            <div className="text-[10px] sm:text-[11px] text-neutral-500 dark:text-neutral-400">
               {t('pipeline.pillarSecurityEncryptionLabel')}{' '}
               <strong className="text-neutral-900 dark:text-white">
                 {t('pipeline.pillarSecurityEncryptionValue')}
               </strong>
             </div>
-            <div className="flex items-center justify-between text-xs font-bold text-neutral-900 dark:text-white">
+            <div className="flex items-center justify-between text-[11px] sm:text-xs font-bold text-neutral-900 dark:text-white">
               <span>{t('pipeline.pillarSecurityRetention')}</span>
               <span>{t('pipeline.pillarSecurityTraining')}</span>
             </div>
@@ -783,8 +825,8 @@ function AnimationStep1Separation({
         </div>
       </div>
 
-      {/* Timeline & Acoustics Preservation Footer */}
-      <div className="flex flex-wrap items-center justify-between text-[11px] text-neutral-400 pt-1 gap-2 border-t border-white/10">
+      {/* Timeline & Acoustics Preservation Footer (Desktop only) */}
+      <div className="hidden sm:flex flex-wrap items-center justify-between text-[11px] text-neutral-400 pt-1 gap-2 border-t border-white/10">
         <div className="flex items-center gap-2">
           <IconClock size={13} className="text-violet-400" />
           <span className="font-mono">00:01.84 / 04:32.18</span>
@@ -823,8 +865,8 @@ function AnimationStep2STT({
         </span>
       </div>
 
-      {/* Dynamic Mini Waveform Scanner */}
-      <div className="relative h-7 px-2 bg-black/50 rounded-lg border border-white/10 flex items-center gap-1 overflow-hidden">
+      {/* Dynamic Mini Waveform Scanner (Desktop only) */}
+      <div className="hidden sm:flex relative h-7 px-2 bg-black/50 rounded-lg border border-white/10 items-center gap-1 overflow-hidden">
         <div
           className="absolute inset-y-0 w-1 bg-purple-400 shadow-[0_0_8px_#c084fc] pointer-events-none"
           style={{ animation: 'laserSweepScan 2s ease-in-out infinite' }}
@@ -846,15 +888,15 @@ function AnimationStep2STT({
 
       {/* Subtitle Teleprompter Timeline with Word-Level Karaoke Alignment */}
       <div className="space-y-2 py-0.5">
-        {/* Previous Segment */}
-        <div className="p-2.5 rounded-lg bg-white/5 border border-white/5 text-xs text-neutral-400 flex items-center justify-between">
+        {/* Previous Segment (Desktop only) */}
+        <div className="hidden sm:flex p-2.5 rounded-lg bg-white/5 border border-white/5 text-xs text-neutral-400 items-center justify-between">
           <span className="font-mono text-[11px] text-neutral-500">[00:00.00]</span>
           <span className="text-neutral-300">"Welcome to TransFlow Media Studio."</span>
           <span className="text-[10px] text-emerald-400 font-mono">99.8%</span>
         </div>
 
         {/* Active Highlighted Segment with Word-by-Word Karaoke Chips */}
-        <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-500/50 shadow-md text-xs space-y-2 relative overflow-hidden">
+        <div className="p-3 sm:p-3.5 rounded-xl bg-purple-950/40 border border-purple-500/50 shadow-md text-xs space-y-2 relative overflow-hidden">
           <div className="flex items-center justify-between text-[11px] text-purple-300">
             <span className="font-mono font-bold flex items-center gap-1.5">
               <IconActivity size={13} className="text-purple-400" />
@@ -866,7 +908,7 @@ function AnimationStep2STT({
           </div>
 
           {/* Karaoke Word Sequence */}
-          <div className="flex flex-wrap items-center gap-1.5 text-sm font-sans pt-0.5">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs sm:text-sm font-sans pt-0.5">
             <span className="px-2 py-0.5 rounded bg-purple-500/30 text-purple-200 border border-purple-400/50 font-bold animate-karaoke-word">
               "Next-generation
             </span>
@@ -889,8 +931,8 @@ function AnimationStep2STT({
           </div>
         </div>
 
-        {/* Upcoming Segment */}
-        <div className="p-2.5 rounded-lg bg-white/5 border border-white/5 text-xs text-neutral-500 flex items-center justify-between">
+        {/* Upcoming Segment (Desktop only) */}
+        <div className="hidden sm:flex p-2.5 rounded-lg bg-white/5 border border-white/5 text-xs text-neutral-500 items-center justify-between">
           <span className="font-mono text-[11px] text-neutral-600">[00:04.60]</span>
           <span>"Preserving background acoustics with frame accuracy..."</span>
           <span className="text-[10px] text-neutral-400 font-mono">{t('pipeline.sim.stt.pending')}</span>
@@ -976,8 +1018,8 @@ function AnimationStep3Translation() {
         </div>
       </div>
 
-      {/* Thẻ khoá thuật ngữ chuyên ngành (Glossary Shield Vault) */}
-      <div className="p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-amber-950/40 via-purple-950/30 to-black/60 border border-amber-500/35 text-xs relative overflow-hidden shadow-lg animate-shield-aura">
+      {/* Thẻ khoá thuật ngữ chuyên ngành (Glossary Shield Vault - Desktop only) */}
+      <div className="hidden sm:block p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-amber-950/40 via-purple-950/30 to-black/60 border border-amber-500/35 text-xs relative overflow-hidden shadow-lg animate-shield-aura">
         {/* Animated Laser Synapse Beam along top border */}
         <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-amber-400/90 to-transparent animate-synapse-beam" />
 
@@ -1273,8 +1315,8 @@ function AnimationStep4Dubbing({
         </div>
       </div>
 
-      {/* Rubberband Lip-Sync Stretch & Smart Auto-Ducking Deck */}
-      <div className="p-3.5 rounded-xl bg-black/50 border border-white/10 space-y-3 text-xs shadow-inner">
+      {/* Rubberband Lip-Sync Stretch & Smart Auto-Ducking Deck (Desktop only) */}
+      <div className="hidden sm:block p-3.5 rounded-xl bg-black/50 border border-white/10 space-y-3 text-xs shadow-inner">
         {/* Khớp khẩu hình video */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-[11px]">
@@ -1442,25 +1484,25 @@ function AnimationStep5QA({
           {/* Sweeping Timeline Laser Playhead */}
           <div className="absolute top-0 bottom-0 w-[2px] bg-gradient-to-b from-purple-400 via-emerald-400 to-transparent pointer-events-none animate-playhead z-0 shadow-[0_0_8px_#34d399]" />
 
-          {/* 4 Corner Safe-Zone Reticles */}
-          <div className="absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-emerald-400/80 animate-reticle pointer-events-none" />
-          <div className="absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-emerald-400/80 animate-reticle pointer-events-none" />
-          <div className="absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-emerald-400/80 animate-reticle pointer-events-none" />
-          <div className="absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-emerald-400/80 animate-reticle pointer-events-none" />
+          {/* 4 Corner Safe-Zone Reticles (Desktop only) */}
+          <div className="hidden sm:block absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-emerald-400/80 animate-reticle pointer-events-none" />
+          <div className="hidden sm:block absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-emerald-400/80 animate-reticle pointer-events-none" />
+          <div className="hidden sm:block absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-emerald-400/80 animate-reticle pointer-events-none" />
+          <div className="hidden sm:block absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-emerald-400/80 animate-reticle pointer-events-none" />
 
           {/* Studio HUD Overhead Info */}
           <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400 z-10">
             <span className="tracking-wider flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-              TITLE SAFE 16:9 (90%)
+              TITLE SAFE 16:9
             </span>
-            <span className="text-emerald-400/90 font-bold tracking-wider">
+            <span className="text-emerald-400/90 font-bold tracking-wider hidden sm:inline">
               TC 00:01:24:18 / 00:02:45:00
             </span>
           </div>
 
-          {/* Subtle Audio Waveform in Center Background */}
-          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-center gap-1 pointer-events-none opacity-20">
+          {/* Subtle Audio Waveform in Center Background (Desktop only) */}
+          <div className="hidden sm:flex absolute inset-x-0 top-1/2 -translate-y-1/2 items-center justify-center gap-1 pointer-events-none opacity-20">
             {[16, 24, 38, 52, 68, 84, 56, 42, 70, 92, 64, 48, 80, 58, 32, 18].map((h, i) => (
               <div
                 key={i}
@@ -2060,11 +2102,11 @@ function AnimationSumStep3() {
         {/* Studio Vignette Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/60 pointer-events-none" />
 
-        {/* Safe-Zone Reticle */}
-        <div className="absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-emerald-400/80 animate-reticle pointer-events-none" />
-        <div className="absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-emerald-400/80 animate-reticle pointer-events-none" />
-        <div className="absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-emerald-400/80 animate-reticle pointer-events-none" />
-        <div className="absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-emerald-400/80 animate-reticle pointer-events-none" />
+        {/* Safe-Zone Reticle (Desktop only) */}
+        <div className="hidden sm:block absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-emerald-400/80 animate-reticle pointer-events-none" />
+        <div className="hidden sm:block absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-emerald-400/80 animate-reticle pointer-events-none" />
+        <div className="hidden sm:block absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-emerald-400/80 animate-reticle pointer-events-none" />
+        <div className="hidden sm:block absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-emerald-400/80 animate-reticle pointer-events-none" />
 
         {/* Timeline Playhead */}
         <div className="absolute top-0 bottom-0 w-[2px] bg-gradient-to-b from-emerald-400 via-teal-400 to-transparent pointer-events-none animate-playhead z-0 shadow-[0_0_8px_#34d399]" />
@@ -2075,7 +2117,7 @@ function AnimationSumStep3() {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
             RECAP REEL • 120s 4K
           </span>
-          <span className="text-emerald-400 font-mono font-bold">
+          <span className="text-emerald-400 font-mono font-bold hidden sm:inline">
             TC 00:01:45 / 00:02:00
           </span>
         </div>
