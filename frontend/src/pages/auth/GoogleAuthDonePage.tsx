@@ -74,7 +74,7 @@ export function GoogleAuthDonePage() {
 
   return (
     <AuthLayout>
-      <h2 className="mb-2 text-[24px] font-bold tracking-tight text-[var(--color-text-primary)]">
+      <h2 className="mb-2 text-xl sm:text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">
         {t('auth:google.doneTitle')}
       </h2>
       {busy && !error && (
