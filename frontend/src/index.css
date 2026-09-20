@@ -242,9 +242,16 @@ html {
   scroll-behavior: smooth;
 }
 
+html,
+body {
+  overflow-x: clip;
+  overscroll-behavior-y: none;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   font-family: var(--font-sans);
   background: var(--color-bg-app);
   color: var(--color-text-primary);
@@ -254,6 +261,26 @@ body {
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ── Mobile utilities (mobile-only, no desktop impact) ── */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  button,
+  a,
+  input,
+  select {
+    min-height: 0;
+  }
 }
 
 /* ── Landing-page utilities ── */
