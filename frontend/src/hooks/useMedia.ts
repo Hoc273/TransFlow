@@ -138,7 +138,11 @@ export function useMediaTermsVersion(workspaceId: string) {
 
 export function useConsentMedia(workspaceId: string) {
   return useMutation({
-    mutationFn: (assetId: string) => consentTransformationAssetApi(workspaceId, assetId),
+    mutationFn: (arg: string | { assetId: string; termsVersion?: string }) => {
+      const assetId = typeof arg === 'string' ? arg : arg.assetId
+      const termsVersion = typeof arg === 'string' ? undefined : arg.termsVersion
+      return consentTransformationAssetApi(workspaceId, assetId, termsVersion)
+    },
   })
 }
 
@@ -150,7 +154,7 @@ export function useEditMediaSegment(
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ segmentId, body }: { segmentId: string; body: EditMediaSegmentBody }) =>
-      editMediaSegmentApi(workspaceId, segmentId, body),
+      editMediaSegmentApi(workspaceId, segmentId, body, mediaJobId),
     onSuccess: () => {
       if (translationJobId) {
         void qc.invalidateQueries({ queryKey: queryKeys.job(workspaceId, translationJobId) })

@@ -300,13 +300,13 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6 pt-[8vh] sm:pt-[12vh] bg-black/60 dark:bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-x-clip bg-black/60 p-3 pt-[4vh] backdrop-blur-md animate-in fade-in duration-150 sm:p-6 sm:pt-[12vh] dark:bg-black/75"
       onClick={onClose}
     >
       {/* Modal Dialog Card */}
       <div
         className={cn(
-          'w-full max-w-2xl rounded-2xl flex flex-col max-h-[82vh] overflow-hidden select-none',
+          'flex max-h-[90dvh] w-full min-w-0 max-w-2xl flex-col overflow-hidden rounded-2xl select-none sm:max-h-[82vh]',
           'bg-white/95 dark:bg-[#12141c]/95 backdrop-blur-2xl',
           'border border-neutral-200/90 dark:border-white/10',
           'shadow-[0_25px_70px_rgba(0,0,0,0.22),0_0_1px_1px_rgba(0,0,0,0.06)] dark:shadow-[0_30px_80px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.1)]',
@@ -354,7 +354,7 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
 
         {/* Category Tabs (shown when searching with results) */}
         {q && totalMatches > 0 && (
-          <div className="flex items-center gap-1.5 px-4 py-2 border-b border-neutral-100 dark:border-white/[0.06] overflow-x-auto text-xs">
+          <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto border-b border-neutral-100 px-4 py-2 text-xs dark:border-white/[0.06]">
             <button
               type="button"
               onClick={() => setActiveCategory('all')}

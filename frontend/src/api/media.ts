@@ -35,7 +35,34 @@ export function editMediaSegmentApi(
   workspaceId: string,
   segmentId: string,
   body: EditMediaSegmentBody,
+  jobId?: string,
 ) {
+  if (jobId) {
+    return apiRequest(
+      buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/subtitles/${segmentId}`),
+      {
+        method: 'PATCH',
+        body: {
+          targetText: body.targetText,
+          startMs: body.startMs,
+          endMs: body.endMs,
+        },
+      },
+    ).catch(() =>
+      apiRequest(
+        buildWorkspacePath(workspaceId, `/media/segments/${segmentId}`),
+        {
+          method: 'PUT',
+          body: {
+            targetText: body.targetText,
+            startMs: body.startMs,
+            endMs: body.endMs,
+          },
+        },
+      ),
+    )
+  }
+
   return apiRequest(
     buildWorkspacePath(workspaceId, `/media/segments/${segmentId}`),
     {

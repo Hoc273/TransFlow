@@ -85,10 +85,16 @@ export function getTransformationCapabilitiesApi() {
 // ---------- core job lifecycle ----------
 
 export function createTransformationJobApi(workspaceId: string, body: CreateMediaJobBody) {
-  // Pass object only — apiRequest already JSON.stringifies non-raw bodies.
+  // Normalize payload: support both Spring Boot backend (projectId, rootAssetId)
+  // and legacy mock (documentId).
+  const normalizedBody = {
+    ...body,
+    projectId: body.projectId || undefined,
+    rootAssetId: body.rootAssetId || body.documentId || undefined,
+  }
   return apiRequest<MediaJob>(buildWorkspacePath(workspaceId, '/media/jobs'), {
     method: 'POST',
-    body,
+    body: normalizedBody,
   })
 }
 
@@ -127,10 +133,17 @@ export function getTransformationTermsVersionApi(workspaceId: string) {
   )
 }
 
-export function consentTransformationAssetApi(workspaceId: string, assetId: string) {
+export function consentTransformationAssetApi(
+  workspaceId: string,
+  assetId: string,
+  termsVersion?: string,
+) {
   return apiRequest<ConsentResponse>(
     buildWorkspacePath(workspaceId, `/media/assets/${assetId}/consent`),
-    { method: 'POST' },
+    {
+      method: 'POST',
+      body: termsVersion ? { termsVersion } : { termsVersion: 'v1.0' },
+    },
   )
 }
 
@@ -182,11 +195,19 @@ export function updateTransformationRenderConfigApi(
   )
 }
 
-export function confirmTransformationRenderApi(workspaceId: string, jobId: string) {
+export function confirmTransformationCheckpointApi(
+  workspaceId: string,
+  jobId: string,
+  checkpoint: string,
+) {
   return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/confirm-render`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/checkpoints/${checkpoint}/confirm`),
     { method: 'POST' },
   )
+}
+
+export function confirmTransformationRenderApi(workspaceId: string, jobId: string) {
+  return confirmTransformationCheckpointApi(workspaceId, jobId, 'PUBLISH_CONFIRMED')
 }
 
 // ---------- subtitle cue batch edit (review workbench) ----------
@@ -211,7 +232,7 @@ export function batchEditTransformationSegmentsApi(
 
 export function continueWorkflowApi(workspaceId: string, jobId: string, checkpoint: string) {
   return apiRequest<import('@/types/media').WorkflowCheckpoint>(
-    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/workflow/continue`),
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/checkpoints/${checkpoint}/confirm`),
     { method: 'POST', body: { checkpoint } },
   )
 }
@@ -232,12 +253,18 @@ export function listTransformationProposalsApi(workspaceId: string, jobId: strin
 }
 
 function toProposalPayload(body: CreateCustomProposalBody | UpdateCustomProposalBody) {
-  // BE DTO uses snake_case (@JsonProperty cut_ranges / start_ms / end_ms).
+  // Dual-support: camelCase (Spring Boot Backend: segments: [{ startMs, endMs }], reasoningNote)
+  // and snake_case (legacy/mock: cut_ranges: [{ start_ms, end_ms }], reasoning_note)
+  const segments = body.cutRanges.map((r) => ({
+    startMs: r.startMs,
+    endMs: r.endMs,
+    start_ms: r.startMs,
+    end_ms: r.endMs,
+  }))
   return {
-    cut_ranges: body.cutRanges.map((r) => ({
-      start_ms: r.startMs,
-      end_ms: r.endMs,
-    })),
+    segments,
+    cut_ranges: segments,
+    reasoningNote: body.reasoningNote ?? null,
     reasoning_note: body.reasoningNote ?? null,
   }
 }
@@ -269,7 +296,7 @@ export function selectTransformationProposalApi(
   workspaceId: string,
   jobId: string,
   proposalId: string,
-) {
+  ) {
   return apiRequest<MediaSummaryProposal>(
     buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals/${proposalId}/select`),
     { method: 'POST' },
@@ -283,33 +310,24 @@ export function refineTransformationNarrativePlanApi(
 ) {
   return apiRequest<void>(
     buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/refine`),
-    { method: 'POST', body: { feedback } },
+    { method: 'POST', body: { feedback, feedbackText: feedback } },
   )
 }
 
 export function rerunTransformationSummarizeApi(workspaceId: string, jobId: string) {
-  return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/summarize`),
-    { method: 'POST' },
-  )
+  return rerunTransformationStageApi(workspaceId, jobId, 'SUMMARIZE').then(() => undefined)
 }
 
 export function rerunTransformationTtsRenderApi(workspaceId: string, jobId: string) {
-  return apiRequest<void>(
-    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/rerun-tts-render`),
-    { method: 'POST' },
-  )
+  return rerunTransformationStageApi(workspaceId, jobId, 'TTS').then(() => undefined)
 }
 
 export function rerunTransformationRenderApi(
   workspaceId: string,
   jobId: string,
-  body?: import('@/types/media').UpdateRenderConfigBody,
+  _body?: import('@/types/media').UpdateRenderConfigBody,
 ) {
-  return apiRequest<import('@/types/media').RenderConfig>(
-    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/rerun-render`),
-    { method: 'POST', body },
-  )
+  return rerunTransformationStageApi(workspaceId, jobId, 'RENDER') as unknown as Promise<import('@/types/media').RenderConfig>
 }
 
 export function rerunTransformationStageApi(
@@ -449,11 +467,26 @@ export function uploadTransformationMediaApi(
         return
       }
 
-      const resolvedData =
+      const rawData =
         body && typeof body === 'object' && typeof (body as any).code === 'number' && 'data' in body
           ? (body as any).data
           : (body ?? {})
-      resolve(resolvedData as MediaUploadResponse)
+      const assetId = (rawData.assetId || rawData.id || '') as string
+      const documentId = (rawData.documentId || assetId) as string
+      const fileName = (rawData.fileName || rawData.originalFilename || file.name || '') as string
+      const fileSizeBytes = typeof rawData.fileSizeBytes === 'number' ? rawData.fileSizeBytes : file.size
+      const durationMs = typeof rawData.durationMs === 'number' ? rawData.durationMs : null
+      const consented = Boolean(rawData.consented)
+
+      resolve({
+        assetId,
+        documentId,
+        fileName,
+        fileSizeBytes,
+        durationMs,
+        consented,
+        ...rawData,
+      } as MediaUploadResponse)
     }
 
     xhr.onerror = () => {

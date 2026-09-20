@@ -1,11 +1,9 @@
 import { lazy, Suspense, type ReactNode } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
-import { AppShell } from '@/components/layout/AppShell'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthGuard } from '@/components/auth/AuthGuard'
 import { GuestGuard } from '@/components/auth/GuestGuard'
-import { RoleGuard } from '@/components/auth/RoleGuard'
-import { RouteErrorBoundary } from '@/components/error/RouteErrorBoundary'
 import { getLastWorkspaceId, useAuthStore } from '@/store/authStore'
+import { MobileWorkspaceAdapter } from '@/mobile/routes/MobileWorkspaceAdapter'
 
 const LandingPage = lazy(() => import('@/pages/landing/LandingPage').then(m => ({ default: m.LandingPage })))
 const LegacyLandingPage = lazy(() => import('@/pages/landing/LegacyLandingPage').then(m => ({ default: m.LegacyLandingPage })))
@@ -13,19 +11,7 @@ const LoginPage = lazy(() => import('@/pages/auth/LoginPage').then(m => ({ defau
 const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage').then(m => ({ default: m.RegisterPage })))
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })))
 const GoogleAuthDonePage = lazy(() => import('@/pages/auth/GoogleAuthDonePage').then(m => ({ default: m.GoogleAuthDonePage })))
-const DashboardPage = lazy(() => import('@/pages/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })))
-const UsagePage = lazy(() => import('@/pages/dashboard/UsagePage').then(m => ({ default: m.UsagePage })))
-const MediaListPage = lazy(() => import('@/pages/media/MediaListPage').then(m => ({ default: m.MediaListPage })))
-const MediaJobPage = lazy(() => import('@/pages/media/MediaJobPage').then(m => ({ default: m.MediaJobPage })))
 const NoWorkspacePage = lazy(() => import('@/pages/workspace/NoWorkspacePage').then(m => ({ default: m.NoWorkspacePage })))
-const MembersPage = lazy(() => import('@/pages/settings/MembersPage').then(m => ({ default: m.MembersPage })))
-const PresetSettingsPage = lazy(() => import('@/pages/settings/PresetSettingsPage').then(m => ({ default: m.PresetSettingsPage })))
-const AccountSettingsPage = lazy(() => import('@/pages/account/AccountSettingsPage').then(m => ({ default: m.AccountSettingsPage })))
-const BatchListPage = lazy(() => import('@/pages/batch/BatchListPage').then(m => ({ default: m.BatchListPage })))
-const BatchDetailPage = lazy(() => import('@/pages/batch/BatchDetailPage').then(m => ({ default: m.BatchDetailPage })))
-const ProjectListPage = lazy(() => import('@/pages/project/ProjectListPage').then(m => ({ default: m.ProjectListPage })))
-const NotificationCenterPage = lazy(() => import('@/pages/notification/NotificationCenterPage').then(m => ({ default: m.NotificationCenterPage })))
-const GlossaryPage = lazy(() => import('@/pages/glossary/GlossaryPage').then(m => ({ default: m.GlossaryPage })))
 const PlatformShell = lazy(() => import('@/components/platform/PlatformShell').then(m => ({ default: m.PlatformShell })))
 const PlatformAdminGuard = lazy(() => import('@/components/platform/PlatformAdminGuard').then(m => ({ default: m.PlatformAdminGuard })))
 const PlatformOverviewPage = lazy(() => import('@/pages/platform/PlatformOverviewPage').then(m => ({ default: m.PlatformOverviewPage })))
@@ -33,11 +19,6 @@ const PlatformStatusPage = lazy(() => import('@/pages/platform/PlatformStatusPag
 const PlatformUsersPage = lazy(() => import('@/pages/platform/PlatformUsersPage').then(m => ({ default: m.PlatformUsersPage })))
 const PlatformWorkspacesPage = lazy(() => import('@/pages/platform/PlatformWorkspacesPage').then(m => ({ default: m.PlatformWorkspacesPage })))
 const PlatformAuditPage = lazy(() => import('@/pages/platform/PlatformAuditPage').then(m => ({ default: m.PlatformAuditPage })))
-
-function WorkspaceRouteBoundary({ children }: { children: ReactNode }) {
-  const { workspaceId } = useParams()
-  return <RouteErrorBoundary workspaceId={workspaceId}>{children}</RouteErrorBoundary>
-}
 
 function DashboardRedirect() {
   const current = useAuthStore((s) => s.currentWorkspace?.id)
@@ -85,136 +66,7 @@ export function AppRouter() {
         />
 
         <Route element={<AuthGuard />}>
-          <Route path="/w/:workspaceId" element={<AppShell />}>
-            <Route
-              index
-              element={
-                <WorkspaceRouteBoundary>
-                  <DashboardPage />
-                </WorkspaceRouteBoundary>
-              }
-            />
-            <Route
-              path="notifications"
-              element={
-                <WorkspaceRouteBoundary>
-                  <NotificationCenterPage />
-                </WorkspaceRouteBoundary>
-              }
-            />
-            <Route
-              path="projects"
-              element={
-                <WorkspaceRouteBoundary>
-                  <ProjectListPage />
-                </WorkspaceRouteBoundary>
-              }
-            />
-            <Route
-              path="projects/:projectId/documents"
-              element={<Navigate to="../media" replace />}
-            />
-            <Route
-              path="documents/:documentId/jobs"
-              element={<Navigate to="../media" replace />}
-            />
-            <Route
-              path="jobs/:jobId/editor"
-              element={<Navigate to="../media" replace />}
-            />
-            <Route
-              path="batches"
-              element={
-                <WorkspaceRouteBoundary>
-                  <BatchListPage />
-                </WorkspaceRouteBoundary>
-              }
-            />
-            <Route
-              path="batches/:batchId"
-              element={
-                <WorkspaceRouteBoundary>
-                  <BatchDetailPage />
-                </WorkspaceRouteBoundary>
-              }
-            />
-            <Route
-              path="glossaries"
-              element={
-                <WorkspaceRouteBoundary>
-                  <GlossaryPage />
-                </WorkspaceRouteBoundary>
-              }
-            />
-            <Route
-              path="tm"
-              element={<Navigate to="../glossaries" replace />}
-            />
-            <Route
-              path="media"
-              element={
-                <WorkspaceRouteBoundary>
-                  <MediaListPage />
-                </WorkspaceRouteBoundary>
-              }
-            />
-            <Route
-              path="media/presets"
-              element={
-                <WorkspaceRouteBoundary>
-                  <PresetSettingsPage />
-                </WorkspaceRouteBoundary>
-              }
-            />
-            <Route
-              path="media/jobs/:jobId"
-              element={
-                <WorkspaceRouteBoundary>
-                  <MediaJobPage />
-                </WorkspaceRouteBoundary>
-              }
-            />
-            <Route
-              path="creative/*"
-              element={<Navigate to="../media" replace />}
-            />
-            <Route
-              path="dashboard/usage"
-              element={
-                <WorkspaceRouteBoundary>
-                  <RoleGuard action="dashboard.usage">
-                    <UsagePage />
-                  </RoleGuard>
-                </WorkspaceRouteBoundary>
-              }
-            />
-            <Route
-              path="settings/members"
-              element={
-                <WorkspaceRouteBoundary>
-                  <MembersPage />
-                </WorkspaceRouteBoundary>
-              }
-            />
-            <Route
-              path="settings/provider"
-              element={<Navigate to="../account/security" replace />}
-            />
-            <Route
-              path="settings/media-presets"
-              element={<Navigate to="../media/presets" replace />}
-            />
-            {/* User-level Account Settings (Profile and Setting template) */}
-            <Route path="account" element={<AccountIndexRedirect />} />
-            <Route
-              path="account/:section"
-              element={
-                <WorkspaceRouteBoundary>
-                  <AccountSettingsPage />
-                </WorkspaceRouteBoundary>
-              }
-            />
-          </Route>
+          <Route path="/w/:workspaceId/*" element={<MobileWorkspaceAdapter />} />
         </Route>
 
         <Route path="/dashboard" element={<DashboardRedirect />} />
@@ -242,9 +94,4 @@ function AuthOnly({ children }: { children: ReactNode }) {
   const token = useAuthStore((s) => s.accessToken)
   if (!token) return <Navigate to="/login" replace />
   return <>{children}</>
-}
-
-function AccountIndexRedirect() {
-  const { workspaceId } = useParams()
-  return <Navigate to={`/w/${workspaceId}/account/profile`} replace />
 }

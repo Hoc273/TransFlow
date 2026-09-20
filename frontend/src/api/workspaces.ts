@@ -12,3 +12,24 @@ export function getWorkspaceApi(workspaceId: string) {
 export function createWorkspaceApi(body: CreateWorkspaceRequest) {
   return apiRequest<Workspace>('/workspaces', { method: 'POST', body })
 }
+
+export type CostMode = 'WORKSPACE_OWNER' | 'INDIVIDUAL_USER'
+
+export type WorkspaceBillingConfig = {
+  costMode: CostMode
+}
+
+export function getWorkspaceBillingConfigApi(workspaceId: string) {
+  return apiRequest<WorkspaceBillingConfig>(buildWorkspacePath(workspaceId, '/billing-config'))
+}
+
+export function updateWorkspaceBillingConfigApi(
+  workspaceId: string,
+  body: { costMode: CostMode },
+) {
+  return apiRequest<WorkspaceBillingConfig>(
+    buildWorkspacePath(workspaceId, '/billing-config'),
+    { method: 'PUT', body },
+  )
+}
+

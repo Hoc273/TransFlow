@@ -22,15 +22,22 @@ export function listPresetsApi(workspaceId: string, category?: ProviderPresetCat
   )
 }
 
-export function listProvidersApi(workspaceId: string) {
-  return apiRequest<ProviderConfig[]>(buildWorkspacePath(workspaceId, '/providers'))
+export function listProvidersApi(workspaceId?: string) {
+  return apiRequest<ProviderConfig[]>('/users/me/providers').catch(() =>
+    apiRequest<ProviderConfig[]>(buildWorkspacePath(workspaceId || '', '/providers')),
+  )
 }
 
 export function createProviderApi(workspaceId: string, body: CreateProviderRequest) {
-  return apiRequest<ProviderConfig>(buildWorkspacePath(workspaceId, '/providers'), {
+  return apiRequest<ProviderConfig>('/users/me/providers', {
     method: 'POST',
     body,
-  })
+  }).catch(() =>
+    apiRequest<ProviderConfig>(buildWorkspacePath(workspaceId, '/providers'), {
+      method: 'POST',
+      body,
+    }),
+  )
 }
 
 export function updateProviderApi(
@@ -38,16 +45,25 @@ export function updateProviderApi(
   providerId: string,
   body: UpdateProviderRequest,
 ) {
-  return apiRequest<ProviderConfig>(buildWorkspacePath(workspaceId, `/providers/${providerId}`), {
+  return apiRequest<ProviderConfig>(`/users/me/providers/${providerId}`, {
     method: 'PUT',
     body,
-  })
+  }).catch(() =>
+    apiRequest<ProviderConfig>(buildWorkspacePath(workspaceId, `/providers/${providerId}`), {
+      method: 'PUT',
+      body,
+    }),
+  )
 }
 
 export function deleteProviderApi(workspaceId: string, providerId: string) {
-  return apiRequest<void>(buildWorkspacePath(workspaceId, `/providers/${providerId}`), {
+  return apiRequest<void>(`/users/me/providers/${providerId}`, {
     method: 'DELETE',
-  })
+  }).catch(() =>
+    apiRequest<void>(buildWorkspacePath(workspaceId, `/providers/${providerId}`), {
+      method: 'DELETE',
+    }),
+  )
 }
 
 export function setDefaultProviderApi(
@@ -79,14 +95,19 @@ export function testProviderApi(
 ) {
   const query = capability ? `?capability=${encodeURIComponent(capability)}` : ''
   return apiRequest<TestConnectionResponse>(
-    buildWorkspacePath(workspaceId, `/providers/${providerId}/test${query}`),
+    `/users/me/providers/${providerId}/test${query}`,
     { method: 'POST' },
+  ).catch(() =>
+    apiRequest<TestConnectionResponse>(
+      buildWorkspacePath(workspaceId, `/providers/${providerId}/test${query}`),
+      { method: 'POST' },
+    ),
   )
 }
 
 export function listTtsVoicesApi(workspaceId: string, providerId: string) {
-  return apiRequest<TtsVoice[]>(
-    buildWorkspacePath(workspaceId, `/providers/${providerId}/voices`),
+  return apiRequest<TtsVoice[]>(`/users/me/providers/${providerId}/voices`).catch(() =>
+    apiRequest<TtsVoice[]>(buildWorkspacePath(workspaceId, `/providers/${providerId}/voices`)),
   )
 }
 
@@ -109,9 +130,14 @@ export function upsertTtsVoiceApi(
 }
 
 export function refreshTtsVoicesApi(workspaceId: string, providerId: string) {
-  return apiRequest<TtsVoice[]>(
-    buildWorkspacePath(workspaceId, `/providers/${providerId}/refresh-voices`),
-    { method: 'POST' },
+  // Spring Boot uses /users/me/providers/{id}/voices/refresh
+  return apiRequest<TtsVoice[]>(`/users/me/providers/${providerId}/voices/refresh`, {
+    method: 'POST',
+  }).catch(() =>
+    apiRequest<TtsVoice[]>(
+      buildWorkspacePath(workspaceId, `/providers/${providerId}/refresh-voices`),
+      { method: 'POST' },
+    ),
   )
 }
 
@@ -138,3 +164,13 @@ export function validateProviderApi(
     { method: 'POST' },
   )
 }
+
+/** GET /api/tts-voices?language=&providerSource= (TtsVoiceController) */
+export function listPlatformTtsVoicesApi(params: { language?: string; providerSource?: string } = {}) {
+  const search = new URLSearchParams()
+  if (params.language) search.set('language', params.language)
+  if (params.providerSource) search.set('providerSource', params.providerSource)
+  const qs = search.toString()
+  return apiRequest<TtsVoice[]>(`/tts-voices${qs ? `?${qs}` : ''}`)
+}
+
