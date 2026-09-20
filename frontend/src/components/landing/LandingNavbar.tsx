@@ -42,17 +42,17 @@ export function LandingNavbar() {
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-        {/* Brand Logo & Mobile Hamburger next to Logo */}
-        <div className="flex items-center gap-2.5 sm:gap-6 shrink-0">
-          <Logo to="/" />
-          {/* Mobile hamburger on the right side of the logo (hidden on desktop/web) */}
+        {/* Left: Mobile Hamburger & Brand Logo */}
+        <div className="flex items-center gap-2 sm:gap-6 shrink-0">
+          {/* Mobile hamburger on the left of the logo (hidden on desktop/web) */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden p-1.5 rounded-lg text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+            className="md:hidden -ml-1 p-1.5 rounded-lg text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
             aria-label="Toggle menu"
           >
             {mobileOpen ? <IconX size={20} /> : <IconMenu2 size={20} />}
           </button>
+          <Logo to="/" />
         </div>
 
         {/* Center Nav Items */}

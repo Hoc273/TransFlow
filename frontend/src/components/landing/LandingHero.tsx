@@ -83,18 +83,18 @@ export function LandingHero() {
 
       {/* Structured Content Container (aligned with site grid) */}
       <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 w-full flex-1 flex flex-col justify-between">
-        {/* Top Badges Row — responsive on mobile */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-4 w-full">
-          <div className="inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-full bg-black/35 backdrop-blur-md border border-white/20 text-white shadow-md">
+        {/* Top Badges Row — hidden on mobile, visible on tablet/desktop */}
+        <div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-4 w-full">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/35 backdrop-blur-md border border-white/20 text-white shadow-md">
             <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
-            <span className="tracking-wide uppercase text-[10px] sm:text-[11px] font-semibold">
+            <span className="tracking-wide uppercase text-[11px] font-semibold">
               {t('hero.flagship')}
             </span>
           </div>
 
-          <div className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-1.5 rounded-full bg-black/35 backdrop-blur-md border border-white/20 text-white shadow-md">
+          <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-black/35 backdrop-blur-md border border-white/20 text-white shadow-md">
             <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-            <span className="text-[11px] sm:text-xs font-medium">{t('hero.engine')}</span>
+            <span className="text-xs font-medium">{t('hero.engine')}</span>
           </div>
         </div>
 
