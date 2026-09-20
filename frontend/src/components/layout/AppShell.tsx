@@ -1,9 +1,21 @@
-import { useState } from 'react'
+import { Suspense, useState, type ReactNode } from 'react'
 import { Outlet } from 'react-router-dom'
 import { TopNav } from './TopNav'
 import { SidebarNav } from './SidebarNav'
 
-export function AppShell() {
+interface AppShellProps {
+  children?: ReactNode
+}
+
+function PageLoader() {
+  return (
+    <div className="flex h-64 items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+    </div>
+  )
+}
+
+export function AppShell({ children }: AppShellProps = {}) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
@@ -11,7 +23,9 @@ export function AppShell() {
       <TopNav onMobileMenu={() => setMobileOpen((v) => !v)} />
       <SidebarNav mobileOpen={mobileOpen} />
       <main className="app-content">
-        <Outlet />
+        <Suspense fallback={<PageLoader />}>
+          {children ?? <Outlet />}
+        </Suspense>
       </main>
       {mobileOpen && (
         <button
