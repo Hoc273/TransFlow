@@ -165,4 +165,43 @@ class ProjectControllerTest {
         }
         assertFalse(foundFinal, "Member should not see project after being unassigned");
     }
+
+    @Test
+    void testCreateProjectWithAllFields() throws Exception {
+        String leadEmail = "lead_proj_fields_" + System.currentTimeMillis() + "@test.com";
+        AuthInfo lead = register(leadEmail, "Lead Proj Fields");
+
+        CreateWorkspaceRequest wsReq = new CreateWorkspaceRequest("Project Studio Fields", null);
+        MvcResult wsRes = mockMvc.perform(post("/api/workspaces")
+                        .header("Authorization", "Bearer " + lead.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(wsReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String workspaceId = objectMapper.readTree(wsRes.getResponse().getContentAsString())
+                .path("data").path("id").asText();
+
+        UUID glossaryId = UUID.randomUUID();
+        CreateProjectRequest projReq = new CreateProjectRequest(
+                "AI Video Localization",
+                "ja",
+                glossaryId,
+                true,
+                "Technology",
+                "Professional"
+        );
+
+        mockMvc.perform(post("/api/workspaces/" + workspaceId + "/projects")
+                        .header("Authorization", "Bearer " + lead.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(projReq)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.data.name").value("AI Video Localization"))
+                .andExpect(jsonPath("$.data.sourceLang").value("ja"))
+                .andExpect(jsonPath("$.data.defaultGlossaryId").value(glossaryId.toString()))
+                .andExpect(jsonPath("$.data.tmEnabled").value(true))
+                .andExpect(jsonPath("$.data.domain").value("Technology"))
+                .andExpect(jsonPath("$.data.tone").value("Professional"));
+    }
 }

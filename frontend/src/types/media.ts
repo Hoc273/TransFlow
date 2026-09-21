@@ -43,6 +43,7 @@ export type MediaStageName =
 export type MediaAsset = {
   id: string
   projectId: string
+  parentAssetId?: string | null
   assetType: string
   fileName: string
   mimeType: string
@@ -489,12 +490,14 @@ export type CreateMediaJobBody = {
   requestedMode?: AudioExecutionMode | null
   /**
    * Phase C — explicit TTS provider row id. Must be sent together with
-   * ttsVoiceId (both or neither; the backend rejects a partial pair with 422).
-   * Omit both to let the backend resolve the workspace default.
+   * ttsVoiceId (both or neither). Backend gap B1: `CreateMediaJobRequest`
+   * has no `ttsProviderId` yet and ignores it — kept for forward-compat,
+   * see `docs/PHASE3_BACKEND_GAPS_NOTE.md`.
    */
   ttsProviderId?: string | null
   /**
    * Phase C — explicit TTS voice row id. Both or neither with ttsProviderId.
+   * Must be null when `outputAudioMode == ORIGINAL_ONLY` (BE enforces).
    */
   ttsVoiceId?: string | null
   /** Explicitly skip TTS and keep the source audio. Defaults to false. */
@@ -605,9 +608,11 @@ export type OverrideSourceLangBody = {
 
 /**
  * Phase C: explicit TTS provider + voice row ids, sent together to
- * `POST …/transformation/jobs/{jobId}/voice`. Both null = keep original
- * audio (TTS deselected). A partial pair must never be sent — the backend
- * rejects it with 422 and the VoiceSelector only emits all-or-nothing.
+ * `POST …/media/jobs/{jobId}/voice`. Both null = keep original
+ * audio (TTS deselected, requires `outputAudioMode == ORIGINAL_ONLY`).
+ * A partial pair must never be sent — the VoiceSelector only emits
+ * all-or-nothing. Backend gap B1: BE `VoiceRequest` currently carries
+ * only `ttsVoiceId`; `ttsProviderId` is kept for forward-compat.
  */
 export type SelectVoiceBody = {
   /** TTS provider row id (null = deselect / legacy voiceId-only flow). */

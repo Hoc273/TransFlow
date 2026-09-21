@@ -19,3 +19,20 @@ export type CreateProjectBody = {
   domain?: string | null
   tone?: string | null
 }
+
+export type ProjectMember = {
+  id?: string
+  projectId: string
+  userId: string
+  email: string
+  fullName: string
+  role: string
+  addedBy?: string
+  createdAt?: string
+  assignedAt?: string
+}
+
+export type AssignProjectMemberBody = {
+  userId: string
+}
+

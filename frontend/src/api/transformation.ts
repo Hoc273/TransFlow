@@ -1,19 +1,25 @@
 /**
- * Content Transformation API surface (docs/36, docs/38 CT4).
- * Canonical UL paths under `/transformation/**`. Legacy `/media/**` remains
- * supported with Deprecation headers from the backend (docs/39 V-2).
+ * Content Transformation API surface — Phase 3 Job Orchestration.
+ * Canonical Phase 3 paths are workspace-scoped `/media/jobs/**`
+ * (see `MediaJobController @RequestMapping("/api/workspaces/{workspaceId}")`).
+ * Only the deployment-wide availability projection lives outside workspaces:
+ * `GET /transformation/capabilities`.
  *
- * This module is the single entry point for the FE after the CT4 migration —
- * `hooks/useMedia.ts` re-imports from here for every route that has a
- * transformation counterpart. `api/media.ts` is kept solely for:
+ * This module is the single entry point for the FE —
+ * `hooks/useMedia.ts` re-imports from here. `api/media.ts` is kept solely for:
  *   - The upload XHR `UploadMediaOptions` type (re-exported below),
- *   - The legacy `segments/{id}` edit route (translation_segments, not in
- *     transformation mirror — see `MediaController` vs `TransformationController`).
+ *   - The legacy `segments/{id}` edit route (translation_segments).
  *
- * CT4.4 prep (2026-07-24): create-job callers must send `recipeId`
- * (`localization.full` | `summary.extractive`). Do not dual-send
- * `processingMode` from first-party FE — BE soft dual still accepts
- * processingMode-only external clients until CT4.4 hard after 2026-08-07.
+ * Create-job contract (BE `CreateMediaJobRequest` + `MediaJobServiceImpl`):
+ * callers must send `recipeId` (`localization.full` | `summary.script_match`).
+ * `processingMode` is REQUIRED by the backend for localization
+ * (`TRANSLATE_ONLY`), and `outputAudioMode` must stay consistent with
+ * `ttsVoiceId` (`ORIGINAL_ONLY <=> ttsVoiceId == null`) — so the
+ * normalization below is intentional, not legacy dual-send.
+ * FE-only fields (`ttsProviderId`, `requestedMode`, `sourceLang`,
+ * `keepOriginalAudio`, `workflowPresetId`, `skipPresetResolution`,
+ * `enableVlm`) are currently ignored by the backend — see
+ * `docs/PHASE3_BACKEND_GAPS_NOTE.md`.
  */
 import { useAuthStore, clearAuthAndRedirect } from '@/store/authStore'
 import { ApiError, type SpringApiErrorBody } from '@/types/api'
@@ -108,8 +114,12 @@ export function getTransformationCapabilitiesApi() {
 // ---------- core job lifecycle ----------
 
 export function createTransformationJobApi(workspaceId: string, body: CreateMediaJobBody) {
-  // Normalize payload: support both Spring Boot backend (projectId, rootAssetId, processingMode, outputAudioMode, presetId)
-  // and legacy mock (documentId).
+  // Normalize payload to satisfy BE validation (MediaJobServiceImpl):
+  // - `rootAssetId` required — accept legacy `documentId` alias from the FE.
+  // - `processingMode` required for `localization.full` — default TRANSLATE_ONLY.
+  // - `outputAudioMode` must match `ttsVoiceId` (ORIGINAL_ONLY <=> null) — derive
+  //   from `keepOriginalAudio` / `ttsVoiceId` when the caller omits it.
+  // - `presetId` — accept `workflowPresetId` alias from the create form.
   const normalizedBody = {
     ...body,
     projectId: body.projectId || undefined,
@@ -177,6 +187,13 @@ export function consentTransformationAssetApi(
   )
 }
 
+export {
+  listProjectMediaAssetsApi,
+  getMediaAssetApi,
+  listProjectMediaAssetsApi as listTransformationAssetsApi,
+  getMediaAssetApi as getTransformationAssetApi,
+} from '@/api/media'
+
 // ---------- localization runtime controls ----------
 
 export function overrideTransformationSourceLangApi(
@@ -195,17 +212,24 @@ export function selectTransformationVoiceApi(
   jobId: string,
   body: SelectVoiceBody,
 ) {
-  return apiRequest<void>(buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/voice`), {
-    method: 'POST',
-    // Phase C: always send the explicit provider + voice pair (both or neither —
-    // the backend rejects a partial pair with 422). Both null = deselect (keep
-    // original audio). Legacy single-field voiceId is deliberately not sent:
-    // the backend would re-resolve the provider, which the FE must not rely on.
-    body: {
-      ttsProviderId: body.providerId ?? null,
-      ttsVoiceId: body.voiceId ?? null,
+  // BE `POST .../voice` returns `200 + MediaJob` (MediaJobController.setVoice);
+  // the dev mock returns `204 No Content`. Accept both: `apiRequest` yields
+  // `undefined` for 204 and the unwrapped job for 200.
+  // Phase C: always send the explicit provider + voice pair (both or neither).
+  // Both null = deselect (requires `outputAudioMode == ORIGINAL_ONLY` BE-side).
+  // NOTE (backend gap B1): `ttsProviderId` is currently ignored by
+  // `VoiceRequest(ttsVoiceId)` — kept for forward-compat, see
+  // `docs/PHASE3_BACKEND_GAPS_NOTE.md`.
+  return apiRequest<MediaJob | void>(
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/voice`),
+    {
+      method: 'POST',
+      body: {
+        ttsProviderId: body.providerId ?? null,
+        ttsVoiceId: body.voiceId ?? null,
+      },
     },
-  })
+  )
 }
 
 export function getTransformationRenderConfigApi(workspaceId: string, jobId: string) {
