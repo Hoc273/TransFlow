@@ -44,6 +44,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -753,6 +754,108 @@ class MediaJobControllerTest {
         }
         mockMvc.perform(get(renderUrl(lead, jobId, "render-config")).header("Authorization", "Bearer " + client.accessToken()))
                 .andExpect(status().isOk());
+    }
+
+    // ---- bulk download ----
+
+    /** Marks the job COMPLETED with a rendered output so it passes the publish checks. */
+    private void completeJobWithOutput(UUID jobId) {
+        var job = mediaJobRepository.findById(jobId).orElseThrow();
+        job.setStatus(com.app.modules.media_job.entity.MediaJob.JobStatus.COMPLETED);
+        mediaJobRepository.save(job);
+        var render = mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.RENDER).orElseThrow();
+        render.setStatus(MediaJobStage.StageStatus.COMPLETED);
+        render.setOutputRef("\"transflow-media/out/" + jobId + ".mp4\"");
+        mediaJobStageRepository.save(render);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions postDownload(Lead lead, String token, Object... jobIds)
+            throws Exception {
+        var ids = objectMapper.createArrayNode();
+        for (Object id : jobIds) {
+            ids.add(id.toString());
+        }
+        var body = objectMapper.createObjectNode();
+        body.set("jobIds", ids);
+        return mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/projects/" + lead.projectId()
+                        + "/media/jobs/download")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(body.toString()));
+    }
+
+    @Test
+    void bulkDownload_zipsCompletedJobs_skipsOthers_andCleansUp() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-bulk-ok@transflow.com");
+        UUID a = createLocalizationJob(lead, "en");
+        UUID b = createLocalizationJob(lead, "vi");
+        UUID pending = createLocalizationJob(lead, "en");
+        completeJobWithOutput(a);
+        completeJobWithOutput(b);
+        UUID unknown = UUID.randomUUID();
+
+        org.mockito.Mockito.when(storageService.mediaBucket()).thenReturn("transflow-media");
+        org.mockito.Mockito.when(storageService.presignedGetUrl(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn("http://minio/zip");
+        org.mockito.Mockito.when(storageService.getMediaObject(org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(inv -> new java.io.ByteArrayInputStream("VIDEO".getBytes()));
+        java.util.List<String> entries = new java.util.ArrayList<>();
+        org.mockito.Mockito.doAnswer(inv -> {
+            try (var zin = new java.util.zip.ZipInputStream(inv.<java.io.InputStream>getArgument(1))) {
+                for (var e = zin.getNextEntry(); e != null; e = zin.getNextEntry()) {
+                    entries.add(e.getName() + "=" + new String(zin.readAllBytes()));
+                }
+            }
+            return null;
+        }).when(storageService).putMediaObject(org.mockito.ArgumentMatchers.startsWith("tmp/downloads/"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.eq("application/zip"));
+
+        postDownload(lead, lead.accessToken(), a, b, a, pending, unknown) // duplicate a is ignored
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.downloadUrl").value("http://minio/zip"))
+                .andExpect(jsonPath("$.data.fileName").value(org.hamcrest.Matchers.endsWith(".zip")))
+                .andExpect(jsonPath("$.data.includedJobIds.length()").value(2))
+                .andExpect(jsonPath("$.data.skipped.length()").value(2))
+                .andExpect(jsonPath("$.data.skipped[?(@.reason=='NOT_COMPLETED')]").exists())
+                .andExpect(jsonPath("$.data.skipped[?(@.reason=='NOT_FOUND')]").exists());
+
+        assertEquals(2, entries.size());
+        assertTrue(entries.stream().allMatch(e -> e.endsWith(".mp4=VIDEO")));
+        assertTrue(entries.stream().anyMatch(e -> e.contains("_en_" + a.toString().substring(0, 8))));
+        assertTrue(entries.stream().anyMatch(e -> e.contains("_vi_" + b.toString().substring(0, 8))));
+    }
+
+    @Test
+    void bulkDownload_validationAndNothingDownloadable() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-bulk-bad@transflow.com");
+        UUID pending = createLocalizationJob(lead, "en");
+
+        postDownload(lead, lead.accessToken()).andExpect(status().isBadRequest()); // empty list
+        Object[] tooMany = java.util.stream.Stream.generate(UUID::randomUUID).limit(21).toArray();
+        postDownload(lead, lead.accessToken(), tooMany)
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(2905));
+        postDownload(lead, lead.accessToken(), pending) // nothing COMPLETED -> STAGE_NOT_READY
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(2902));
+    }
+
+    @Test
+    void bulkDownload_clientAllowed_outsiderForbidden() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-bulk-rbac@transflow.com");
+        UUID a = createLocalizationJob(lead, "en");
+        completeJobWithOutput(a);
+        RegisteredUser client = registerPlainUser("client-bulk-rbac@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), client.userId(), Role.CLIENT);
+        addProjectMember(lead.projectId(), client.userId(), lead.userId());
+        RegisteredUser outsider = registerPlainUser("outsider-bulk-rbac@transflow.com");
+
+        org.mockito.Mockito.when(storageService.mediaBucket()).thenReturn("transflow-media");
+        org.mockito.Mockito.when(storageService.presignedGetUrl(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn("http://minio/zip");
+        org.mockito.Mockito.when(storageService.getMediaObject(org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(inv -> new java.io.ByteArrayInputStream("V".getBytes()));
+
+        postDownload(lead, client.accessToken(), a).andExpect(status().isOk());
+        postDownload(lead, outsider.accessToken(), a).andExpect(status().isForbidden());
     }
 
     // ---- subtitle styles ----

@@ -3,6 +3,8 @@ package com.app.modules.media_job.controller;
 import com.app.common.dto.ApiResponse;
 import com.app.common.security.AuthenticatedUser;
 import com.app.modules.media_job.dto.BatchEditSegmentsRequest;
+import com.app.modules.media_job.dto.BulkDownloadRequest;
+import com.app.modules.media_job.dto.BulkDownloadResponse;
 import com.app.modules.media_job.dto.CreateMediaJobRequest;
 import com.app.modules.media_job.dto.MediaExportResponse;
 import com.app.modules.media_job.dto.MediaJobResponse;
@@ -15,6 +17,7 @@ import com.app.modules.media_job.dto.VoiceRequest;
 import com.app.modules.media_job.entity.Checkpoint;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
+import com.app.modules.media_job.service.MediaBulkDownloadService;
 import com.app.modules.media_job.service.MediaExportService;
 import com.app.modules.media_job.service.MediaJobService;
 import com.app.modules.media_job.service.MediaRenderConfigService;
@@ -37,9 +40,12 @@ public class MediaJobController {
     private final MediaJobService jobService;
     private final MediaExportService exportService;
     private final MediaRenderConfigService renderConfigService;
+    private final MediaBulkDownloadService bulkDownloadService;
 
     public MediaJobController(MediaJobService jobService, MediaExportService exportService,
-                              MediaRenderConfigService renderConfigService) {
+                              MediaRenderConfigService renderConfigService,
+                              MediaBulkDownloadService bulkDownloadService) {
+        this.bulkDownloadService = bulkDownloadService;
         this.jobService = jobService;
         this.exportService = exportService;
         this.renderConfigService = renderConfigService;
@@ -64,6 +70,15 @@ public class MediaJobController {
                 .map(MediaJobResponse::from)
                 .toList();
         return ApiResponse.<List<MediaJobResponse>>builder().data(jobs).build();
+    }
+
+    @PostMapping("/projects/{projectId}/media/jobs/download")
+    public ApiResponse<BulkDownloadResponse> bulkDownload(@AuthenticationPrincipal AuthenticatedUser user,
+                                                            @PathVariable UUID workspaceId,
+                                                            @PathVariable UUID projectId,
+                                                            @Valid @RequestBody BulkDownloadRequest request) {
+        return ApiResponse.<BulkDownloadResponse>builder()
+                .data(bulkDownloadService.download(workspaceId, user.id(), projectId, request.jobIds())).build();
     }
 
     @GetMapping("/media/jobs/{jobId}")

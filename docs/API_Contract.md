@@ -122,6 +122,7 @@
 |---|---|---|---|
 | POST | `/api/workspaces/{workspaceId}/media/jobs` | LEAD/MEMBER (project của asset) | Tạo job — xem body mẫu dưới. Yêu cầu asset đã có consent. |
 | GET | `/api/workspaces/{workspaceId}/projects/{projectId}/media/jobs?status=&recipeId=` | LEAD/MEMBER/CLIENT | List job trong Project (không lọc theo `created_by`). |
+| POST | `/api/workspaces/{workspaceId}/projects/{projectId}/media/jobs/download` | LEAD/MEMBER/CLIENT (project) | Tải nhiều video đã hoàn thành do user chọn (thay cho "tải theo Batch"; danh sách lấy từ endpoint trên với `status=COMPLETED`). Body `{jobIds:[uuid]}` (không rỗng, loại trùng, tối đa `app.media-job.max-bulk-download`=20 → `DOWNLOAD_SELECTION_TOO_LARGE`). Mỗi job phải thuộc project, `COMPLETED` và qua quality gate như `/export`; job không đạt vào `skipped` với `reason` `NOT_FOUND` (không tồn tại/khác project) `|` `NOT_COMPLETED` `|` `QA_BLOCKED`. Không job nào đạt → `QA_BLOCKED` (có job bị QA chặn) hoặc `STAGE_NOT_READY`. Trả `{downloadUrl, fileName, expiresAt, includedJobIds[], skipped[{jobId, reason}]}`: zip `<tên gốc>_<lang>_<jobId8>.mp4` được nén tạm rồi upload lên MinIO `tmp/downloads/` (tự hết hạn bằng lifecycle rule), `downloadUrl` là presigned URL. Chạy đồng bộ. |
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}` | LEAD/MEMBER/CLIENT | Chi tiết job + `stages[]` (8 stage kỹ thuật, FE tự ẩn stage `SKIPPED`). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/cancel` | LEAD/MEMBER (project) | Huỷ job đang chạy; gửi cancel xuống Worker sau khi transaction commit (Arch §6.2). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/voice` | LEAD/MEMBER (project) | `{ttsVoiceId}` (null = bỏ chọn giọng, chỉ hợp lệ nếu `output_audio_mode=ORIGINAL_ONLY`). Từ chối nếu `tts_voices.language ≠ target_lang`. |
@@ -192,7 +193,6 @@
 | GET | `/api/workspaces/{workspaceId}/batches/{batchId}` | LEAD/MEMBER/CLIENT | Chi tiết batch + danh sách job con kèm trạng thái (không phải ma trận — SRS v1.4). |
 | POST | `/api/workspaces/{workspaceId}/batches/{batchId}/cancel` | LEAD/MEMBER (project) | Huỷ toàn bộ batch (huỷ mọi job con chưa `COMPLETED/FAILED/CANCELLED`). |
 | POST | `/api/workspaces/{workspaceId}/batches/{batchId}/jobs/{jobId}/retry` | LEAD/MEMBER (project) | Chạy lại riêng 1 job con `FAILED`, không ảnh hưởng job con khác. |
-| GET | `/api/workspaces/{workspaceId}/batches/{batchId}/download` | LEAD/MEMBER/CLIENT | URL gói nén kết quả các job con đã `COMPLETED`. |
 
 ---
 
@@ -335,7 +335,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `notification` | 2600–2699 | `NOTIFICATION_NOT_FOUND` = 2600, `NOTIFICATION_TYPE_INVALID` = 2601 |
 | `dashboard` | 2700–2799 | `DASHBOARD_DATE_RANGE_INVALID` = 2700, `DASHBOARD_GROUP_BY_INVALID` = 2701 |
 | `media_asset` | 2800–2899 | `TERMS_NOT_ACCEPTED` = 2800, `MEDIA_FILE_TOO_LARGE` = 2801, `MEDIA_DURATION_EXCEEDED` = 2802, `TERMS_VERSION_MISMATCH` = 2803 |
-| `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902, `STYLE_NOT_FOUND` = 2903, `INVALID_STYLE_KEY` = 2904 |
+| `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902, `STYLE_NOT_FOUND` = 2903, `INVALID_STYLE_KEY` = 2904, `DOWNLOAD_SELECTION_TOO_LARGE` = 2905 |
 | `summarization` | 3000–3099 | `REFINE_LIMIT_REACHED` = 3000, `PROPOSAL_ALREADY_TRANSLATED` = 3001 |
 | `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100, `BATCH_RATE_LIMIT_EXCEEDED` = 3101 |
 | `glossary` | 3200–3299 | — |
@@ -362,6 +362,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `STAGE_NOT_READY` | 2902 | 409 | Rerun-from-stage khi stage trước chưa `COMPLETED/SKIPPED`. |
 | `STYLE_NOT_FOUND` | 2903 | 404 | Key style hệ thống không tồn tại, hoặc job chưa được gán style. |
 | `INVALID_STYLE_KEY` | 2904 | 400 | Key style sai định dạng (`^[a-z0-9][a-z0-9-]{0,63}$`). |
+| `DOWNLOAD_SELECTION_TOO_LARGE` | 2905 | 400 | Chọn quá số video tối đa cho 1 lần tải zip (mặc định 20). |
 | `TERMS_NOT_ACCEPTED` | 2800 | 403 | Tạo job từ asset chưa có `media_consents` khớp `terms_version` hiện hành. |
 | `MEDIA_FILE_TOO_LARGE` | 2801 | 400 | Upload video vượt 500MB (SRS §6), enforce ở service layer. |
 | `MEDIA_DURATION_EXCEEDED` | 2802 | 400 | Video vượt 30 phút (SRS §6), enforce ở service layer sau khi ffprobe. |

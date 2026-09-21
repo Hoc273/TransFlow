@@ -5,6 +5,7 @@ import com.app.common.exception.AppException;
 import com.app.common.exception.ErrorCode;
 import com.app.modules.media_asset.service.MediaStorageService;
 import io.minio.BucketExistsArgs;
+import io.minio.GetObjectArgs;
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
@@ -54,6 +55,21 @@ public class MediaStorageServiceImpl implements MediaStorageService {
                     .build());
         } catch (Exception ex) {
             log.error("minio presign failed for ref={}: {}", storageRef, ex.toString());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    public InputStream getMediaObject(String storageRef) {
+        int slash = storageRef == null ? -1 : storageRef.indexOf('/');
+        if (slash <= 0 || slash == storageRef.length() - 1) {
+            throw new AppException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        try {
+            return client.getObject(GetObjectArgs.builder()
+                    .bucket(storageRef.substring(0, slash)).object(storageRef.substring(slash + 1)).build());
+        } catch (Exception ex) {
+            log.error("minio getObject failed for ref={}: {}", storageRef, ex.toString());
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }

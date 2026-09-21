@@ -212,7 +212,20 @@ Mỗi nhánh = 1 PR nhỏ.
 
 ---
 
-## 5. Tải video theo lựa chọn (thay cho "tải theo Batch") — ĐÃ ĐỔI THIẾT KẾ
+## 5. Tải video theo lựa chọn (thay cho "tải th eo Batch") — ĐÃ ĐỔI THIẾT KẾ
+
+> **✅ CODE + TEST + CHẠY THẬT XONG (2026-09-21), chưa commit.** Đã làm: `POST /projects/{projectId}/media/jobs/download`
+> (`MediaBulkDownloadService`), `MediaStorageService.getMediaObject`, tách `MediaExportService.renderOutputRef` (dùng chung quality gate với `/export`),
+> `ErrorCode` `DOWNLOAD_SELECTION_TOO_LARGE`=2905, cấu hình `app.media-job.max-bulk-download` (env `MEDIA_MAX_BULK_DOWNLOAD`, mặc định 20),
+> `API_Contract.md` (xoá dòng `/batches/{batchId}/download`, thêm endpoint mới).
+> Quyết định của dev: dọn zip tạm bằng **MinIO lifecycle rule** (`docker-compose.yml` › `minio-init`, prefix `tmp/downloads/`, hết hạn 1 ngày, chạy lại không tạo trùng);
+> không job nào đạt → `QA_BLOCKED` (có job bị QA chặn) hoặc `STAGE_NOT_READY`. Job không tồn tại/khác project → `skipped` reason `NOT_FOUND`.
+> Zip ghi qua file tạm trên đĩa (không giữ trong RAM), không nén (mp4 đã nén), đồng bộ (`ponytail:` — chuyển async nếu quá timeout).
+> 322 test xanh (3 mới). Chạy thật Postgres+MinIO: chọn 2 job COMPLETED + pending + QA-blocked + id lạ + trùng → zip đúng 2 file
+> (`a_en_22222222.mp4`, `a_vi_33333333.mp4`, nội dung đúng, `testzip` OK), 3 job còn lại vào `skipped` đúng lý do; CLIENT tải được;
+> rỗng/>20/không job nào đạt → 400/400/409(2902)/403(3300); không token 401; chữ ký URL sai → 403; file tạm local = 0.
+> Lưu ý: project id không tồn tại trong path → 409 (mọi job bị `skipped`), không lộ thông tin; **chưa kiểm** URL hết hạn đúng TTL và lifecycle thực sự xoá sau 1 ngày.
+> **Việc còn lại ở FE:** màn lưu trữ gọi list `status=COMPLETED` + `POST .../projects/{projectId}/media/jobs/download`; xoá `downloadBatchZipApi` (`frontend/src/api/batches.ts`).
 
 - **Nhánh:** `feature/media-library-bulk-download`
 - **Thay đổi so với plan gốc 1.4:** bỏ `GET /batches/{batchId}/download` (đơn vị tải = 1 batch). Đơn vị tải mới là
@@ -363,6 +376,6 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 | 2 | `feature/media-job-segments-batch-edit` | [x] | [x] | [x] | [x] |     [ ]     |
 | 3 | `feature/media-job-render-config` | [x] | [x] | [x] | [x] |     [ ]     |
 | 4 | `feature/media-subtitle-styles` | [x] | [x] | [x] | [x] |     [ ]     |
-| 5 | `feature/media-library-bulk-download` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 5 | `feature/media-library-bulk-download` | [x] | [x] | [x] | [x] |     [ ]     |
 | 6 | `feature/media-job-override-source-lang` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 11 | `feature/media-job-output-publish-package` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
