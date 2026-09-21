@@ -1,7 +1,6 @@
 import { apiBaseUrl } from '@/config/featureFlags'
 import { clearAuthAndRedirect, useAuthStore } from '@/store/authStore'
 import { ApiError, type SpringApiErrorBody } from '@/types/api'
-import type { AuthResponse } from '@/types/auth'
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
@@ -88,13 +87,17 @@ async function tryRefreshAccessToken(): Promise<boolean> {
         body: JSON.stringify({ refreshToken }),
       })
       if (!res.ok) return false
-      const data = (await res.json()) as AuthResponse
-      useAuthStore.getState().setSession({
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-        user: data.user,
-      })
-      return true
+      const raw = await res.json()
+      const data =
+        raw && typeof raw === 'object' && typeof raw.code === 'number' && 'data' in raw
+          ? (raw.data as { accessToken?: string; refreshToken?: string })
+          : (raw as { accessToken?: string; refreshToken?: string })
+
+      if (data?.accessToken && data?.refreshToken) {
+        useAuthStore.getState().setTokens(data.accessToken, data.refreshToken)
+        return true
+      }
+      return false
     } catch {
       return false
     } finally {

@@ -68,6 +68,7 @@
   },
   "roles": {
     "owner": "Chủ sở hữu",
+    "lead": "Trưởng nhóm / Chủ sở hữu",
     "admin": "Quản trị viên",
     "member": "Thành viên",
     "client": "Khách hàng",

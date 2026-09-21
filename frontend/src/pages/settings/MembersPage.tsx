@@ -16,7 +16,7 @@ import { type Role } from '@/lib/permissions'
 import { useAuthStore } from '@/store/authStore'
 import { ApiError } from '@/types/api'
 
-const ROLES: Role[] = ['ADMIN', 'PM', 'TRANSLATOR', 'PROOFREADER', 'CLIENT']
+const INVITE_ROLES: Role[] = ['MEMBER', 'CLIENT']
 
 /** B.3 Member Management — GET/POST/PUT/DELETE /workspaces/{ws}/members */
 export function MembersPage() {
@@ -34,18 +34,18 @@ export function MembersPage() {
 
   const [inviteOpen, setInviteOpen] = useState(false)
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<Role>('TRANSLATOR')
+  const [role, setRole] = useState<Role>('MEMBER')
   const [formError, setFormError] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
 
   const adminCount = useMemo(
-    () => members.filter((m) => m.role === 'ADMIN').length,
+    () => members.filter((m) => m.role === 'ADMIN' || m.role === 'LEAD').length,
     [members],
   )
 
   const openInvite = () => {
     setEmail('')
-    setRole('TRANSLATOR')
+    setRole('MEMBER')
     setFormError(null)
     setInviteOpen(true)
   }
@@ -181,7 +181,11 @@ export function MembersPage() {
                       </td>
                       <td className="text-[var(--color-text-secondary)]">{m.email || '—'}</td>
                       <td>
-                        {canManage ? (
+                        {m.role === 'LEAD' ? (
+                          <span className="role-pill font-semibold text-[var(--color-accent)]">
+                            {t('settings:roles.LEAD', { defaultValue: 'Lead' })}
+                          </span>
+                        ) : canManage ? (
                           <select
                             className="field-select"
                             value={m.role}
@@ -193,14 +197,14 @@ export function MembersPage() {
                               disableDemote ? t('settings:members.lastAdminGuard') : undefined
                             }
                           >
-                            {ROLES.map((r) => (
+                            {['MEMBER', 'CLIENT'].map((r) => (
                               <option key={r} value={r}>
-                                {t(`settings:roles.${r}`)}
+                                {t(`settings:roles.${r}`, { defaultValue: r })}
                               </option>
                             ))}
                           </select>
                         ) : (
-                          <span className="role-pill">{t(`settings:roles.${m.role}`)}</span>
+                          <span className="role-pill">{t(`settings:roles.${m.role}`, { defaultValue: m.role })}</span>
                         )}
                       </td>
                       {canManage && (
@@ -271,9 +275,9 @@ export function MembersPage() {
               value={role}
               onChange={(e) => setRole(e.target.value as Role)}
             >
-              {ROLES.map((r) => (
+              {INVITE_ROLES.map((r) => (
                 <option key={r} value={r}>
-                  {t(`settings:roles.${r}`)}
+                  {t(`settings:roles.${r}`, { defaultValue: r })}
                 </option>
               ))}
             </select>

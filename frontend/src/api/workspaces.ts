@@ -1,16 +1,29 @@
 import { apiRequest, buildWorkspacePath } from '@/lib/api/client'
 import type { CreateWorkspaceRequest, Workspace } from '@/types/workspace'
 
-export function listWorkspacesApi() {
-  return apiRequest<Workspace[]>('/workspaces')
+function normalizeWorkspace(ws: any): Workspace {
+  if (!ws) return ws
+  const resolvedRole = ws.myRole ?? ws.role ?? 'MEMBER'
+  return {
+    ...ws,
+    myRole: resolvedRole,
+    role: ws.role ?? resolvedRole,
+  }
 }
 
-export function getWorkspaceApi(workspaceId: string) {
-  return apiRequest<Workspace>(buildWorkspacePath(workspaceId))
+export async function listWorkspacesApi(): Promise<Workspace[]> {
+  const data = await apiRequest<Workspace[]>('/workspaces')
+  return (data || []).map(normalizeWorkspace)
 }
 
-export function createWorkspaceApi(body: CreateWorkspaceRequest) {
-  return apiRequest<Workspace>('/workspaces', { method: 'POST', body })
+export async function getWorkspaceApi(workspaceId: string): Promise<Workspace> {
+  const data = await apiRequest<Workspace>(buildWorkspacePath(workspaceId))
+  return normalizeWorkspace(data)
+}
+
+export async function createWorkspaceApi(body: CreateWorkspaceRequest): Promise<Workspace> {
+  const data = await apiRequest<Workspace>('/workspaces', { method: 'POST', body })
+  return normalizeWorkspace(data)
 }
 
 export type CostMode = 'WORKSPACE_OWNER' | 'INDIVIDUAL_USER'
@@ -32,4 +45,3 @@ export function updateWorkspaceBillingConfigApi(
     { method: 'PUT', body },
   )
 }
-

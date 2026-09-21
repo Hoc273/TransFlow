@@ -33,5 +33,11 @@ public interface AuthService {
 
     AuthResponse issueAuthTokens(User user, UUID workspaceId, UUID projectId);
 
+    OtpMessageResponse sendForgotPasswordOtp(ForgotPasswordOtpRequest req);
+
+    OtpVerifyResponse verifyForgotPasswordOtp(VerifyPasswordOtpRequest req);
+
+    OtpMessageResponse resetPasswordWithOtp(ResetPasswordOtpRequest req);
+
     record WorkspaceProjectInit(UUID workspaceId, UUID projectId) {}
 }

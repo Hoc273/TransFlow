@@ -50,4 +50,25 @@ public class AuthController {
                 .data(authService.me(user.id()))
                 .build();
     }
+
+    @PostMapping("/forgot-password/otp")
+    public ApiResponse<OtpMessageResponse> sendForgotPasswordOtp(@Valid @RequestBody ForgotPasswordOtpRequest req) {
+        return ApiResponse.<OtpMessageResponse>builder()
+                .data(authService.sendForgotPasswordOtp(req))
+                .build();
+    }
+
+    @PostMapping("/forgot-password/verify")
+    public ApiResponse<OtpVerifyResponse> verifyForgotPasswordOtp(@Valid @RequestBody VerifyPasswordOtpRequest req) {
+        return ApiResponse.<OtpVerifyResponse>builder()
+                .data(authService.verifyForgotPasswordOtp(req))
+                .build();
+    }
+
+    @PostMapping("/forgot-password/reset")
+    public ApiResponse<OtpMessageResponse> resetPasswordWithOtp(@Valid @RequestBody ResetPasswordOtpRequest req) {
+        return ApiResponse.<OtpMessageResponse>builder()
+                .data(authService.resetPasswordWithOtp(req))
+                .build();
+    }
 }

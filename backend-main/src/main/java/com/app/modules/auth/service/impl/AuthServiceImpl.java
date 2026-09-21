@@ -21,11 +21,19 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.app.modules.auth.service.ForgotPasswordOtpStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.security.SecureRandom;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class AuthServiceImpl implements AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final UserRepository userRepository;
     private final WorkspaceService workspaceService;
@@ -34,6 +42,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AppProperties appProperties;
+    private final ForgotPasswordOtpStore otpStore;
 
     public AuthServiceImpl(UserRepository userRepository,
                            WorkspaceService workspaceService,
@@ -41,7 +50,8 @@ public class AuthServiceImpl implements AuthService {
                            CreditService creditService,
                            PasswordEncoder passwordEncoder,
                            JwtService jwtService,
-                           AppProperties appProperties) {
+                           AppProperties appProperties,
+                           ForgotPasswordOtpStore otpStore) {
         this.userRepository = userRepository;
         this.workspaceService = workspaceService;
         this.projectService = projectService;
@@ -49,6 +59,7 @@ public class AuthServiceImpl implements AuthService {
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.appProperties = appProperties;
+        this.otpStore = otpStore;
     }
 
     @Override
@@ -195,5 +206,53 @@ public class AuthServiceImpl implements AuthService {
         String access = jwtService.generateAccessToken(user.getId(), user.getEmail());
         String refresh = jwtService.generateRefreshToken(user.getId());
         return new AuthResponse(access, refresh, UserResponse.from(user), workspaceId, projectId);
+    }
+
+    @Override
+    public OtpMessageResponse sendForgotPasswordOtp(ForgotPasswordOtpRequest req) {
+        String email = req.email().trim().toLowerCase(Locale.ROOT);
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new AppException(ErrorCode.ACCOUNT_DISABLED);
+        }
+
+        String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
+        otpStore.saveOtp(email, otp);
+        log.info("Generated forgot password OTP for email [{}]: {}", email, otp);
+
+        return new OtpMessageResponse("Mã xác thực OTP 6 chữ số đã được gửi đến email " + email);
+    }
+
+    @Override
+    public OtpVerifyResponse verifyForgotPasswordOtp(VerifyPasswordOtpRequest req) {
+        String email = req.email().trim().toLowerCase(Locale.ROOT);
+        boolean valid = otpStore.verifyOtp(email, req.otp().trim());
+        if (!valid) {
+            throw new AppException(ErrorCode.INVALID_CREDENTIALS);
+        }
+        return new OtpVerifyResponse(true, req.otp().trim());
+    }
+
+    @Override
+    @Transactional
+    public OtpMessageResponse resetPasswordWithOtp(ResetPasswordOtpRequest req) {
+        String email = req.email().trim().toLowerCase(Locale.ROOT);
+        boolean valid = otpStore.consumeOtpOrVerified(email, req.otp().trim());
+        if (!valid) {
+            throw new AppException(ErrorCode.INVALID_CREDENTIALS);
+        }
+
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new AppException(ErrorCode.ACCOUNT_DISABLED);
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
+        userRepository.save(user);
+
+        return new OtpMessageResponse("Mật khẩu đã được cập nhật thành công.");
     }
 }

@@ -2,7 +2,14 @@
  * Static RBAC matrix (09b A.5.3 / Q-RBAC1 / 06b §2.3).
  * UI-only — BE is the security boundary.
  */
-export type Role = 'ADMIN' | 'PM' | 'TRANSLATOR' | 'PROOFREADER' | 'CLIENT'
+export type Role =
+  | 'ADMIN'
+  | 'PM'
+  | 'TRANSLATOR'
+  | 'PROOFREADER'
+  | 'CLIENT'
+  | 'LEAD'
+  | 'MEMBER'
 
 export type PermissionAction =
   | 'workspace.manage_members'
@@ -23,29 +30,29 @@ export type PermissionAction =
   | 'dashboard.usage'
   | 'workspace.view'
 
-const ALL_ROLES: Role[] = ['ADMIN', 'PM', 'TRANSLATOR', 'PROOFREADER', 'CLIENT']
-const ADMIN_PM: Role[] = ['ADMIN', 'PM']
-const ADMIN_PM_TRANSLATOR: Role[] = ['ADMIN', 'PM', 'TRANSLATOR']
-const ADMIN_PM_PROOFREADER: Role[] = ['ADMIN', 'PM', 'PROOFREADER']
+const ALL_ROLES: Role[] = ['ADMIN', 'PM', 'TRANSLATOR', 'PROOFREADER', 'CLIENT', 'LEAD', 'MEMBER']
+const ADMIN_PM: Role[] = ['ADMIN', 'PM', 'LEAD']
+const ADMIN_PM_TRANSLATOR: Role[] = ['ADMIN', 'PM', 'TRANSLATOR', 'LEAD', 'MEMBER']
+const ADMIN_PM_PROOFREADER: Role[] = ['ADMIN', 'PM', 'PROOFREADER', 'LEAD', 'MEMBER']
 
 const MATRIX: Record<PermissionAction, Role[]> = {
   'workspace.view': ALL_ROLES,
-  'workspace.manage_members': ['ADMIN'],
-  'workspace.manage_providers': ['ADMIN'],
+  'workspace.manage_members': ['ADMIN', 'LEAD'],
+  'workspace.manage_providers': ['ADMIN', 'LEAD'],
   'project.create': ADMIN_PM,
   'project.manage': ADMIN_PM,
   'document.upload': ADMIN_PM_TRANSLATOR,
   'batch.create': ADMIN_PM_TRANSLATOR,
   'batch.retry': ADMIN_PM_TRANSLATOR,
   'job.start': ADMIN_PM_TRANSLATOR,
-  'segment.edit': ['ADMIN', 'PM', 'TRANSLATOR', 'PROOFREADER'],
+  'segment.edit': ['ADMIN', 'PM', 'TRANSLATOR', 'PROOFREADER', 'LEAD', 'MEMBER'],
   'segment.approve': ADMIN_PM_PROOFREADER,
   'qa.apply': ADMIN_PM_PROOFREADER,
   'qa.resolve': ADMIN_PM_PROOFREADER,
-  'qa.override': ADMIN_PM,
-  'glossary.crud': ADMIN_PM,
-  'tm.crud': ADMIN_PM,
-  'dashboard.usage': ADMIN_PM,
+  'qa.override': ['ADMIN', 'PM', 'LEAD'],
+  'glossary.crud': ['ADMIN', 'PM', 'LEAD'],
+  'tm.crud': ['ADMIN', 'PM', 'LEAD'],
+  'dashboard.usage': ['ADMIN', 'PM', 'LEAD'],
 }
 
 export function can(role: Role | null | undefined, action: PermissionAction): boolean {
@@ -59,6 +66,8 @@ export function isRole(value: unknown): value is Role {
     value === 'PM' ||
     value === 'TRANSLATOR' ||
     value === 'PROOFREADER' ||
-    value === 'CLIENT'
+    value === 'CLIENT' ||
+    value === 'LEAD' ||
+    value === 'MEMBER'
   )
 }
