@@ -21,4 +21,7 @@ public interface MediaStorageService {
      * backend-media-worker reports in stage {@code output_ref}). TTL = {@code app.storage.presigned-ttl-seconds}.
      */
     String presignedGetUrl(String storageRef);
+
+    /** Opens an object referenced as {@code "<bucket>/<objectKey>"}; the caller must close the stream. */
+    InputStream getMediaObject(String storageRef);
 }

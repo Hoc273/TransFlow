@@ -93,6 +93,7 @@ app:
     public-endpoint: ${MEDIA_STORAGE_PUBLIC_ENDPOINT:}
   media-job:
     max-batch-subtitle-updates: ${MEDIA_MAX_BATCH_SUBTITLE_UPDATES:200}
+    max-bulk-download: ${MEDIA_MAX_BULK_DOWNLOAD:20}
   media-worker:
     hmac-secret: ${MEDIA_WORKER_HMAC_SECRET:}
   crypto:

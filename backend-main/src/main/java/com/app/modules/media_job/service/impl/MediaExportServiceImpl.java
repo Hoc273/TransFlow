@@ -43,7 +43,30 @@ public class MediaExportServiceImpl implements MediaExportService {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
 
-        // getJob enforces project access (LEAD/MEMBER/CLIENT may all read a published result).
+        if (fmt.equals("SUBTITLE")) {
+            checkPublishable(workspaceId, userId, jobId);
+            String srt = toSrt(jobService.listSubtitles(workspaceId, userId, jobId));
+            return new MediaExportResponse(fmt, "subtitles_" + jobId + ".srt", null, srt);
+        }
+
+        String ref = renderOutputRef(workspaceId, userId, jobId);
+        return new MediaExportResponse(fmt, ref.substring(ref.lastIndexOf('/') + 1), storage.presignedGetUrl(ref), null);
+    }
+
+    @Override
+    public String renderOutputRef(UUID workspaceId, UUID userId, UUID jobId) {
+        checkPublishable(workspaceId, userId, jobId);
+        return jobService.getStages(jobId).stream()
+                .filter(s -> s.getStageName() == MediaJobStage.StageName.RENDER
+                        && s.getStatus() == MediaJobStage.StageStatus.COMPLETED)
+                .map(s -> parseRef(s.getOutputRef()))
+                .filter(r -> r != null && !r.isBlank())
+                .findFirst()
+                .orElseThrow(() -> new AppException(ErrorCode.STAGE_NOT_READY));
+    }
+
+    /** getJob enforces project access (LEAD/MEMBER/CLIENT may all read a published result). */
+    private void checkPublishable(UUID workspaceId, UUID userId, UUID jobId) {
         MediaJob job = jobService.getJob(workspaceId, userId, jobId);
         if (job.getStatus() != MediaJob.JobStatus.COMPLETED) {
             throw new AppException(ErrorCode.STAGE_NOT_READY);
@@ -55,20 +78,6 @@ public class MediaExportServiceImpl implements MediaExportService {
         if (blocked) {
             throw new AppException(ErrorCode.QA_BLOCKED);
         }
-
-        if (fmt.equals("SUBTITLE")) {
-            String srt = toSrt(jobService.listSubtitles(workspaceId, userId, jobId));
-            return new MediaExportResponse(fmt, "subtitles_" + jobId + ".srt", null, srt);
-        }
-
-        String ref = jobService.getStages(jobId).stream()
-                .filter(s -> s.getStageName() == MediaJobStage.StageName.RENDER
-                        && s.getStatus() == MediaJobStage.StageStatus.COMPLETED)
-                .map(s -> parseRef(s.getOutputRef()))
-                .filter(r -> r != null && !r.isBlank())
-                .findFirst()
-                .orElseThrow(() -> new AppException(ErrorCode.STAGE_NOT_READY));
-        return new MediaExportResponse(fmt, ref.substring(ref.lastIndexOf('/') + 1), storage.presignedGetUrl(ref), null);
     }
 
     /** Stage {@code output_ref} is JSON text holding the worker's {@code "<bucket>/<key>"} string. */
