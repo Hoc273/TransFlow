@@ -68,10 +68,10 @@ export function LoginPage() {
 
   return (
     <AuthLayout>
-      <h2 className="mb-2 text-[30px] font-bold tracking-tight text-[var(--color-text-primary)]">
+      <h2 className="mb-1.5 sm:mb-2 text-2xl sm:text-[30px] font-bold tracking-tight text-[var(--color-text-primary)]">
         {t('auth:login.title')}
       </h2>
-      <p className="mb-8 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+      <p className="mb-5 sm:mb-8 text-xs sm:text-sm leading-relaxed text-[var(--color-text-secondary)]">
         {t('auth:login.subtitle')}{' '}
         <Link to="/register" className="font-semibold text-[var(--color-accent)] no-underline hover:underline">
           {t('auth:login.cta')}
@@ -89,7 +89,7 @@ export function LoginPage() {
         }
       />
 
-      <div className="my-6 flex items-center gap-3 text-xs font-medium uppercase tracking-wider text-[var(--color-text-tertiary)]">
+      <div className="my-4 sm:my-6 flex items-center gap-3 text-xs font-medium uppercase tracking-wider text-[var(--color-text-tertiary)]">
         <div className="h-px flex-1 bg-[var(--color-border)]" />
         <span>{t('common:or')}</span>
         <div className="h-px flex-1 bg-[var(--color-border)]" />
@@ -130,7 +130,7 @@ export function LoginPage() {
           }
         />
 
-        <div className="mb-[22px] flex items-center justify-between text-[13px]">
+        <div className="mb-[20px] sm:mb-[22px] flex items-center justify-between text-xs sm:text-[13px]">
           <label className="flex cursor-pointer select-none items-center gap-2 text-[var(--color-text-secondary)]">
             <input
               type="checkbox"
@@ -163,14 +163,14 @@ export function LoginPage() {
         <button
           type="submit"
           disabled={login.isPending}
-          className="relative flex w-full cursor-pointer items-center justify-center gap-2 rounded-[11px] border-none bg-[var(--color-accent)] px-4 py-3.5 text-sm font-semibold text-white transition-all hover:-translate-y-px hover:bg-[var(--color-accent-hover)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="relative flex w-full cursor-pointer items-center justify-center gap-2 rounded-[11px] border-none bg-[var(--color-accent)] px-4 py-3 sm:py-3.5 text-sm font-semibold text-white transition-all hover:-translate-y-px hover:bg-[var(--color-accent-hover)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {login.isPending && <span className="auth-spinner" />}
           <span>{login.isPending ? t('auth:login.submitting') : t('auth:login.submit')}</span>
         </button>
       </form>
 
-      <div className="mt-7 border-t border-[var(--color-border)] pt-6 text-center text-xs leading-relaxed text-[var(--color-text-tertiary)]">
+      <div className="mt-6 sm:mt-7 border-t border-[var(--color-border)] pt-5 sm:pt-6 text-center text-xs leading-relaxed text-[var(--color-text-tertiary)]">
         <div>{t('auth:footer.copy')}</div>
         <div className="mt-1">
           <button type="button" className="cursor-pointer border-none bg-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]">

@@ -13,12 +13,10 @@ import {
 } from '@tabler/icons-react'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { NarrativePlanViewer, type SourceDialogueSegment } from '@/components/media-studio/NarrativePlanViewer'
-import { RefineNarrativeModal } from '@/components/media-studio/RefineNarrativeModal'
 import {
   useCreateCustomProposal,
   useMediaLinkedJob,
   useMediaProposals,
-  useRefineNarrativePlan,
   useRerunSummarize,
   useSelectProposal,
 } from '@/hooks/useMedia'
@@ -29,9 +27,11 @@ import {
   isAwaitingPlanSelection,
   isExtractiveRecipe,
   isGenerativeRecipe,
+  isLegacyNarrativeReviewJob,
   isNarrativeProposal,
   isProposalSelectionLocked,
   isSelectedProposalActivated,
+  isSinglePlanGenerativeJob,
   isSummaryRecipe,
   normalizeCutRanges,
   normalizeWarnings,
@@ -46,10 +46,9 @@ import type { MediaJob, MediaSummaryProposal } from '@/types/media'
 type Props = {
   workspaceId: string
   job: MediaJob
-  initialRefineModalOpen?: boolean
 }
 
-export function ProposalPanel({ workspaceId, job, initialRefineModalOpen }: Props) {
+export function ProposalPanel({ workspaceId, job }: Props) {
   const { t } = useTranslation(['media', 'common'])
   const canEdit = usePermission('job.start')
   const { data: linkedJob } = useMediaLinkedJob(workspaceId, job.translationJobId)
@@ -60,7 +59,6 @@ export function ProposalPanel({ workspaceId, job, initialRefineModalOpen }: Prop
   const selectProposal = useSelectProposal(workspaceId, job.id)
   const createCustom = useCreateCustomProposal(workspaceId, job.id)
   const rerun = useRerunSummarize(workspaceId, job.id)
-  const refine = useRefineNarrativePlan(workspaceId, job.id)
 
   const [selectedId, setSelectedId] = useState<string | null>(job.selectedProposalId)
   const [activatingId, setActivatingId] = useState<string | null>(null)
@@ -69,7 +67,6 @@ export function ProposalPanel({ workspaceId, job, initialRefineModalOpen }: Prop
   const [note, setNote] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [showCustomForm, setShowCustomForm] = useState(false)
-  const [isRefineModalOpen, setIsRefineModalOpen] = useState(initialRefineModalOpen ?? false)
 
   const aiProposals = useMemo(
     () => proposals.filter((p) => String(p.generated_by).toUpperCase() === 'AI'),
@@ -83,6 +80,8 @@ export function ProposalPanel({ workspaceId, job, initialRefineModalOpen }: Prop
   // Recipe-first (not processingMode). Generative jobs may still report HYBRID in DB.
   const isExtractive = isExtractiveRecipe(job)
   const isGenerative = isGenerativeRecipe(job)
+  const isSinglePlan = isSinglePlanGenerativeJob(job)
+  const isLegacyGenerative = isLegacyNarrativeReviewJob(job)
   const isSummary = isSummaryRecipe(job)
   const selectionLocked = isProposalSelectionLocked(job) || activatingId !== null
   const activated = isSelectedProposalActivated(job)
@@ -131,16 +130,6 @@ export function ProposalPanel({ workspaceId, job, initialRefineModalOpen }: Prop
       setFormError(e instanceof ApiError ? e.message : t('common:error.generic'))
     } finally {
       setActivatingId(null)
-    }
-  }
-
-  const handleRefineSubmit = async (compiledFeedback: string) => {
-    setFormError(null)
-    try {
-      await refine.mutateAsync(compiledFeedback)
-    } catch (e) {
-      setFormError(e instanceof ApiError ? e.message : t('common:error.generic'))
-      throw e
     }
   }
 
@@ -303,19 +292,17 @@ export function ProposalPanel({ workspaceId, job, initialRefineModalOpen }: Prop
                   : t('media:proposals.locked')}
               </span>
             )}
-            {isGenerative && canEdit && !selectionLocked && (
-              <button
-                type="button"
-                className="btn-primary btn-sm"
-                data-testid="narrative-refine-open-btn"
-                disabled={refine.isPending}
-                onClick={() => setIsRefineModalOpen(true)}
-              >
-                <IconSparkles size={14} />
-                {t('media:refine.openModal')}
-              </button>
+            {isSinglePlan && canEdit && !selectionLocked && (
+              <span className="media-proposal-state-pill">
+                {t('media:proposals.singlePlanAuto')}
+              </span>
             )}
-            {canEdit && (
+            {isLegacyGenerative && needsSelection && (
+              <span className="media-action-needed-pill">
+                {t('media:waitingForProposal.badge')}
+              </span>
+            )}
+            {canEdit && !isSinglePlan && (
               <button
                 type="button"
                 className="btn-secondary btn-sm"
@@ -348,17 +335,7 @@ export function ProposalPanel({ workspaceId, job, initialRefineModalOpen }: Prop
             )}
           </p>
 
-          {isGenerative && (
-            <RefineNarrativeModal
-              open={isRefineModalOpen}
-              onClose={() => setIsRefineModalOpen(false)}
-              proposal={aiProposals[0] ?? null}
-              totalDurationMs={aiProposals[0]?.total_duration_ms}
-              requestedDurationSeconds={job.requestedDurationSeconds}
-              onRefine={handleRefineSubmit}
-              isPending={refine.isPending}
-            />
-          )}
+          {isGenerative && null}
 
           {isLoading && (
             <div className="py-8 text-center text-sm text-[var(--color-text-tertiary)]">
@@ -391,16 +368,13 @@ export function ProposalPanel({ workspaceId, job, initialRefineModalOpen }: Prop
             />
           )}
 
-          {/* Generative Narrative review: render NarrativePlan directly without redundant Option 1 card */}
-          {!isLoading && !isError && aiProposals.length > 0 && isGenerative && (
+          {/* Generative single-plan: read-only committed plan, pipeline continues automatically */}
+          {!isLoading && !isError && aiProposals.length > 0 && isGenerative && isSinglePlan && (
             <div className="space-y-3" data-testid="narrative-plan-review-container">
               {(() => {
                 const primaryProposal = aiProposals[0]
                 const ranges = normalizeCutRanges(primaryProposal.cut_ranges)
                 const warnings = normalizeWarnings(primaryProposal.warnings)
-                const selectionState = resolveSelectionState(primaryProposal.id)
-                const isSelectedCard = selectionState !== 'candidate'
-                const isApprovedAndLocked = selectionLocked || isSelectedCard
 
                 return (
                   <div className="space-y-3">
@@ -420,37 +394,87 @@ export function ProposalPanel({ workspaceId, job, initialRefineModalOpen }: Prop
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {canEdit && !isApprovedAndLocked && (
+                        <span
+                          className="media-proposal-state-pill"
+                          data-testid="narrative-single-plan-badge"
+                        >
+                          <span>{t('media:proposals.singlePlanCommitted')}</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-4 shadow-sm">
+                      {primaryProposal.planBody ? (
+                        <NarrativePlanViewer
+                          plan={primaryProposal.planBody}
+                          cutRanges={ranges}
+                          totalDurationMs={primaryProposal.total_duration_ms}
+                          sourceSegments={linkedJob?.segments}
+                        />
+                      ) : (
+                        <p className="text-sm text-[var(--color-text-secondary)]">
+                          {primaryProposal.reasoning_note || '—'}
+                        </p>
+                      )}
+                    </div>
+
+                    {warnings.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {warnings.map((w, i) => (
+                          <span key={i} className="media-proposal-warning">
+                            {warningLabel(w.code, w.message, t)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
+          {/* Legacy NARRATIVE_REVIEW generative: completed-but-unselected jobs keep the old select path */}
+          {!isLoading && !isError && aiProposals.length > 0 && isGenerative && isLegacyGenerative && (
+            <div className="space-y-3" data-testid="narrative-legacy-review-container">
+              {(() => {
+                const primaryProposal = aiProposals[0]
+                const ranges = normalizeCutRanges(primaryProposal.cut_ranges)
+                const warnings = normalizeWarnings(primaryProposal.warnings)
+                const unselected = !job.selectedProposalId
+
+                return (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold">
+                          {primaryProposal.planBody?.title || t('media:proposals.planKindNarrative')}
+                        </span>
+                        <span className="media-plan-kind-chip">
+                          {t('media:proposals.planKindNarrative')}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {canEdit && unselected && (
                           <button
                             type="button"
                             className="btn-primary btn-sm inline-flex items-center gap-1.5"
-                            data-testid="narrative-approve-btn"
+                            data-testid="narrative-legacy-select-btn"
                             onClick={() => void handleSelect(primaryProposal.id)}
                             disabled={selectProposal.isPending}
                           >
                             <IconCheck size={14} />
-                            <span>{t('media:proposals.agreeNextStep')}</span>
+                            <span>{t('media:proposals.selectPlan')}</span>
                           </button>
                         )}
-                        {isApprovedAndLocked && (
+                        {!unselected && (
                           <span
-                            className="media-proposal-state-pill locked inline-flex items-center gap-1"
-                            data-testid="narrative-reviewed-badge"
+                            className="media-proposal-state-pill locked"
+                            data-testid="narrative-legacy-locked-badge"
                           >
-                            <IconCheck size={12} />
-                            <span>{t('media:proposals.reviewedAndLocked')}</span>
+                            <IconLock size={12} />
+                            <span>{t('media:proposals.locked')}</span>
                           </span>
-                        )}
-                        {canEdit && !isApprovedAndLocked && (
-                          <button
-                            type="button"
-                            className="btn-secondary btn-sm inline-flex items-center gap-1.5"
-                            data-testid="narrative-refine-modal-trigger"
-                            onClick={() => setIsRefineModalOpen(true)}
-                          >
-                            <IconSparkles size={14} className="text-[var(--color-accent)]" />
-                            <span>{t('media:refine.openModalShort')}</span>
-                          </button>
                         )}
                       </div>
                     </div>

@@ -196,4 +196,39 @@ describe('StageRerunDropdown', () => {
     expect(onRerun).not.toHaveBeenCalled()
     expect(screen.queryByTestId('stage-rerun-confirm-btn')).toBeNull()
   })
+
+  it('renders a scrollable list with all stages including RENDER when later stages are reached', () => {
+    const onRerun = vi.fn()
+    const job = mockJob({
+      status: 'FAILED',
+      stages: [
+        { id: 's1', stageName: 'EXTRACT_AUDIO', stageOrder: 1, status: 'COMPLETED', progressPercent: 100, startedAt: null, completedAt: null },
+        { id: 's2', stageName: 'STT', stageOrder: 2, status: 'COMPLETED', progressPercent: 100, startedAt: null, completedAt: null },
+        { id: 's3', stageName: 'SUMMARIZE', stageOrder: 3, status: 'COMPLETED', progressPercent: 100, startedAt: null, completedAt: null },
+        { id: 's4', stageName: 'TRANSLATE', stageOrder: 4, status: 'COMPLETED', progressPercent: 100, startedAt: null, completedAt: null },
+        { id: 's5', stageName: 'TTS', stageOrder: 5, status: 'COMPLETED', progressPercent: 100, startedAt: null, completedAt: null },
+        { id: 's6', stageName: 'AUDIO_MIX', stageOrder: 6, status: 'COMPLETED', progressPercent: 100, startedAt: null, completedAt: null },
+        { id: 's7', stageName: 'RENDER', stageOrder: 7, status: 'FAILED', progressPercent: 50, startedAt: null, completedAt: null },
+      ],
+    })
+
+    render(<StageRerunDropdown job={job} canEdit={true} onRerun={onRerun} />)
+
+    fireEvent.click(screen.getByTestId('stage-rerun-dropdown-trigger'))
+
+    const menu = screen.getByTestId('stage-rerun-menu')
+    expect(menu).toBeTruthy()
+
+    const scrollContainer = menu.querySelector('.overflow-y-auto')
+    expect(scrollContainer).toBeTruthy()
+    expect(scrollContainer?.className).toContain('max-h-64')
+
+    const renderItem = screen.getByTestId('stage-rerun-item-RENDER')
+    expect(renderItem).toBeTruthy()
+    fireEvent.click(renderItem)
+
+    expect(screen.getByTestId('stage-rerun-confirm-btn')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('stage-rerun-confirm-btn'))
+    expect(onRerun).toHaveBeenCalledWith('RENDER')
+  })
 })

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   COVER_ANCHORS,
@@ -31,16 +32,39 @@ export function CoverLayersEditor({
   layers,
   locked,
   onChange,
+  selectedLayerId,
+  onSelectedLayerChange,
   testidPrefix = 'cover',
 }: {
   enabled: boolean
   layers: PresentationLayer[]
   locked: boolean
   onChange: (next: { enabled: boolean; layers: PresentationLayer[] }) => void
+  selectedLayerId?: string | null
+  onSelectedLayerChange?: (layerId: string | null) => void
   testidPrefix?: string
 }) {
   const { t } = useTranslation(['media'])
   const atCap = layers.length >= MAX_COVER_LAYERS
+  const [selectedId, setSelectedId] = useState<string | null>(layers[0]?.id ?? null)
+  const effectiveSelectedId = selectedLayerId ?? selectedId
+  const selectedIndex = Math.max(0, layers.findIndex((layer) => layer.id === effectiveSelectedId))
+  const selectedLayer = layers[selectedIndex]
+  const selectLayer = (layerId: string | null) => {
+    setSelectedId(layerId)
+    onSelectedLayerChange?.(layerId)
+  }
+
+  useEffect(() => {
+    if (!layers.length) {
+      setSelectedId(null)
+      return
+    }
+    if (!layers.some((layer) => layer.id === effectiveSelectedId)) {
+      setSelectedId(layers[0].id)
+      onSelectedLayerChange?.(layers[0].id)
+    }
+  }, [layers, effectiveSelectedId, onSelectedLayerChange])
 
   const updateLayer = (index: number, patch: Partial<PresentationLayer>) => {
     onChange({
@@ -49,20 +73,41 @@ export function CoverLayersEditor({
     })
   }
 
-  const updateGeometry = (index: number, key: 'widthPercent' | 'heightPercent', raw: number) => {
-    const min = key === 'widthPercent' ? COVER_WIDTH_MIN : COVER_HEIGHT_MIN
-    const max = key === 'widthPercent' ? COVER_WIDTH_MAX : COVER_HEIGHT_MAX
+  const updateGeometry = (
+    index: number,
+    key: 'widthPercent' | 'heightPercent' | 'xPercent' | 'yPercent',
+    raw: number,
+  ) => {
+    const isPosition = key === 'xPercent' || key === 'yPercent'
+    const min = isPosition ? 0 : key === 'widthPercent' ? COVER_WIDTH_MIN : COVER_HEIGHT_MIN
+    const max = isPosition ? 100 : key === 'widthPercent' ? COVER_WIDTH_MAX : COVER_HEIGHT_MAX
     const layer = layers[index]
-    updateLayer(index, { geometry: { ...layer.geometry, [key]: Math.max(min, Math.min(max, raw)) } })
+    updateLayer(index, {
+      geometry: {
+        ...layer.geometry,
+        [key]: Math.max(min, Math.min(max, Math.round(raw))),
+      },
+    })
   }
 
   const addLayer = () => {
     if (atCap) return
-    onChange({ enabled, layers: [...layers, defaultCoverLayer(layers)] })
+    if (!enabled) {
+      const nextLayers = layers.length ? layers : [defaultCoverLayer([])]
+      selectLayer(nextLayers[0].id)
+      onChange({ enabled: true, layers: nextLayers })
+      return
+    }
+    const layer = defaultCoverLayer(layers)
+    selectLayer(layer.id)
+    onChange({ enabled: true, layers: [...layers, layer] })
   }
 
   const removeLayer = (index: number) => {
-    onChange({ enabled, layers: layers.filter((_, i) => i !== index) })
+    const nextLayers = layers.filter((_, i) => i !== index)
+    const nextSelected = nextLayers[Math.min(index, nextLayers.length - 1)]
+    selectLayer(nextSelected?.id ?? null)
+    onChange({ enabled: nextLayers.length > 0 && enabled, layers: nextLayers })
   }
 
   const moveLayer = (index: number, delta: -1 | 1) => {
@@ -74,40 +119,71 @@ export function CoverLayersEditor({
   }
 
   return (
-    <div className="space-y-3" data-testid={`${testidPrefix}-layers`}>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          data-testid={`${testidPrefix}-enable`}
-          checked={enabled}
-          disabled={locked}
-          onChange={(e) => onChange({ enabled: e.target.checked, layers })}
-        />
-        {t('media:renderPrep.coverEnable')}
-      </label>
-      {enabled && (
-        <>
+    <div className="cover-layer-workspace" data-testid={`${testidPrefix}-layers`}>
+      <div className="cover-layer-toolbar">
+        <div className="min-w-0">
+          <p className="cover-layer-kicker">{t('media:renderPrep.maskLayerTitle')}</p>
           <p className="field-help m-0">{t('media:renderPrep.coverHint')}</p>
-          <div className="space-y-3">
-            {layers.map((layer, index) => (
-              <CoverLayerCard
-                key={layer.id}
-                layer={layer}
-                index={index}
-                count={layers.length}
-                locked={locked}
-                prefix={testidPrefix}
-                onPatch={(patch) => updateLayer(index, patch)}
-                onGeometry={(key, value) => updateGeometry(index, key, value)}
-                onRemove={() => removeLayer(index)}
-                onMove={(delta) => moveLayer(index, delta)}
-              />
-            ))}
+        </div>
+        <label className="cover-layer-master-toggle">
+          <input
+            type="checkbox"
+            data-testid={`${testidPrefix}-enable`}
+            checked={enabled}
+            disabled={locked}
+            onChange={(e) => onChange({ enabled: e.target.checked, layers })}
+          />
+          <span>{t('media:renderPrep.coverEnable')}</span>
+        </label>
+      </div>
+
+      {!enabled ? (
+        <div className="cover-layer-empty">
+          <div>
+            <p className="m-0 text-sm font-semibold">{t('media:renderPrep.coverEmptyTitle')}</p>
+            <p className="field-help mt-1 mb-0">{t('media:renderPrep.coverEmptyHint')}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="btn-media-secondary btn-sm shrink-0"
+            data-testid={`${testidPrefix}-layer-add`}
+            disabled={locked}
+            onClick={addLayer}
+          >
+            <IconPlus size={14} />
+            {t('media:renderPrep.coverAdd')}
+          </button>
+        </div>
+      ) : (
+        <div className="cover-layer-editor-grid">
+          <div className="cover-layer-rail" aria-label={t('media:renderPrep.coverLayerList')}>
+            <div className="cover-layer-rail-heading">
+              <span>{t('media:renderPrep.coverLayerList')}</span>
+              <span>{t('media:renderPrep.coverCount', { used: layers.length, max: MAX_COVER_LAYERS })}</span>
+            </div>
+            {layers.map((layer, index) => (
+              <button
+                key={layer.id}
+                type="button"
+                className={`cover-layer-rail-item ${selectedLayer?.id === layer.id ? 'active' : ''}`}
+                data-testid={`${testidPrefix}-layer-${index}-select`}
+                aria-pressed={selectedLayer?.id === layer.id}
+                onClick={() => selectLayer(layer.id)}
+              >
+                <span className="cover-layer-order">{index + 1}</span>
+                <span className="min-w-0 text-left">
+                  <strong>{t('media:renderPrep.coverLayerLabel', { index: index + 1 })}</strong>
+                  <small>
+                    {t(`media:renderPrep.layerAnchor${layer.anchor.charAt(0)}${layer.anchor.slice(1).toLowerCase()}`)}
+                    {' · '}
+                    {t(`media:renderPrep.maskStyle${layer.type === 'BLUR' ? 'Blur' : 'Solid'}`)}
+                  </small>
+                </span>
+              </button>
+            ))}
             <button
               type="button"
-              className="btn-media-secondary btn-sm"
+              className="cover-layer-add"
               data-testid={`${testidPrefix}-layer-add`}
               disabled={locked || atCap}
               onClick={addLayer}
@@ -115,11 +191,28 @@ export function CoverLayersEditor({
               <IconPlus size={14} />
               {t('media:renderPrep.coverAdd')}
             </button>
-            <span className="text-[11px] text-[var(--color-text-tertiary)]">
-              {t('media:renderPrep.coverCount', { used: layers.length, max: MAX_COVER_LAYERS })}
-            </span>
           </div>
-        </>
+
+          <div className="cover-layer-inspector">
+            <p className="cover-layer-inspector-title">
+              {t('media:renderPrep.coverInspector')}
+            </p>
+            {selectedLayer && (
+              <CoverLayerCard
+                key={selectedLayer.id}
+                layer={selectedLayer}
+                index={selectedIndex}
+                count={layers.length}
+                locked={locked}
+                prefix={testidPrefix}
+                onPatch={(patch) => updateLayer(selectedIndex, patch)}
+                onGeometry={(key, value) => updateGeometry(selectedIndex, key, value)}
+                onRemove={() => removeLayer(selectedIndex)}
+                onMove={(delta) => moveLayer(selectedIndex, delta)}
+              />
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
@@ -142,7 +235,10 @@ function CoverLayerCard({
   locked: boolean
   prefix: string
   onPatch: (patch: Partial<PresentationLayer>) => void
-  onGeometry: (key: 'widthPercent' | 'heightPercent', value: number) => void
+  onGeometry: (
+    key: 'widthPercent' | 'heightPercent' | 'xPercent' | 'yPercent',
+    value: number,
+  ) => void
   onRemove: () => void
   onMove: (delta: -1 | 1) => void
 }) {
@@ -151,11 +247,11 @@ function CoverLayerCard({
 
   return (
     <div
-      className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] p-3"
+      className="cover-layer-card"
       data-testid={`${prefix}-layer-${index}`}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
+        <span className="text-sm font-semibold text-[var(--color-text-primary)]">
           {t('media:renderPrep.coverLayerLabel', { index: index + 1 })}
         </span>
         <div className="ml-auto flex items-center gap-1">
@@ -200,7 +296,10 @@ function CoverLayerCard({
             data-testid={`${prefix}-layer-${index}-anchor`}
             value={layer.anchor}
             disabled={locked}
-            onChange={(e) => onPatch({ anchor: e.target.value as PresentationLayerAnchor })}
+            onChange={(e) => onPatch({
+              anchor: e.target.value as PresentationLayerAnchor,
+              geometry: { ...layer.geometry, yPercent: undefined },
+            })}
           >
             {COVER_ANCHORS.map((anchor) => (
               <option key={anchor} value={anchor}>
@@ -257,6 +356,48 @@ function CoverLayerCard({
             onChange={(e) => onGeometry('heightPercent', Number(e.target.value))}
           />
         </label>
+        <label className="field-label">
+          <span>{t('media:renderPrep.maskHorizontalPosition')}</span>
+          <input
+            type="number"
+            className="field-input"
+            min={0}
+            max={100}
+            data-testid={`${prefix}-layer-${index}-x`}
+            value={layer.geometry.xPercent ?? 50}
+            disabled={locked}
+            onChange={(e) => onGeometry('xPercent', Number(e.target.value))}
+          />
+        </label>
+        <label className="field-label">
+          <span>{t('media:renderPrep.maskVerticalPosition')}</span>
+          <input
+            type="number"
+            className="field-input"
+            min={0}
+            max={100}
+            placeholder={t('media:renderPrep.maskFollowsAnchor')}
+            data-testid={`${prefix}-layer-${index}-y`}
+            value={layer.geometry.yPercent ?? ''}
+            disabled={locked}
+            onChange={(e) => onGeometry('yPercent', Number(e.target.value))}
+          />
+        </label>
+        <button
+          type="button"
+          className="btn-media-secondary btn-sm sm:col-span-2"
+          disabled={locked || (
+            layer.geometry.xPercent == null && layer.geometry.yPercent == null
+          )}
+          onClick={() => onPatch({
+            geometry: {
+              widthPercent: layer.geometry.widthPercent,
+              heightPercent: layer.geometry.heightPercent,
+            },
+          })}
+        >
+          {t('media:renderPrep.maskResetPosition')}
+        </button>
         {isBlur ? (
           <label className="field-label">
             <span>{t('media:renderPrep.maskBlurRadius')}</span>

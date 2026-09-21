@@ -256,7 +256,12 @@ export function MobileMediaListPage() {
                       <h3 className="truncate text-sm font-semibold text-neutral-900 dark:text-white" title={itemTitle}>
                         {itemTitle}
                       </h3>
-                      <div className="mt-1 flex min-w-0 items-center flex-wrap gap-1.5">
+                      {item.fileName && item.fileName !== itemTitle && (
+                        <p className="truncate text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5" title={item.fileName}>
+                          {item.fileName}
+                        </p>
+                      )}
+                      <div className="mt-1.5 flex min-w-0 items-center flex-wrap gap-1.5">
                         <span
                           className={clsx(
                             'shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold border',
@@ -268,6 +273,16 @@ export function MobileMediaListPage() {
                         {item.targetLang && (
                           <span className="shrink-0 rounded bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 dark:text-neutral-400 uppercase">
                             {String(item.targetLang).toUpperCase()}
+                          </span>
+                        )}
+                        {item.keepOriginalAudio && (
+                          <span className="shrink-0 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium">
+                            Âm thanh gốc
+                          </span>
+                        )}
+                        {(item.aspectRatio || item.outputAspectRatio) && (
+                          <span className="shrink-0 rounded bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
+                            {item.aspectRatio || item.outputAspectRatio}
                           </span>
                         )}
                         {(item.type || item.processingMode || item.recipeId) && (

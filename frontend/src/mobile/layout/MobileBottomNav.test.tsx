@@ -26,7 +26,7 @@ expect.extend({
 afterEach(() => cleanup())
 
 describe('MobileBottomNav', () => {
-  it('renders 5 primary navigation tabs', () => {
+  it('renders primary navigation tabs', () => {
     render(
       <MemoryRouter>
         <MobileBottomNav workspaceId="w1" onOpenMenu={vi.fn()} />
@@ -34,9 +34,9 @@ describe('MobileBottomNav', () => {
     )
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
     expect(screen.getByText('Projects')).toBeInTheDocument()
-    expect(screen.getByText('Batches')).toBeInTheDocument()
     expect(screen.getByText('Media')).toBeInTheDocument()
     expect(screen.getByText('Menu')).toBeInTheDocument()
+    expect(screen.queryByText('Batches')).not.toBeInTheDocument()
   })
 
   it('triggers onOpenMenu when Menu tab is clicked', () => {

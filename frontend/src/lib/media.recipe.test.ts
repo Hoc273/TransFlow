@@ -76,6 +76,46 @@ describe('recipe-aware helpers', () => {
     expect(isProposalSelectionLocked(selected)).toBe(true)
   })
 
+  it('never awaits plan selection for generative single-plan (auto-commit)', () => {
+    const generativeAwaiting = job({
+      recipeId: 'summary.generative',
+      strategySnapshot: { planning: 'SUMMARY_SINGLE_PLAN' },
+      selectedProposalId: null,
+      stages: [
+        {
+          id: 's',
+          stageName: 'SUMMARIZE',
+          stageOrder: 3,
+          status: 'COMPLETED',
+          progressPercent: 100,
+          startedAt: null,
+          completedAt: null,
+        },
+      ],
+    })
+    expect(isAwaitingPlanSelection(generativeAwaiting)).toBe(false)
+  })
+
+  it('keeps awaiting selection for legacy NARRATIVE_REVIEW unselected jobs', () => {
+    const legacyAwaiting = job({
+      recipeId: 'summary.generative',
+      strategySnapshot: { planning: 'NARRATIVE_REVIEW' },
+      selectedProposalId: null,
+      stages: [
+        {
+          id: 's',
+          stageName: 'SUMMARIZE',
+          stageOrder: 3,
+          status: 'COMPLETED',
+          progressPercent: 100,
+          startedAt: null,
+          completedAt: null,
+        },
+      ],
+    })
+    expect(isAwaitingPlanSelection(legacyAwaiting)).toBe(true)
+  })
+
   it('marks activated after select when translate is pending/queued', () => {
     const j = job({
       recipeId: 'summary.extractive',

@@ -37,6 +37,10 @@ const sampleJobs = [
   {
     id: 'job-123',
     title: 'Product Launch Video',
+    fileName: 'product_launch_2026.mp4',
+    recipeId: 'localization.full',
+    keepOriginalAudio: false,
+    aspectRatio: '16:9',
     status: 'COMPLETED',
     duration: '02:45',
     progress: 100,
@@ -45,6 +49,10 @@ const sampleJobs = [
   {
     id: 'job-456',
     title: 'Interview Audio',
+    fileName: 'podcast_interview_hq.mp4',
+    recipeId: 'summary.generative',
+    keepOriginalAudio: true,
+    aspectRatio: '9:16',
     status: 'PROCESSING',
     duration: '05:10',
     progress: 45,
@@ -53,6 +61,10 @@ const sampleJobs = [
   {
     id: 'job-789',
     title: 'Failed Presentation',
+    fileName: 'quarterly_financial_report.mp4',
+    recipeId: 'localization.full',
+    keepOriginalAudio: false,
+    aspectRatio: '16:9',
     status: 'FAILED',
     duration: '01:15',
     progress: 10,

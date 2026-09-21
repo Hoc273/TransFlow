@@ -15,14 +15,11 @@ vi.mock('@/hooks/useMedia', () => ({
 }))
 
 // The workbench redesign (§1.8.2) moved the group shells INTO the panel; the
-// section's job is to wire the voice/style slots through it. The stub renders
-// the slots so the SSR output proves the wiring end to end.
+// section's job is to wire the voice slot through it. The stub renders the slot
+// so the SSR output proves the wiring end to end.
 vi.mock('@/components/media-studio/RenderPreparationPanel', () => ({
-  RenderPreparationPanel: ({ voiceSlot, styleSlot }: { voiceSlot?: React.ReactNode; styleSlot?: React.ReactNode }) => (
-    <div data-testid="render-prep-stub">
-      {voiceSlot}
-      {styleSlot}
-    </div>
+  RenderPreparationPanel: ({ voiceSlot }: { voiceSlot?: React.ReactNode }) => (
+    <div data-testid="render-prep-stub">{voiceSlot}</div>
   ),
   AudioPresentationConfig: () => <div data-testid="audio-config-stub" />,
   DEFAULT_AUDIO_PRESENTATION: {
@@ -33,12 +30,13 @@ vi.mock('@/components/media-studio/RenderPreparationPanel', () => ({
     ttsTempo: 1,
   },
 }))
-vi.mock('@/components/media-studio/SubtitleStylePanel', () => ({
-  SubtitleStylePanel: () => <div data-testid="style-stub" />,
-}))
 vi.mock('@/components/media-studio/VoiceSelector', () => ({
-  VoiceSelector: (props: { allowOriginal?: boolean }) => (
-    <div data-testid="voice-stub" data-allow-original={String(props.allowOriginal)} />
+  VoiceSelector: (props: { allowOriginal?: boolean; originalSelected?: boolean }) => (
+    <div
+      data-testid="voice-stub"
+      data-allow-original={String(props.allowOriginal)}
+      data-original-selected={String(props.originalSelected)}
+    />
   ),
 }))
 
@@ -92,7 +90,18 @@ function renderSection(jobOverride: MediaJob) {
 }
 
 describe('RenderAndVoiceSection', () => {
-  it('wires voice + subtitle style slots through the render workbench without inventing stages', () => {
+  it('does not offer the create-time original-audio toggle in finish and render', () => {
+    const html = renderSection({
+      ...job([]),
+      strategySnapshot: { audio: 'ORIGINAL_ONLY' },
+    })
+
+    expect(html).toContain('data-testid="voice-stub"')
+    expect(html).toContain('data-allow-original="undefined"')
+    expect(html).toContain('data-original-selected="undefined"')
+  })
+
+  it('wires the voice slot through the render workbench without inventing stages', () => {
     const html = renderSection(
       job([
         stage('TTS', 'COMPLETED', 5),
@@ -103,11 +112,10 @@ describe('RenderAndVoiceSection', () => {
 
     expect(html).toContain('data-testid="render-and-voice-section"')
     expect(html).toContain('data-testid="render-prep-stub"')
-    // VoiceSelector + SubtitleStylePanel ride the panel's group ①/② slots.
+    // VoiceSelector rides the panel's group ① slot.
     expect(html).toContain('data-testid="voice-stub"')
     expect(html).toContain('data-testid="finish-voice-block"')
-    expect(html).toContain('data-testid="style-stub"')
-    expect(html).toContain('data-testid="finish-style-block"')
+    expect(html).not.toContain('data-testid="finish-style-block"')
     // The downstream stage strip is not duplicated inside the section — the
     // pinned pipeline stepper above already shows stage progress.
     expect(html).not.toContain('data-testid="finish-stage-progress"')
@@ -124,17 +132,17 @@ describe('RenderAndVoiceSection', () => {
     expect(html).toContain('voice.regenHint')
   })
 
-  it('disables allowOriginal on VoiceSelector for generative recap recipes', () => {
+  it('keeps the original-audio toggle out of every finish-and-render recipe', () => {
     const locHtml = renderSection(
       job([stage('TTS', 'PENDING', 5)]),
     )
-    expect(locHtml).toContain('data-allow-original="true"')
+    expect(locHtml).toContain('data-allow-original="undefined"')
 
     const genJob = {
       ...job([stage('TTS', 'PENDING', 5)]),
       recipeId: 'summary.generative',
     }
     const genHtml = renderSection(genJob)
-    expect(genHtml).toContain('data-allow-original="false"')
+    expect(genHtml).toContain('data-allow-original="undefined"')
   })
 })

@@ -873,20 +873,6 @@ html.light .lp-hero-chip {
   min-height: 100vh;
 }
 
-@media (max-width: 1024px) {
-  .auth-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .auth-brand-panel {
-    display: none;
-  }
-
-  .auth-mobile-logo {
-    display: flex !important;
-  }
-}
-
 .auth-brand-panel {
   position: relative;
   overflow: hidden;
@@ -896,6 +882,20 @@ html.light .lp-hero-chip {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+}
+
+@media (max-width: 1024px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-brand-panel {
+    display: none !important;
+  }
+
+  .auth-mobile-logo {
+    display: flex !important;
+  }
 }
 
 .auth-brand-panel::before {

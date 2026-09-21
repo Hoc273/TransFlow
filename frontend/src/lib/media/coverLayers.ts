@@ -112,6 +112,12 @@ export function toWireLayers(layers: PresentationLayer[]): PresentationLayer[] {
     geometry: {
       widthPercent: clamp(layer.geometry.widthPercent, COVER_WIDTH_MIN, COVER_WIDTH_MAX),
       heightPercent: clamp(layer.geometry.heightPercent, COVER_HEIGHT_MIN, COVER_HEIGHT_MAX),
+      ...(layer.geometry.xPercent !== null && layer.geometry.xPercent !== undefined
+        ? { xPercent: clamp(Math.round(layer.geometry.xPercent), 0, 100) }
+        : {}),
+      ...(layer.geometry.yPercent !== null && layer.geometry.yPercent !== undefined
+        ? { yPercent: clamp(Math.round(layer.geometry.yPercent), 0, 100) }
+        : {}),
     },
     style:
       layer.type === 'BLUR'

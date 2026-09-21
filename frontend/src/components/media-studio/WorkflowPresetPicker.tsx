@@ -21,7 +21,8 @@ import type {
 type Props = {
   workspaceId: string
   projectId: string
-  /** Selected preset id; null = no preset (recipe default). */
+  /** Selected preset id; null = no preset (recipe default — the backend skips
+   * default resolution instead of auto-applying the workspace/system default). */
   value: string | null
   onChange: (presetId: string | null) => void
   disabled?: boolean

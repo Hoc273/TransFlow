@@ -60,6 +60,7 @@ import {
   recipeLabelKey,
   recipeModeBadgeClass,
   recipePlanPanelKind,
+  resolveEffectivePhase,
   resolveWorkflowMode,
 } from '@/lib/media'
 import { formatRelativeTime } from '@/lib/format'
@@ -118,8 +119,9 @@ export function MediaJobPage() {
 
   // Preset badge (admin milestone): resolve the frozen preset name for display.
   // The preset id is reference metadata only — never mutates job behavior.
-  // BA review v1 P2: the badge is hidden when the name cannot be resolved —
-  // raw/reduced UUIDs are never rendered.
+  // BA review v1 P2: raw/reduced UUIDs are never rendered — when the job has
+  // no preset (or the name cannot be resolved) the row shows "Không" instead
+  // of being hidden.
   const { data: jobPresets = [] } = useWorkflowPresets(
     workspaceId,
     job?.projectId,
@@ -148,6 +150,7 @@ export function MediaJobPage() {
 
   const stage = job ? currentStage(job) : null
   const progress = job ? overallProgress(job) : 0
+  const phase = job ? resolveEffectivePhase(job) : null
   const cancellable = isCancellableMediaJob(job)
   const waitingCancel = job?.stages.some(
     (s) => String(s.status).toUpperCase() === 'CANCEL_REQUESTED',
@@ -314,14 +317,15 @@ export function MediaJobPage() {
             label={t('media:col.status')}
             value={<StatusBadge status={asJobStatus(job.status)} />}
           />
-          {presetName && (
-            <Info label={t('media:workflowPreset.label')} value={presetName} />
-          )}
-          {job.domainPhase && (
+          <Info
+            label={t('media:workflowPreset.label')}
+            value={presetName ?? t('media:workflowPreset.noPreset')}
+          />
+          {phase && (
             <Info
               label={t('media:col.domainPhase')}
-              value={t(`media:${domainPhaseLabelKey(job.domainPhase)}`, {
-                defaultValue: String(job.domainPhase).replaceAll('_', ' '),
+              value={t(`media:${domainPhaseLabelKey(phase)}`, {
+                defaultValue: String(phase).replaceAll('_', ' '),
               })}
             />
           )}
@@ -577,13 +581,13 @@ export function MediaJobPage() {
           </h1>
           <div className="page-subtitle flex flex-wrap items-center gap-2">
             {job && <StatusBadge status={asJobStatus(job.status)} />}
-            {job?.domainPhase && !isRedundantPhaseBadge(job) && (
+            {phase && !isRedundantPhaseBadge({ status: job?.status, domainPhase: phase }) && (
               <span
                 className="media-domain-phase-badge"
-                title={String(job.domainPhase)}
+                title={String(phase)}
               >
-                {t(`media:${domainPhaseLabelKey(job.domainPhase)}`, {
-                  defaultValue: String(job.domainPhase).replaceAll('_', ' '),
+                {t(`media:${domainPhaseLabelKey(phase)}`, {
+                  defaultValue: String(phase).replaceAll('_', ' '),
                 })}
               </span>
             )}
@@ -693,8 +697,8 @@ export function MediaJobPage() {
           {/* W0 workflow checkpoint projection strip (docs/19 §1.8.2). */}
           <WorkflowCheckpointStrip workspaceId={workspaceId} job={job} />
 
-          <div className="app-card mb-4 overflow-hidden">
-            <div className="app-card-header flex flex-wrap items-center justify-between gap-2">
+          <div className="app-card mb-4 overflow-visible">
+            <div className="app-card-header relative z-20 flex flex-wrap items-center justify-between gap-2">
               <div className="app-card-title">{t('media:pipeline.stepperTitle')}</div>
               <div className="flex items-center gap-3">
                 {stage && (

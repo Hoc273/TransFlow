@@ -3,6 +3,7 @@ import type {
   PresentationLayer,
   PresentationLayerAnchor,
   SubtitleMaskConfig,
+  SubtitlePosition,
 } from '@/types/media'
 
 /**
@@ -40,6 +41,47 @@ export function subtitleAnchorLinePercent(
   return clampLinePercent(SUBTITLE_BASE_LINE_PERCENT[position] + verticalOffsetPercent)
 }
 
+/** Convert a dragged preview line back to the existing position + offset wire fields. */
+export function snapSubtitlePlacement(linePercent: number): {
+  position: SubtitlePosition
+  verticalOffsetPercent: number
+} {
+  const target = clampLinePercent(linePercent)
+  const positions: SubtitlePosition[] = ['TOP', 'CENTER', 'BOTTOM']
+  const position = positions.reduce((best, candidate) =>
+    Math.abs(target - SUBTITLE_BASE_LINE_PERCENT[candidate])
+      < Math.abs(target - SUBTITLE_BASE_LINE_PERCENT[best])
+      ? candidate
+      : best,
+  )
+  return {
+    position,
+    verticalOffsetPercent: Math.max(
+      -30,
+      Math.min(30, Math.round(target - SUBTITLE_BASE_LINE_PERCENT[position])),
+    ),
+  }
+}
+
+/** Snap a dragged cover to the closest semantic anchor supported by V2. */
+export function snapLayerAnchor(
+  linePercent: number,
+  resolvedSubtitleLinePercent: number,
+  current: PresentationLayerAnchor,
+): PresentationLayerAnchor {
+  const target = clampLinePercent(linePercent)
+  // Keep the current anchor on exact ties; otherwise prefer explicit frame
+  // anchors before SUBTITLE when both occupy the same line (for example a
+  // bottom subtitle at 88%). This makes dragging to an edge unsurprising.
+  const anchors: PresentationLayerAnchor[] = [current, 'TOP', 'CENTER', 'BOTTOM', 'SUBTITLE']
+  return anchors.reduce((best, candidate) =>
+    Math.abs(target - layerAnchorLinePercent(candidate, resolvedSubtitleLinePercent))
+      < Math.abs(target - layerAnchorLinePercent(best, resolvedSubtitleLinePercent))
+      ? candidate
+      : best,
+  )
+}
+
 /** Fixed anchors ignore any subtitle offset entirely (F-09). */
 export function layerAnchorLinePercent(
   anchor: PresentationLayerAnchor,
@@ -53,8 +95,16 @@ export function layerAnchorLinePercent(
  * Overlay top edge in percent of frame height — identical arithmetic to the
  * worker's pixel formula y=round(H·(line−hp/2)/100) expressed in percent space.
  */
-export function overlayTopPercent(linePercent: number, heightPercent: number): number {
-  return Math.max(0, linePercent - heightPercent / 2)
+export function overlayTopPercent(centerPercent: number, heightPercent: number): number {
+  return Math.max(0, Math.min(100 - heightPercent, centerPercent - heightPercent / 2))
+}
+
+export function overlayLeftPercent(centerPercent: number, widthPercent: number): number {
+  return Math.max(0, Math.min(100 - widthPercent, centerPercent - widthPercent / 2))
+}
+
+export function clampOverlayCenterPercent(centerPercent: number, sizePercent: number): number {
+  return Math.max(sizePercent / 2, Math.min(100 - sizePercent / 2, centerPercent))
 }
 
 export type PreviewOverlayStyle =
@@ -64,7 +114,10 @@ export type PreviewOverlayStyle =
 export type PreviewOverlay = {
   /** Stable identity for keyed rendering (mask or layer id). */
   key: string
+  leftPercent: number
   topPercent: number
+  centerXPercent: number
+  centerYPercent: number
   widthPercent: number
   heightPercent: number
   style: PreviewOverlayStyle
@@ -112,39 +165,58 @@ export type EffectivePreviewSource = {
 
 export function projectLayers(layers: PresentationLayer[], resolvedLinePercent: number): PreviewOverlay[] {
   const ordered = [...layers].sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id))
-  return ordered.map((layer) => ({
-    key: layer.id,
-    topPercent: overlayTopPercent(
-      layerAnchorLinePercent(layer.anchor, resolvedLinePercent),
+  return ordered.map((layer) => {
+    const centerXPercent = clampOverlayCenterPercent(
+      layer.geometry.xPercent ?? 50,
+      layer.geometry.widthPercent,
+    )
+    const centerYPercent = clampOverlayCenterPercent(
+      layer.geometry.yPercent
+        ?? layerAnchorLinePercent(layer.anchor, resolvedLinePercent),
       layer.geometry.heightPercent,
-    ),
-    widthPercent: layer.geometry.widthPercent,
-    heightPercent: layer.geometry.heightPercent,
-    style:
-      layer.type === 'SOLID'
-        ? {
-            kind: 'layer',
-            layerType: 'SOLID',
-            color: layer.style.color ?? null,
-            opacityPercent: layer.style.opacityPercent,
-            blurRadius: null,
-          }
-        : {
-            kind: 'layer',
-            layerType: 'BLUR',
-            color: null,
-            opacityPercent: null,
-            blurRadius: layer.style.blurRadius,
-          },
-  }))
+    )
+    return {
+      key: layer.id,
+      leftPercent: overlayLeftPercent(centerXPercent, layer.geometry.widthPercent),
+      topPercent: overlayTopPercent(centerYPercent, layer.geometry.heightPercent),
+      centerXPercent,
+      centerYPercent,
+      widthPercent: layer.geometry.widthPercent,
+      heightPercent: layer.geometry.heightPercent,
+      style:
+        layer.type === 'SOLID'
+          ? {
+              kind: 'layer' as const,
+              layerType: 'SOLID' as const,
+              color: layer.style.color ?? null,
+              opacityPercent: layer.style.opacityPercent,
+              blurRadius: null,
+            }
+          : {
+              kind: 'layer' as const,
+              layerType: 'BLUR' as const,
+              color: null,
+              opacityPercent: null,
+              blurRadius: layer.style.blurRadius,
+            },
+    }
+  })
 }
 
 function projectMask(mask: SubtitleMaskConfig, resolvedLinePercent: number): PreviewOverlay[] {
   if (!mask.enabled) return []
+  const centerXPercent = 50
+  const centerYPercent = clampOverlayCenterPercent(
+    resolvedLinePercent,
+    mask.heightPercent,
+  )
   return [
     {
       key: 'mask',
-      topPercent: overlayTopPercent(resolvedLinePercent, mask.heightPercent),
+      leftPercent: overlayLeftPercent(centerXPercent, mask.widthPercent),
+      topPercent: overlayTopPercent(centerYPercent, mask.heightPercent),
+      centerXPercent,
+      centerYPercent,
       widthPercent: mask.widthPercent,
       heightPercent: mask.heightPercent,
       style: {

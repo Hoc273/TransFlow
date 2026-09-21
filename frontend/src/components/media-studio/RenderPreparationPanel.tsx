@@ -1,5 +1,13 @@
 // @ts-nocheck
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react'
 import {
   IconDeviceFloppy,
   IconLoader2,
@@ -26,8 +34,10 @@ import {
 import {
   DEFAULT_PREVIEW_FONT_SIZE,
   PLAY_RES_Y,
+  clampOverlayCenterPercent,
   projectEffectivePreview,
   projectLayers,
+  snapSubtitlePlacement,
   subtitleAnchorLinePercent,
   type EffectivePreviewSource,
   type PreviewOverlay,
@@ -79,8 +89,6 @@ type Props = {
    * internal grid.
    */
   voiceSlot?: ReactNode
-  /** SubtitleStylePanel rendered at the top of group ② (style ownership). */
-  styleSlot?: ReactNode
 }
 
 /**
@@ -110,6 +118,8 @@ export type RenderPresentationDraft = {
   maxCharactersPerCue: number
   fontSize: number | null
   bold: boolean | null
+  outlineWidth?: number | null
+  outlineColor?: string | null
   /**
    * V2 cover layers (docs/97 §19.17 §B — user decision 2026-09-06): editors
    * ALWAYS emit the authoritative `layers` array and never write the legacy v1
@@ -223,8 +233,18 @@ export function buildPresentationPayload(draft: RenderPresentationDraft): Render
       wordsPerPhrase: draft.displayMode === 'PHRASE' ? draft.wordsPerPhrase : null,
       maxCharactersPerCue:
         draft.displayMode === 'CHARACTERS' ? draft.maxCharactersPerCue : null,
-      typography: hardSub && (draft.fontSize !== null || draft.bold !== null)
-        ? { fontSize: draft.fontSize, bold: draft.bold }
+      typography: hardSub && (
+        draft.fontSize !== null
+        || draft.bold !== null
+        || draft.outlineWidth != null
+        || draft.outlineColor != null
+      )
+        ? {
+            fontSize: draft.fontSize,
+            bold: draft.bold,
+            ...(draft.outlineWidth != null ? { outlineWidth: draft.outlineWidth } : {}),
+            ...(draft.outlineColor != null ? { outlineColor: draft.outlineColor } : {}),
+          }
         : null,
       // V2 layers are authoritative; the v1 mask is explicitly null so the
       // full-replacement PUT never leaves a stale mask beside the layers
@@ -286,112 +306,12 @@ export function AudioPresentationConfig({
   audio: AudioPresentationValues
   locked: boolean
   onChange: (next: AudioPresentationValues) => void
-  /**
-   * PRESET-VIZ FE follow-up (docs/97 §19.16): when false the section renders
-   * always-expanded (div + heading, no details/summary) — used by the preset
-   * editor where every section stays open. Default true keeps the historical
-   * collapsible behavior everywhere else (0 regression).
-   */
   collapsible?: boolean
 }) {
   const { t } = useTranslation(['media'])
-  if (!collapsible) {
-    return (
-      <div className="media-config-group" data-testid="audio-config-expanded">
-        <div className="text-[12.5px] font-semibold text-[var(--color-text-primary)]">
-          {t('media:renderPrep.audioTitle')}
-        </div>
-        <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
-          <label className="field-label">
-            <span>{t('media:renderPrep.originalGain')}</span>
-            <input
-              type="number"
-              className="field-input"
-              min={-30}
-              max={12}
-              step={1}
-              value={audio.originalGainDb}
-              disabled={locked}
-              onChange={(e) =>
-                onChange({
-                  ...audio,
-                  originalGainDb: Math.max(-30, Math.min(12, Number(e.target.value))),
-                })
-              }
-            />
-          </label>
-          <label className="field-label">
-            <span>{t('media:renderPrep.ttsGain')}</span>
-            <input
-              type="number"
-              className="field-input"
-              min={-30}
-              max={12}
-              step={1}
-              value={audio.ttsGainDb}
-              disabled={locked}
-              onChange={(e) =>
-                onChange({
-                  ...audio,
-                  ttsGainDb: Math.max(-30, Math.min(12, Number(e.target.value))),
-                })
-              }
-            />
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={audio.duckingEnabled}
-              disabled={locked}
-              onChange={(e) => onChange({ ...audio, duckingEnabled: e.target.checked })}
-            />
-            {t('media:renderPrep.ducking')}
-          </label>
-          <label className="field-label">
-            <span>{t('media:renderPrep.duckingGain')}</span>
-            <input
-              type="number"
-              className="field-input"
-              min={-30}
-              max={0}
-              step={1}
-              value={audio.duckingGainDb}
-              disabled={locked || !audio.duckingEnabled}
-              onChange={(e) =>
-                onChange({
-                  ...audio,
-                  duckingGainDb: Math.max(-30, Math.min(0, Number(e.target.value))),
-                })
-              }
-            />
-          </label>
-          <label className="field-label">
-            <span>{t('media:renderPrep.ttsTempo')}</span>
-            <input
-              type="number"
-              className="field-input"
-              min={0.8}
-              max={1.2}
-              step={0.05}
-              value={audio.ttsTempo}
-              disabled={locked}
-              onChange={(e) =>
-                onChange({
-                  ...audio,
-                  ttsTempo: Math.max(0.8, Math.min(1.2, Number(e.target.value))),
-                })
-              }
-            />
-          </label>
-        </div>
-        <p className="field-help m-0 pt-3">{t('media:renderPrep.audioMixNote')}</p>
-      </div>
-    )
-  }
-  return (
-    <details className="media-config-group" open={!locked}>
-      <summary>{t('media:renderPrep.audioTitle')}</summary>
-      <div className="grid grid-cols-2 gap-3 pt-3">
+  const content = (
+    <>
+      <div className="grid gap-3 sm:grid-cols-3">
         <label className="field-label">
           <span>{t('media:renderPrep.originalGain')}</span>
           <input
@@ -399,7 +319,7 @@ export function AudioPresentationConfig({
             className="field-input"
             min={-30}
             max={12}
-            step={1}
+            step={0.5}
             value={audio.originalGainDb}
             disabled={locked}
             onChange={(e) =>
@@ -417,40 +337,13 @@ export function AudioPresentationConfig({
             className="field-input"
             min={-30}
             max={12}
-            step={1}
+            step={0.5}
             value={audio.ttsGainDb}
             disabled={locked}
             onChange={(e) =>
               onChange({
                 ...audio,
                 ttsGainDb: Math.max(-30, Math.min(12, Number(e.target.value))),
-              })
-            }
-          />
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={audio.duckingEnabled}
-            disabled={locked}
-            onChange={(e) => onChange({ ...audio, duckingEnabled: e.target.checked })}
-          />
-          {t('media:renderPrep.ducking')}
-        </label>
-        <label className="field-label">
-          <span>{t('media:renderPrep.duckingGain')}</span>
-          <input
-            type="number"
-            className="field-input"
-            min={-30}
-            max={0}
-            step={1}
-            value={audio.duckingGainDb}
-            disabled={locked || !audio.duckingEnabled}
-            onChange={(e) =>
-              onChange({
-                ...audio,
-                duckingGainDb: Math.max(-30, Math.min(0, Number(e.target.value))),
               })
             }
           />
@@ -474,7 +367,52 @@ export function AudioPresentationConfig({
           />
         </label>
       </div>
+
+      <div className="mt-3 space-y-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] p-3">
+        <label className="audio-ducking-toggle">
+          <input
+            type="checkbox"
+            checked={audio.duckingEnabled}
+            disabled={locked}
+            onChange={(e) => onChange({ ...audio, duckingEnabled: e.target.checked })}
+          />
+          <span>
+            <strong>{t('media:renderPrep.ducking')}</strong>
+            <small>{t('media:renderPrep.duckingHint')}</small>
+          </span>
+        </label>
+        {audio.duckingEnabled && (
+          <label className="field-label pl-6">
+            <span>{t('media:renderPrep.duckingGain')}</span>
+            <input
+              type="number"
+              className="field-input"
+              min={-30}
+              max={0}
+              step={1}
+              value={audio.duckingGainDb}
+              disabled={locked || !audio.duckingEnabled}
+              onChange={(e) =>
+                onChange({
+                  ...audio,
+                  duckingGainDb: Math.max(-30, Math.min(0, Number(e.target.value))),
+                })
+              }
+            />
+          </label>
+        )}
+      </div>
       <p className="field-help m-0 pt-3">{t('media:renderPrep.audioMixNote')}</p>
+    </>
+  )
+
+  if (!collapsible) {
+    return <div data-testid="audio-config-expanded">{content}</div>
+  }
+  return (
+    <details className="media-config-group" open={!locked}>
+      <summary>{t('media:renderPrep.audioTitle')}</summary>
+      {content}
     </details>
   )
 }
@@ -531,10 +469,81 @@ function SubHead({ children, testid }: { children: ReactNode; testid?: string })
   )
 }
 
+function pointerLinePercent(event: ReactPointerEvent<HTMLElement>): number {
+  const frame = event.currentTarget.parentElement
+  if (!frame) return 50
+  const rect = frame.getBoundingClientRect()
+  if (rect.height <= 0) return 50
+  return Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100))
+}
+
+function pointerPositionPercent(event: ReactPointerEvent<HTMLElement>): {
+  xPercent: number
+  yPercent: number
+} {
+  const frame = event.currentTarget.parentElement
+  if (!frame) return { xPercent: 50, yPercent: 50 }
+  const rect = frame.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return { xPercent: 50, yPercent: 50 }
+  return {
+    xPercent: Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100)),
+    yPercent: Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100)),
+  }
+}
+
+/**
+ * OUTPUT-ASPECT preview ratios (docs/97 §19.19) — the Finish & Render stage
+ * itself carries the selected output frame. ORIGINAL = no reframe, so the
+ * canvas follows the SOURCE video ratio (read from the video metadata);
+ * 16:9 is only the fallback before metadata loads. Explicit values mirror
+ * the worker blur-pad target frame.
+ */
+const RENDER_PREVIEW_ASPECT_RATIOS: Record<OutputAspectRatio, number> = {
+  'ORIGINAL': 16 / 9,
+  '16:9': 16 / 9,
+  '9:16': 9 / 16,
+  '4:3': 4 / 3,
+  '1:1': 1,
+}
+
+/**
+ * Single display height for every preview frame — the canvas width derives
+ * from it (`width = height × ratio`, capped at 100%), so 16:9/9:16/4:3/1:1
+ * all render at the same height. Subtitle/overlay geometry sizes in `cqh`
+ * (percent of frame height, like the worker's PlayResY math), therefore the
+ * sample text keeps the same absolute size across aspects instead of looking
+ * oversized inside a tall 9:16 frame.
+ */
+const RENDER_PREVIEW_DISPLAY_HEIGHT = 'min(54vh, 460px)'
+
+/** Guard for source-metadata ratios — garbage values fall back to 16:9. */
+function sanitizeSourceRatio(width: number, height: number): number | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null
+  const ratio = width / height
+  if (!Number.isFinite(ratio) || ratio < 0.25 || ratio > 4) return null
+  return ratio
+}
+
 /** Preview mask/layer rectangle — worker-contract geometry in percent space. */
-function PreviewOverlayBox({ overlay }: { overlay: PreviewOverlay }) {
+function PreviewOverlayBox({
+  overlay,
+  selected,
+  locked,
+  label,
+  onSelect,
+  onMove,
+}: {
+  overlay: PreviewOverlay
+  selected: boolean
+  locked: boolean
+  label: string
+  onSelect: () => void
+  onMove: (xPercent: number, yPercent: number) => void
+}) {
+  const dragDelta = useRef<{ xPercent: number; yPercent: number } | null>(null)
   const s = overlay.style
   const style: CSSProperties = {
+    left: `${overlay.centerXPercent}%`,
     top: `${overlay.topPercent}%`,
     width: `${overlay.widthPercent}%`,
     height: `${overlay.heightPercent}%`,
@@ -543,15 +552,55 @@ function PreviewOverlayBox({ overlay }: { overlay: PreviewOverlay }) {
   if (isBlur) {
     style.backdropFilter = `blur(${s.blurRadius ?? 0}px)`
     style.background = 'rgba(0, 0, 0, 0.08)'
-    style.border = '1px dashed rgba(255, 255, 255, 0.3)'
+    style.border = '1px dashed rgba(15, 23, 42, 0.45)'
   } else {
     style.background = hexToRgba(s.color ?? '#000000', (s.opacityPercent ?? 0) / 100)
   }
   return (
     <div
-      className="pointer-events-none absolute left-1/2 -translate-x-1/2"
+      className={cn(
+        'absolute -translate-x-1/2',
+        locked ? 'pointer-events-none' : 'preview-direct-manipulation',
+        selected && !locked && 'selected',
+      )}
       style={style}
       data-testid={`render-prep-overlay-${overlay.key}`}
+      data-selected={selected || undefined}
+      role={locked ? undefined : 'button'}
+      aria-label={locked ? undefined : label}
+      tabIndex={locked ? undefined : 0}
+      onPointerDown={(event) => {
+        if (locked) return
+        event.preventDefault()
+        onSelect()
+        const pointer = pointerPositionPercent(event)
+        dragDelta.current = {
+          xPercent: pointer.xPercent - overlay.centerXPercent,
+          yPercent: pointer.yPercent - overlay.centerYPercent,
+        }
+        event.currentTarget.setPointerCapture?.(event.pointerId)
+      }}
+      onPointerMove={(event) => {
+        if (locked || dragDelta.current === null) return
+        const pointer = pointerPositionPercent(event)
+        onMove(
+          Math.round(clampOverlayCenterPercent(
+            pointer.xPercent - dragDelta.current.xPercent,
+            overlay.widthPercent,
+          )),
+          Math.round(clampOverlayCenterPercent(
+            pointer.yPercent - dragDelta.current.yPercent,
+            overlay.heightPercent,
+          )),
+        )
+      }}
+      onPointerUp={(event) => {
+        dragDelta.current = null
+        event.currentTarget.releasePointerCapture?.(event.pointerId)
+      }}
+      onPointerCancel={() => {
+        dragDelta.current = null
+      }}
     />
   )
 }
@@ -566,7 +615,6 @@ export function RenderPreparationPanel({
   audio,
   onAudioChange,
   voiceSlot,
-  styleSlot,
 }: Props) {
   const { t } = useTranslation(['media', 'common'])
   const translateReady = job.stages.some(
@@ -594,9 +642,9 @@ export function RenderPreparationPanel({
   // composed to #RRGGBBAA for the legacy-path BackColour. textColor (#RRGGBB)
   // is the legacy-path PrimaryColour. Both are HARD_SUB-only (SOFT_SUB ignores
   // them — the player renders mov_text presentation instead).
-  const [backgroundColor, setBackgroundColor] = useState('#000000')
-  const [backgroundAlpha, setBackgroundAlpha] = useState(50)
-  const [textColor, setTextColor] = useState('#FFFFFF')
+  const [backgroundColor, setBackgroundColor] = useState('#FFFF00')
+  const [backgroundAlpha, setBackgroundAlpha] = useState(100)
+  const [textColor, setTextColor] = useState('#000000')
   // Phase 6 presentation draft (docs/19 §1.8.1) — hydrated from the server.
   const [displayMode, setDisplayMode] = useState<SubtitleDisplayMode>('SENTENCE')
   const [wordsPerPhrase, setWordsPerPhrase] = useState(3)
@@ -612,6 +660,16 @@ export function RenderPreparationPanel({
   const [coverLayers, setCoverLayers] = useState<PresentationLayer[]>(() => [
     defaultCoverLayer([]),
   ])
+  const [selectedCoverLayerId, setSelectedCoverLayerId] = useState<string | null>('cover-1')
+  const subtitleDragDelta = useRef<number | null>(null)
+  // OUTPUT-ASPECT blur-pad visualization refs (docs/97 §19.19): the blurred
+  // cover backdrop follows the foreground player (same sync pattern as the
+  // preset calibration preview — play/pause/seek/drift correction).
+  const blurVideoRef = useRef<HTMLVideoElement | null>(null)
+  const foregroundVideoRef = useRef<HTMLVideoElement | null>(null)
+  // ORIGINAL preview follows the source frame — intrinsic dimensions captured
+  // from the video metadata (a 9:16 source previews tall, not forced 16:9).
+  const [sourceDims, setSourceDims] = useState<{ w: number; h: number } | null>(null)
   // Phase 6 V2 (docs/97 §19.17): ring outline override subset. null/'' = the
   // stored field is cleared on save (explicit null in the typography patch).
   const [outlineWidth, setOutlineWidth] = useState<number | null>(null)
@@ -666,6 +724,7 @@ export function RenderPreparationPanel({
     const cover = hydrateCoverState({ mask, layers: sub?.layers ?? null })
     setCoverEnabled(cover.enabled)
     setCoverLayers(cover.layers)
+    setSelectedCoverLayerId(cover.layers[0]?.id ?? null)
     setOriginalGainDb(aud?.originalGainDb ?? 0)
     setTtsGainDb(aud?.ttsGainDb ?? 0)
     setDuckingEnabled(aud?.ducking?.enabled ?? true)
@@ -777,7 +836,6 @@ export function RenderPreparationPanel({
     locked
     || subtitleMode === 'SOFT_SUB'
     || ownedByStyle
-    || (effective ? effective.boxMode : backgroundBox)
 
   // Preview sample renders the EFFECTIVE projection ONLY — server-resolved
   // values (stored config + backend effective block + assigned snapshot),
@@ -802,16 +860,23 @@ export function RenderPreparationPanel({
     }
     const projection = projectEffectivePreview(source)
     const storedBgHex8 = cfg?.backgroundColor ?? null
+    const fallbackBg = storedBgHex8 || '#000000B3'
     const sampleBackground = ownedByStyle
-      ? (snapshot?.background ?? null)
+      ? (snapshot?.background ?? (source.boxMode ? fallbackBg : null))
       : source.boxMode
-        ? storedBgHex8
+        ? fallbackBg
         : null
     const bgParts = sampleBackground ? splitHex8(sampleBackground) : null
     return {
       projection,
       textColor: source.textColor,
       backgroundCss: bgParts ? hexToRgba(bgParts.color, bgParts.alpha / 100) : 'transparent',
+      outlineWidth: ownedByStyle
+        ? (snapshot?.outline_width ?? null)
+        : (storedTypography?.outlineWidth ?? null),
+      outlineColor: ownedByStyle
+        ? (snapshot?.outline_color ?? null)
+        : (storedTypography?.outlineColor ?? null),
     }
   }, [configQuery.data, effective, ownedByStyle, styleState.snapshot])
 
@@ -822,7 +887,9 @@ export function RenderPreparationPanel({
   // intentionally supersedes the previous "never mirrors unsaved draft"
   // sample (user decision 2026-09-05, docs/19 §1.8.2 amendment).
   const draftProjection = useMemo(() => {
-    const linePercent = subtitleAnchorLinePercent(position, offset)
+    const linePercent = ownedByStyle && effective
+      ? effective.resolvedLinePercent
+      : subtitleAnchorLinePercent(position, offset)
     const lockedBottom = position === 'BOTTOM'
     // V2 layers: every configured cover projects through the same contract
     // math the worker applies (anchors + geometry + per-layer style).
@@ -844,17 +911,52 @@ export function RenderPreparationPanel({
       },
       overlays,
     }
-  }, [position, offset, subtitleMode, coverEnabled, coverLayers, fontSize, bold])
+  }, [position, offset, subtitleMode, coverEnabled, coverLayers, fontSize, bold, ownedByStyle, effective])
 
   const activePreview = ownedByStyle
-    ? previewSample
+    ? {
+        ...previewSample,
+        projection: {
+          ...previewSample.projection,
+          overlays: draftProjection.overlays,
+        },
+        backgroundCss: (effective ? effective.boxMode : backgroundBox)
+          ? (previewSample.backgroundCss !== 'transparent'
+              ? previewSample.backgroundCss
+              : hexToRgba(backgroundColor, backgroundAlpha / 100))
+          : 'transparent',
+      }
     : {
         projection: draftProjection,
         textColor,
         backgroundCss: backgroundBox
           ? hexToRgba(backgroundColor, backgroundAlpha / 100)
           : 'transparent',
+        outlineWidth,
+        outlineColor,
       }
+  const subtitlePreviewLocked =
+    effectiveLocked
+    || subtitleMode !== 'HARD_SUB'
+    || appearanceDead('subtitlePosition')
+    || appearanceDead('verticalOffsetPercent')
+
+  // OUTPUT-ASPECT stage layout (docs/97 §19.19): the stage itself carries the
+  // output frame so every aspect centers correctly. ORIGINAL keeps the source
+  // frame (metadata ratio when known, 16:9 display fallback until it loads);
+  // explicit values mirror the worker blur-pad target (dims never exceed the
+  // source there, so the ratio alone describes the frame).
+  const isReframedPreview = outputAspectRatio !== 'ORIGINAL'
+  const previewSourceVideoUrl = configQuery.data?.sourceVideoUrl ?? null
+  // A new source resets the intrinsic ratio (stale dims would frame the new
+  // video with the previous aspect until its metadata loads).
+  useEffect(() => {
+    setSourceDims(null)
+  }, [previewSourceVideoUrl])
+  const previewRatio = isReframedPreview
+    ? (RENDER_PREVIEW_ASPECT_RATIOS[outputAspectRatio] ?? RENDER_PREVIEW_ASPECT_RATIOS['ORIGINAL'])
+    : (sourceDims ? sanitizeSourceRatio(sourceDims.w, sourceDims.h) : null)
+      ?? RENDER_PREVIEW_ASPECT_RATIOS['ORIGINAL']
 
   const draftSnapshot = {
     subtitleMode,
@@ -1017,23 +1119,10 @@ export function RenderPreparationPanel({
       {/* LEFT — sticky preview + decision actions (§1.8.2 redesign) */}
       <div className="media-render-preview-col">
       {/* C2 (docs/97 §19.14): CP-B = every MANUAL job — the read-only
-          non-CP-B branch is gone; AUTO stays frozen, MANUAL is editable
-          (mandatory notice below) until confirmed. Testids stay exclusive so
-          the lock matrix is unambiguous. */}
-      {autoFrozen ? (
-        <div
-          className="flex items-start gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-sm text-[var(--color-text-secondary)]"
-          data-testid="render-prep-frozen"
-        >
-          <IconLock size={16} className="mt-0.5 shrink-0 text-[var(--color-accent)]" />
-          <div>
-            <p className="m-0 font-semibold text-[var(--color-text-primary)]">
-              {t('media:renderPrep.frozen')}
-            </p>
-            <p className="mb-0 mt-0.5">{t('media:renderPrep.frozenHint')}</p>
-          </div>
-        </div>
-      ) : canReapplyRender && !isEditingReapply ? (
+          non-CP-B branch is gone; AUTO stays frozen while MANUAL remains
+          editable until confirmed. Testids stay exclusive so the lock matrix
+          is unambiguous. */}
+      {autoFrozen ? null : canReapplyRender && !isEditingReapply ? (
         <div
           className="flex items-start gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-[var(--color-text-primary)]"
           data-testid="render-prep-reapply-hint"
@@ -1069,25 +1158,136 @@ export function RenderPreparationPanel({
         </div>
       )}
 
-      <div className="media-review-frame">
-        {configQuery.data?.sourceVideoUrl ? (
-          <video
-            src={configQuery.data.sourceVideoUrl}
-            controls
-            muted
-            className="h-full w-full object-contain"
-          />
+      <div
+        className="media-render-preview-stage"
+        data-testid="render-prep-preview-frame"
+        data-aspect={outputAspectRatio}
+      >
+        <div
+          className="media-render-preview-canvas"
+          data-testid="render-prep-preview-canvas"
+          data-ratio={previewRatio}
+          style={{
+            // Numeric <ratio> (same as the preset preview frame): the colon
+            // form is not valid CSS and would collapse the frame. Width
+            // derives from one shared display height so every aspect renders
+            // at the same height and cqh-sized text stays comparable.
+            aspectRatio: previewRatio,
+            width: `min(100%, calc(${RENDER_PREVIEW_DISPLAY_HEIGHT} * ${previewRatio}))`,
+            maxHeight: RENDER_PREVIEW_DISPLAY_HEIGHT,
+            // The subtitle sample sizes in cqh (like the preset preview
+            // frame) — without a query container these fall back to the
+            // viewport height and render hugely oversized.
+            containerType: 'size',
+          }}
+        >
+        {previewSourceVideoUrl ? (
+          isReframedPreview ? (
+            <>
+              <div
+                className="absolute inset-0 overflow-hidden"
+                data-testid="render-prep-preview-blur-bg"
+                aria-hidden="true"
+              >
+                <video
+                  ref={blurVideoRef}
+                  src={previewSourceVideoUrl}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="h-full w-full object-cover blur-xl"
+                />
+              </div>
+              <div className="absolute inset-0 grid place-items-center">
+                <video
+                  ref={foregroundVideoRef}
+                  src={previewSourceVideoUrl}
+                  controls
+                  muted
+                  className="max-h-full max-w-full object-contain"
+                  data-testid="render-prep-preview-video"
+                  onPlay={() => {
+                    void blurVideoRef.current?.play()
+                  }}
+                  onPause={() => {
+                    blurVideoRef.current?.pause()
+                  }}
+                  onSeeked={(event) => {
+                    if (blurVideoRef.current) {
+                      blurVideoRef.current.currentTime = event.currentTarget.currentTime
+                    }
+                  }}
+                  onTimeUpdate={(event) => {
+                    const background = blurVideoRef.current
+                    if (background && Math.abs(background.currentTime - event.currentTarget.currentTime) > 0.2) {
+                      background.currentTime = event.currentTarget.currentTime
+                    }
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <video
+              src={previewSourceVideoUrl}
+              controls
+              muted
+              className="h-full w-full object-contain"
+              data-testid="render-prep-preview-video"
+              onLoadedMetadata={(event) => {
+                const video = event.currentTarget
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                  setSourceDims({ w: video.videoWidth, h: video.videoHeight })
+                }
+              }}
+            />
+          )
         ) : (
           <div className="grid h-full place-items-center text-sm text-white/60">
             {t('common:loading')}
           </div>
         )}
-        {activePreview.projection.overlays.map((overlay) => (
-          <PreviewOverlayBox key={overlay.key} overlay={overlay} />
-        ))}
+        {activePreview.projection.overlays.map((overlay) => {
+          const layer = coverLayers.find((candidate) => candidate.id === overlay.key)
+          const overlayLocked = !layer || effectiveLocked || subtitleMode !== 'HARD_SUB'
+          return (
+            <PreviewOverlayBox
+              key={overlay.key}
+              overlay={overlay}
+              selected={selectedCoverLayerId === overlay.key}
+              locked={overlayLocked}
+              label={t('media:renderPrep.dragCoverLayer')}
+              onSelect={() => setSelectedCoverLayerId(overlay.key)}
+              onMove={(xPercent, yPercent) => {
+                if (!layer) return
+                setCoverLayers((current) => current.map((candidate) =>
+                  candidate.id === layer.id
+                    ? {
+                        ...candidate,
+                        geometry: { ...candidate.geometry, xPercent, yPercent },
+                      }
+                    : candidate,
+                ))
+              }}
+            />
+          )
+        })}
         {subtitleMode === 'HARD_SUB' && (
           <div
-            className="pointer-events-none absolute left-1/2 max-w-[86%] -translate-x-1/2 px-2 py-1 text-center font-semibold shadow-black [text-shadow:0_1px_3px_var(--tw-shadow-color)]"
+            className={cn(
+              // Centered via inset-x-0 + margin auto + fit-content (NOT
+              // left-1/2 + translate): with width:auto an abs-pos element may
+              // only use (100% − left) of the frame, so on a narrow 9:16
+              // canvas the sample wrapped to 3 lines. fit-content resolves
+              // against the full frame width like the worker's libass wrap
+              // width (PlayResX − margins), so the sample stays on one line
+              // while genuinely long cues still wrap. max-w-95% mirrors the
+              // worker text budget (~97% of the frame — measured: the VI/EN
+              // samples need ~92-95% incl. padding on a 9:16 canvas); 86%
+              // wrapped them a full line earlier than the burned output.
+              'absolute inset-x-0 mx-auto w-fit max-w-[95%] text-center font-semibold shadow-black [text-shadow:0_1px_3px_var(--tw-shadow-color)]',
+              subtitlePreviewLocked ? 'pointer-events-none' : 'preview-direct-manipulation',
+            )}
             style={{
               // §1.8.2 redesign: LIVE draft preview — the overlay mirrors the
               // unsaved editor state through the same worker geometry contract;
@@ -1096,17 +1296,57 @@ export function RenderPreparationPanel({
               ...(activePreview.projection.text.lockedBottom
                 ? { bottom: `${activePreview.projection.text.bottomPercent}%` }
                 : { top: `${activePreview.projection.text.topPercent}%` }),
-              transform: `translate(-50%, ${activePreview.projection.text.lockedBottom ? '-100%' : '-50%'})`,
+              // BOTTOM anchors the block's bottom edge at bottomPercent (worker
+              // Alignment 2 MarginV), TOP/CENTER anchor the top edge — same as
+              // the preset preview frame. No translate: horizontal centering
+              // is margin-auto (see className) so the layout width is never
+              // halved on narrow frames.
               fontSize: `${activePreview.projection.text.fontSizeCqh}cqh`,
               fontWeight: activePreview.projection.text.fontWeight,
               background: activePreview.backgroundCss,
+              // Horizontal padding stays inside max-width (content-box): 0.45em
+              // keeps the sample + padding within the frame on 9:16 while the
+              // worker box hugs the glyphs with no padding at all.
+              padding: activePreview.backgroundCss !== 'transparent' ? '0.25em 0.45em' : undefined,
+              borderRadius: activePreview.backgroundCss !== 'transparent' ? '0.35em' : undefined,
+              boxShadow: activePreview.backgroundCss !== 'transparent' ? '0 2px 8px rgba(0, 0, 0, 0.3)' : undefined,
+              WebkitTextStroke:
+                (activePreview.outlineWidth ?? 0) > 0
+                  ? `${((activePreview.outlineWidth ?? 2) / PLAY_RES_Y) * 100}cqh ${activePreview.outlineColor ?? '#000000'}`
+                  : undefined,
+              paintOrder: 'stroke fill',
               color: /^#[0-9A-Fa-f]{6}$/.test(activePreview.textColor ?? '') ? activePreview.textColor : '#FFFFFF',
             }}
             data-testid="render-prep-draft-sample"
+            role={subtitlePreviewLocked ? undefined : 'button'}
+            aria-label={subtitlePreviewLocked ? undefined : t('media:renderPrep.dragSubtitle')}
+            tabIndex={subtitlePreviewLocked ? undefined : 0}
+            onPointerDown={(event) => {
+              if (subtitlePreviewLocked) return
+              event.preventDefault()
+              subtitleDragDelta.current = pointerLinePercent(event) - activePreview.projection.linePercent
+              event.currentTarget.setPointerCapture?.(event.pointerId)
+            }}
+            onPointerMove={(event) => {
+              if (subtitlePreviewLocked || subtitleDragDelta.current === null) return
+              const next = snapSubtitlePlacement(
+                pointerLinePercent(event) - subtitleDragDelta.current,
+              )
+              setPosition(next.position)
+              setOffset(next.verticalOffsetPercent)
+            }}
+            onPointerUp={(event) => {
+              subtitleDragDelta.current = null
+              event.currentTarget.releasePointerCapture?.(event.pointerId)
+            }}
+            onPointerCancel={() => {
+              subtitleDragDelta.current = null
+            }}
           >
             {t('media:renderPrep.subtitleSample')}
           </div>
         )}
+        </div>
         {!autoFrozen && (
           <span
             className={cn('media-render-draft-badge', isDirty ? 'dirty' : 'clean')}
@@ -1116,6 +1356,10 @@ export function RenderPreparationPanel({
           </span>
         )}
       </div>
+
+      {!effectiveLocked && subtitleMode === 'HARD_SUB' && (
+        <p className="field-help m-0">{t('media:renderPrep.previewDragHint')}</p>
+      )}
 
       <div className="media-render-summary" data-testid="render-prep-summary">
         <span className="chip">
@@ -1157,7 +1401,7 @@ export function RenderPreparationPanel({
                       setDisplayMode(sub?.displayMode ?? 'SENTENCE')
                       setWordsPerPhrase(sub?.wordsPerPhrase ?? 5)
                       setMaxCharactersPerCue(sub?.maxCharactersPerCue ?? 36)
-                      setFontSize(sub?.typography?.fontSizeCqh ?? null)
+                      setFontSize(sub?.typography?.fontSize ?? null)
                       setBold(sub?.typography?.bold ?? null)
                       setOutlineWidth(sub?.typography?.outlineWidth ?? null)
                       setOutlineColor(
@@ -1165,9 +1409,10 @@ export function RenderPreparationPanel({
                           ? (sub.typography.outlineColor as string).toUpperCase()
                           : null
                       )
-                      const cover = parseCoverFromWire(d.presentation?.cover, sub?.mask)
+                      const cover = hydrateCoverState({ mask: sub?.mask, layers: sub?.layers })
                       setCoverEnabled(cover.enabled)
                       setCoverLayers(toWireLayers(cover.layers))
+                      setSelectedCoverLayerId(cover.layers[0]?.id ?? null)
                     }
                   }}
                 >
@@ -1313,8 +1558,7 @@ export function RenderPreparationPanel({
         </RenderGroup>
       )}
 
-        <RenderGroup index="②" title={t('media:renderPrep.appearanceTitle')} open>
-          {styleSlot && <div className="mb-3">{styleSlot}</div>}
+        <RenderGroup index="②" title={t('media:renderPrep.subtitleLayerAppearanceTitle')} open>
           <div className="space-y-3">
             {ownedByStyle && (
               <>
@@ -1465,9 +1709,9 @@ export function RenderPreparationPanel({
                 />
               </label>
             )}
-            {/* Phase 6 V2 outline override (docs/97 §19.17): ring-only — the
-                XOR with an effective background box is enforced here (disabled
-                + warning) and again server-side (OUTLINE_BOX_CONFLICT). */}
+            {/* 2026-09 dual-event: outline renders above the box (Layer 1),
+                so it stays enabled in box mode. Old workers are gated at
+                claim (SUBTITLE_BOX_OUTLINE), never silently dropped. */}
             {subtitleMode === 'HARD_SUB' && !ownedByStyle && (
               <div className="grid gap-3 sm:grid-cols-2" data-testid="outline-controls">
                 <label className="field-label">
@@ -1517,7 +1761,7 @@ export function RenderPreparationPanel({
         {/* Phase 6 — subtitle presentation (docs/19 §1.8.1): typography and mask
             are HARD_SUB-only — disabled + labeled for SOFT_SUB (the player
             controls mov_text presentation; the backend rejects them with 422). */}
-        <RenderGroup index="③" title={t('media:renderPrep.presentationSubtitle')} open={!effectiveLocked || isSummary || isEditingReapply}>
+        <RenderGroup index="③" title={t('media:renderPrep.subtitleLayerContentTitle')} open={!effectiveLocked || isSummary || isEditingReapply}>
           <div className="space-y-3">
             {isSummary && (
               <div
@@ -1593,21 +1837,36 @@ export function RenderPreparationPanel({
                 />
                 {t('media:renderPrep.bold')}
               </label>
-
-              {/* V2 cover layers (docs/97 §19.17 §B exposure): each layer covers an
-                  independent anchored region; the v1 single-mask editor is gone —
-                  a stored mask hydrates into the equivalent first layer. */}
-              <SubHead testid="cover-section">{t('media:renderPrep.maskLayerTitle')}</SubHead>
-              <CoverLayersEditor
-                enabled={coverEnabled}
-                layers={coverLayers}
-                locked={effectiveLocked || subtitleMode === 'SOFT_SUB'}
-                testidPrefix="mask"
-                onChange={({ enabled, layers }) => {
-                  setCoverEnabled(enabled)
-                  setCoverLayers(layers)
-                }}
-              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="field-label">
+                  <span>{t('media:renderPrep.outlineWidth')}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={8}
+                    className="field-input"
+                    value={outlineWidth ?? ''}
+                    placeholder={t('media:renderPrep.typographyDefault')}
+                    disabled={outlineDisabled}
+                    onChange={(e) => setOutlineWidth(
+                      e.target.value === '' ? null : Math.max(0, Math.min(8, Number(e.target.value))),
+                    )}
+                  />
+                </label>
+                <label className="field-label">
+                  <span>{t('media:renderPrep.outlineColor')}</span>
+                  <input
+                    type="color"
+                    className="field-input h-9 w-full p-1"
+                    value={outlineColor ?? '#000000'}
+                    disabled={outlineDisabled}
+                    onChange={(e) => setOutlineColor(e.target.value.toUpperCase())}
+                  />
+                </label>
+              </div>
+              {(effective ? effective.boxMode : backgroundBox) && !ownedByStyle && (
+                <p className="field-help m-0">{t('media:renderPrep.outlineBoxWarning')}</p>
+              )}
             </div>
             {subtitleMode === 'SOFT_SUB' && (
               <p className="field-help m-0">{t('media:renderPrep.softSubPresentationWarning')}</p>
@@ -1615,12 +1874,36 @@ export function RenderPreparationPanel({
           </div>
         </RenderGroup>
 
+        <RenderGroup
+          index="④"
+          title={t('media:renderPrep.maskLayerTitle')}
+          open={!effectiveLocked || coverEnabled}
+          testid="finish-mask-layer-block"
+        >
+          <p className="field-help mt-0 mb-3">{t('media:renderPrep.maskLayerHint')}</p>
+          <CoverLayersEditor
+            enabled={coverEnabled}
+            layers={coverLayers}
+            locked={effectiveLocked || subtitleMode === 'SOFT_SUB'}
+            selectedLayerId={selectedCoverLayerId}
+            onSelectedLayerChange={setSelectedCoverLayerId}
+            testidPrefix="mask"
+            onChange={({ enabled, layers }) => {
+              setCoverEnabled(enabled)
+              setCoverLayers(layers)
+            }}
+          />
+          {subtitleMode === 'SOFT_SUB' && (
+            <p className="field-help mt-3 mb-0">{t('media:renderPrep.softSubCoverWarning')}</p>
+          )}
+        </RenderGroup>
+
         {/* Phase 6 — audio presentation (docs/19 §1.8.1): engine-neutral gains /
             ducking / tempo compiled by the backend AUDIO_MIX stage. Embedded
             (Finish & Render) mode is controlled by the section's shared state;
             standalone mode reads the internal hydrated state. */}
         <RenderGroup
-          index="④"
+          index="⑤"
           title={t('media:renderPrep.audioTitle')}
           open={!locked}
           testid={embeddedAudio ? 'finish-audio-block' : undefined}

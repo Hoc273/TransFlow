@@ -83,38 +83,38 @@ export function LandingHero() {
 
       {/* Structured Content Container (aligned with site grid) */}
       <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 w-full flex-1 flex flex-col justify-between">
-        {/* Top Badges Row */}
-        <div className="flex items-center justify-between">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/35 backdrop-blur-md border border-white/20 text-white text-xs font-medium shadow-md">
-            <span className="w-2 h-2 rounded-full bg-purple-400" />
+        {/* Top Badges Row — hidden on mobile, visible on tablet/desktop */}
+        <div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-4 w-full">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/35 backdrop-blur-md border border-white/20 text-white shadow-md">
+            <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
             <span className="tracking-wide uppercase text-[11px] font-semibold">
               {t('hero.flagship')}
             </span>
           </div>
 
-          <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-black/35 backdrop-blur-md border border-white/20 text-white text-xs font-medium shadow-md">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span>{t('hero.engine')}</span>
+          <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-black/35 backdrop-blur-md border border-white/20 text-white shadow-md">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+            <span className="text-xs font-medium">{t('hero.engine')}</span>
           </div>
         </div>
 
         {/* Center Stage: Title, Description & Ultra-Premium Action Buttons */}
-        <div className="flex flex-col items-center justify-center text-center my-auto py-12 sm:py-16">
-          <div className="max-w-3xl mb-8 sm:mb-10">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-white tracking-tight leading-[1.08] drop-shadow-lg">
+        <div className="flex flex-col items-center justify-center text-center my-auto py-8 sm:py-16">
+          <div className="max-w-3xl mb-6 sm:mb-10">
+            <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-white tracking-tight leading-[1.15] sm:leading-[1.08] drop-shadow-lg">
               {t('hero.title')}
             </h1>
-            <p className="text-white/90 text-sm sm:text-base md:text-lg mt-3.5 max-w-2xl mx-auto drop-shadow-md font-normal leading-relaxed">
+            <p className="text-white/90 text-xs sm:text-base md:text-lg mt-3 sm:mt-3.5 max-w-2xl mx-auto drop-shadow-md font-normal leading-relaxed px-2 sm:px-0">
               {t('hero.subtitle')}
             </p>
           </div>
 
-          {/* 2 Ultra-Premium Action Buttons without generic AI clichés */}
-          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
+          {/* 2 Ultra-Premium Action Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 sm:gap-6 w-full sm:w-auto px-4 sm:px-0">
             {/* Button 1: Dịch video (Obsidian Glass Finish) */}
             <Link
               to={authTarget}
-              className="relative group inline-flex items-center gap-3 px-8 sm:px-10 py-4 rounded-full bg-neutral-950/90 hover:bg-black text-white font-medium text-sm sm:text-base backdrop-blur-2xl border border-white/25 hover:border-white/45 shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.25)] hover:scale-[1.04] active:scale-[0.98] transition-all duration-300 cursor-pointer"
+              className="w-full sm:w-auto relative group inline-flex items-center justify-center gap-3 px-6 sm:px-10 py-3.5 sm:py-4 rounded-full bg-neutral-950/90 hover:bg-black text-white font-medium text-sm sm:text-base backdrop-blur-2xl border border-white/25 hover:border-white/45 shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.25)] hover:scale-[1.04] active:scale-[0.98] transition-all duration-300 cursor-pointer"
             >
               {/* Top specular highlight */}
               <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent pointer-events-none" />
@@ -135,7 +135,7 @@ export function LandingHero() {
             {/* Button 2: Tóm tắt (Liquid Crystal Glass Finish) */}
             <Link
               to={authTarget}
-              className="relative group inline-flex items-center gap-3 px-8 sm:px-10 py-4 rounded-full bg-white/90 hover:bg-white text-neutral-900 font-medium text-sm sm:text-base backdrop-blur-2xl border border-white/70 hover:border-white shadow-[0_20px_50px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,1)] hover:scale-[1.04] active:scale-[0.98] transition-all duration-300 cursor-pointer"
+              className="w-full sm:w-auto relative group inline-flex items-center justify-center gap-3 px-6 sm:px-10 py-3.5 sm:py-4 rounded-full bg-white/90 hover:bg-white text-neutral-900 font-medium text-sm sm:text-base backdrop-blur-2xl border border-white/70 hover:border-white shadow-[0_20px_50px_rgba(0,0,0,0.2),inset_0_1px_1px_rgba(255,255,255,1)] hover:scale-[1.04] active:scale-[0.98] transition-all duration-300 cursor-pointer"
             >
               {/* Top specular highlight */}
               <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent pointer-events-none" />

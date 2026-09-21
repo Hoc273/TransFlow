@@ -7,7 +7,6 @@ import {
   IconFolder,
   IconLayoutGrid,
   IconShieldCheck,
-  IconStack2,
   IconUsers,
   IconVideo,
 } from '@tabler/icons-react'
@@ -48,7 +47,6 @@ function buildGroups(workspaceId: string): NavGroup[] {
       titleKey: 'nav.workspace',
       items: [
         { key: 'projects', labelKey: 'nav.projects', icon: IconFolder, path: `${base}/projects` },
-        { key: 'batches', labelKey: 'nav.batches', icon: IconStack2, path: `${base}/batches` },
         {
           key: 'glossaries',
           labelKey: 'nav.glossaries',
