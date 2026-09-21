@@ -541,6 +541,108 @@ class MediaJobControllerTest {
         assertEquals(MediaJobStage.StageStatus.STALE, renderAfter.getStatus());
     }
 
+    private com.app.modules.media_job.entity.SubtitleSegment saveSubtitle(UUID jobId, int seq, long start, long end) {
+        var s = new com.app.modules.media_job.entity.SubtitleSegment();
+        s.setMediaJobId(jobId);
+        s.setSeq(seq);
+        s.setContentSource(com.app.modules.media_job.entity.SubtitleSegment.ContentSource.TRANSLATED_ORIGINAL);
+        s.setTargetText("t" + seq);
+        s.setStartMs(start);
+        s.setEndMs(end);
+        return subtitleSegmentRepository.save(s);
+    }
+
+    private String batchBody(Object... segmentIdAndText) {
+        var updates = objectMapper.createArrayNode();
+        for (int i = 0; i < segmentIdAndText.length; i += 2) {
+            var u = updates.addObject();
+            u.put("segmentId", segmentIdAndText[i].toString());
+            u.put("targetText", segmentIdAndText[i + 1].toString());
+        }
+        var body = objectMapper.createObjectNode();
+        body.set("updates", updates);
+        return body.toString();
+    }
+
+    @Test
+    void batchUpdateSubtitles_updatesAllAndStalesDownstreamOnce_idempotent() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-batch-ok@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        var s1 = saveSubtitle(jobId, 1, 0, 1000);
+        var s2 = saveSubtitle(jobId, 2, 1000, 2000);
+        var render = mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.RENDER).orElseThrow();
+        render.setStatus(MediaJobStage.StageStatus.COMPLETED);
+        mediaJobStageRepository.save(render);
+
+        String url = "/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId + "/segments/batch";
+        for (int i = 0; i < 2; i++) { // second call must give the same result
+            mockMvc.perform(put(url).header("Authorization", "Bearer " + lead.accessToken())
+                            .contentType(MediaType.APPLICATION_JSON).content(batchBody(s2.getId(), "B", s1.getId(), "A")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.length()").value(2))
+                    .andExpect(jsonPath("$.data[0].targetText").value("B"))
+                    .andExpect(jsonPath("$.data[1].targetText").value("A"));
+        }
+        assertEquals(MediaJobStage.StageStatus.STALE,
+                mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.RENDER).orElseThrow().getStatus());
+    }
+
+    @Test
+    void batchUpdateSubtitles_segmentOfOtherJob_returns400AndChangesNothing() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-batch-foreign@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        UUID otherJobId = createLocalizationJob(lead, "en");
+        var mine = saveSubtitle(jobId, 1, 0, 1000);
+        var foreign = saveSubtitle(otherJobId, 1, 0, 1000);
+
+        mockMvc.perform(put("/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId + "/segments/batch")
+                        .header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON).content(batchBody(mine.getId(), "X", foreign.getId(), "Y")))
+                .andExpect(status().isBadRequest());
+
+        assertEquals("t1", subtitleSegmentRepository.findById(mine.getId()).orElseThrow().getTargetText());
+        assertEquals("t1", subtitleSegmentRepository.findById(foreign.getId()).orElseThrow().getTargetText());
+    }
+
+    @Test
+    void batchUpdateSubtitles_invalidTimeRange_returns400() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-batch-time@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        var s = saveSubtitle(jobId, 1, 0, 1000);
+
+        var item = objectMapper.createObjectNode();
+        item.put("segmentId", s.getId().toString());
+        item.put("startMs", 2000); // >= existing endMs after merge
+        var body = objectMapper.createObjectNode();
+        body.putArray("updates").add(item);
+
+        mockMvc.perform(put("/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId + "/segments/batch")
+                        .header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON).content(body.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void batchUpdateSubtitles_memberOnOthersJobAndClient_areForbidden() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-batch-rbac@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        var s = saveSubtitle(jobId, 1, 0, 1000);
+
+        RegisteredUser member = registerPlainUser("member-batch-rbac@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), member.userId(), Role.MEMBER);
+        addProjectMember(lead.projectId(), member.userId(), lead.userId());
+        RegisteredUser client = registerPlainUser("client-batch-rbac@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), client.userId(), Role.CLIENT);
+        addProjectMember(lead.projectId(), client.userId(), lead.userId());
+
+        String url = "/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId + "/segments/batch";
+        for (String token : new String[]{member.accessToken(), client.accessToken()}) {
+            mockMvc.perform(put(url).header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON).content(batchBody(s.getId(), "X")))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
     @Test
     void listSubtitles_asClient_isAllowedReadOnly() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-subtitle-client@transflow.com");

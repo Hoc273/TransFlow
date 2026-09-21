@@ -1,4 +1,4 @@
-# Việc Backend còn thiếu — Thành viên B
+﻿# Việc Backend còn thiếu — Thành viên B
 
 > File này là **bản trích** từ `BACKEND_MISSING_TASKS_BY_BRANCH.md` (bản tổng hợp/nguồn) — phần việc giao cho **Thành viên B**: pipeline Media Job (export, sửa phụ đề, render, subtitle style, tải nhiều video, ghi đè ngôn ngữ, output/publish package).
 > Số mục giữ nguyên như file tổng hợp. Khi nội dung mục thay đổi, sửa ở file tổng hợp rồi đồng bộ lại file này;
@@ -82,7 +82,13 @@ Mỗi nhánh = 1 PR nhỏ.
 
 ---
 
-## 2. Sửa phụ đề hàng loạt — `/segments/batch`
+## 2. Sửa phụ đề hàng loạt — `/segments/batch` — ✅ CODE + TEST + CURL THẬT XONG (2026-09-21), chưa commit
+
+> Đã làm: `PUT .../segments/batch`; tách `lockJobForEdit`/`applyEdit`/`staleDownstreamStages` dùng chung với PATCH đơn lẻ.
+> Quyết định của dev: (1) cả batch và PATCH dùng `requireJobOwnership` (**PATCH đơn lẻ đổi hành vi**: MEMBER sửa job người khác → 403);
+> (2) tối đa 200 phần tử, cấu hình `app.media-job.max-batch-subtitle-updates` (env `MEDIA_MAX_BATCH_SUBTITLE_UPDATES`);
+> `segmentId` trùng → `VALIDATION_ERROR`; `0 <= startMs < endMs` kiểm tra trên giá trị sau merge (áp dụng cả PATCH).
+> 310 test xanh (4 test mới ở `MediaJobControllerTest`). Đã cập nhật `API_Contract.md` §5. Đã curl thật (Postgres/MinIO, backend cổng 8081): LEAD 3 segment x2 idempotent, STALE TTS/RENDER + 1 notification, segment lạ/thời gian sai/empty → 400 không đổi gì, MEMBER job người khác + CLIENT → 403, không token → 401. Dữ liệu thử còn lại trong DB: user batch-{lead,member,client}@t.com.
 
 - **Nhánh:** `feature/media-job-segments-batch-edit`
 - **Endpoint:** `PUT /api/workspaces/{workspaceId}/media/jobs/{jobId}/segments/batch`. Role: LEAD; MEMBER chỉ job của mình
@@ -330,7 +336,7 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 | # | Nhánh | Code | Test tự động | Kiểm tra thủ công | Cập nhật `API_Contract.md` | Commit / PR |
 |---|---|:-:|:-:|:-:|:-:|:-----------:|
 | 1 | `feature/media-job-export` | [x] | [x] | [x] | [x] |     [x]     |
-| 2 | `feature/media-job-segments-batch-edit` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 2 | `feature/media-job-segments-batch-edit` | [x] | [x] | [x] | [x] |     [ ]     |
 | 3 | `feature/media-job-render-config` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 4 | `feature/media-subtitle-styles` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 5 | `feature/media-library-bulk-download` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
