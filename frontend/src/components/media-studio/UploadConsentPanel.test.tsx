@@ -198,6 +198,7 @@ describe('UploadConsentPanel — Phase C voice binding at create', () => {
       requestedDurationSeconds: null,
       requestedMode: 'FAST',
       voiceSelection: { providerId: null, voiceId: null },
+      keepOriginalAudio: true,
       deps: {
         createJob: { mutateAsync: mutate },
         onCreated: () => {},
@@ -206,7 +207,11 @@ describe('UploadConsentPanel — Phase C voice binding at create', () => {
     })
 
     expect(mutate).toHaveBeenCalledWith(
-      expect.objectContaining({ ttsProviderId: null, ttsVoiceId: null }),
+      expect.objectContaining({
+        ttsProviderId: null,
+        ttsVoiceId: null,
+        keepOriginalAudio: true,
+      }),
     )
     expect(selectVoiceMock).not.toHaveBeenCalled()
   })
@@ -487,7 +492,7 @@ describe('UploadConsentPanel — M-C workflow preset id in the create payload (d
     await createMediaJobWithSelection(selection({ workflowPresetId: 'preset-1' }))
 
     expect(createJobMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ workflowPresetId: 'preset-1' }),
+      expect.objectContaining({ workflowPresetId: 'preset-1', skipPresetResolution: false }),
     )
   })
 
@@ -496,8 +501,10 @@ describe('UploadConsentPanel — M-C workflow preset id in the create payload (d
 
     await createMediaJobWithSelection(selection())
 
+    // No pin opts OUT of backend default resolution — the workspace/system
+    // default preset must not auto-apply.
     expect(createJobMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ workflowPresetId: null }),
+      expect.objectContaining({ workflowPresetId: null, skipPresetResolution: true }),
     )
   })
 
@@ -510,6 +517,7 @@ describe('UploadConsentPanel — M-C workflow preset id in the create payload (d
       targetLang: 'vi',
       workflowMode: 'MANUAL',
       workflowPresetId: 'preset-1',
+      skipPresetResolution: false,
       requestedDurationSeconds: null,
       requestedMode: 'FAST',
       ttsProviderId: 'piper',
@@ -518,6 +526,7 @@ describe('UploadConsentPanel — M-C workflow preset id in the create payload (d
 
     expect(body.workflowMode).toBe('MANUAL')
     expect(body.workflowPresetId).toBe('preset-1')
+    expect(body.skipPresetResolution).toBe(false)
     // C2 (docs/19 §1.8.2): subtitleMode is never sent from the create form —
     // the backend resolves it (preset → SOFT_SUB default).
     expect(body.subtitleMode).toBeUndefined()
@@ -562,6 +571,30 @@ describe('UploadConsentPanel — M-C workflow preset id in the create payload (d
       enableVlm: false,
     })
     expect(bodyOff.enableVlm).toBe(false)
+  })
+
+  it('createJobApiBody maps keepOriginalAudio flag into the HTTP body', async () => {
+    const { createJobApiBody } = await import('./UploadConsentPanel')
+
+    const bodyOriginal = createJobApiBody({
+      documentId: 'doc-1',
+      recipeId: 'localization.full',
+      targetLang: 'vi',
+      requestedDurationSeconds: null,
+      requestedMode: 'FAST',
+      keepOriginalAudio: true,
+    })
+    expect(bodyOriginal.keepOriginalAudio).toBe(true)
+
+    const bodyDubbed = createJobApiBody({
+      documentId: 'doc-1',
+      recipeId: 'localization.full',
+      targetLang: 'vi',
+      requestedDurationSeconds: null,
+      requestedMode: 'FAST',
+      keepOriginalAudio: false,
+    })
+    expect(bodyDubbed.keepOriginalAudio).toBe(false)
   })
 
   it('sends enableVlm when specified in selection', async () => {

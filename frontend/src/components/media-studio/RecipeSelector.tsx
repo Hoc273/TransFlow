@@ -27,6 +27,12 @@ export function RecipeSelector({
     description: string
     icon: typeof IconLanguage
   }> = [
+    {
+      id: 'localization.full',
+      title: t('modeTranslateOnly'),
+      description: t('modeTranslateOnlyDesc'),
+      icon: IconLanguage,
+    },
     ...(generativeAvailable
       ? [{
           id: 'summary.generative' as const,
@@ -35,12 +41,6 @@ export function RecipeSelector({
           icon: IconSparkles,
         }]
       : []),
-    {
-      id: 'localization.full',
-      title: t('modeTranslateOnly'),
-      description: t('modeTranslateOnlyDesc'),
-      icon: IconLanguage,
-    },
   ]
 
   return (

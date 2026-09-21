@@ -1,7 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import {
   IconFolder,
-  IconLayersLinked,
   IconLayoutDashboard,
   IconMenu2,
   IconVideo,
@@ -19,7 +18,6 @@ export function MobileBottomNav({ workspaceId, onOpenMenu }: MobileBottomNavProp
   const navItems = [
     { label: 'Dashboard', to: base, icon: <IconLayoutDashboard size={20} />, end: true },
     { label: 'Projects', to: `${base}/projects`, icon: <IconFolder size={20} /> },
-    { label: 'Batches', to: `${base}/batches`, icon: <IconLayersLinked size={20} /> },
     { label: 'Media', to: `${base}/media`, icon: <IconVideo size={20} /> },
   ]
 

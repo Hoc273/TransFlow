@@ -84,6 +84,7 @@ describe('SubtitlePreviewFrame — PRESET-VIZ live preview (docs/97 §19.16)', (
     const { rerender } = render(<SubtitlePreviewFrame values={values({})} />)
     const subtitle = screen.getByTestId('preset-preview-subtitle')
     expect(subtitle.style.background).toContain('rgba(0, 0, 0, 0.5)')
+    expect(subtitle.style.padding).not.toBe('')
 
     rerender(<SubtitlePreviewFrame values={values({ backgroundBox: false })} />)
     expect(screen.getByTestId('preset-preview-subtitle').style.background).toBe('')
@@ -139,6 +140,33 @@ describe('SubtitlePreviewFrame — PRESET-VIZ live preview (docs/97 §19.16)', (
       // never the colon label.
       expect(frame.getAttribute('style')).toContain(`aspect-ratio: ${ratio}`)
     }
+  })
+
+  it('maps a vertical subtitle drag back to position and offset fields', () => {
+    const onPlacementChange = vi.fn()
+    render(
+      <SubtitlePreviewFrame
+        values={values({})}
+        onSubtitlePlacementChange={onPlacementChange}
+      />,
+    )
+    const frame = screen.getByTestId('preset-preview-frame')
+    vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 320,
+      bottom: 200,
+      width: 320,
+      height: 200,
+      toJSON: () => ({}),
+    })
+    const subtitle = screen.getByTestId('preset-preview-subtitle')
+    fireEvent.pointerDown(subtitle, { clientY: 176, pointerId: 1 })
+    fireEvent.pointerMove(subtitle, { clientY: 100, pointerId: 1 })
+
+    expect(onPlacementChange).toHaveBeenLastCalledWith('CENTER', 0)
   })
 })
 
@@ -213,5 +241,39 @@ describe('SubtitlePreviewFrame — V2 cover layers (docs/97 §19.17 §B)', () =>
     )
 
     expect(screen.queryByTestId('preset-preview-layer-cover-1')).toBeNull()
+  })
+
+  it('selects and moves a cover layer freely on both axes', () => {
+    const onSelectedLayerChange = vi.fn()
+    const onLayerPositionChange = vi.fn()
+    render(
+      <SubtitlePreviewFrame
+        values={values({
+          maskEnabled: false,
+          layers: [layer({ anchor: 'TOP' })],
+        })}
+        onSelectedLayerChange={onSelectedLayerChange}
+        onLayerPositionChange={onLayerPositionChange}
+      />,
+    )
+    const frame = screen.getByTestId('preset-preview-frame')
+    vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 320,
+      bottom: 200,
+      width: 320,
+      height: 200,
+      toJSON: () => ({}),
+    })
+    const cover = screen.getByTestId('preset-preview-layer-cover-1')
+    fireEvent.pointerDown(cover, { clientX: 160, clientY: 16, pointerId: 1 })
+    fireEvent.pointerMove(cover, { clientX: 64, clientY: 100, pointerId: 1 })
+
+    expect(onSelectedLayerChange).toHaveBeenCalledWith('cover-1')
+    // Width 84% keeps the center inside [42..58]; Y moves freely to 50%.
+    expect(onLayerPositionChange).toHaveBeenLastCalledWith('cover-1', 42, 50)
   })
 })

@@ -107,4 +107,42 @@ describe('VoiceSelector — showPreview preview (C2 UX)', () => {
     fireEvent.click(button)
     expect(previewMutate).not.toHaveBeenCalled()
   })
+
+  it('locks TTS controls when keep-original is checked and unlocks them when cleared', () => {
+    voicesByProvider.set('p1', [voice({ id: 'vi1', language: 'vi' })])
+    const onChange = vi.fn()
+    render(
+      <VoiceSelector
+        workspaceId="ws"
+        providers={[provider({ id: 'p1' })]}
+        targetLang="vi"
+        selectedProviderId="p1"
+        selectedVoiceId="vi1"
+        allowOriginal
+        showPreview
+        onChange={onChange}
+      />,
+    )
+
+    const original = screen.getByTestId('voice-keep-original') as HTMLInputElement
+    const providerSelect = screen.getByTestId('voice-provider-select') as HTMLSelectElement
+    const voiceSelect = screen.getByTestId('voice-voice-select') as HTMLSelectElement
+    const previewButton = screen.getByTestId('voice-preview-button') as HTMLButtonElement
+
+    expect(original.type).toBe('checkbox')
+    expect(original.checked).toBe(false)
+    expect(providerSelect.disabled).toBe(false)
+
+    fireEvent.click(original)
+
+    expect(onChange).toHaveBeenCalledWith({ providerId: null, voiceId: null })
+    expect(original.checked).toBe(true)
+    expect(providerSelect.disabled).toBe(true)
+    expect(voiceSelect.disabled).toBe(true)
+    expect(previewButton.disabled).toBe(true)
+
+    fireEvent.click(original)
+    expect(original.checked).toBe(false)
+    expect(providerSelect.disabled).toBe(false)
+  })
 })

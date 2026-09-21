@@ -199,8 +199,40 @@ function makeRenderConfig(jobId) {
     sourceVideoUrlExpiresInSeconds: 7200,
     presentation: {
       schemaVersion: 2,
-      subtitle: { schemaVersion: 2, displayMode: 'SENTENCE', maxCharactersPerCue: 42 },
-      audio: { schemaVersion: 1 },
+      outputAspectRatio: job?.aspectRatio || '16:9',
+      keepOriginalAudio: Boolean(job?.keepOriginalAudio),
+      subtitle: {
+        schemaVersion: 2,
+        displayMode: 'SENTENCE',
+        maxCharactersPerCue: 42,
+        position: 'BOTTOM',
+        typography: {
+          fontSize: 44,
+          bold: true,
+          outlineWidth: 2,
+          outlineColor: '#000000',
+        },
+      },
+      audio: {
+        schemaVersion: 1,
+        sourceGainDb: 0,
+        ttsGainDb: 0,
+        ducking: false,
+      },
+      coverLayers: [
+        {
+          id: 'cov_1',
+          anchor: 'TOP_RIGHT',
+          type: 'BLUR',
+          blurRadius: 16,
+          geometry: {
+            xPercent: 82,
+            yPercent: 8,
+            widthPercent: 18,
+            heightPercent: 7,
+          },
+        },
+      ],
     },
     backgroundColor: null,
     textColor: null,
@@ -867,20 +899,28 @@ function buildRoutes() {
 
   rBoth('/workspaces/:workspaceId/media/jobs', '/workspaces/:workspaceId/transformation/jobs', 'POST', async (ctx) => {
     const body = await readJson(ctx.req)
+    const keepOriginalAudio = Boolean(body.keepOriginalAudio)
+    const doc = d.documents.find((x) => x.id === body.documentId)
+    const fileName = body.fileName || doc?.name || 'Video_Source.mp4'
+
     const job = {
       id: d.uuid('mj'),
+      fileName,
       documentId: body.documentId ?? null,
       rootAssetId: 'asset_1',
-      projectId: 'p_1',
+      projectId: body.projectId || 'p_1',
       processingMode: body.processingMode ?? 'TRANSLATE_ONLY',
       sourceLanguage: body.sourceLang ?? 'en',
       targetLang: body.targetLang || 'vi',
       status: 'PENDING',
       subtitleMode: body.subtitleMode ?? 'SOFT_SUB',
+      aspectRatio: body.aspectRatio || body.outputAspectRatio || '16:9',
+      keepOriginalAudio,
+      skipPresetResolution: Boolean(body.skipPresetResolution),
       requestedDurationSeconds: body.requestedDurationSeconds ?? null,
       selectedProposalId: null,
-      ttsProviderId: body.ttsProviderId ?? null,
-      ttsVoiceId: body.ttsVoiceId ?? null,
+      ttsProviderId: keepOriginalAudio ? null : (body.ttsProviderId ?? null),
+      ttsVoiceId: keepOriginalAudio ? null : (body.ttsVoiceId ?? null),
       recipeId: body.recipeId ?? 'localization.full',
       goalType: (body.recipeId || '').startsWith('summary') ? 'HIGHLIGHT_EXTRACTIVE' : 'LOCALIZE',
       domainPhase: 'DRAFT',
@@ -893,11 +933,11 @@ function buildRoutes() {
       createdAt: CURRENT_UTC,
       stages: [
         makeStage('EXTRACT_AUDIO', 1, 'PENDING'),
-        makeStage('SOURCE_SEPARATION', 2, 'PENDING'),
+        makeStage('SOURCE_SEPARATION', 2, 'SKIPPED'),
         makeStage('STT', 3, 'PENDING'),
         makeStage('SUMMARIZE', 4, 'PENDING'),
         makeStage('TRANSLATE', 5, 'PENDING'),
-        makeStage('TTS', 6, 'PENDING'),
+        makeStage('TTS', 6, keepOriginalAudio ? 'SKIPPED' : 'PENDING'),
         makeStage('AUDIO_MIX', 7, 'PENDING'),
         makeStage('RENDER', 8, 'PENDING'),
       ],
@@ -911,6 +951,31 @@ function buildRoutes() {
   })
   rBoth('/workspaces/:workspaceId/projects/:projectId/media/jobs', '/workspaces/:workspaceId/projects/:projectId/transformation/jobs', 'GET', (ctx) =>
     sendJson(ctx.res, 200, d.mediaJobs.filter((j) => (ctx.params.projectId ? j.projectId === ctx.params.projectId : true))),
+  )
+  rBoth(
+    '/workspaces/:workspaceId/media/jobs/:jobId/stages/:stageName/rerun',
+    '/workspaces/:workspaceId/transformation/jobs/:jobId/stages/:stageName/rerun',
+    'POST',
+    (ctx) => {
+      const job = d.mediaJobs.find((j) => j.id === ctx.params.jobId)
+      if (!job) return sendJson(ctx.res, 404, { errorCode: 'NOT_FOUND', message: 'Job not found' })
+      job.status = 'PROCESSING'
+      const targetOrder = job.stages.find((s) => s.stageName === ctx.params.stageName)?.stageOrder ?? 1
+      job.stages = job.stages.map((s) => {
+        if (s.stageOrder < targetOrder) return s
+        if (s.stageOrder === targetOrder) {
+          return { ...s, status: 'PROCESSING', progressPercent: 20 }
+        }
+        return { ...s, status: 'PENDING', progressPercent: 0 }
+      })
+      sendJson(ctx.res, 200, job)
+    },
+  )
+  rBoth(
+    '/workspaces/:workspaceId/media/jobs/:jobId/export',
+    '/workspaces/:workspaceId/transformation/jobs/:jobId/export',
+    'POST',
+    (ctx) => sendJson(ctx.res, 200, { downloadUrl: '/api/media/sample-video', primaryVideoDownloadUrl: '/api/media/sample-video' }),
   )
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/cancel', '/workspaces/:workspaceId/transformation/jobs/:jobId/cancel', 'POST', (ctx) => {
     const job = d.mediaJobs.find((j) => j.id === ctx.params.jobId)

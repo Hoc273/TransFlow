@@ -9,7 +9,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 describe('RecipeSelector', () => {
-  it('shows summary.generative first when the backend feature is available', () => {
+  it('shows localization first when the backend feature is available', () => {
     const html = renderToStaticMarkup(
       <RecipeSelector
         value="summary.generative"
@@ -22,6 +22,7 @@ describe('RecipeSelector', () => {
     expect(html).toContain('modeTranslateOnly')
     expect(html).not.toContain('modeHybrid')
     expect(html).toContain('aria-checked="true"')
+    expect(html.indexOf('modeTranslateOnly')).toBeLessThan(html.indexOf('modeGenerative'))
   })
 
   it('hides summary.generative after the backend rejects the feature', () => {

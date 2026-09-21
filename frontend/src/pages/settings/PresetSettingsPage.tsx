@@ -75,6 +75,8 @@ type FormState = {
   maxCharactersPerCue: number
   fontSize: number | null
   bold: boolean
+  outlineWidth: number | null
+  outlineColor: string
   /**
    * V2 cover layers (docs/97 §19.17 §B — user decision 2026-09-06): presets
    * ALWAYS store the authoritative `layers` array; a legacy stored v1 mask is
@@ -110,14 +112,15 @@ function emptyForm(): FormState {
     wordsPerPhrase: 3,
     maxCharactersPerCue: 40,
     fontSize: null,
-    bold: false,
+    bold: true,
+    outlineWidth: 4,
+    outlineColor: '#FFFFFF',
     coverEnabled: false,
     coverLayers: [defaultCoverLayer([])],
-    // #000000 at 50% alpha — visually identical to the historical
-    // BackColour=&H80000000 legacy default.
-    backgroundColor: '#000000',
-    backgroundAlpha: 50,
-    textColor: '#FFFFFF',
+    // 2026-09 AUTO default: opaque yellow box + black glyphs.
+    backgroundColor: '#FFFF00',
+    backgroundAlpha: 100,
+    textColor: '#000000',
     outputAspectRatio: 'ORIGINAL',
     audio: { ...DEFAULT_AUDIO_PRESENTATION },
     providerId: '',
@@ -168,6 +171,8 @@ function hydrateForm(preset: WorkflowPreset): FormState {
     maxCharactersPerCue: sub?.maxCharactersPerCue ?? 40,
     fontSize: sub?.typography?.fontSize ?? null,
     bold: sub?.typography?.bold ?? false,
+    outlineWidth: sub?.typography?.outlineWidth ?? null,
+    outlineColor: sub?.typography?.outlineColor ?? '#000000',
     coverEnabled: cover.enabled,
     coverLayers: cover.layers,
     backgroundColor: bg.color,
@@ -220,6 +225,10 @@ function buildConfig(form: FormState): WorkflowPresetConfig {
       maxCharactersPerCue: form.maxCharactersPerCue,
       fontSize: form.fontSize,
       bold: form.bold,
+      // 2026-09 dual-event: outline renders above the box (Layer 1), so it
+      // is sent even when the background box is on. Claim gates old workers.
+      outlineWidth: form.outlineWidth,
+      outlineColor: form.outlineColor,
       coverEnabled: form.coverEnabled,
       coverLayers: form.coverLayers,
       originalGainDb: form.audio.originalGainDb,
@@ -245,6 +254,9 @@ function PresetFormModal({
   const update = useUpdateWorkflowPreset(workspaceId, preset?.projectId ?? undefined)
   const [form, setForm] = useState<FormState>(() =>
     preset ? hydrateForm(preset) : emptyForm(),
+  )
+  const [selectedCoverLayerId, setSelectedCoverLayerId] = useState<string | null>(
+    form.coverLayers[0]?.id ?? null,
   )
   const [error, setError] = useState<string | null>(null)
   const pending = create.isPending || update.isPending
@@ -556,8 +568,11 @@ function PresetFormModal({
 
         <div className="media-config-group">
           <div className="text-[12.5px] font-semibold text-[var(--color-text-primary)]">
-            {t('media:renderPrep.presentationSubtitle')}
+            {t('media:renderPrep.subtitleLayerTitle')}
           </div>
+          <p className="mt-1 mb-0 text-xs text-[var(--color-text-secondary)]">
+            {t('media:renderPrep.subtitleLayerHint')}
+          </p>
           <div className="space-y-3 pt-3">
             <label className="field-label">
               <span>{t('media:renderPrep.displayMode')}</span>
@@ -628,29 +643,69 @@ function PresetFormModal({
                 />
                 {t('media:renderPrep.bold')}
               </label>
-
-              <h4 className="m-0 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
-                {t('media:renderPrep.maskLayerTitle')}
-              </h4>
-              {/* V2 cover layers (docs/97 §19.17 §B): each layer anchors
-                  independently, so several burned-in regions can be covered
-                  while the subtitle sits elsewhere — layers XOR the legacy v1
-                  mask, and editors only ever write layers. */}
-              <CoverLayersEditor
-                enabled={form.coverEnabled}
-                layers={form.coverLayers}
-                locked={false}
-                testidPrefix="preset-form-mask"
-                onChange={({ enabled, layers }) => {
-                  set('coverEnabled', enabled)
-                  set('coverLayers', layers)
-                }}
-              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                {/* 2026-09 dual-event: outline renders above the box, enabled. */}
+                <label className="field-label">
+                  <span>{t('media:renderPrep.outlineWidth')}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={8}
+                    className="field-input"
+                    value={form.outlineWidth ?? ''}
+                    placeholder={t('media:renderPrep.typographyDefault')}
+                    onChange={(e) => set(
+                      'outlineWidth',
+                      e.target.value === '' ? null : Math.max(0, Math.min(8, Number(e.target.value))),
+                    )}
+                  />
+                </label>
+                <label className="field-label">
+                  <span>{t('media:renderPrep.outlineColor')}</span>
+                  <input
+                    type="color"
+                    className="field-input h-9 w-full p-1"
+                    value={form.outlineColor}
+                    onChange={(e) => set('outlineColor', e.target.value.toUpperCase())}
+                  />
+                </label>
+              </div>
             </div>
           </div>
         </div>
 
+        <div className="media-config-group" data-testid="preset-mask-layer-panel">
+          <div className="text-[12.5px] font-semibold text-[var(--color-text-primary)]">
+            {t('media:renderPrep.maskLayerTitle')}
+          </div>
+          <p className="mt-1 mb-3 text-xs text-[var(--color-text-secondary)]">
+            {t('media:renderPrep.maskLayerHint')}
+          </p>
+          {/* Mask layers are a sibling surface to subtitle formatting. They can
+              be added without selecting a subtitle style. SOFT_SUB remains
+              locked because the current render contract rejects burn overlays
+              while the player owns subtitle rendering. */}
+          <CoverLayersEditor
+            enabled={form.coverEnabled}
+            layers={form.coverLayers}
+            locked={form.subtitleMode === 'SOFT_SUB'}
+            selectedLayerId={selectedCoverLayerId}
+            onSelectedLayerChange={setSelectedCoverLayerId}
+            testidPrefix="preset-form-mask"
+            onChange={({ enabled, layers }) => {
+              set('coverEnabled', enabled)
+              set('coverLayers', layers)
+            }}
+          />
+          {form.subtitleMode === 'SOFT_SUB' && (
+            <p className="field-help mt-3 mb-0">{t('media:renderPrep.softSubCoverWarning')}</p>
+          )}
+        </div>
+
         <div className="media-config-group">
+          <div className="text-[12.5px] font-semibold text-[var(--color-text-primary)]">
+            {t('media:renderPrep.audioTitle')}
+          </div>
           <AudioPresentationConfig
             audio={form.audio}
             locked={false}
@@ -801,6 +856,8 @@ function PresetFormModal({
               textColor: form.textColor,
               fontSize: form.fontSize,
               bold: form.bold,
+              outlineWidth: form.outlineWidth,
+              outlineColor: form.outlineColor,
               // V2 layers are authoritative for the preview; per-layer style
               // controls live in the CoverLayersEditor above.
               layers: form.coverEnabled ? form.coverLayers : null,
@@ -809,6 +866,30 @@ function PresetFormModal({
             // preset field — ORIGINAL keeps the source frame.
             aspect={form.outputAspectRatio}
             onAspectChange={(aspect) => set('outputAspectRatio', aspect)}
+            onSubtitlePlacementChange={form.subtitleMode === 'HARD_SUB'
+              ? (subtitlePosition, verticalOffsetPercent) =>
+                  setForm((current) => ({
+                    ...current,
+                    subtitlePosition,
+                    verticalOffsetPercent,
+                  }))
+              : undefined}
+            selectedLayerId={selectedCoverLayerId}
+            onSelectedLayerChange={setSelectedCoverLayerId}
+            onLayerPositionChange={form.subtitleMode === 'HARD_SUB'
+              ? (layerId, xPercent, yPercent) =>
+                  setForm((current) => ({
+                    ...current,
+                    coverLayers: current.coverLayers.map((layer) =>
+                      layer.id === layerId
+                        ? {
+                            ...layer,
+                            geometry: { ...layer.geometry, xPercent, yPercent },
+                          }
+                        : layer,
+                    ),
+                  }))
+              : undefined}
             backgroundUrl={calibration?.url ?? null}
             backgroundKind={calibration?.kind ?? 'video'}
           />

@@ -164,6 +164,34 @@ export function isGenerativeRecipe(
   return resolveRecipeId(job) === 'summary.generative'
 }
 
+/**
+ * Single-plan generative (new write path): planning strategy
+ * SUMMARY_SINGLE_PLAN (or absent snapshot for forward-compat). Auto-commits,
+ * never waits for selection.
+ */
+export function isSinglePlanGenerativeJob(
+  job: Pick<MediaJob, 'recipeId' | 'processingMode' | 'strategySnapshot'> | null | undefined,
+): boolean {
+  if (!isGenerativeRecipe(job)) return false
+  const planning =
+    (job as { strategySnapshot?: Record<string, string> | null })?.strategySnapshot?.planning
+  return planning == null || planning === 'SUMMARY_SINGLE_PLAN'
+}
+
+/**
+ * Legacy Narrative Review job (already persisted with planning=NARRATIVE_REVIEW):
+ * keeps the old selection-gate read path so completed-but-unselected jobs don't dead-end.
+ */
+export function isLegacyNarrativeReviewJob(
+  job: Pick<MediaJob, 'recipeId' | 'processingMode' | 'strategySnapshot'> | null | undefined,
+): boolean {
+  if (!isGenerativeRecipe(job)) return false
+  return (
+    (job as { strategySnapshot?: Record<string, string> | null })?.strategySnapshot?.planning ===
+    'NARRATIVE_REVIEW'
+  )
+}
+
 export function isLocalizationRecipe(
   job: Pick<MediaJob, 'recipeId' | 'processingMode'> | null | undefined,
 ): boolean {
@@ -275,17 +303,20 @@ export function isCutPlanProposal(
 }
 
 /**
- * HITL SELECT_PLAN gate (runtime): summary recipe + SUMMARIZE COMPLETED + no selection.
+ * HITL SELECT_PLAN gate (runtime): extractive summary + SUMMARIZE COMPLETED + no selection,
+ * plus legacy NARRATIVE_REVIEW generative jobs (completed but unselected before deploy).
+ * Single-plan generative auto-commits (no selection pause), so it never awaits.
  * Note: domainPhase PLANNING also covers SUMMARIZE PROCESSING — UI only awaits
  * selection after proposals exist (SUMMARIZE COMPLETED).
  */
 export function isAwaitingPlanSelection(
   job: Pick<
     MediaJob,
-    'recipeId' | 'processingMode' | 'selectedProposalId' | 'stages' | 'domainPhase'
+    'recipeId' | 'processingMode' | 'selectedProposalId' | 'stages' | 'domainPhase' | 'strategySnapshot'
   > | null | undefined,
 ): boolean {
   if (!job || !isSummaryRecipe(job)) return false
+  if (isSinglePlanGenerativeJob(job)) return false
   if (job.selectedProposalId) return false
   const summarize = job.stages?.find((s) => s.stageName === 'SUMMARIZE')
   return (
@@ -430,6 +461,49 @@ export function recipeModeBadgeClass(
   return isExtractiveRecipe(job) ? 'HYBRID' : 'TRANSLATE_ONLY'
 }
 
+/**
+ * Resolves the effective domain phase for display.
+ * Maps terminal job statuses (COMPLETED/FAILED/CANCELLED) directly.
+ * For active jobs, derives the phase from the current active stage
+ * (UNDERSTANDING -> PLANNING -> MATERIALIZING -> COMPOSING) so that
+ * UI does not show stale or misleading phases.
+ */
+export function resolveEffectivePhase(
+  job: Pick<MediaJob, 'status' | 'domainPhase' | 'stages'> | null | undefined,
+): TransformationJobPhase | string | null {
+  if (!job) return null
+  const status = String(job.status ?? '').toUpperCase()
+  if (status === 'COMPLETED') return 'COMPLETED'
+  if (status === 'FAILED') return 'FAILED'
+  if (status === 'CANCELLED') return 'CANCELLED'
+
+  if (job.stages?.length) {
+    const sorted = [...job.stages].sort((a, b) => a.stageOrder - b.stageOrder)
+    const active = sorted.find((s) => {
+      const st = String(s.status).toUpperCase()
+      return st === 'PROCESSING' || st === 'CANCEL_REQUESTED' || st === 'STALE' || st === 'PENDING'
+    })
+    if (active) {
+      switch (active.stageName) {
+        case 'EXTRACT_AUDIO':
+        case 'SOURCE_SEPARATION':
+        case 'STT':
+          return 'UNDERSTANDING'
+        case 'SUMMARIZE':
+          return 'PLANNING'
+        case 'TRANSLATE':
+        case 'TTS':
+          return 'MATERIALIZING'
+        case 'AUDIO_MIX':
+        case 'RENDER':
+          return 'COMPOSING'
+      }
+    }
+  }
+
+  return job.domainPhase ?? null
+}
+
 export function currentStage(job: MediaJob | undefined | null): MediaJobStage | null {
   if (!job?.stages?.length) return null
   const sorted = [...job.stages].sort((a, b) => a.stageOrder - b.stageOrder)
@@ -449,14 +523,26 @@ export function stageByName(
 }
 
 export function overallProgress(job: MediaJob | undefined | null): number {
-  if (!job?.stages?.length) return 0
-  const stages = job.stages
-  const weight = 100 / stages.length
+  if (!job) return 0
+  const status = String(job.status ?? '').toUpperCase()
+  if (status === 'COMPLETED') return 100
+  if (!job.stages?.length) return 0
+
+  // Only executable stages (stages that are not SKIPPED) represent pipeline work.
+  const activeStages = job.stages.filter(
+    (s) => String(s.status).toUpperCase() !== 'SKIPPED',
+  )
+  if (activeStages.length === 0) {
+    return status === 'COMPLETED' ? 100 : 0
+  }
+
+  const weight = 100 / activeStages.length
   let total = 0
-  for (const s of stages) {
+  for (const s of activeStages) {
     const st = String(s.status).toUpperCase()
-    if (st === 'COMPLETED' || st === 'SKIPPED') total += weight
-    else if (st === 'PROCESSING' || st === 'CANCEL_REQUESTED') {
+    if (st === 'COMPLETED') {
+      total += weight
+    } else if (st === 'PROCESSING' || st === 'CANCEL_REQUESTED') {
       const pct = Math.min(100, Math.max(0, s.progressPercent ?? 0))
       total += (weight * pct) / 100
     } else if (st === 'FAILED' || st === 'CANCELLED') {

@@ -5,10 +5,8 @@ import {
   DEFAULT_AUDIO_PRESENTATION,
   type AudioPresentationValues,
 } from '@/components/media-studio/RenderPreparationPanel'
-import { SubtitleStylePanel } from '@/components/media-studio/SubtitleStylePanel'
 import { VoiceSelector } from '@/components/media-studio/VoiceSelector'
 import { useRenderConfig } from '@/hooks/useMedia'
-import { isGenerativeRecipe } from '@/lib/media'
 import type { MediaJob } from '@/types/media'
 import type { ProviderConfig, TtsVoice } from '@/types/provider'
 
@@ -25,13 +23,15 @@ type Props = {
 }
 
 /**
- * UI aggregation of voice + subtitle style + audio + render prep (§1.8.2
+ * UI aggregation of voice + subtitle presentation + audio + render prep (§1.8.2
  * redesign). Does not create backend stages — only groups existing surfaces.
  *
  * Layout: one workbench — RenderPreparationPanel hosts the sticky preview +
  * decision actions on the left and the numbered config groups on the right;
- * the VoiceSelector and SubtitleStylePanel are passed as slots for groups
- * ①/②. Audio values stay owned here (hydrated from the shared render-config
+ * the VoiceSelector is passed as a slot for group ①. The original-audio
+ * decision is made when the job is created, so this workbench only exposes
+ * the active TTS binding. Subtitle presentation ①/②
+ * and audio values stay owned here (hydrated from the shared render-config
  * query) and flow into the panel for the confirm payload.
  */
 export function RenderAndVoiceSection({
@@ -51,7 +51,6 @@ export function RenderAndVoiceSection({
     (stage) => stage.stageName === 'TRANSLATE' && stage.status === 'COMPLETED',
   )
   const configQuery = useRenderConfig(workspaceId, job.id, translateReady)
-
   // Audio presentation values live here and flow into the panel's group ④ and
   // its confirm payload via the `audio` / `onAudioChange` props.
   const [audio, setAudio] = useState<AudioPresentationValues>(DEFAULT_AUDIO_PRESENTATION)
@@ -88,17 +87,11 @@ export function RenderAndVoiceSection({
               selectedProviderId={selectedProviderId}
               selectedVoiceId={job.ttsVoiceId ?? null}
               disabled={!canEdit || selectVoicePending}
-              allowOriginal={!isGenerativeRecipe(job)}
               onChange={onVoiceChange}
             />
             <p className="mb-0 text-xs leading-relaxed text-[var(--color-text-tertiary)]">
               {t('voice.regenHint')}
             </p>
-          </div>
-        }
-        styleSlot={
-          <div data-testid="finish-style-block">
-            <SubtitleStylePanel jobId={job.id} canEdit={canEdit} compact />
           </div>
         }
       />

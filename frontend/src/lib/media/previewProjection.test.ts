@@ -6,6 +6,8 @@ import {
   layerAnchorLinePercent,
   overlayTopPercent,
   projectEffectivePreview,
+  snapLayerAnchor,
+  snapSubtitlePlacement,
   subtitleAnchorLinePercent,
   type EffectivePreviewSource,
 } from './previewProjection'
@@ -141,6 +143,26 @@ describe('overlay geometry ≡ worker percent-space formula', () => {
     expect(projection.overlays.map((o) => o.key)).toEqual(['alpha', 'beta', 'zeta'])
   })
 
+  it('projects optional free center coordinates and clamps the layer inside the frame', () => {
+    const projection = projectEffectivePreview({
+      ...BASE_SOURCE,
+      layers: [solidLayer({
+        geometry: {
+          widthPercent: 20,
+          heightPercent: 10,
+          xPercent: 15,
+          yPercent: 40,
+        },
+      })],
+    })
+    expect(projection.overlays[0]).toMatchObject({
+      leftPercent: 5,
+      topPercent: 35,
+      centerXPercent: 15,
+      centerYPercent: 40,
+    })
+  })
+
   it('non-empty layers REPLACE the v1 mask (worker precedence — no double-burn)', () => {
     const projection = projectEffectivePreview({
       ...BASE_SOURCE,
@@ -238,5 +260,28 @@ describe('deadControls semantics mirror backend ownership branches', () => {
     // The helper never mutates or second-guesses backend ownership.
     expect(projection.text.lockedBottom).toBe(true)
     expect(projectEffectivePreview(BASE_SOURCE).overlays).toHaveLength(0)
+  })
+})
+
+describe('direct manipulation maps back to the existing render contract', () => {
+  it('snaps a dragged subtitle to the nearest position and bounded offset', () => {
+    expect(snapSubtitlePlacement(18)).toEqual({
+      position: 'TOP',
+      verticalOffsetPercent: 10,
+    })
+    expect(snapSubtitlePlacement(60)).toEqual({
+      position: 'CENTER',
+      verticalOffsetPercent: 10,
+    })
+    expect(snapSubtitlePlacement(95)).toEqual({
+      position: 'BOTTOM',
+      verticalOffsetPercent: 7,
+    })
+  })
+
+  it('snaps a dragged cover to the nearest supported semantic anchor', () => {
+    expect(snapLayerAnchor(9, 63, 'CENTER')).toBe('TOP')
+    expect(snapLayerAnchor(62, 63, 'TOP')).toBe('SUBTITLE')
+    expect(snapLayerAnchor(90, 63, 'CENTER')).toBe('BOTTOM')
   })
 })

@@ -31,12 +31,16 @@ type Props = {
    */
   showPreview?: boolean
   /**
-   * When true the "Keep original voice" action is offered (deselect →
-   * providerId/voiceId null). Create Job keeps this OFF: the backend always
-   * resolves a dubbed binding on create — original-only is achieved by
-   * deselecting later in Job Studio.
+   * When true a "Keep original voice" checkbox is offered. Checking it
+   * deselects the TTS binding and disables the provider/voice controls until
+   * the user unticks it.
    */
   allowOriginal?: boolean
+  /**
+   * Authoritative job state for the original-audio checkbox. When true, the
+   * selector starts with TTS controls disabled.
+   */
+  originalSelected?: boolean
   /**
    * When true the selector auto-selects the first compatible voice after a
    * provider switch and emits the complete pair through `onChange`. Create
@@ -51,6 +55,8 @@ type Props = {
    * Job Studio calls the authoritative API on this.
    */
   onChange: (selection: VoiceSelection) => void
+  /** Reports the explicit original-audio toggle independently of selection loading state. */
+  onOriginalChange?: (selected: boolean) => void
   /**
    * Transient notification that the previous selection is no longer valid —
    * emitted while a provider switch is in flight (voices loading) or the new
@@ -85,8 +91,10 @@ export function VoiceSelector({
   disabled,
   showPreview = false,
   allowOriginal = false,
+  originalSelected,
   autoSelect = false,
   onChange,
+  onOriginalChange,
   onPendingChange,
 }: Props) {
   const { t } = useTranslation(['media', 'common'])
@@ -117,20 +125,45 @@ export function VoiceSelector({
   )
   const [voiceId, setVoiceId] = useState<string | null>(null)
   const [pendingProviderId, setPendingProviderId] = useState<string | null>(null)
+  const [keepOriginal, setKeepOriginal] = useState(
+    allowOriginal
+    && (originalSelected ?? (selectedProviderId == null && selectedVoiceId == null)),
+  )
 
   // Re-sync external selection (job binding reload, create-flow default) into
   // local state — without clobbering a user in-flight choice.
   useEffect(() => {
+    if (!allowOriginal) {
+      setKeepOriginal(false)
+      return
+    }
+    if (
+      originalSelected === true
+      || (
+        originalSelected === undefined
+        && selectedProviderId == null
+        && selectedVoiceId == null
+      )
+    ) {
+      setKeepOriginal(true)
+      setProviderId(null)
+      setVoiceId(null)
+      setPendingProviderId(null)
+      return
+    }
+    if (originalSelected === false) {
+      setKeepOriginal(false)
+    }
     if (selectedProviderId != null && selectableProviders.some((p) => p.id === selectedProviderId)) {
       setProviderId(selectedProviderId)
     }
-  }, [selectedProviderId, selectableProviders])
+  }, [allowOriginal, originalSelected, selectedProviderId, selectedVoiceId, selectableProviders])
 
   useEffect(() => {
-    if (selectedVoiceId != null) {
+    if (selectedVoiceId != null && !keepOriginal) {
       setVoiceId(selectedVoiceId)
     }
-  }, [selectedVoiceId])
+  }, [selectedVoiceId, keepOriginal])
 
   const activeProviderId = pendingProviderId ?? providerId
   const voicesQuery = useTtsVoices(workspaceId, activeProviderId ?? undefined)
@@ -146,6 +179,7 @@ export function VoiceSelector({
   // autoSelect (Create), the first compatible voice is picked once voices
   // load and a committed pair is emitted through onChange.
   const handleProviderChange = (next: string) => {
+    setKeepOriginal(false)
     setPendingProviderId(next)
     setProviderId(null)
     setVoiceId(null)
@@ -186,6 +220,7 @@ export function VoiceSelector({
 
   const handleVoiceChange = (next: string) => {
     if (!providerId) return
+    setKeepOriginal(false)
     const value = next || null
     setVoiceId(value)
     // A user-picked voice always forms a committed pair.
@@ -193,6 +228,8 @@ export function VoiceSelector({
   }
 
   const handleOriginal = () => {
+    setKeepOriginal(true)
+    setPendingProviderId(null)
     setProviderId(null)
     setVoiceId(null)
     onChangeRef.current({ providerId: null, voiceId: null })
@@ -241,7 +278,7 @@ export function VoiceSelector({
               className="field-input mt-1 w-full"
               data-testid="voice-provider-select"
               value={providerId ?? ''}
-              disabled={disabled || loading || boundProviderMissing}
+              disabled={disabled || loading || boundProviderMissing || keepOriginal}
               onChange={(e) => handleProviderChange(e.target.value)}
             >
               {!providerId && <option value="">{t('media:voice.providerPlaceholder')}</option>}
@@ -271,7 +308,7 @@ export function VoiceSelector({
                 className="field-input mt-1 w-full"
                 data-testid="voice-voice-select"
                 value={voiceId ?? ''}
-                disabled={disabled || !providerId}
+                disabled={disabled || keepOriginal || !providerId}
                 onChange={(e) => handleVoiceChange(e.target.value)}
               >
                 {!voiceId && <option value="">{t('media:voice.voicePlaceholder')}</option>}
@@ -294,7 +331,7 @@ export function VoiceSelector({
               type="button"
               className="btn-media-secondary btn-sm h-[38px] px-3.5 inline-flex items-center justify-center gap-1.5 whitespace-nowrap w-full sm:w-auto"
               data-testid="voice-preview-button"
-              disabled={disabled || !providerId || !voiceId || preview.isPending}
+              disabled={disabled || keepOriginal || !providerId || !voiceId || preview.isPending}
               onClick={handlePreview}
             >
               {preview.isPending ? (
@@ -333,15 +370,26 @@ export function VoiceSelector({
       )}
 
       {allowOriginal && (
-        <button
-          type="button"
-          className="btn-media-secondary btn-sm mt-1"
-          data-testid="voice-keep-original"
-          disabled={disabled || (!providerId && !voiceId)}
-          onClick={handleOriginal}
-        >
-          {t('media:voice.original')}
-        </button>
+        <label className="audio-original-toggle">
+          <input
+            type="checkbox"
+            data-testid="voice-keep-original"
+            checked={keepOriginal}
+            disabled={disabled}
+            onChange={(event) => {
+              if (event.target.checked) {
+                handleOriginal()
+              } else {
+                setKeepOriginal(false)
+              }
+              onOriginalChange?.(event.target.checked)
+            }}
+          />
+          <span>
+            <strong>{t('media:voice.original')}</strong>
+            <small>{t('media:voice.originalHint')}</small>
+          </span>
+        </label>
       )}
     </div>
   )

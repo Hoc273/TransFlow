@@ -266,7 +266,9 @@ export type SubtitleTypographyOverride = {
   bold?: boolean | null
   /**
    * V2 outline override subset (docs/97 §19.17 §B) — ring width 0..8.
-   * Forbidden together with an effective background box (OUTLINE_BOX_CONFLICT).
+   * 2026-09 dual-event: also renders above the background box (Layer 1
+   * glyph outline over the Layer 0 yellow box); old workers are gated at
+   * claim (SUBTITLE_BOX_OUTLINE).
    */
   outlineWidth?: number | null
   /** V2 outline override subset — #RRGGBB ring colour. */
@@ -282,6 +284,10 @@ export type PresentationLayerGeometry = {
   widthPercent: number
   /** Semantic percent of the video height — 5..50. */
   heightPercent: number
+  /** Optional horizontal center in frame-percent space — 0..100. */
+  xPercent?: number | null
+  /** Optional vertical center in frame-percent space — 0..100; absent follows anchor. */
+  yPercent?: number | null
 }
 
 export type PresentationLayerType = 'SOLID' | 'BLUR'
@@ -457,9 +463,9 @@ export type TransformationPlanKind =
 
 export type CreateMediaJobBody = {
   documentId: string
-  /** Spring Boot backend required fields */
-  projectId?: string | null
-  rootAssetId?: string | null
+  projectId?: string
+  rootAssetId?: string
+  fileName?: string
   /**
    * Preferred UL field (CT4.4 prep). First-party FE always sends this;
    * BE soft dual still accepts processingMode-only until CT4.4 hard.
@@ -491,6 +497,8 @@ export type CreateMediaJobBody = {
    * Phase C — explicit TTS voice row id. Both or neither with ttsProviderId.
    */
   ttsVoiceId?: string | null
+  /** Explicitly skip TTS and keep the source audio. Defaults to false. */
+  keepOriginalAudio?: boolean
   /**
    * W0 additive — workflow mode (docs/17 Q-M-WORKFLOW-01, docs/16 §7.5).
    * Optional; absent resolves the recipe-derived default (summary.* → MANUAL,
@@ -499,6 +507,20 @@ export type CreateMediaJobBody = {
   workflowMode?: WorkflowMode | null
   /** W0 additive — frozen workflow preset reference (display only; W1 resolution). */
   workflowPresetId?: string | null
+  /** Direct backend presetId alias (UUID) */
+  presetId?: string | null
+  /** Backend audio output mode (ORIGINAL_ONLY | DUB_REPLACE | DUB_MIX) */
+  outputAudioMode?: string | null
+  /** Reframe aspect ratio */
+  aspectRatio?: string | null
+  /**
+   * Explicit opt-out of workflow preset default-resolution (create-form "no
+   * preset" choice). True skips default resolution entirely — no
+   * PROJECT/WORKSPACE/SYSTEM default applies and the job falls back to
+   * recipe-derived defaults. Absent/false keeps resolution. An explicit
+   * workflowPresetId always wins and ignores this flag.
+   */
+  skipPresetResolution?: boolean | null
   /** Optional flag to toggle VLM visual understanding for generative summary. */
   enableVlm?: boolean | null
 }

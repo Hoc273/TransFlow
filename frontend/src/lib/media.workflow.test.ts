@@ -5,11 +5,30 @@ import {
   isRedundantPhaseBadge,
   isRenderConfirmationRecipe,
   isReviewBlocked,
+  overallProgress,
   presetVoiceLangMismatchKey,
+  resolveEffectivePhase,
   resolveWorkflowMode,
 } from './media'
 import { ApiError } from '@/types/api'
-import type { MediaJob } from '@/types/media'
+import type { MediaJob, MediaJobStage } from '@/types/media'
+
+function stage(
+  stageName: MediaJobStage['stageName'],
+  stageOrder: number,
+  status: MediaJobStage['status'],
+  progressPercent = 0,
+): MediaJobStage {
+  return {
+    id: `stage-${stageOrder}`,
+    stageName,
+    stageOrder,
+    status,
+    progressPercent,
+    startedAt: null,
+    completedAt: null,
+  }
+}
 
 function job(partial: Partial<MediaJob>): MediaJob {
   return {
@@ -143,5 +162,93 @@ describe('presetVoiceLangMismatchKey — FE mapping for WORKFLOW_PRESET_VOICE_LA
     expect(presetVoiceLangMismatchKey(other)).toBeNull()
     expect(presetVoiceLangMismatchKey(new Error('boom'))).toBeNull()
     expect(presetVoiceLangMismatchKey(null)).toBeNull()
+  })
+})
+
+describe('resolveEffectivePhase', () => {
+  it('maps terminal statuses directly', () => {
+    expect(resolveEffectivePhase(job({ status: 'COMPLETED' }))).toBe('COMPLETED')
+    expect(resolveEffectivePhase(job({ status: 'FAILED' }))).toBe('FAILED')
+    expect(resolveEffectivePhase(job({ status: 'CANCELLED' }))).toBe('CANCELLED')
+  })
+
+  it('derives MATERIALIZING when TRANSLATE is processing even if domainPhase in DB is stale COMPOSING', () => {
+    const testJob = job({
+      status: 'PROCESSING',
+      domainPhase: 'COMPOSING', // stale
+      stages: [
+        stage('EXTRACT_AUDIO', 1, 'COMPLETED'),
+        stage('SOURCE_SEPARATION', 2, 'SKIPPED'),
+        stage('STT', 3, 'COMPLETED'),
+        stage('SUMMARIZE', 4, 'SKIPPED'),
+        stage('TRANSLATE', 5, 'PROCESSING'),
+        stage('TTS', 6, 'PENDING'),
+        stage('AUDIO_MIX', 7, 'PENDING'),
+        stage('RENDER', 8, 'PENDING'),
+      ],
+    })
+    expect(resolveEffectivePhase(testJob)).toBe('MATERIALIZING')
+  })
+
+  it('derives UNDERSTANDING when EXTRACT_AUDIO is active', () => {
+    const testJob = job({
+      status: 'PROCESSING',
+      stages: [
+        stage('EXTRACT_AUDIO', 1, 'PROCESSING'),
+        stage('RENDER', 8, 'PENDING'),
+      ],
+    })
+    expect(resolveEffectivePhase(testJob)).toBe('UNDERSTANDING')
+  })
+
+  it('derives COMPOSING when RENDER is active', () => {
+    const testJob = job({
+      status: 'PROCESSING',
+      stages: [
+        stage('EXTRACT_AUDIO', 1, 'COMPLETED'),
+        stage('RENDER', 8, 'PROCESSING'),
+      ],
+    })
+    expect(resolveEffectivePhase(testJob)).toBe('COMPOSING')
+  })
+})
+
+describe('overallProgress', () => {
+  it('returns 100 for COMPLETED jobs', () => {
+    expect(overallProgress(job({ status: 'COMPLETED' }))).toBe(100)
+  })
+
+  it('returns 0 for newly created job when all active stages are PENDING (ignoring SKIPPED stages)', () => {
+    const testJob = job({
+      status: 'PROCESSING',
+      stages: [
+        stage('EXTRACT_AUDIO', 1, 'PENDING'),
+        stage('SOURCE_SEPARATION', 2, 'SKIPPED'),
+        stage('STT', 3, 'PENDING'),
+        stage('SUMMARIZE', 4, 'SKIPPED'),
+        stage('TRANSLATE', 5, 'PENDING'),
+        stage('TTS', 6, 'PENDING'),
+        stage('AUDIO_MIX', 7, 'PENDING'),
+        stage('RENDER', 8, 'PENDING'),
+      ],
+    })
+    expect(overallProgress(testJob)).toBe(0)
+  })
+
+  it('calculates 33% when 2 out of 6 active stages are completed', () => {
+    const testJob = job({
+      status: 'PROCESSING',
+      stages: [
+        stage('EXTRACT_AUDIO', 1, 'COMPLETED'),
+        stage('SOURCE_SEPARATION', 2, 'SKIPPED'),
+        stage('STT', 3, 'COMPLETED'),
+        stage('SUMMARIZE', 4, 'SKIPPED'),
+        stage('TRANSLATE', 5, 'PROCESSING'),
+        stage('TTS', 6, 'PENDING'),
+        stage('AUDIO_MIX', 7, 'PENDING'),
+        stage('RENDER', 8, 'PENDING'),
+      ],
+    })
+    expect(overallProgress(testJob)).toBe(33)
   })
 })
