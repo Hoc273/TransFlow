@@ -107,7 +107,7 @@ public class ProjectServiceImpl implements ProjectService {
         project.setName(req.name().trim());
         project.setSourceLang(req.sourceLang() != null && !req.sourceLang().isBlank() ? req.sourceLang().trim() : "en");
         project.setDefaultGlossaryId(req.defaultGlossaryId());
-        project.setTmEnabled(req.tmEnabled() != null ? req.tmEnabled() : true);
+        project.setTmEnabled(req.tmEnabled() == null || req.tmEnabled());
         project.setDomain(req.domain() != null && !req.domain().isBlank() ? req.domain().trim() : null);
         project.setTone(req.tone() != null && !req.tone().isBlank() ? req.tone().trim() : null);
         return ProjectResponse.from(projectRepository.save(project));
