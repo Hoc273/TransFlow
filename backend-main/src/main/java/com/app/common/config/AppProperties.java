@@ -100,7 +100,13 @@ public record AppProperties(
         }
     }
 
-    public record Storage(String endpoint, String accessKey, String secretKey, String mediaBucket) {
+    /**
+     * {@code publicEndpoint}: address the browser uses to reach object storage; presigned URLs are signed
+     * against it (the signature covers the host). Blank = same as {@code endpoint}.
+     */
+    public record Storage(String endpoint, String accessKey, String secretKey, String mediaBucket,
+                          int presignedTtlSeconds, String publicEndpoint) {
+        @org.springframework.boot.context.properties.bind.ConstructorBinding
         public Storage {
             if (endpoint == null || endpoint.isBlank()) {
                 endpoint = "http://localhost:9000";
@@ -108,6 +114,13 @@ public record AppProperties(
             if (mediaBucket == null || mediaBucket.isBlank()) {
                 mediaBucket = "transflow-media";
             }
+            if (presignedTtlSeconds <= 0) {
+                presignedTtlSeconds = 3600;
+            }
+        }
+
+        public Storage(String endpoint, String accessKey, String secretKey, String mediaBucket) {
+            this(endpoint, accessKey, secretKey, mediaBucket, 0, null);
         }
     }
 

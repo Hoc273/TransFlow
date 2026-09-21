@@ -3,6 +3,7 @@ package com.app.modules.media_job.controller;
 import com.app.common.dto.ApiResponse;
 import com.app.common.security.AuthenticatedUser;
 import com.app.modules.media_job.dto.CreateMediaJobRequest;
+import com.app.modules.media_job.dto.MediaExportResponse;
 import com.app.modules.media_job.dto.MediaJobResponse;
 import com.app.modules.media_job.dto.MediaJobStageResponse;
 import com.app.modules.media_job.dto.PatchSubtitleRequest;
@@ -11,6 +12,7 @@ import com.app.modules.media_job.dto.VoiceRequest;
 import com.app.modules.media_job.entity.Checkpoint;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
+import com.app.modules.media_job.service.MediaExportService;
 import com.app.modules.media_job.service.MediaJobService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -22,17 +24,18 @@ import java.util.UUID;
 
 /**
  * Media Job orchestrator — Localization + Summarization (API_Contract.md §5).
- * Proposal/refine/summary-languages endpoints (§5.1) belong to the summarization module;
- * export (§5, last row) needs the qa module's blocking-issue gate — both out of this module's scope.
+ * Proposal/refine/summary-languages endpoints (§5.1) belong to the summarization module.
  */
 @RestController
 @RequestMapping("/api/workspaces/{workspaceId}")
 public class MediaJobController {
 
     private final MediaJobService jobService;
+    private final MediaExportService exportService;
 
-    public MediaJobController(MediaJobService jobService) {
+    public MediaJobController(MediaJobService jobService, MediaExportService exportService) {
         this.jobService = jobService;
+        this.exportService = exportService;
     }
 
     @PostMapping("/media/jobs")
@@ -117,6 +120,15 @@ public class MediaJobController {
                                                                 @RequestBody PatchSubtitleRequest request) {
         var segment = jobService.patchSubtitle(workspaceId, user.id(), jobId, segmentId, request);
         return ApiResponse.<SubtitleSegmentResponse>builder().data(SubtitleSegmentResponse.from(segment)).build();
+    }
+
+    @GetMapping("/media/jobs/{jobId}/export")
+    public ApiResponse<MediaExportResponse> exportJob(@AuthenticationPrincipal AuthenticatedUser user,
+                                                       @PathVariable UUID workspaceId,
+                                                       @PathVariable UUID jobId,
+                                                       @RequestParam(defaultValue = "VIDEO") String format) {
+        return ApiResponse.<MediaExportResponse>builder()
+                .data(exportService.export(workspaceId, user.id(), jobId, format)).build();
     }
 
     private MediaJobResponse toResponse(MediaJob job) {

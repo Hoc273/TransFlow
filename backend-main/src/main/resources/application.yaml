@@ -89,6 +89,8 @@ app:
     access-key: ${MEDIA_STORAGE_ACCESS_KEY:minioadmin}
     secret-key: ${MEDIA_STORAGE_SECRET_KEY:minioadmin}
     media-bucket: ${MEDIA_STORAGE_BUCKET:transflow-media}
+    presigned-ttl-seconds: ${MEDIA_STORAGE_PRESIGNED_TTL_SECONDS:3600}
+    public-endpoint: ${MEDIA_STORAGE_PUBLIC_ENDPOINT:}
   media-worker:
     hmac-secret: ${MEDIA_WORKER_HMAC_SECRET:}
   crypto:
