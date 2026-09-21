@@ -643,6 +643,118 @@ class MediaJobControllerTest {
         }
     }
 
+    // ---- render-config ----
+
+    private String renderUrl(Lead lead, UUID jobId, String suffix) {
+        return "/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId + "/" + suffix;
+    }
+
+    private void putRenderConfig(Lead lead, UUID jobId, String json, int expectedStatus) throws Exception {
+        mockMvc.perform(put(renderUrl(lead, jobId, "render-config"))
+                        .header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON).content(json))
+                .andExpect(status().is(expectedStatus));
+    }
+
+    @Test
+    void renderConfig_unconfiguredJob_returnsDefaults() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-rc-default@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+
+        mockMvc.perform(get(renderUrl(lead, jobId, "render-config"))
+                        .header("Authorization", "Bearer " + lead.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.subtitlePosition").value("BOTTOM"))
+                .andExpect(jsonPath("$.data.verticalOffsetPercent").value(0))
+                .andExpect(jsonPath("$.data.backgroundBox").value(false))
+                .andExpect(jsonPath("$.data.outputAspectRatio").value("ORIGINAL"))
+                .andExpect(jsonPath("$.data.confirmed").value(false))
+                .andExpect(jsonPath("$.data.effective.resolvedLinePercent").value(88));
+    }
+
+    @Test
+    void renderConfig_partialPut_keepsOtherFields_andStalesFinishedRender() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-rc-put@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        var render = mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.RENDER).orElseThrow();
+        render.setStatus(MediaJobStage.StageStatus.COMPLETED);
+        mediaJobStageRepository.save(render);
+
+        putRenderConfig(lead, jobId, "{\"outputAspectRatio\":\"9:16\",\"presentation\":{\"subtitle\":{\"layers\":["
+                + "{\"layerType\":\"COVER_BOX\",\"xPercent\":10,\"yPercent\":80,\"widthPercent\":50,\"heightPercent\":10,"
+                + "\"colorHex\":\"#000000\",\"opacity\":0.8}]},\"audio\":{\"ducking\":{\"enabled\":true,\"gainDb\":-12}}}}", 200);
+        putRenderConfig(lead, jobId, "{\"subtitlePosition\":\"TOP\",\"verticalOffsetPercent\":5}", 200);
+
+        mockMvc.perform(get(renderUrl(lead, jobId, "render-config"))
+                        .header("Authorization", "Bearer " + lead.accessToken()))
+                .andExpect(jsonPath("$.data.outputAspectRatio").value("9:16")) // kept from 1st PUT
+                .andExpect(jsonPath("$.data.subtitlePosition").value("TOP"))
+                .andExpect(jsonPath("$.data.presentation.subtitle.layers.length()").value(1))
+                .andExpect(jsonPath("$.data.presentation.audio.ducking.gainDb").value(-12.0))
+                .andExpect(jsonPath("$.data.effective.resolvedLinePercent").value(15));
+        assertEquals(MediaJobStage.StageStatus.STALE,
+                mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.RENDER).orElseThrow().getStatus());
+    }
+
+    @Test
+    void renderConfig_invalidValues_return400() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-rc-invalid@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+
+        putRenderConfig(lead, jobId, "{\"outputAspectRatio\":\"21:9\"}", 400);
+        putRenderConfig(lead, jobId, "{\"subtitleMode\":\"BURNED\"}", 400);
+        putRenderConfig(lead, jobId, "{\"verticalOffsetPercent\":31}", 400);
+        putRenderConfig(lead, jobId, "{\"backgroundColor\":\"#000000\"}", 400); // needs #RRGGBBAA
+        putRenderConfig(lead, jobId, "{\"presentation\":{\"subtitle\":{\"layers\":[{\"layerType\":\"COVER_BOX\","
+                + "\"xPercent\":10,\"yPercent\":80,\"widthPercent\":5,\"heightPercent\":10}]}}}", 400); // width < 20
+    }
+
+    @Test
+    void rerunRender_requiresEarlierStagesDone_thenResetsRender() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-rc-rerun@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        String url = renderUrl(lead, jobId, "rerun-render");
+
+        mockMvc.perform(post(url).header("Authorization", "Bearer " + lead.accessToken()))
+                .andExpect(status().isConflict());
+
+        for (var st : mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId)) {
+            if (st.getStageName() != MediaJobStage.StageName.RENDER) {
+                st.setStatus(MediaJobStage.StageStatus.COMPLETED);
+                mediaJobStageRepository.save(st);
+            }
+        }
+        mockMvc.perform(post(url).header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"outputAspectRatio\":\"1:1\"}"))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get(renderUrl(lead, jobId, "render-config"))
+                        .header("Authorization", "Bearer " + lead.accessToken()))
+                .andExpect(jsonPath("$.data.outputAspectRatio").value("1:1"));
+    }
+
+    @Test
+    void renderConfig_memberOnOthersJobAndClient_forbiddenToWrite_clientCanRead() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-rc-rbac@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        RegisteredUser member = registerPlainUser("member-rc-rbac@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), member.userId(), Role.MEMBER);
+        addProjectMember(lead.projectId(), member.userId(), lead.userId());
+        RegisteredUser client = registerPlainUser("client-rc-rbac@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), client.userId(), Role.CLIENT);
+        addProjectMember(lead.projectId(), client.userId(), lead.userId());
+
+        for (String token : new String[]{member.accessToken(), client.accessToken()}) {
+            mockMvc.perform(put(renderUrl(lead, jobId, "render-config")).header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"subtitlePosition\":\"TOP\"}"))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(post(renderUrl(lead, jobId, "rerun-render")).header("Authorization", "Bearer " + token))
+                    .andExpect(status().isForbidden());
+        }
+        mockMvc.perform(get(renderUrl(lead, jobId, "render-config")).header("Authorization", "Bearer " + client.accessToken()))
+                .andExpect(status().isOk());
+    }
+
     @Test
     void listSubtitles_asClient_isAllowedReadOnly() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-subtitle-client@transflow.com");

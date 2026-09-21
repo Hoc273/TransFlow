@@ -113,7 +113,19 @@ Mỗi nhánh = 1 PR nhỏ.
 
 ---
 
-## 3. Cấu hình dựng hình — `/render-config`
+## 3. Cấu hình dựng hình — `/render-config` — ✅ CODE + TEST + CURL THẬT XONG (2026-09-21), chưa commit
+
+> Đã làm: `GET/PUT render-config`, `POST rerun-render` (202), `MediaRenderConfigService`, DTO ở `media_job.dto.render`.
+> **Lệch so với kế hoạch (dev đã duyệt):** `media_jobs` KHÔNG có sẵn cột `render_config` (chỉ `media_presets` có) → thêm
+> **migration `V7__media_jobs_render_config.sql`** + cập nhật `Database_Design.md`; `effective` rút gọn (`ownedByStyle=false`,
+> `deadControls=[]` cho tới khi làm mục 4); màu/aspect chỉ thay được, chưa xoá về unset (không tri-state).
+> `rerun-render` tái dùng `rerunFromStage(RENDER)` nên stage trước RENDER phải COMPLETED/SKIPPED (kể cả TTS `STALE` → 409, phải rerun từ TTS).
+> **Mục 5 (worker) — còn thiếu:** mini chưa nối worker/queue dispatch nên chưa có payload để đối chiếu. Worker hiện hỗ trợ
+> `outputAspectRatio` và layer `SOLID|BLUR` (tối đa **4** layer, geometry/style riêng) + mix ducking; **chưa** có `COVER_BOX/IMAGE/WATERMARK`
+> (API nhận tối đa 10 layer) → khi nối dispatch cần map COVER_BOX→SOLID, và chốt IMAGE/WATERMARK + giới hạn 4 vs 10.
+> 315 test xanh (5 test mới); curl thật Postgres: GET mặc định, PUT 2 layer + ducking, PUT một phần giữ field cũ, giá trị sai → 400,
+> MEMBER/CLIENT ghi → 403, rerun-render thiếu stage trước → 409 (không lưu config) / đủ → 202 + RENDER PENDING, không token → 401.
+> Chưa kiểm chứng: `sourceVideoUrl` với file thật (asset seed là `b/k`, ký lỗi → null), render video thực tế.
 
 - **Nhánh:** `feature/media-job-render-config`
 - **Endpoint (theo plan v2 — Render Studio v2):**
@@ -337,7 +349,7 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 |---|---|:-:|:-:|:-:|:-:|:-----------:|
 | 1 | `feature/media-job-export` | [x] | [x] | [x] | [x] |     [x]     |
 | 2 | `feature/media-job-segments-batch-edit` | [x] | [x] | [x] | [x] |     [ ]     |
-| 3 | `feature/media-job-render-config` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 3 | `feature/media-job-render-config` | [x] | [x] | [x] | [x] |     [ ]     |
 | 4 | `feature/media-subtitle-styles` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 5 | `feature/media-library-bulk-download` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 6 | `feature/media-job-override-source-lang` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
