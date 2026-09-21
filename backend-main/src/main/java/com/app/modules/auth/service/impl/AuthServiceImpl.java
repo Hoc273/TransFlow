@@ -23,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.app.modules.auth.service.ForgotPasswordOtpStore;
 import com.app.modules.auth.service.RegisterOtpStore;
+import com.app.modules.auth.service.email.EmailService;
+import com.app.modules.auth.service.email.OtpType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,6 +47,7 @@ public class AuthServiceImpl implements AuthService {
     private final AppProperties appProperties;
     private final ForgotPasswordOtpStore otpStore;
     private final RegisterOtpStore registerOtpStore;
+    private final EmailService emailService;
 
     public AuthServiceImpl(UserRepository userRepository,
                            WorkspaceService workspaceService,
@@ -54,7 +57,8 @@ public class AuthServiceImpl implements AuthService {
                            JwtService jwtService,
                            AppProperties appProperties,
                            ForgotPasswordOtpStore otpStore,
-                           RegisterOtpStore registerOtpStore) {
+                           RegisterOtpStore registerOtpStore,
+                           EmailService emailService) {
         this.userRepository = userRepository;
         this.workspaceService = workspaceService;
         this.projectService = projectService;
@@ -64,6 +68,7 @@ public class AuthServiceImpl implements AuthService {
         this.appProperties = appProperties;
         this.otpStore = otpStore;
         this.registerOtpStore = registerOtpStore;
+        this.emailService = emailService;
     }
 
     @Override
@@ -111,6 +116,7 @@ public class AuthServiceImpl implements AuthService {
         String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
         registerOtpStore.saveOtp(email, otp);
         log.info("Generated register verification OTP for email [{}]: {}", email, otp);
+        emailService.sendOtpEmail(email, otp, OtpType.REGISTER);
 
         return new OtpMessageResponse("Mã xác thực OTP 6 chữ số đã được gửi đến email " + email);
     }
@@ -252,6 +258,7 @@ public class AuthServiceImpl implements AuthService {
         String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
         otpStore.saveOtp(email, otp);
         log.info("Generated forgot password OTP for email [{}]: {}", email, otp);
+        emailService.sendOtpEmail(email, otp, OtpType.FORGOT_PASSWORD);
 
         return new OtpMessageResponse("Mã xác thực OTP 6 chữ số đã được gửi đến email " + email);
     }
