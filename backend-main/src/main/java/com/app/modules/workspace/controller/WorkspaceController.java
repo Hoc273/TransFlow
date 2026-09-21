@@ -54,7 +54,7 @@ public class WorkspaceController {
                 .build();
     }
 
-    @PostMapping("/{workspaceId}/members")
+    @PostMapping(path = {"/{workspaceId}/members", "/{workspaceId}/members/invite"})
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<WorkspaceMemberResponse> addMember(@AuthenticationPrincipal AuthenticatedUser user,
                                                           @PathVariable UUID workspaceId,
