@@ -79,14 +79,8 @@ public class AuthServiceImpl implements AuthService {
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
-        if (registerOtpStore.hasOtp(email)) {
-            if (req.otp() == null || req.otp().isBlank()) {
-                throw new AppException(ErrorCode.OTP_REQUIRED);
-            }
-            if (!registerOtpStore.verifyAndConsumeOtp(email, req.otp())) {
-                throw new AppException(ErrorCode.INVALID_OTP);
-            }
-        } else if (req.otp() != null && !req.otp().isBlank()) {
+        // OTP verification is optional (only validate if an OTP code is explicitly supplied)
+        if (req.otp() != null && !req.otp().isBlank()) {
             if (!registerOtpStore.verifyAndConsumeOtp(email, req.otp())) {
                 throw new AppException(ErrorCode.INVALID_OTP);
             }

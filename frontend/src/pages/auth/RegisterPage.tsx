@@ -1,7 +1,7 @@
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { IconMail, IconLock, IconEye, IconEyeOff, IconUser, IconShieldCheck } from '@tabler/icons-react'
+import { IconMail, IconLock, IconEye, IconEyeOff, IconUser } from '@tabler/icons-react'
 import { AuthLayout } from '@/components/auth/AuthLayout'
 import { FormField } from '@/components/auth/FormField'
 import { GoogleButton } from '@/components/auth/GoogleButton'
@@ -9,7 +9,6 @@ import { AuthBanner } from '@/components/auth/AuthBanner'
 import { PasswordStrength } from '@/components/auth/PasswordStrength'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useRegister } from '@/hooks/useAuth'
-import { sendRegisterOtpApi } from '@/api/auth'
 import { isValidEmail } from '@/lib/validation'
 import { cn } from '@/lib/cn'
 import { ApiError } from '@/types/api'
@@ -22,56 +21,12 @@ export function RegisterPage() {
 
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
-  const [otp, setOtp] = useState('')
   const [password, setPassword] = useState('')
   const [agree, setAgree] = useState(false)
   const [showPw, setShowPw] = useState(false)
 
-  const [isSendingOtp, setIsSendingOtp] = useState(false)
-  const [cooldown, setCooldown] = useState(0)
-
-  const [errors, setErrors] = useState<{ fullName?: string; email?: string; otp?: string; password?: string }>({})
+  const [errors, setErrors] = useState<{ fullName?: string; email?: string; password?: string }>({})
   const [banner, setBanner] = useState<{ variant: 'error' | 'info' | 'success'; message: string } | null>(null)
-
-  useEffect(() => {
-    if (cooldown <= 0) return
-    const timer = setInterval(() => {
-      setCooldown((prev) => (prev > 1 ? prev - 1 : 0))
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [cooldown])
-
-  const handleSendOtp = async () => {
-    setBanner(null)
-    const cleanEmail = email.trim()
-    if (!cleanEmail) {
-      setErrors((prev) => ({ ...prev, email: t('auth:error.emailRequired') }))
-      return
-    }
-    if (!isValidEmail(cleanEmail)) {
-      setErrors((prev) => ({ ...prev, email: t('auth:error.emailInvalid') }))
-      return
-    }
-
-    setErrors((prev) => ({ ...prev, email: undefined }))
-    setIsSendingOtp(true)
-    try {
-      const res = await sendRegisterOtpApi(cleanEmail)
-      setCooldown(60)
-      setBanner({ variant: 'success', message: res.message || t('auth:register.otpSentSuccess') })
-    } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.fieldErrors?.email) {
-          setErrors((prev) => ({ ...prev, email: err.fieldErrors!.email }))
-        }
-        setBanner({ variant: 'error', message: err.message || t('auth:error.registerFailed') })
-      } else {
-        setBanner({ variant: 'error', message: t('auth:error.registerFailed') })
-      }
-    } finally {
-      setIsSendingOtp(false)
-    }
-  }
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -81,13 +36,6 @@ export function RegisterPage() {
     if (!fullName.trim()) next.fullName = t('auth:error.nameRequired')
     if (!email.trim()) next.email = t('auth:error.emailRequired')
     else if (!isValidEmail(email.trim())) next.email = t('auth:error.emailInvalid')
-
-    const cleanOtp = otp.trim()
-    if (!cleanOtp) {
-      next.otp = t('auth:register.errorOtpRequired')
-    } else if (cleanOtp.length !== 6) {
-      next.otp = t('auth:register.errorOtpInvalid')
-    }
 
     if (!password || password.length < 8) next.password = t('auth:error.passwordWeak')
 
@@ -100,12 +48,11 @@ export function RegisterPage() {
     if (Object.keys(next).length > 0 || !agree) return
 
     register.mutate(
-      { email: email.trim(), password, fullName: fullName.trim(), otp: cleanOtp },
+      { email: email.trim(), password, fullName: fullName.trim() },
       {
         onError: (err) => {
           if (err instanceof ApiError) {
             if (err.fieldErrors?.email) setErrors((e) => ({ ...e, email: err.fieldErrors!.email }))
-            if (err.fieldErrors?.otp) setErrors((e) => ({ ...e, otp: err.fieldErrors!.otp }))
             if (err.fieldErrors?.password)
               setErrors((e) => ({ ...e, password: err.fieldErrors!.password }))
             if (err.fieldErrors?.fullName)
@@ -181,35 +128,6 @@ export function RegisterPage() {
           onChange={(e) => setEmail(e.target.value)}
           error={errors.email}
           leftIcon={<IconMail size={17} />}
-          rightSlot={
-            <button
-              type="button"
-              disabled={isSendingOtp || cooldown > 0}
-              onClick={handleSendOtp}
-              className="cursor-pointer select-none rounded-[7px] border border-[var(--color-border-strong)] bg-[var(--color-bg-surface-2)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-accent)] transition-all hover:bg-[var(--color-bg-surface-3)] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSendingOtp
-                ? t('auth:register.otpSending')
-                : cooldown > 0
-                ? t('auth:register.resendOtp', { seconds: cooldown })
-                : t('auth:register.sendOtp')}
-            </button>
-          }
-        />
-
-        <FormField
-          label={t('auth:register.otpLabel')}
-          type="text"
-          name="otp"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          maxLength={6}
-          autoComplete="one-time-code"
-          placeholder={t('auth:register.otpPlaceholder')}
-          value={otp}
-          onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          error={errors.otp}
-          leftIcon={<IconShieldCheck size={17} />}
         />
 
         <FormField
