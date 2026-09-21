@@ -90,6 +90,11 @@ public class MediaJob extends BaseEntity {
     @Column(name = "preset_snapshot", nullable = false)
     private String presetSnapshot = "{}";
 
+    /** Render Studio config (merged {@code UpdateRenderConfigRequest} JSON); {@code {}} = nothing configured yet. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "render_config", nullable = false)
+    private String renderConfig = "{}";
+
     @Enumerated(EnumType.STRING)
     @Column(name = "workflow_mode", nullable = false, length = 20)
     private WorkflowMode workflowMode = WorkflowMode.MANUAL;

@@ -9,12 +9,15 @@ import com.app.modules.media_job.dto.MediaJobResponse;
 import com.app.modules.media_job.dto.MediaJobStageResponse;
 import com.app.modules.media_job.dto.PatchSubtitleRequest;
 import com.app.modules.media_job.dto.SubtitleSegmentResponse;
+import com.app.modules.media_job.dto.render.RenderConfigResponse;
+import com.app.modules.media_job.dto.render.UpdateRenderConfigRequest;
 import com.app.modules.media_job.dto.VoiceRequest;
 import com.app.modules.media_job.entity.Checkpoint;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.service.MediaExportService;
 import com.app.modules.media_job.service.MediaJobService;
+import com.app.modules.media_job.service.MediaRenderConfigService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -33,10 +36,13 @@ public class MediaJobController {
 
     private final MediaJobService jobService;
     private final MediaExportService exportService;
+    private final MediaRenderConfigService renderConfigService;
 
-    public MediaJobController(MediaJobService jobService, MediaExportService exportService) {
+    public MediaJobController(MediaJobService jobService, MediaExportService exportService,
+                              MediaRenderConfigService renderConfigService) {
         this.jobService = jobService;
         this.exportService = exportService;
+        this.renderConfigService = renderConfigService;
     }
 
     @PostMapping("/media/jobs")
@@ -131,6 +137,33 @@ public class MediaJobController {
         List<SubtitleSegmentResponse> segments = jobService.batchUpdateSubtitles(workspaceId, user.id(), jobId, request)
                 .stream().map(SubtitleSegmentResponse::from).toList();
         return ApiResponse.<List<SubtitleSegmentResponse>>builder().data(segments).build();
+    }
+
+    @GetMapping("/media/jobs/{jobId}/render-config")
+    public ApiResponse<RenderConfigResponse> getRenderConfig(@AuthenticationPrincipal AuthenticatedUser user,
+                                                               @PathVariable UUID workspaceId,
+                                                               @PathVariable UUID jobId) {
+        return ApiResponse.<RenderConfigResponse>builder()
+                .data(renderConfigService.get(workspaceId, user.id(), jobId)).build();
+    }
+
+    @PutMapping("/media/jobs/{jobId}/render-config")
+    public ApiResponse<RenderConfigResponse> updateRenderConfig(@AuthenticationPrincipal AuthenticatedUser user,
+                                                                  @PathVariable UUID workspaceId,
+                                                                  @PathVariable UUID jobId,
+                                                                  @Valid @RequestBody UpdateRenderConfigRequest request) {
+        return ApiResponse.<RenderConfigResponse>builder()
+                .data(renderConfigService.update(workspaceId, user.id(), jobId, request)).build();
+    }
+
+    @PostMapping("/media/jobs/{jobId}/rerun-render")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ApiResponse<MediaJobResponse> rerunRender(@AuthenticationPrincipal AuthenticatedUser user,
+                                                       @PathVariable UUID workspaceId,
+                                                       @PathVariable UUID jobId,
+                                                       @Valid @RequestBody(required = false) UpdateRenderConfigRequest request) {
+        MediaJob job = renderConfigService.rerunRender(workspaceId, user.id(), jobId, request);
+        return ApiResponse.<MediaJobResponse>builder().data(toResponse(job)).build();
     }
 
     @GetMapping("/media/jobs/{jobId}/export")
