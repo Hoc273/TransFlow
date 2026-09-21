@@ -26,7 +26,7 @@ export async function createWorkspaceApi(body: CreateWorkspaceRequest): Promise<
   return normalizeWorkspace(data)
 }
 
-export type CostMode = 'WORKSPACE_OWNER' | 'INDIVIDUAL_USER'
+export type CostMode = 'LEAD_PAYS_ALL' | 'PAY_PER_USER'
 
 export type WorkspaceBillingConfig = {
   costMode: CostMode
