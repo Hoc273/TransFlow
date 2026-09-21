@@ -2,6 +2,7 @@ package com.app.modules.media_job.controller;
 
 import com.app.common.dto.ApiResponse;
 import com.app.common.security.AuthenticatedUser;
+import com.app.modules.media_job.dto.BatchEditSegmentsRequest;
 import com.app.modules.media_job.dto.CreateMediaJobRequest;
 import com.app.modules.media_job.dto.MediaExportResponse;
 import com.app.modules.media_job.dto.MediaJobResponse;
@@ -120,6 +121,16 @@ public class MediaJobController {
                                                                 @RequestBody PatchSubtitleRequest request) {
         var segment = jobService.patchSubtitle(workspaceId, user.id(), jobId, segmentId, request);
         return ApiResponse.<SubtitleSegmentResponse>builder().data(SubtitleSegmentResponse.from(segment)).build();
+    }
+
+    @PutMapping("/media/jobs/{jobId}/segments/batch")
+    public ApiResponse<List<SubtitleSegmentResponse>> batchUpdateSubtitles(@AuthenticationPrincipal AuthenticatedUser user,
+                                                                             @PathVariable UUID workspaceId,
+                                                                             @PathVariable UUID jobId,
+                                                                             @Valid @RequestBody BatchEditSegmentsRequest request) {
+        List<SubtitleSegmentResponse> segments = jobService.batchUpdateSubtitles(workspaceId, user.id(), jobId, request)
+                .stream().map(SubtitleSegmentResponse::from).toList();
+        return ApiResponse.<List<SubtitleSegmentResponse>>builder().data(segments).build();
     }
 
     @GetMapping("/media/jobs/{jobId}/export")

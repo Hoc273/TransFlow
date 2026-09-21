@@ -91,6 +91,8 @@ app:
     media-bucket: ${MEDIA_STORAGE_BUCKET:transflow-media}
     presigned-ttl-seconds: ${MEDIA_STORAGE_PRESIGNED_TTL_SECONDS:3600}
     public-endpoint: ${MEDIA_STORAGE_PUBLIC_ENDPOINT:}
+  media-job:
+    max-batch-subtitle-updates: ${MEDIA_MAX_BATCH_SUBTITLE_UPDATES:200}
   media-worker:
     hmac-secret: ${MEDIA_WORKER_HMAC_SECRET:}
   crypto:

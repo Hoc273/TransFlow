@@ -1,5 +1,6 @@
 package com.app.modules.media_job.service;
 
+import com.app.modules.media_job.dto.BatchEditSegmentsRequest;
 import com.app.modules.media_job.dto.CreateMediaJobRequest;
 import com.app.modules.media_job.dto.PatchSubtitleRequest;
 import com.app.modules.media_job.entity.Checkpoint;
@@ -41,6 +42,9 @@ public interface MediaJobService {
     List<SubtitleSegment> listSubtitles(UUID workspaceId, UUID userId, UUID jobId);
 
     SubtitleSegment patchSubtitle(UUID workspaceId, UUID userId, UUID jobId, UUID segmentId, PatchSubtitleRequest request);
+
+    /** All-or-nothing edit of many segments in one transaction; result is in request order. */
+    List<SubtitleSegment> batchUpdateSubtitles(UUID workspaceId, UUID userId, UUID jobId, BatchEditSegmentsRequest request);
 
     /**
      * Sets {@code media_jobs.selected_proposal_id} (owned by this module). Rejects switching away from

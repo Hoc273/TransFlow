@@ -5,6 +5,7 @@ import com.app.common.exception.ErrorCode;
 import com.app.modules.credit.service.CreditService;
 import com.app.modules.media_asset.entity.MediaAsset;
 import com.app.modules.media_asset.service.MediaAssetService;
+import com.app.modules.media_job.dto.BatchEditSegmentsRequest;
 import com.app.modules.media_job.dto.CreateMediaJobRequest;
 import com.app.modules.media_job.dto.PatchSubtitleRequest;
 import com.app.modules.media_job.entity.Checkpoint;
@@ -20,12 +21,18 @@ import com.app.modules.preset.service.PresetResolverService;
 import com.app.modules.provider.service.ProviderResolverService;
 import com.app.modules.workspace.entity.Role;
 import com.app.modules.workspace.service.WorkspaceAccessService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class MediaJobServiceImpl implements MediaJobService {
@@ -39,6 +46,10 @@ public class MediaJobServiceImpl implements MediaJobService {
     private final PresetResolverService presetResolver;
     private final ProviderResolverService providerResolver;
     private final NotificationService notification;
+
+    // field-injected (not via constructor) so unit tests keep the default
+    @Value("${app.media-job.max-batch-subtitle-updates:200}")
+    private int maxBatchUpdates = 200;
 
     public MediaJobServiceImpl(MediaJobRepository mediaJobRepository,
                                 MediaJobStageRepository mediaJobStageRepository,
@@ -383,22 +394,68 @@ public class MediaJobServiceImpl implements MediaJobService {
     @Transactional
     public SubtitleSegment patchSubtitle(UUID workspaceId, UUID userId, UUID jobId, UUID segmentId,
                                           PatchSubtitleRequest request) {
-        MediaJob job = requireJobInWorkspace(workspaceId, jobId);
-        access.requireProjectWriteAccess(workspaceId, userId, job.getProjectId());
+        MediaJob job = lockJobForEdit(workspaceId, userId, jobId);
         SubtitleSegment segment = subtitleSegmentRepository.findByIdAndMediaJobId(segmentId, jobId)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+        applyEdit(segment, request.targetText(), request.startMs(), request.endMs());
+        staleDownstreamStages(workspaceId, job);
+        return segment;
+    }
 
-        if (request.targetText() != null) {
-            segment.setTargetText(request.targetText());
-        }
-        if (request.startMs() != null) {
-            segment.setStartMs(request.startMs());
-        }
-        if (request.endMs() != null) {
-            segment.setEndMs(request.endMs());
-        }
-        segment = subtitleSegmentRepository.save(segment);
+    @Override
+    @Transactional
+    public List<SubtitleSegment> batchUpdateSubtitles(UUID workspaceId, UUID userId, UUID jobId,
+                                                       BatchEditSegmentsRequest request) {
+        MediaJob job = lockJobForEdit(workspaceId, userId, jobId);
 
+        List<BatchEditSegmentsRequest.Item> updates = request.updates();
+        if (updates.size() > maxBatchUpdates) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
+        Set<UUID> ids = updates.stream().map(BatchEditSegmentsRequest.Item::segmentId).collect(Collectors.toSet());
+        if (ids.size() != updates.size()) { // duplicate segmentId
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
+        Map<UUID, SubtitleSegment> byId = subtitleSegmentRepository.findByIdInAndMediaJobId(ids, jobId).stream()
+                .collect(Collectors.toMap(SubtitleSegment::getId, Function.identity()));
+        if (byId.size() != ids.size()) { // segment of another job / unknown
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        List<SubtitleSegment> result = new ArrayList<>(updates.size());
+        for (BatchEditSegmentsRequest.Item item : updates) {
+            result.add(applyEdit(byId.get(item.segmentId()), item.targetText(), item.startMs(), item.endMs()));
+        }
+        staleDownstreamStages(workspaceId, job);
+        return result;
+    }
+
+    /** Locks the job row (FOR UPDATE) and enforces job ownership: LEAD any job, MEMBER own job, CLIENT denied. */
+    private MediaJob lockJobForEdit(UUID workspaceId, UUID userId, UUID jobId) {
+        MediaJob job = mediaJobRepository.findWithLockById(jobId)
+                .filter(j -> j.getWorkspaceId().equals(workspaceId))
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+        requireJobOwnership(workspaceId, userId, job);
+        return job;
+    }
+
+    /** Null field = keep current value; validates the merged time range. */
+    private SubtitleSegment applyEdit(SubtitleSegment segment, String targetText, Long startMs, Long endMs) {
+        long start = startMs != null ? startMs : segment.getStartMs();
+        long end = endMs != null ? endMs : segment.getEndMs();
+        if (start < 0 || start >= end) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
+        if (targetText != null) {
+            segment.setTargetText(targetText);
+        }
+        segment.setStartMs(start);
+        segment.setEndMs(end);
+        return subtitleSegmentRepository.save(segment);
+    }
+
+    private void staleDownstreamStages(UUID workspaceId, MediaJob job) {
+        UUID jobId = job.getId();
         // SRS §5.3 — editing subtitles after TTS/RENDER has produced output marks the
         // downstream stages STALE instead of silently re-running (avoids surprise Credit spend).
         List<MediaJobStage> stages = mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId);
@@ -420,7 +477,6 @@ public class MediaJobServiceImpl implements MediaJobService {
                         "Subtitle edited after TTS/RENDER — affected stages need a rerun");
             }
         }
-        return segment;
     }
 
     private MediaJob requireJobInWorkspace(UUID workspaceId, UUID jobId) {
