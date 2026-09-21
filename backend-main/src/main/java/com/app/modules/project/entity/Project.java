@@ -23,4 +23,16 @@ public class Project extends BaseEntity {
 
     @Column(name = "source_lang", length = 20)
     private String sourceLang;
+
+    @Column(name = "default_glossary_id")
+    private UUID defaultGlossaryId;
+
+    @Column(name = "tm_enabled", nullable = false)
+    private Boolean tmEnabled = true;
+
+    @Column(length = 80)
+    private String domain;
+
+    @Column(length = 80)
+    private String tone;
 }
