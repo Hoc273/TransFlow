@@ -180,17 +180,22 @@ export function LandingPipeline() {
 
   const tabsContainerRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll active tab into view on mobile
+  // Auto-scroll active tab into view horizontally on mobile (never scroll window)
   useEffect(() => {
-    if (!tabsContainerRef.current) return
-    const activeTab = tabsContainerRef.current.children[currentStepIndex] as HTMLElement
-    if (activeTab) {
-      activeTab.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center'
-      })
-    }
+    const container = tabsContainerRef.current
+    if (!container) return
+    const activeTab = container.children[currentStepIndex] as HTMLElement
+    if (!activeTab) return
+
+    const containerWidth = container.clientWidth
+    const tabLeft = activeTab.offsetLeft
+    const tabWidth = activeTab.offsetWidth
+    const targetScrollLeft = tabLeft - containerWidth / 2 + tabWidth / 2
+
+    container.scrollTo({
+      left: Math.max(0, targetScrollLeft),
+      behavior: 'smooth'
+    })
   }, [currentStepIndex])
 
   // Deterministic Sequential Auto-play Timeline (Strictly 1 -> 2 -> 3 -> 4 -> 5 -> 1)

@@ -17,6 +17,9 @@ export function LandingPage() {
 
   useEffect(() => {
     document.title = t('pageTitle')
+    if (!window.location.hash) {
+      window.scrollTo(0, 0)
+    }
   }, [t, i18n.language])
 
   return (

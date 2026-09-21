@@ -27,8 +27,8 @@
 | Phase | Tên phân hệ | Backend Code | Frontend Code | Trạng thái Kết nối | Ghi chú |
 | :---: | :--- | :---: | :---: | :---: | :--- |
 | **Phase 1** | **Xác thực, Người dùng, Workspace & Super Admin** | 🟢 100% | 🟢 100% | 🟢 **HOÀN THÀNH** | Đã bao gồm Super Admin Platform (`/api/platform/*`) |
-| **Phase 2** | **Dự án & Năng lực Hạ tầng** (Asset Ingestion & Capabilities) | 🟢 85% | 🟢 100% | 🟡 **ĐANG KẾT NỐI** | Đã có Project, MinIO Asset Upload, Consent; chỉ còn thiếu `/api/transformation/capabilities` |
-| **Phase 3** | **Khởi tạo & Điều phối Job** (Job Orchestration & Pipeline) | 🟢 80% | 🟢 100% | ⚪ Chờ Phase 2 | Đã có CRUD Job, Stages rerun, Checkpoint, Voice, Batch, Proposal; cần gắn AI Worker Python |
+| **Phase 2** | **Dự án & Năng lực Hạ tầng** (Asset Ingestion & Capabilities) | 🟢 100% | 🟢 100% | 🟢 **HOÀN THÀNH** | Đã có Project, MinIO Asset Upload, Consent, và Transformation Capabilities |
+| **Phase 3** | **Khởi tạo & Điều phối Job** (Job Orchestration & Pipeline) | 🟢 80% | 🟢 100% | 🟡 **ĐANG KẾT NỐI** | Đã có CRUD Job, Stages rerun, Checkpoint, Voice, Batch, Proposal; cần gắn AI Worker Python |
 | **Phase 4** | **Biên tập Phụ đề & QA** (Review Workbench & Subtitles) | 🟡 70% | 🟢 100% | ⚪ Chờ Phase 3 | Đã có Single Patch Subtitle, QA Override; thiếu `/segments/batch` |
 | **Phase 5** | **Studio Dựng hình & Lớp phủ** (Render Studio & Reframe) | 🔴 10% | 🟢 100% | ⚪ Chờ Phase 4 | Cần xây dựng `/render-config`, `/subtitle-styles` |
 | **Phase 6** | **Đóng gói & Xuất bản** (Packaging & Delivery Export) | 🔴 10% | 🟢 100% | ⚪ Chờ Phase 5 | Cần xây dựng `/export`, `/output-package`, `/publish-package` |
@@ -97,7 +97,7 @@
   2. DTO `UserResponse` không chứa trường `isPlatformAdmin`, khiến cho `GET /api/auth/me` không trả về cờ quyền hạn cho Frontend Guard (`user?.isPlatformAdmin`).
   3. Backend hoàn toàn chưa cài đặt `PlatformController` cung cấp các API `/api/platform/*`.
 - **Giải pháp xử lý (Đã hoàn thành 100%):**
-  1. Tạo Flyway migration `backend-main/src/main/resources/db/migration/V7__add_is_platform_admin.sql` thêm cột `is_platform_admin BOOLEAN NOT NULL DEFAULT FALSE`.
+  1. Tạo Flyway migration `backend-main/src/main/resources/db/migration/V9__add_is_platform_admin.sql` thêm cột `is_platform_admin BOOLEAN NOT NULL DEFAULT FALSE`.
   2. Bổ sung trường `isPlatformAdmin` vào `User.java` và `@JsonProperty("isPlatformAdmin")` trong `UserResponse.java` (giữ constructor tương thích ngược).
   3. Xây dựng `PlatformController.java` (`com.app.modules.platform.controller`) cung cấp đủ 5 endpoint: `/overview`, `/status`, `/users`, `/workspaces`, `/audit-logs`.
   4. Bổ sung `countByUserId` và `countByWorkspaceId` trong `WorkspaceMemberRepository`.
@@ -156,11 +156,11 @@ Dưới đây là danh sách phân loại chi tiết theo trạng thái thực t
   - `GET /api/workspaces/{wsId}/projects/{pId}/media/assets`: Liệt kê tài nguyên video gốc.
   - `GET /api/workspaces/{wsId}/media/assets/{assetId}`: Lấy chi tiết tài nguyên video.
   - `POST /api/workspaces/{wsId}/media/assets/{assetId}/consent`: Ghi nhận cam kết bản quyền của người dùng.
-* 🔴 **CÒN THIẾU CẦN BỔ SUNG:**
+* 🟢 **ĐÃ BỔ SUNG HOÀN THÀNH:**
   - `GET /api/transformation/capabilities`:
-    - **Mức độ:** Cực kỳ quan trọng (Khởi tạo Media Studio không bị fallback).
     - **Nhiệm vụ:** Trả về trạng thái sẵn sàng của AI Worker (`FAST` và `STUDIO` mode, workerCount, readiness).
-    - **Giải pháp:** Cần tạo `TransformationController.java` trả về `AvailabilityProjection`.
+    - **Giải pháp:** Đã tạo `TransformationController.java` trả về `AvailabilityProjection` chuẩn, kết hợp cùng `TransformationService` và `TransformationServiceImpl`.
+    - **Kiểm thử:** Đã viết `TransformationControllerTest.java` (PASS 100%) và kiểm thử tương thích Frontend `transformation.test.ts` (PASS 100%).
 
 ### Phase 3: Media Job Orchestration & Pipeline Execution
 * 🟢 **ĐÃ CÓ TRONG BACKEND:**
