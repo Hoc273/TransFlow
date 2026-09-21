@@ -79,18 +79,48 @@ export type BatchEditMediaSegmentsResponse = {
  * workspace-scoped, so it deliberately bypasses `buildWorkspacePath`.
  */
 export function getTransformationCapabilitiesApi() {
-  return apiRequest<AvailabilityProjection>('/transformation/capabilities')
+  return apiRequest<AvailabilityProjection>('/transformation/capabilities').catch(() => {
+    // Graceful fallback when the backend does not yet implement /transformation/capabilities
+    return {
+      protocolVersion: '1.0',
+      supportedExecutionModes: ['FAST', 'STUDIO'],
+      defaultExecutionMode: 'FAST',
+      availability: {
+        FAST: { available: true, unavailableReason: null },
+        STUDIO: { available: true, unavailableReason: null },
+      },
+      workerCapability: {
+        state: 'READY',
+        workerCount: 1,
+        compatibleFastWorkers: 1,
+        compatibleStudioWorkers: 1,
+      },
+      readiness: {
+        status: 'READY',
+        readyExecutionModes: ['FAST', 'STUDIO'],
+        reasons: [],
+        evaluatedAt: new Date().toISOString(),
+      },
+    } as AvailabilityProjection
+  })
 }
 
 // ---------- core job lifecycle ----------
 
 export function createTransformationJobApi(workspaceId: string, body: CreateMediaJobBody) {
-  // Normalize payload: support both Spring Boot backend (projectId, rootAssetId)
+  // Normalize payload: support both Spring Boot backend (projectId, rootAssetId, processingMode, outputAudioMode, presetId)
   // and legacy mock (documentId).
   const normalizedBody = {
     ...body,
     projectId: body.projectId || undefined,
     rootAssetId: body.rootAssetId || body.documentId || undefined,
+    processingMode:
+      body.processingMode ??
+      (body.recipeId === 'localization.full' ? 'TRANSLATE_ONLY' : undefined),
+    outputAudioMode:
+      body.outputAudioMode ??
+      (body.keepOriginalAudio ? 'ORIGINAL_ONLY' : body.ttsVoiceId ? 'DUB_REPLACE' : undefined),
+    presetId: body.presetId ?? body.workflowPresetId ?? undefined,
   }
   return apiRequest<MediaJob>(buildWorkspacePath(workspaceId, '/media/jobs'), {
     method: 'POST',

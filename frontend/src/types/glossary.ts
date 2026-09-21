@@ -37,6 +37,7 @@ export type UpdateGlossaryBody = {
 export type TermBody = {
   sourceTerm: string
   targetTerm: string
+  targetLang?: string
   caseSensitive?: boolean
   partOfSpeech?: string
   note?: string

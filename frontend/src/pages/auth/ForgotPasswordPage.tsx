@@ -238,7 +238,7 @@ export function ForgotPasswordPage() {
     <AuthLayout>
       {/* Mini Step Tracker (when not on success step) */}
       {step < 4 && (
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <div className="flex items-center justify-between text-xs font-medium text-[var(--color-text-secondary)] mb-2">
             <span>{t('auth:forgot.stepIndicator', { current: step, total: 3 })}</span>
             <span className="font-semibold text-[var(--color-accent)]">
@@ -274,10 +274,10 @@ export function ForgotPasswordPage() {
       {/* ============================================================ */}
       {step === 1 && (
         <div>
-          <h2 className="mb-2 text-[28px] font-bold tracking-tight text-[var(--color-text-primary)]">
+          <h2 className="mb-1.5 sm:mb-2 text-2xl sm:text-[28px] font-bold tracking-tight text-[var(--color-text-primary)]">
             {t('auth:forgot.step1Title')}
           </h2>
-          <p className="mb-6 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+          <p className="mb-5 sm:mb-6 text-xs sm:text-sm leading-relaxed text-[var(--color-text-secondary)]">
             {t('auth:forgot.step1Subtitle')}
           </p>
 
@@ -301,7 +301,7 @@ export function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={sendOtpMutation.isPending}
-              className="mt-2 relative flex w-full cursor-pointer items-center justify-center gap-2 rounded-[11px] border-none bg-[var(--color-accent)] px-4 py-3.5 text-sm font-semibold text-white transition-all hover:-translate-y-px hover:bg-[var(--color-accent-hover)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-2 relative flex w-full cursor-pointer items-center justify-center gap-2 rounded-[11px] border-none bg-[var(--color-accent)] px-4 py-3 sm:py-3.5 text-sm font-semibold text-white transition-all hover:-translate-y-px hover:bg-[var(--color-accent-hover)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {sendOtpMutation.isPending ? (
                 <>
@@ -317,10 +317,10 @@ export function ForgotPasswordPage() {
             </button>
           </form>
 
-          <div className="mt-6 text-center">
+          <div className="mt-5 sm:mt-6 text-center">
             <Link
               to="/login"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-secondary)] no-underline transition hover:text-[var(--color-accent)]"
+              className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-[var(--color-text-secondary)] no-underline transition hover:text-[var(--color-accent)]"
             >
               <IconArrowLeft size={15} />
               <span>{t('auth:forgot.backToLogin')}</span>
@@ -334,10 +334,10 @@ export function ForgotPasswordPage() {
       {/* ============================================================ */}
       {step === 2 && (
         <div>
-          <h2 className="mb-2 text-[28px] font-bold tracking-tight text-[var(--color-text-primary)]">
+          <h2 className="mb-1.5 sm:mb-2 text-2xl sm:text-[28px] font-bold tracking-tight text-[var(--color-text-primary)]">
             {t('auth:forgot.step2Title')}
           </h2>
-          <div className="mb-6 flex flex-wrap items-center gap-1.5 text-sm text-[var(--color-text-secondary)]">
+          <div className="mb-5 sm:mb-6 flex flex-wrap items-center gap-1.5 text-xs sm:text-sm text-[var(--color-text-secondary)]">
             <span>{t('auth:forgot.step2Subtitle')}</span>
             <span className="font-semibold text-[var(--color-text-primary)]">{email}</span>
             <button
@@ -350,13 +350,13 @@ export function ForgotPasswordPage() {
           </div>
 
           <form onSubmit={handleVerifyOtp} noValidate>
-            <div className="mb-6">
+            <div className="mb-5 sm:mb-6">
               <label className="mb-2.5 block text-xs font-medium uppercase tracking-wider text-[var(--color-text-secondary)]">
                 {t('auth:forgot.otpLabel')}
               </label>
 
               {/* 6-box OTP digits */}
-              <div className="flex items-center justify-between gap-2 sm:gap-3" onPaste={handleOtpPaste}>
+              <div className="flex items-center justify-between gap-1.5 sm:gap-3" onPaste={handleOtpPaste}>
                 {otpDigits.map((digit, idx) => (
                   <input
                     key={idx}
@@ -370,7 +370,7 @@ export function ForgotPasswordPage() {
                     value={digit}
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                    className={`h-13 w-11 sm:h-14 sm:w-12 rounded-xl border text-center font-mono text-xl font-bold transition-all outline-none ${
+                    className={`h-12 w-10 sm:h-14 sm:w-12 rounded-lg sm:rounded-xl border text-center font-mono text-lg sm:text-xl font-bold transition-all outline-none ${
                       otpError
                         ? 'border-red-500 bg-red-500/5 text-red-500'
                         : digit
@@ -389,7 +389,7 @@ export function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={verifyOtpMutation.isPending || otpDigits.join('').length < 6}
-              className="relative flex w-full cursor-pointer items-center justify-center gap-2 rounded-[11px] border-none bg-[var(--color-accent)] px-4 py-3.5 text-sm font-semibold text-white transition-all hover:-translate-y-px hover:bg-[var(--color-accent-hover)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="relative flex w-full cursor-pointer items-center justify-center gap-2 rounded-[11px] border-none bg-[var(--color-accent)] px-4 py-3 sm:py-3.5 text-sm font-semibold text-white transition-all hover:-translate-y-px hover:bg-[var(--color-accent-hover)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {verifyOtpMutation.isPending ? (
                 <>
@@ -434,10 +434,10 @@ export function ForgotPasswordPage() {
       {/* ============================================================ */}
       {step === 3 && (
         <div>
-          <h2 className="mb-2 text-[28px] font-bold tracking-tight text-[var(--color-text-primary)]">
+          <h2 className="mb-1.5 sm:mb-2 text-2xl sm:text-[28px] font-bold tracking-tight text-[var(--color-text-primary)]">
             {t('auth:forgot.step3Title')}
           </h2>
-          <p className="mb-6 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+          <p className="mb-5 sm:mb-6 text-xs sm:text-sm leading-relaxed text-[var(--color-text-secondary)]">
             {t('auth:forgot.step3Subtitle')}
           </p>
 
@@ -502,7 +502,7 @@ export function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={resetMutation.isPending}
-              className="mt-4 relative flex w-full cursor-pointer items-center justify-center gap-2 rounded-[11px] border-none bg-[var(--color-accent)] px-4 py-3.5 text-sm font-semibold text-white transition-all hover:-translate-y-px hover:bg-[var(--color-accent-hover)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-4 relative flex w-full cursor-pointer items-center justify-center gap-2 rounded-[11px] border-none bg-[var(--color-accent)] px-4 py-3 sm:py-3.5 text-sm font-semibold text-white transition-all hover:-translate-y-px hover:bg-[var(--color-accent-hover)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {resetMutation.isPending ? (
                 <>
@@ -536,21 +536,21 @@ export function ForgotPasswordPage() {
       {/* ============================================================ */}
       {step === 4 && (
         <div className="py-4 text-center">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500 ring-8 ring-emerald-500/5 animate-in zoom-in-75 duration-300">
-            <IconCircleCheck size={36} />
+          <div className="mx-auto mb-5 flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500 ring-8 ring-emerald-500/5 animate-in zoom-in-75 duration-300">
+            <IconCircleCheck size={32} className="sm:w-9 sm:h-9" />
           </div>
 
-          <h2 className="mb-2 text-[26px] font-bold tracking-tight text-[var(--color-text-primary)]">
+          <h2 className="mb-1.5 sm:mb-2 text-xl sm:text-[26px] font-bold tracking-tight text-[var(--color-text-primary)]">
             {t('auth:forgot.successTitle')}
           </h2>
 
-          <p className="mb-8 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+          <p className="mb-6 sm:mb-8 text-xs sm:text-sm leading-relaxed text-[var(--color-text-secondary)]">
             {t('auth:forgot.successMessage')}
           </p>
 
           <Link
             to="/login"
-            className="flex w-full items-center justify-center gap-2 rounded-[11px] bg-[var(--color-accent)] px-4 py-3.5 text-sm font-semibold text-white no-underline transition hover:bg-[var(--color-accent-hover)] shadow-sm hover:shadow-[0_6px_20px_rgba(99,102,241,0.28)]"
+            className="flex w-full items-center justify-center gap-2 rounded-[11px] bg-[var(--color-accent)] px-4 py-3 sm:py-3.5 text-sm font-semibold text-white no-underline transition hover:bg-[var(--color-accent-hover)] shadow-sm hover:shadow-[0_6px_20px_rgba(99,102,241,0.28)]"
           >
             <span>{t('auth:forgot.loginNow')}</span>
           </Link>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   IconAdjustments,
   IconAlertCircle,
@@ -16,8 +16,10 @@ import {
   IconPlayerPlay,
   IconPlus,
   IconSparkles,
+  IconTrash,
   IconUpload,
   IconVideo,
+  IconX,
 } from '@tabler/icons-react'
 import {
   useConsentMedia,
@@ -49,13 +51,23 @@ import {
 import { useWorkflowPresets } from '@/hooks/useWorkflowPresets'
 import { defaultTtsProvider, isTtsProvider, type VoiceSelection } from '@/lib/media/voiceSelection'
 import {
+  buildLocalizationCreateJobInput,
+  createJobApiBody,
+  createVoiceGate,
+  BATCH_CONCURRENCY,
+  mapWithConcurrency,
+  type LocalizationCreateBody,
+  type LocalizationJobPayloadInput,
+} from '@/lib/media/batchJobPayload'
+export { createJobApiBody, createVoiceGate } from '@/lib/media/batchJobPayload'
+import {
   guardCreateWithFreshCapabilities,
   modeBlock,
   reasonI18nKey,
 } from '@/lib/transformationCapabilities'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
-import type { CreateMediaJobBody, MediaRecipeId, WorkflowMode } from '@/types/media'
+import type { MediaRecipeId, WorkflowMode } from '@/types/media'
 import type { AudioExecutionMode } from '@/types/transformation'
 import { createTransformationJobApi } from '@/api/transformation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -66,6 +78,33 @@ type Props = {
   workspaceId: string
   projectId: string
   onCreated?: (jobId: string) => void
+}
+
+/**
+ * One staged source video in the upload card. The card looks exactly like the
+ * legacy single-upload UI — rows simply stack when several videos are added.
+ * Uploads start immediately per file (same as the old flow); create fans out
+ * over every ready row with the shared right-column config.
+ */
+type StagedVideo = {
+  key: string
+  fileName: string
+  fileSizeBytes: number
+  durationMs: number | null
+  assetId: string | null
+  documentId: string | null
+  consented: boolean
+  uploadStatus: 'uploading' | 'ready' | 'failed'
+  progress: number
+  createStatus: 'idle' | 'creating' | 'created' | 'failed'
+  jobId: string | null
+  error: string | null
+}
+
+let stagedKeySeq = 0
+function nextStagedKey(): string {
+  stagedKeySeq += 1
+  return `staged-${Date.now()}-${stagedKeySeq}`
 }
 
 /**
@@ -80,45 +119,7 @@ type Props = {
  * MANUAL it is configured at the Finish & Render checkpoint, in AUTO the
  * preset/system default freezes at create.
  */
-export type CreateJobApiInput = {
-  projectId?: string
-  rootAssetId?: string
-  documentId: string
-  recipeId: string
-  sourceLang?: string
-  targetLang: string
-  workflowMode?: WorkflowMode
-  workflowPresetId?: string | null
-  requestedDurationSeconds: number | null
-  requestedMode: AudioExecutionMode | null
-  ttsProviderId?: string | null
-  ttsVoiceId?: string | null
-  enableVlm?: boolean | null
-}
-
-/**
- * Pure mapping used by the real mutation — extracted so tests can assert the
- * exact HTTP body without mocking the dependency (the BA review flagged that
- * payload tests mocked `deps.createJob` directly and never covered the
- * mutation → API mapping).
- */
-export function createJobApiBody(body: CreateJobApiInput): CreateMediaJobBody {
-  return {
-    projectId: body.projectId,
-    rootAssetId: body.rootAssetId || body.documentId,
-    documentId: body.documentId,
-    recipeId: body.recipeId,
-    sourceLang: body.sourceLang,
-    targetLang: body.targetLang,
-    workflowMode: body.workflowMode,
-    workflowPresetId: body.workflowPresetId,
-    requestedDurationSeconds: body.requestedDurationSeconds,
-    requestedMode: body.requestedMode,
-    ttsProviderId: body.ttsProviderId,
-    ttsVoiceId: body.ttsVoiceId,
-    enableVlm: body.enableVlm,
-  }
-}
+export type CreateJobApiInput = LocalizationCreateBody
 
 const DURATION_PRESETS = [
   { labelKey: 'create.preset30s', seconds: 30 },
@@ -164,20 +165,19 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     },
   })
 
-  const [uploaded, setUploaded] = useState<{
-    assetId: string
-    documentId: string
-    fileName: string
-    fileSizeBytes: number
-    durationMs: number | null
-  } | null>(null)
-  const [consented, setConsented] = useState(false)
+  const [staged, setStaged] = useState<StagedVideo[]>([])
+  // One confirmation covers every staged video; derived so rows added later
+  // automatically reopen the consent step (same as the old reset-on-new-file).
+  const consented = staged.length > 0 && staged.every((s) => s.consented)
   const [consentChecked, setConsentChecked] = useState(false)
-  // C2 (docs/19 §1.8.2): create offers only summary.generative + localization.full
-  // (extractive legacy — no create entry). Default is generative when available.
-  const [recipeId, setRecipeId] = useState<MediaRecipeId>(
-    featureFlags.narrativeReviewAi ? 'summary.generative' : 'localization.full',
-  )
+  const [consenting, setConsenting] = useState(false)
+  const [batchCreating, setBatchCreating] = useState(false)
+  const [batchSummary, setBatchSummary] = useState<{ created: number; failed: number } | null>(null)
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null)
+  // C2 (docs/19 §1.8.2): create offers only localization.full +
+  // summary.generative (extractive legacy — no create entry). Translation is
+  // the primary workflow and remains the default even when AI recap is enabled.
+  const [recipeId, setRecipeId] = useState<MediaRecipeId>('localization.full')
   const [generativeAvailable, setGenerativeAvailable] = useState(
     featureFlags.narrativeReviewAi,
   )
@@ -186,12 +186,25 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
   // Default to FAST mode; selector dropdown is hidden by default.
   const [requestedMode, setRequestedMode] = useState<AudioExecutionMode | null>('FAST')
   const [showAudioMode, setShowAudioMode] = useState(false)
-  const [targetLang, setTargetLang] = useState('vi')
+  // Target languages as an inline checkbox set (no separate batch view):
+  // exactly one checked keeps the legacy single flow; several checked fans
+  // out 1 video → N jobs. Several staged videos lock this to one language
+  // (N×N cartesian is banned in v1).
+  const [selectedTargets, setSelectedTargets] = useState<string[]>(['vi'])
+  // Per-target voice selections for the multi-target shape (same
+  // all-or-nothing pair rule as single-create, resolved per language).
+  const [targetVoices, setTargetVoices] = useState<Record<string, VoiceSelection>>({})
+  const [targetJobs, setTargetJobs] = useState<Record<string, {
+    status: 'idle' | 'creating' | 'created' | 'failed'
+    jobId: string | null
+    error: string | null
+  }>>({})
   // W0 (docs/17 Q-M-WORKFLOW-01): workflow mode default follows the recipe
   // (summary.* → MANUAL, localization.full → AUTO); the user may override.
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('AUTO')
   useEffect(() => {
     setWorkflowMode(recipeId.startsWith('summary.') ? 'MANUAL' : 'AUTO')
+    if (recipeId === 'summary.generative') setKeepOriginalAudio(false)
   }, [recipeId])
   // M-C (docs/16 §7.5): optional workflow preset id — sent verbatim on create;
   // the backend resolves/validates/freezes (explicit fields win over the preset).
@@ -205,6 +218,9 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     providerId: null,
     voiceId: null,
   })
+  // Choosing source audio is an explicit create-time decision. Keep it
+  // separate from the null/null transient used while TTS options are loading.
+  const [keepOriginalAudio, setKeepOriginalAudio] = useState(false)
   const [durationMmSs, setDurationMmSs] = useState('01:00')
   const [error, setError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -232,16 +248,126 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
         ? { providerId: defaultTtsId, voiceId: null }
         : current,
     )
-  }, [defaultTtsId, providersQuery.isPending])
+    // Same default fill for untouched multi-target rows.
+    setTargetVoices((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const lang of selectedTargets) {
+        const cur = next[lang]
+        if (!cur || (cur.providerId == null && cur.voiceId == null)) {
+          next[lang] = { providerId: defaultTtsId, voiceId: null }
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [defaultTtsId, providersQuery.isPending, selectedTargets])
 
-  const resetFlow = () => {
-    setUploaded(null)
-    setConsented(false)
-    setConsentChecked(false)
-    setError(null)
-    setUploadPercent(0)
-    setUploadingName(null)
-    if (fileRef.current) fileRef.current.value = ''
+  // The single-target voice pair belongs to its language — a new single
+  // target invalidates it (same P1 stale-pair rule as before).
+  const singleLang = selectedTargets.length === 1 ? selectedTargets[0] : null
+  const prevSingleLangRef = useRef<string | null>(singleLang)
+  useEffect(() => {
+    if (prevSingleLangRef.current !== singleLang) {
+      prevSingleLangRef.current = singleLang
+      setVoiceSelection({ providerId: null, voiceId: null })
+    }
+  }, [singleLang])
+
+  const patchStaged = (key: string, patch: Partial<StagedVideo>) =>
+    setStaged((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)))
+
+  const removeStaged = (key: string) => {
+    if (batchCreating) return
+    setBatchSummary(null)
+    setStaged((prev) => prev.filter((s) => s.key !== key))
+  }
+
+  useEffect(() => {
+    if (!batchSummary || batchSummary.created === 0) {
+      setRedirectCountdown(null)
+      return
+    }
+
+    setRedirectCountdown(3)
+    const intervalId = window.setInterval(() => {
+      setRedirectCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          window.clearInterval(intervalId)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    const timeoutId = window.setTimeout(() => {
+      onCreated?.('')
+      navigate(`/w/${workspaceId}/media?project=${projectId}#overview`)
+    }, 3000)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.clearTimeout(timeoutId)
+    }
+  }, [batchSummary, navigate, onCreated, projectId, workspaceId])
+
+  const isMultiTarget = selectedTargets.length > 1
+  // N videos × N languages is banned in v1 — with several staged videos the
+  // target set stays locked to one language.
+  const isNxN = staged.length > 1 && isMultiTarget
+
+  const toggleTarget = (lang: string) => {
+    if (batchCreating) return
+    setBatchSummary(null)
+    setSelectedTargets((prev) => {
+      if (prev.includes(lang)) {
+        if (prev.length === 1) return prev // keep at least one target
+        return prev.filter((l) => l !== lang)
+      }
+      if (staged.length > 1) return prev // multi-video locks to one target
+      return [...prev, lang]
+    })
+  }
+
+  const [targetDropdownOpen, setTargetDropdownOpen] = useState(false)
+  const targetDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!targetDropdownOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (targetDropdownRef.current && !targetDropdownRef.current.contains(e.target as Node)) {
+        setTargetDropdownOpen(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setTargetDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [targetDropdownOpen])
+
+  const setTargetJob = (
+    lang: string,
+    patch: Partial<{ status: 'idle' | 'creating' | 'created' | 'failed'; jobId: string | null; error: string | null }>,
+  ) =>
+    setTargetJobs((prev) => {
+      const current = prev[lang] ?? { status: 'idle' as const, jobId: null as string | null, error: null as string | null }
+      return { ...prev, [lang]: { ...current, ...patch } }
+    })
+
+  // Per-target voice gate for the multi-target shape (mirrors the single
+  // missingVoicePair rule, resolved per language).
+  const targetBlocked = (lang: string): boolean => {
+    if (keepOriginalAudio) return false
+    const sel = targetVoices[lang] ?? { providerId: null, voiceId: null }
+    const rowPresetVoice = presetProvidesVoice
+      && sel.providerId == null
+      && sel.voiceId == null
+    return createVoiceGate(recipeId, sel, rowPresetVoice) !== 'ok'
   }
 
   const handleDurationChange = (raw: string) => {
@@ -292,70 +418,109 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     }
   }
 
-  const handleFile = async (selected: File | null) => {
-    if (!selected) return
+  // Staged intake: every added file uploads immediately (same as the old
+  // single flow) and stacks as its own row in the unchanged upload card.
+  const handleFiles = async (files: File[]) => {
+    if (files.length === 0) return
     setError(null)
-    const code = validateMediaFile(selected)
-    if (code === 'FILE_TOO_LARGE') {
-      setError(t('media:upload.tooLarge', { max: '500MB' }))
-      return
-    }
-    if (code === 'INVALID_TYPE') {
-      setError(t('media:upload.invalidType'))
-      return
-    }
-    setUploaded(null)
-    setConsented(false)
+    setBatchSummary(null)
+    // A new file reopens the consent confirmation (same as the old reset).
     setConsentChecked(false)
+    const fresh: StagedVideo[] = files.map((file) => ({
+      key: nextStagedKey(),
+      fileName: file.name,
+      fileSizeBytes: file.size,
+      durationMs: null,
+      assetId: null,
+      documentId: null,
+      consented: false,
+      uploadStatus: 'uploading',
+      progress: 0,
+      createStatus: 'idle',
+      jobId: null,
+      error: null,
+    }))
+    setStaged((prev) => [...prev, ...fresh])
+    setUploadingName(files[0].name)
     setUploadPercent(0)
-    setUploadingName(selected.name)
-    try {
-      const res = await upload.mutateAsync({
-        file: selected,
-        name: selected.name,
-        onProgress: (pct) => setUploadPercent(pct),
-      })
-      if (res.durationMs != null && res.durationMs > 30 * 60 * 1000) {
-        setError(t('media:upload.tooLong', { max: '30 min' }))
-        setUploadingName(null)
-        return
-      }
-      setUploaded({
-        assetId: res.assetId,
-        documentId: res.documentId,
-        fileName: res.fileName,
-        fileSizeBytes: res.fileSizeBytes,
-        durationMs: res.durationMs,
-      })
-      if (res.consented) {
-        setConsented(true)
-        setConsentChecked(true)
-      }
-      setUploadingName(null)
-    } catch (e) {
-      setUploadingName(null)
-      setUploadPercent(0)
-      setError(e instanceof ApiError ? e.message : t('common:error.generic'))
-    }
+    await mapWithConcurrency(
+      files.map((file, index) => ({ file, row: fresh[index] })),
+      BATCH_CONCURRENCY,
+      async ({ file, row }) => {
+        const code = validateMediaFile(file)
+        if (code === 'FILE_TOO_LARGE' || code === 'INVALID_TYPE') {
+          patchStaged(row.key, {
+            uploadStatus: 'failed',
+            error: code === 'FILE_TOO_LARGE'
+              ? t('media:upload.tooLarge', { max: '500MB' })
+              : t('media:upload.invalidType'),
+          })
+          return
+        }
+        try {
+          const res = await upload.mutateAsync({
+            file,
+            name: file.name,
+            onProgress: (pct) => {
+              patchStaged(row.key, { progress: pct })
+              setUploadingName(file.name)
+              setUploadPercent(pct)
+            },
+          })
+          if (res.durationMs != null && res.durationMs > 30 * 60 * 1000) {
+            patchStaged(row.key, {
+              uploadStatus: 'failed',
+              error: t('media:upload.tooLong', { max: '30 min' }),
+            })
+            return
+          }
+          patchStaged(row.key, {
+            uploadStatus: 'ready',
+            progress: 100,
+            assetId: res.assetId,
+            documentId: res.documentId,
+            durationMs: res.durationMs,
+            consented: res.consented,
+          })
+        } catch (e) {
+          patchStaged(row.key, {
+            uploadStatus: 'failed',
+            error: e instanceof ApiError ? e.message : t('common:error.generic'),
+          })
+        }
+      },
+    )
+    setUploadingName(null)
   }
 
+  // One confirmation covers every staged video; rows that failed to upload
+  // stay out of consent and create until removed.
   const handleConsent = async () => {
-    if (!uploaded || !consentChecked) return
+    const pending = staged.filter((s) => s.uploadStatus === 'ready' && !s.consented)
+    if (pending.length === 0 || !consentChecked) return
     setError(null)
+    setConsenting(true)
     try {
-      await consent.mutateAsync({
-        assetId: uploaded.assetId,
-        termsVersion: termsQuery.data?.termsVersion || 'v1.0',
+      await mapWithConcurrency(pending, BATCH_CONCURRENCY, async (s) => {
+        try {
+          await consent.mutateAsync(s.assetId as string)
+          patchStaged(s.key, { consented: true, error: null })
+        } catch (e) {
+          patchStaged(s.key, {
+            error: e instanceof ApiError ? e.message : t('common:error.generic'),
+          })
+        }
       })
-      setConsented(true)
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('common:error.generic'))
+    } finally {
+      setConsenting(false)
     }
   }
 
   const handleCreate = async () => {
-    if (!uploaded || !consented) return
+    const readyRows = staged.filter((s) => s.uploadStatus === 'ready')
+    if (readyRows.length === 0 || !consented || batchCreating) return
     setError(null)
+    setBatchSummary(null)
     const needsDuration = recipeId !== 'localization.full'
     const seconds = needsDuration ? parseMmSs(durationMmSs) : null
     if (needsDuration && (seconds == null || seconds <= 0)) {
@@ -365,6 +530,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
 
     // Requirement 7: revalidate availability immediately before creating, so a
     // snapshot that went stale while the form was open cannot leak through.
+    // One guard per fan-out — every job shares the same requestedMode snapshot.
     const guard = await guardCreateWithFreshCapabilities(
       async () => (await capabilities.refetch()).data,
       requestedMode,
@@ -381,21 +547,55 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
       return
     }
 
+    const multiVideo = readyRows.length > 1
+    if (!multiVideo && !isMultiTarget) {
+      await createSingleJob(readyRows[0], selectedTargets[0], guard.requestedMode, seconds)
+      return
+    }
+    if (multiVideo && !isMultiTarget) {
+      await createBatchJobs(readyRows, selectedTargets[0], guard.requestedMode, seconds)
+      return
+    }
+    if (!multiVideo && isMultiTarget) {
+      await createMultiTargetJobs(readyRows[0], guard.requestedMode, seconds)
+      return
+    }
+    // N×N is banned in v1 (the submit button stays disabled with a hint).
+    setError(t('media:batch.noNxN'))
+  }
+
+  const selectionForRow = (
+    row: StagedVideo,
+    lang: string,
+    snapshotMode: AudioExecutionMode,
+    seconds: number | null,
+    voice: VoiceSelection,
+    rowPresetVoice: boolean,
+  ) => ({
+    documentId: row.documentId as string,
+    projectId,
+    recipeId,
+    sourceLang: sourceLang || undefined,
+    targetLang: lang,
+    workflowMode,
+    workflowPresetId: workflowPresetId ?? undefined,
+    requestedDurationSeconds: requestedDurationForRecipe(recipeId, seconds),
+    requestedMode: snapshotMode,
+    voiceSelection: voice,
+    keepOriginalAudio: recipeId !== 'summary.generative' && keepOriginalAudio,
+    presetProvidesVoice: rowPresetVoice,
+    enableVlm: recipeId === 'summary.generative' ? enableVlm : undefined,
+  })
+
+  const createSingleJob = async (
+    row: StagedVideo,
+    lang: string,
+    snapshotMode: AudioExecutionMode,
+    seconds: number | null,
+  ) => {
     try {
       const job = await createMediaJobWithSelection({
-        projectId,
-        rootAssetId: uploaded.assetId,
-        documentId: uploaded.documentId,
-        recipeId,
-        sourceLang: sourceLang || undefined,
-        targetLang,
-        workflowMode,
-        workflowPresetId: workflowPresetId ?? undefined,
-        requestedDurationSeconds: requestedDurationForRecipe(recipeId, seconds),
-        requestedMode: guard.requestedMode,
-        voiceSelection,
-        presetProvidesVoice,
-        enableVlm: recipeId === 'summary.generative' ? enableVlm : undefined,
+        ...selectionForRow(row, lang, snapshotMode, seconds, voiceSelection, presetProvidesVoice),
         deps: {
           createJob,
           onCreated,
@@ -422,24 +622,121 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     }
   }
 
+  // N videos → 1 language with the shared right-column config. Partial
+  // failure never rolls back siblings; retry reuses uploaded documents and
+  // only re-runs rows that did not create.
+  const createBatchJobs = async (
+    rows: StagedVideo[],
+    lang: string,
+    snapshotMode: AudioExecutionMode,
+    seconds: number | null,
+  ) => {
+    setBatchCreating(true)
+    try {
+      const alreadyCreated = rows.filter((s) => s.createStatus === 'created').length
+      let newlyCreated = 0
+      const attempted = rows.filter((s) => s.createStatus !== 'created').length
+      await mapWithConcurrency(
+        rows.filter((s) => s.createStatus !== 'created'),
+        BATCH_CONCURRENCY,
+        async (s) => {
+          patchStaged(s.key, { createStatus: 'creating', error: null })
+          try {
+            const job = await createTransformationJobApi(
+              workspaceId,
+              createJobApiBody(buildLocalizationCreateJobInput(selectionForRow(s, lang, snapshotMode, seconds, voiceSelection, presetProvidesVoice))),
+            )
+            void qc.setQueryData(queryKeys.mediaJob(workspaceId, job.id), job)
+            patchStaged(s.key, { createStatus: 'created', jobId: job.id })
+            newlyCreated += 1
+          } catch (e) {
+            const presetVoiceKey = presetVoiceLangMismatchKey(e)
+            patchStaged(s.key, {
+              createStatus: 'failed',
+              error: presetVoiceKey ? t(presetVoiceKey) : e instanceof ApiError ? e.message : t('common:error.generic'),
+            })
+          }
+        },
+      )
+      setBatchSummary({ created: alreadyCreated + newlyCreated, failed: attempted - newlyCreated })
+    } finally {
+      void qc.invalidateQueries({ queryKey: queryKeys.mediaJobs(workspaceId, projectId) })
+      setBatchCreating(false)
+    }
+  }
+
+  // 1 video → N languages on the SAME document. Each target carries its own
+  // explicit voice pair (a preset pair can never fit every language, and JOB
+  // explicit fields win over the preset). Partial failure never rolls back
+  // siblings; retry reuses the uploaded document and only re-runs targets
+  // that did not create.
+  const createMultiTargetJobs = async (
+    row: StagedVideo,
+    snapshotMode: AudioExecutionMode,
+    seconds: number | null,
+  ) => {
+    setBatchCreating(true)
+    try {
+      const langs = selectedTargets
+      const alreadyCreated = langs.filter((lang) => targetJobs[lang]?.status === 'created').length
+      const pending = langs.filter((lang) => targetJobs[lang]?.status !== 'created')
+      let newlyCreated = 0
+      await mapWithConcurrency(pending, BATCH_CONCURRENCY, async (lang) => {
+        setTargetJob(lang, { status: 'creating', error: null })
+        try {
+          const sel = targetVoices[lang] ?? { providerId: null, voiceId: null }
+          // Multi-target dubbed rows send their own explicit pair, so the
+          // preset flag must be off for them (else the payload would send
+          // null/null and the backend would apply a wrong-language preset
+          // voice). Untouched rows still fall back to the preset pair.
+          const rowPresetVoice = presetProvidesVoice
+            && sel.providerId == null
+            && sel.voiceId == null
+          const job = await createTransformationJobApi(
+            workspaceId,
+            createJobApiBody(buildLocalizationCreateJobInput(
+              selectionForRow(row, lang, snapshotMode, seconds, sel, rowPresetVoice),
+            )),
+          )
+          void qc.setQueryData(queryKeys.mediaJob(workspaceId, job.id), job)
+          setTargetJob(lang, { status: 'created', jobId: job.id })
+          newlyCreated += 1
+        } catch (e) {
+          const presetVoiceKey = presetVoiceLangMismatchKey(e)
+          setTargetJob(lang, {
+            status: 'failed',
+            error: presetVoiceKey ? t(presetVoiceKey) : e instanceof ApiError ? e.message : t('common:error.generic'),
+          })
+        }
+      })
+      setBatchSummary({ created: alreadyCreated + newlyCreated, failed: pending.length - newlyCreated })
+    } finally {
+      void qc.invalidateQueries({ queryKey: queryKeys.mediaJobs(workspaceId, projectId) })
+      setBatchCreating(false)
+    }
+  }
+
   const effectiveSelection = requestedMode ?? capabilities.data?.defaultExecutionMode ?? null
   const selectedModeBlock = modeBlock(capabilities.data, effectiveSelection)
 
-  // Phase C: create is ALWAYS dubbed — the request must carry a complete
-  // provider+voice pair (the backend resolves the default pair when neither
-  // is sent, but the FE gate requires a full pair once the selector is shown;
-  // "Original audio" is achieved by deselecting later in Job Studio).
+  // A localization job is dubbed unless the user explicitly keeps source
+  // audio at create time. Null/null while TTS is loading is not enough to
+  // express that intent, hence the separate keepOriginalAudio flag.
   // A missing half (provider change in flight / no compatible voice) blocks
   // Create — a stale pair can never be submitted (P1 fix — BA re-review v2).
   // C2 (docs/19 §1.8.2): when the selected AUTO preset provides the voice
   // pair, the gate is satisfied by the preset — the FE sends no pair at all.
   const missingVoicePair =
     recipeId !== 'summary.generative'
+    && !keepOriginalAudio
     && !presetProvidesVoice
     && (voiceSelection.providerId == null || voiceSelection.voiceId == null)
 
   const providersLoading = providersQuery.isPending
   const noTtsProviders = !providersLoading && ttsProviders.length === 0
+  // One staged video keeps the legacy single flow; several fan out over the
+  // shared config (no Single/Batch toggle, no separate batch view).
+  const single = staged.length === 1 ? staged[0] : null
 
   const activePreset = (() => {
     const s = parseMmSs(durationMmSs)
@@ -454,6 +751,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
   }
 
   return (
+    <>
     <div className="media-studio-create-layout">
       {/* Left Column: Source Media & Legal Consent */}
       <aside className="media-create-aside">
@@ -468,7 +766,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                   {t('media:upload.stepTitle')}
                 </span>
               </div>
-              {uploaded && (
+              {staged.some((s) => s.uploadStatus === 'ready') && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-status-completed-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-status-completed)]">
                   <IconCheck size={11} stroke={3} />
                   {language === 'vi' ? 'Đã tải lên' : 'Uploaded'}
@@ -480,7 +778,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
               className={cn(
                 'media-dropzone media-dropzone-aside',
                 dragOver && 'drag-over',
-                uploaded && 'has-file',
+                staged.length > 0 && 'has-file !border-none !bg-transparent !p-0',
                 upload.isPending && 'pointer-events-none opacity-80',
               )}
               onDragOver={(e) => {
@@ -491,38 +789,28 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
               onDrop={(e) => {
                 e.preventDefault()
                 setDragOver(false)
-                void handleFile(e.dataTransfer.files?.[0] ?? null)
+                void handleFiles(Array.from(e.dataTransfer.files ?? []))
               }}
-              onClick={() => !upload.isPending && fileRef.current?.click()}
+              onClick={() => !upload.isPending && staged.length === 0 && fileRef.current?.click()}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click()
+                if ((e.key === 'Enter' || e.key === ' ') && staged.length === 0) fileRef.current?.click()
               }}
             >
               <input
                 ref={fileRef}
                 type="file"
                 accept="video/*"
+                multiple
                 className="hidden"
-                onChange={(e) => void handleFile(e.target.files?.[0] ?? null)}
+                data-testid="single-file-input"
+                onChange={(e) => {
+                  void handleFiles(Array.from(e.target.files ?? []))
+                  e.target.value = ''
+                }}
               />
-              {uploaded ? (
-                <div className="media-uploaded-preview">
-                  <div className="media-dropzone-icon">
-                    <IconVideo size={20} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-xs text-[var(--color-text-primary)] truncate" title={uploaded.fileName}>
-                      {uploaded.fileName}
-                    </div>
-                    <div className="text-[11px] text-[var(--color-text-tertiary)] mt-0.5">
-                      {(uploaded.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
-                      {uploaded.durationMs != null && ` · ${formatDurationMs(uploaded.durationMs)}`}
-                    </div>
-                  </div>
-                </div>
-              ) : (
+              {staged.length === 0 ? (
                 <div className="media-dropzone-empty">
                   <div className="media-dropzone-icon">
                     <IconUpload size={22} />
@@ -537,6 +825,63 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                   <div className="text-[11px] text-[var(--color-text-tertiary)] mt-1">
                     {t('media:uploadHint', { maxSize: '500MB', maxDuration: '30 min' })}
                   </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-0.25">
+                  {staged.map((s) => (
+                    <div
+                      key={s.key}
+                      className="media-uploaded-preview batch-file-row group relative flex items-center gap-3 p-3 rounded-xl bg-[var(--color-media-soft)] transition-colors"
+                      data-testid="staged-row"
+                      data-status={s.uploadStatus}
+                    >
+                      <div className="media-dropzone-icon shrink-0 !w-9 !h-9 !rounded-lg !mb-0 bg-[var(--color-bg-surface)] text-[var(--color-media)] shadow-sm">
+                        <IconVideo size={18} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-xs text-[var(--color-text-primary)] truncate" title={s.fileName}>
+                          {s.fileName}
+                        </div>
+                        <div className="text-[11px] text-[var(--color-text-tertiary)] mt-0.5">
+                          {(s.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
+                          {s.durationMs != null && ` · ${formatDurationMs(s.durationMs)}`}
+                          {s.uploadStatus === 'uploading' && ` · ${s.progress}%`}
+                        </div>
+                        {s.error && (
+                          <div className="text-[11px] text-[var(--color-error)]">{s.error}</div>
+                        )}
+                        {s.jobId && (
+                          <div className="mt-0.5">
+                            <Link
+                              to={`/w/${workspaceId}/media/jobs/${s.jobId}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-[11px] font-semibold text-[var(--color-media)]"
+                            >
+                              {t('media:batch.viewJob')}
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {s.createStatus === 'created' && (
+                          <IconCheck size={16} className="shrink-0 text-[var(--color-status-completed)]" />
+                        )}
+                        {!batchCreating && s.uploadStatus !== 'uploading' && s.createStatus !== 'creating' && (
+                          <button
+                            type="button"
+                            className="batch-file-remove opacity-0 group-hover:opacity-100 focus-visible:opacity-100 inline-flex items-center justify-center w-7 h-7 rounded-lg text-[var(--color-text-secondary)] hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950/50 dark:hover:text-red-400 transition-colors cursor-pointer"
+                            aria-label={t('media:batch.removeRow')}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removeStaged(s.key)
+                            }}
+                          >
+                            <IconTrash size={15} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -564,15 +909,16 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
               </div>
             )}
 
-            {uploaded && (
+            {staged.length > 0 && (
               <div className="media-change-file-row mt-2.5 pt-2 border-t border-[var(--color-border)] flex justify-end">
                 <button
                   type="button"
                   className="btn-secondary btn-sm media-change-file-btn text-xs py-1 px-2.5 inline-flex items-center gap-1.5"
-                  onClick={resetFlow}
+                  data-testid="batch-add-more"
+                  onClick={() => fileRef.current?.click()}
                 >
                   <IconUpload size={13} />
-                  {t('media:upload.changeFile')}
+                  {t('media:batch.addMoreFiles')}
                 </button>
               </div>
             )}
@@ -582,7 +928,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
           <div className="my-3.5 border-t border-[var(--color-border)]" />
 
           {/* Step 2: Consent */}
-          <div className={cn('media-aside-subcard', !uploaded && 'opacity-60')}>
+          <div className={cn('media-aside-subcard', staged.length === 0 && 'opacity-60')}>
             <header className="media-aside-card-header">
               <div className="flex items-center gap-2">
                 <span className="media-step-badge">2</span>
@@ -612,7 +958,8 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                   type="checkbox"
                   className="mt-0.5"
                   checked={consentChecked}
-                  disabled={!uploaded || consented}
+                  disabled={staged.length === 0 || consented}
+                  data-testid="consent-check"
                   onChange={(e) => setConsentChecked(e.target.checked)}
                 />
                 <span className="text-xs leading-relaxed text-[var(--color-text-primary)]">
@@ -623,10 +970,11 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 <button
                   type="button"
                   className="btn-secondary btn-sm w-full mt-2.5 py-1.5 font-medium"
-                  disabled={!uploaded || !consentChecked || consent.isPending}
+                  disabled={staged.length === 0 || !consentChecked || consenting}
+                  data-testid="consent-confirm"
                   onClick={() => void handleConsent()}
                 >
-                  {consent.isPending ? t('common:loading') : t('media:consentButton')}
+                  {consenting ? t('common:loading') : t('media:consentButton')}
                 </button>
               )}
             </div>
@@ -643,15 +991,20 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 <span className="media-config-master-title">
                   {t('media:createJobTitle')}
                 </span>
-                {uploaded && (
+                {single ? (
                   <span className="media-source-pill">
                     <IconVideo size={13} />
-                    <span className="max-w-[200px] truncate">{uploaded.fileName}</span>
-                    {uploaded.durationMs != null && (
-                      <span className="opacity-75">· {formatDurationMs(uploaded.durationMs)}</span>
+                    <span className="max-w-[200px] truncate">{single.fileName}</span>
+                    {single.durationMs != null && (
+                      <span className="opacity-75">· {formatDurationMs(single.durationMs)}</span>
                     )}
                   </span>
-                )}
+                ) : staged.length > 1 ? (
+                  <span className="media-source-pill">
+                    <IconVideo size={13} />
+                    <span>{staged.length} {language === 'vi' ? 'video' : 'videos'}</span>
+                  </span>
+                ) : null}
               </div>
               <p className="media-config-master-subtitle">
                 {language === 'vi'
@@ -826,66 +1179,262 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
               </div>
 
               <div className="media-lang-box">
-                <label className="field-label m-0">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-secondary)]">
-                    <IconLanguage size={14} className="text-[var(--color-media)]" />
-                    {t('media:targetLangLabel')} <span className="text-[var(--color-accent)]">*</span>
-                  </span>
-                  <select
-                    className="field-input mt-1.5"
-                    value={targetLang}
-                    disabled={!consented}
-                    onChange={(e) => {
-                      setTargetLang(e.target.value)
-                      // The currently selected voice may no longer be compatible
-                      // with the new target language — never submit a stale pair
-                      // (P1 fix). VoiceSelector auto-selects a compatible voice
-                      // after the voices reload; until then the create button
-                      // stays disabled (missingVoicePair).
-                      setVoiceSelection({ providerId: null, voiceId: null })
-                    }}
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-secondary)]">
+                  <IconLanguage size={14} className="text-[var(--color-media)]" />
+                  {t('media:targetLangLabel')} <span className="text-[var(--color-accent)]">*</span>
+                </span>
+
+                <div className="relative mt-1.5" ref={targetDropdownRef}>
+                  <button
+                    type="button"
+                    className={cn(
+                      'field-input w-full flex items-center justify-between text-left cursor-pointer transition-colors',
+                      targetDropdownOpen && 'border-[var(--color-media)] ring-1 ring-[var(--color-media)]',
+                    )}
+                    disabled={batchCreating}
+                    data-testid="target-dropdown-trigger"
+                    aria-haspopup="listbox"
+                    aria-expanded={targetDropdownOpen}
+                    onClick={() => setTargetDropdownOpen((prev) => !prev)}
                   >
-                    {LANG_OPTIONS.map((lang) => (
-                      <option key={lang} value={lang}>
-                        {formatLanguageOption(lang, language)}
-                      </option>
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
+                      {selectedTargets.length === 1 ? (
+                        <span className="text-xs font-medium text-[var(--color-text-primary)] truncate">
+                          {formatLanguageOption(selectedTargets[0], language)}
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--color-media-soft)] text-[var(--color-media)]">
+                            {language === 'vi' ? `${selectedTargets.length} ngôn ngữ` : `${selectedTargets.length} languages`}
+                          </span>
+                          <span className="text-xs text-[var(--color-text-secondary)] truncate">
+                            {selectedTargets.map((l) => l.toUpperCase()).join(', ')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <IconChevronDown
+                      size={16}
+                      className={cn(
+                        'text-[var(--color-text-tertiary)] shrink-0 ml-2 transition-transform duration-150',
+                        targetDropdownOpen && 'rotate-180',
+                      )}
+                    />
+                  </button>
+
+                  <div
+                    className={cn(
+                      'absolute left-0 right-0 top-full mt-1.5 z-40 max-h-64 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-1.5 shadow-xl',
+                      !targetDropdownOpen && 'hidden',
+                    )}
+                    data-testid="target-checkboxes"
+                    role="group"
+                    aria-label={t('media:targetLangLabel')}
+                  >
+                    <div className="px-2.5 py-1 text-[11px] font-semibold text-[var(--color-text-tertiary)] flex justify-between items-center border-b border-[var(--color-border)] mb-1">
+                      <span>{language === 'vi' ? 'Chọn ngôn ngữ đích' : 'Select target languages'}</span>
+                      <span className="font-mono text-[10px]">{selectedTargets.length} / {LANG_OPTIONS.length}</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {LANG_OPTIONS.map((lang) => {
+                        const checked = selectedTargets.includes(lang)
+                        const locked = staged.length > 1 && !checked
+                        const isOnlyChecked = checked && selectedTargets.length === 1
+                        const disabled = batchCreating || locked || isOnlyChecked
+
+                        return (
+                          <label
+                            key={lang}
+                            className={cn(
+                              'flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer text-xs font-medium transition-colors select-none',
+                              checked
+                                ? 'bg-[var(--color-media-soft)] text-[var(--color-text-primary)] font-semibold'
+                                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-surface-2)] hover:text-[var(--color-text-primary)]',
+                              disabled && 'opacity-60 cursor-not-allowed',
+                            )}
+                            title={
+                              locked
+                                ? t('media:batch.multiVideoLocksTarget')
+                                : isOnlyChecked
+                                  ? language === 'vi'
+                                    ? 'Phải giữ lại tối thiểu 1 ngôn ngữ đích'
+                                    : 'At least one target language is required'
+                                  : undefined
+                            }
+                          >
+                            <input
+                              type="checkbox"
+                              className="rounded border-[var(--color-border-strong)] text-[var(--color-media)] focus:ring-[var(--color-media)] h-4 w-4 shrink-0"
+                              checked={checked}
+                              disabled={disabled}
+                              data-testid={`target-check-${lang}`}
+                              onChange={() => toggleTarget(lang)}
+                            />
+                            <span className="flex-1 min-w-0 truncate">
+                              {formatLanguageOption(lang, language)}
+                            </span>
+                            {checked && (
+                              <span className="text-[11px] font-semibold text-[var(--color-media)] shrink-0">
+                                {language === 'vi' ? 'Đã chọn' : 'Selected'}
+                              </span>
+                            )}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {selectedTargets.length > 1 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5" data-testid="selected-target-chips">
+                    {selectedTargets.map((lang) => (
+                      <span
+                        key={lang}
+                        className="inline-flex items-center gap-1 rounded-full bg-[var(--color-media-soft)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--color-media)] border border-color-mix(in srgb, var(--color-media) 20%, transparent)"
+                      >
+                        <span>{formatLanguageOption(lang, language)}</span>
+                        {!batchCreating && selectedTargets.length > 1 && (
+                          <button
+                            type="button"
+                            className="hover:text-[var(--color-text-primary)] ml-0.5 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleTarget(lang)
+                            }}
+                            aria-label={`Remove ${lang}`}
+                          >
+                            <IconX size={12} />
+                          </button>
+                        )}
+                      </span>
                     ))}
-                  </select>
-                  <span className="field-help text-[11px] mt-1">
-                    {language === 'vi' ? 'Ngôn ngữ đích cho phụ đề và lồng tiếng' : 'Target language for subtitles & dubbing'}
+                  </div>
+                )}
+
+                <span className="field-help text-[11px] mt-1 block">
+                  {language === 'vi' ? 'Ngôn ngữ đích cho phụ đề và lồng tiếng' : 'Target language for subtitles & dubbing'}
+                </span>
+                {staged.length > 1 && (
+                  <span className="field-help text-[11px] mt-1 block">
+                    {t('media:batch.multiVideoLocksTarget')}
                   </span>
-                </label>
+                )}
               </div>
             </div>
 
             {/* Voice configuration */}
             <div className="mt-3.5">
-              <div className="media-config-block">
-                {presetProvidesVoice ? (
-                  <div data-testid="preset-voice-note">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
-                      <IconLanguage size={14} className="text-[var(--color-media)]" />
-                      {t('media:voice.presetVoiceTitle')}
+              {!isMultiTarget && (
+                <div className="media-config-block">
+                  {presetProvidesVoice ? (
+                    <div data-testid="preset-voice-note">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
+                        <IconLanguage size={14} className="text-[var(--color-media)]" />
+                        {t('media:voice.presetVoiceTitle')}
+                      </div>
+                      <p className="mb-0 mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+                        {t('media:voice.presetVoiceHint')}
+                      </p>
                     </div>
-                    <p className="mb-0 mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
-                      {t('media:voice.presetVoiceHint')}
-                    </p>
+                  ) : (
+                    <VoiceSelector
+                      workspaceId={workspaceId}
+                      providers={ttsProviders}
+                      targetLang={selectedTargets[0]}
+                      selectedProviderId={voiceSelection.providerId}
+                      selectedVoiceId={voiceSelection.voiceId}
+                      disabled={!consented}
+                      autoSelect
+                      showPreview
+                      allowOriginal={recipeId !== 'summary.generative'}
+                      originalSelected={keepOriginalAudio}
+                      onChange={(selection) => {
+                        setVoiceSelection(selection)
+                      }}
+                      onOriginalChange={setKeepOriginalAudio}
+                      onPendingChange={setVoiceSelection}
+                    />
+                  )}
+                </div>
+              )}
+              {isMultiTarget && (
+                <>
+                  <label className="audio-original-toggle mt-3">
+                    <input
+                      type="checkbox"
+                      data-testid="multi-keep-original"
+                      checked={keepOriginalAudio}
+                      disabled={batchCreating}
+                      onChange={(e) => setKeepOriginalAudio(e.target.checked)}
+                    />
+                    <span>
+                      <strong>{t('media:voice.original')}</strong>
+                      <small>{t('media:batch.keepOriginalHint')}</small>
+                    </span>
+                  </label>
+                  <div className="mt-3 space-y-3">
+                    {selectedTargets.map((lang) => (
+                      <div
+                        key={lang}
+                        className="media-config-block"
+                        data-testid="multi-target-row"
+                        data-lang={lang}
+                      >
+                        <div className="mb-2 flex items-center gap-2">
+                          <span className="text-xs font-semibold text-[var(--color-text-primary)]">
+                            {formatLanguageOption(lang, language)}
+                          </span>
+                          <span className="text-[11px] text-[var(--color-text-tertiary)]">
+                            {targetJobs[lang]?.status === 'created'
+                              ? t('media:batch.status.created')
+                              : targetJobs[lang]?.status === 'failed'
+                                ? t('media:batch.status.failed')
+                                : null}
+                          </span>
+                          <span className="flex-1" />
+                          {targetJobs[lang]?.jobId && (
+                            <Link
+                              to={`/w/${workspaceId}/media/jobs/${targetJobs[lang]?.jobId}`}
+                              className="text-xs font-semibold text-[var(--color-media)]"
+                            >
+                              {t('media:batch.viewJob')}
+                            </Link>
+                          )}
+                          {targetJobs[lang]?.status === 'created' && (
+                            <IconCheck size={15} className="shrink-0 text-[var(--color-status-completed)]" />
+                          )}
+                        </div>
+                        {!keepOriginalAudio
+                          && !(presetProvidesVoice
+                            && (targetVoices[lang]?.providerId == null)
+                            && (targetVoices[lang]?.voiceId == null)) && (
+                          <VoiceSelector
+                            workspaceId={workspaceId}
+                            providers={ttsProviders}
+                            targetLang={lang}
+                            selectedProviderId={targetVoices[lang]?.providerId ?? null}
+                            selectedVoiceId={targetVoices[lang]?.voiceId ?? null}
+                            disabled={batchCreating}
+                            autoSelect
+                            allowOriginal={false}
+                            onChange={(selection) =>
+                              setTargetVoices((prev) => ({ ...prev, [lang]: selection }))
+                            }
+                            onPendingChange={(selection) =>
+                              setTargetVoices((prev) => ({ ...prev, [lang]: selection }))
+                            }
+                          />
+                        )}
+                        {targetJobs[lang]?.error && (
+                          <div className="mt-1 text-[11px] text-[var(--color-error)]">
+                            {targetJobs[lang]?.error}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ) : (
-                  <VoiceSelector
-                    workspaceId={workspaceId}
-                    providers={ttsProviders}
-                    targetLang={targetLang}
-                    selectedProviderId={voiceSelection.providerId}
-                    selectedVoiceId={voiceSelection.voiceId}
-                    disabled={!consented}
-                    autoSelect
-                    showPreview
-                    onChange={setVoiceSelection}
-                    onPendingChange={setVoiceSelection}
-                  />
-                )}
-              </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -1047,10 +1596,10 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                         ? 'Chế độ Bản địa hóa toàn bộ giữ nguyên timeline và nhịp độ video gốc. Mọi câu thoại sẽ được nhận dạng, dịch và lồng tiếng đồng bộ thời gian hoàn hảo.'
                         : 'Full Localization preserves 100% of the original video timeline and pace. Every spoken sentence will be recognized, translated, and dubbed in sync.'}
                     </p>
-                    {uploaded?.durationMs != null && (
+                    {single?.durationMs != null && (
                       <div className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-mono font-medium text-[var(--color-media)] bg-[var(--color-media-soft)] px-2.5 py-1 rounded-md">
                         <IconVideo size={13} />
-                        {language === 'vi' ? 'Độ dài nguồn' : 'Source length'}: {formatDurationMs(uploaded.durationMs)}
+                        {language === 'vi' ? 'Độ dài nguồn' : 'Source length'}: {formatDurationMs(single.durationMs)}
                       </div>
                     )}
                   </div>
@@ -1083,7 +1632,9 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
               <span className="media-summary-pill">
                 {(sourceLang ? formatLanguageOption(sourceLang, language) : (language === 'vi' ? 'Tự nhận diện' : 'Auto-detect'))}
                 {' → '}
-                {formatLanguageOption(targetLang, language)}
+                {isMultiTarget
+                  ? `${formatLanguageOption(selectedTargets[0], language)} +${selectedTargets.length - 1}`
+                  : formatLanguageOption(selectedTargets[0] ?? 'vi', language)}
               </span>
               <span className="media-summary-pill">
                 {workflowMode === 'AUTO' ? (
@@ -1135,9 +1686,49 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
             </p>
           )}
 
+          {batchSummary && !batchCreating && (staged.length > 1 || isMultiTarget) && (
+            <div
+              className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-sm"
+              data-testid="staged-summary"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-[var(--color-status-completed)] flex items-center gap-1.5">
+                  <IconCheck size={16} className="shrink-0" />
+                  <span>
+                    {language === 'vi'
+                      ? `${batchSummary.created}/${staged.length > 1 ? staged.length : selectedTargets.length} jobs thành công`
+                      : `${batchSummary.created}/${staged.length > 1 ? staged.length : selectedTargets.length} jobs created`}
+                  </span>
+                </span>
+                {batchSummary.failed > 0 && (
+                  <span className="font-semibold text-[var(--color-error)] flex items-center gap-1">
+                    · <span>{language === 'vi' ? `${batchSummary.failed} jobs thất bại` : `${batchSummary.failed} failed`}</span>
+                  </span>
+                )}
+              </div>
+              {batchSummary.created > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCreated?.('')
+                    navigate(`/w/${workspaceId}/media?project=${projectId}#overview`)
+                  }}
+                  className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] flex items-center gap-1.5 cursor-pointer ml-auto"
+                >
+                  <IconLoader2 size={13} className="animate-spin text-[var(--color-media)] shrink-0" />
+                  <span>
+                    {language === 'vi'
+                      ? `Đang chuyển hướng (${redirectCountdown ?? 3}s)... (Redirecting)`
+                      : `Redirecting... (${redirectCountdown ?? 3}s)`}
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-xs text-[var(--color-text-tertiary)]">
-              {missingVoicePair && !noTtsProviders && (
+              {!isMultiTarget && missingVoicePair && !noTtsProviders && (
                 <span className="text-[var(--color-warning)] flex items-center gap-1">
                   <IconAlertCircle size={14} />
                   {language === 'vi'
@@ -1145,7 +1736,19 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                     : 'Please select both Provider and Voice before creating the job.'}
                 </span>
               )}
-              {noTtsProviders && recipeId !== 'summary.generative' && (
+              {isMultiTarget && selectedTargets.some((lang) => targetBlocked(lang)) && !noTtsProviders && (
+                <span className="text-[var(--color-warning)] flex items-center gap-1">
+                  <IconAlertCircle size={14} />
+                  {t('media:batch.missingVoice')}
+                </span>
+              )}
+              {isNxN && (
+                <span className="text-[var(--color-warning)] flex items-center gap-1" data-testid="nxn-hint">
+                  <IconAlertTriangle size={14} />
+                  {t('media:batch.noNxN')}
+                </span>
+              )}
+              {noTtsProviders && recipeId !== 'summary.generative' && !keepOriginalAudio && (
                 <span className="text-[var(--color-error)] flex items-center gap-1">
                   <IconAlertCircle size={14} />
                   {language === 'vi'
@@ -1158,23 +1761,34 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
             <button
               type="button"
               className="btn-primary media-create-submit-btn"
+              data-testid="create-submit"
               disabled={
                 !consented
-                || !targetLang
+                || selectedTargets.length === 0
                 || createJob.isPending
+                || batchCreating
                 || selectedModeBlock.kind !== 'ok'
-                || missingVoicePair
+                || isNxN
+                || (isMultiTarget
+                  ? selectedTargets.some((lang) => targetBlocked(lang))
+                  : missingVoicePair)
                 || providersLoading
-                || (recipeId !== 'summary.generative' && noTtsProviders)
+                || (recipeId !== 'summary.generative' && !keepOriginalAudio && noTtsProviders)
               }
               onClick={() => void handleCreate()}
             >
-              {createJob.isPending ? (
+              {createJob.isPending || batchCreating ? (
                 <IconLoader2 size={16} className="animate-spin" />
               ) : (
                 <IconPlus size={16} />
               )}
-              {createJob.isPending ? t('common:loading') : t('media:createJobSubmit')}
+              {createJob.isPending || batchCreating
+                ? t('common:loading')
+                : batchSummary
+                  && batchSummary.failed > 0
+                  && (staged.length > 1 || isMultiTarget)
+                  ? t('media:batch.retryFailed')
+                  : t('media:createJobSubmit')}
             </button>
           </div>
         </div>
@@ -1188,47 +1802,26 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
       )}
       </main>
     </div>
+    </>
   )
 }
 
-export type CreateJobSelection = {
-  projectId?: string
-  rootAssetId?: string
-  documentId: string
-  recipeId: string
-  sourceLang?: string
-  targetLang: string
-  /** W0 additive — workflow mode; absent lets the backend derive the recipe default. */
-  workflowMode?: WorkflowMode
-  /** M-C — optional workflow preset id; the backend resolves/validates/freezes. */
-  workflowPresetId?: string
-  requestedDurationSeconds: number | null
-  requestedMode: AudioExecutionMode | null
-  /** Phase C — provider + voice chosen at create (all-or-nothing). */
-  voiceSelection: VoiceSelection
-  /**
-   * C2 — the selected AUTO preset carries its own voice pair. When true the
-   * FE sends NO explicit pair (null/null) so the preset pair wins at
-   * bindTtsProviderAndVoice (an auto-selected workspace default would
-   * otherwise override it as a "JOB explicit" pair).
-   */
-  presetProvidesVoice?: boolean
-  enableVlm?: boolean
+export type CreateJobSelection = LocalizationJobPayloadInput & {
   deps: {
     createJob: {
       mutateAsync: (body: {
-        projectId?: string
-        rootAssetId?: string
         documentId: string
         recipeId: string
         sourceLang?: string
         targetLang: string
         workflowMode?: WorkflowMode
         workflowPresetId?: string | null
+        skipPresetResolution?: boolean | null
         requestedDurationSeconds: number | null
         requestedMode: AudioExecutionMode | null
         ttsProviderId?: string | null
         ttsVoiceId?: string | null
+        keepOriginalAudio?: boolean
         enableVlm?: boolean | null
       }) => Promise<{ id: string }>
     }
@@ -1251,6 +1844,10 @@ export type CreateJobSelection = {
  *   null/null so the backend applies the preset pair (JOB explicit fields
  *   would win over the preset — never auto-override a preset voice).
  * - no post-create selectVoice call: the binding is persisted atomically.
+ * - picker "no preset" (workflowPresetId null/undefined) opts OUT of backend
+ *   default resolution (skipPresetResolution: true) — the job falls back to
+ *   recipe-derived defaults instead of auto-applying the workspace/system
+ *   default preset. A pinned preset id always sends false.
  */
 /**
  * C2 (docs/97 §19.14) + bugfix live (2026-08-15): the partial-pair guard and
@@ -1263,50 +1860,7 @@ export type CreateJobSelection = {
  * Mirrors `createVoiceGate` + the `missingVoicePair` UI gate.
  */
 export async function createMediaJobWithSelection(selection: CreateJobSelection) {
-  const { voiceSelection, deps } = selection
-  const hasProvider = voiceSelection.providerId != null
-  const hasVoice = voiceSelection.voiceId != null
-  const voiceDeferred = selection.recipeId === 'summary.generative'
-  const presetBindsVoice = selection.presetProvidesVoice === true
-  if (!voiceDeferred && !presetBindsVoice && hasProvider !== hasVoice) {
-    throw new Error('partial TTS binding: provider and voice must be sent together')
-  }
-  const sendPair = !presetBindsVoice && hasProvider && hasVoice
-  return deps.createJob.mutateAsync({
-    projectId: selection.projectId,
-    rootAssetId: selection.rootAssetId,
-    documentId: selection.documentId,
-    recipeId: selection.recipeId,
-    sourceLang: selection.sourceLang,
-    targetLang: selection.targetLang,
-    workflowMode: selection.workflowMode,
-    workflowPresetId: selection.workflowPresetId ?? null,
-    requestedDurationSeconds: selection.requestedDurationSeconds,
-    requestedMode: selection.requestedMode,
-    ttsProviderId: sendPair ? voiceSelection.providerId : null,
-    ttsVoiceId: sendPair ? voiceSelection.voiceId : null,
-    enableVlm: selection.enableVlm,
-  })
-}
-
-/**
- * Phase C — create-time voice gate (BA re-review vòng 2 P1 fix). Create is
- * always dubbed: the request must carry a COMPLETE provider+voice pair. Any
- * missing half — provider change in flight (voices loading), no compatible
- * voice, provider/voice reset — blocks submission so a stale pair can never
- * be sent. C2: a preset-provided voice pair satisfies the gate (the FE sends
- * no pair and the backend binds the preset pair). Exported as a pure
- * predicate for tests.
- */
-export function createVoiceGate(
-  recipeId: string,
-  voiceSelection: VoiceSelection,
-  presetProvidesVoice = false,
-): 'ok' | 'missing-voice-pair' {
-  if (recipeId === 'summary.generative') return 'ok' // voice deferred to render prep
-  if (presetProvidesVoice) return 'ok'
-  if (voiceSelection.providerId == null || voiceSelection.voiceId == null) {
-    return 'missing-voice-pair'
-  }
-  return 'ok'
+  // Payload rules live in the shared batch helper (single source of truth for
+  // single + batch creates); this wrapper only submits. Behavior unchanged.
+  return selection.deps.createJob.mutateAsync(buildLocalizationCreateJobInput(selection))
 }

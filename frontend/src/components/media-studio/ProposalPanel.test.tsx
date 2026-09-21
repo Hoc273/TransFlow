@@ -1,9 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ProposalCard, ProposalPanel } from './ProposalPanel'
 import type { MediaJob, MediaSummaryProposal } from '@/types/media'
-
-const refineMutateAsync = vi.fn()
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -58,10 +56,6 @@ vi.mock('@/hooks/useMedia', () => ({
   useSelectProposal: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCreateCustomProposal: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRerunSummarize: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useRefineNarrativePlan: () => ({
-    mutateAsync: refineMutateAsync,
-    isPending: false,
-  }),
   useMediaLinkedJob: () => ({ data: undefined, isLoading: false }),
 }))
 
@@ -227,50 +221,38 @@ function fullJob(partial: Partial<MediaJob> = {}): MediaJob {
       },
     ],
     recipeId: 'summary.generative',
+    strategySnapshot: { planning: 'SUMMARY_SINGLE_PLAN' },
     ...partial,
   }
 }
 
-describe('ProposalPanel refine UI', () => {
-  beforeEach(() => {
-    refineMutateAsync.mockReset()
-  })
-
-  it('shows refine trigger and direct review for generative jobs, and opens modal form', () => {
+describe('ProposalPanel single-plan UI', () => {
+  it('shows read-only committed single plan for generative jobs without refine/select controls', () => {
     const defaultHtml = renderToStaticMarkup(
       <ProposalPanel workspaceId="ws-1" job={fullJob({ recipeId: 'summary.generative' })} />,
     )
-    expect(defaultHtml).toContain('data-testid="narrative-refine-open-btn"')
     expect(defaultHtml).toContain('data-testid="narrative-plan-review-container"')
     expect(defaultHtml).toContain('data-testid="narrative-plan-viewer"')
-
-    // When modal is open
-    const modalHtml = renderToStaticMarkup(
-      <ProposalPanel
-        workspaceId="ws-1"
-        job={fullJob({ recipeId: 'summary.generative' })}
-        initialRefineModalOpen
-      />,
-    )
-    expect(modalHtml).toContain('data-testid="narrative-refine-form"')
-    expect(modalHtml).toContain('data-testid="narrative-refine-feedback"')
-    expect(modalHtml).toContain('data-testid="narrative-refine-submit"')
-    expect(modalHtml).toContain('data-testid="refine-modal-coverage-timeline"')
-    expect(modalHtml).toContain('disabled')
+    expect(defaultHtml).toContain('data-testid="narrative-single-plan-badge"')
+    expect(defaultHtml).not.toContain('data-testid="narrative-refine-open-btn"')
+    expect(defaultHtml).not.toContain('data-testid="narrative-refine-form"')
+    expect(defaultHtml).not.toContain('data-testid="narrative-approve-btn"')
+    expect(defaultHtml).not.toContain('data-testid="narrative-reviewed-badge"')
+    expect(defaultHtml).not.toContain('data-testid="narrative-refine-modal-trigger"')
   })
 
-  it('hides refine modal trigger and form for extractive jobs', () => {
+  it('hides single-plan badge for extractive jobs', () => {
     const html = renderToStaticMarkup(
       <ProposalPanel
         workspaceId="ws-1"
         job={fullJob({ recipeId: 'summary.extractive', processingMode: 'HYBRID' })}
       />,
     )
-    expect(html).not.toContain('data-testid="narrative-refine-open-btn"')
+    expect(html).not.toContain('data-testid="narrative-single-plan-badge"')
     expect(html).not.toContain('data-testid="narrative-refine-form"')
   })
 
-  it('hides refine modal trigger and form when selection is locked', () => {
+  it('shows committed badge when selection is locked (auto-committed)', () => {
     const html = renderToStaticMarkup(
       <ProposalPanel
         workspaceId="ws-1"
@@ -301,24 +283,24 @@ describe('ProposalPanel refine UI', () => {
         })}
       />,
     )
-    expect(html).not.toContain('data-testid="narrative-refine-open-btn"')
-    expect(html).not.toContain('data-testid="narrative-refine-form"')
-    // Requirement 3: Locked pill near "Tạo lại đề xuất AI" in section header must NOT be rendered for generative
-    expect(html).not.toContain('media-proposal-state-pill locked">')
-    // Requirement 4: Reviewed and locked badge is displayed instead of agree button
-    expect(html).toContain('data-testid="narrative-reviewed-badge"')
-    expect(html).toContain('media:proposals.reviewedAndLocked')
+    expect(html).toContain('data-testid="narrative-single-plan-badge"')
+    expect(html).toContain('media:proposals.singlePlanCommitted')
     expect(html).not.toContain('data-testid="narrative-approve-btn"')
   })
 
-  it('shows agreeNextStep button and refine trigger before narrative is reviewed and locked', () => {
+  it('keeps legacy NARRATIVE_REVIEW select path for completed-but-unselected jobs', () => {
     const html = renderToStaticMarkup(
-      <ProposalPanel workspaceId="ws-1" job={fullJob({ recipeId: 'summary.generative' })} />,
+      <ProposalPanel
+        workspaceId="ws-1"
+        job={fullJob({
+          recipeId: 'summary.generative',
+          strategySnapshot: { planning: 'NARRATIVE_REVIEW' },
+          selectedProposalId: null,
+        })}
+      />,
     )
-    // Requirement 4: Button "Đồng ý, bước kế" displayed before review
-    expect(html).toContain('data-testid="narrative-approve-btn"')
-    expect(html).toContain('media:proposals.agreeNextStep')
-    expect(html).toContain('data-testid="narrative-refine-modal-trigger"')
-    expect(html).not.toContain('data-testid="narrative-reviewed-badge"')
+    expect(html).toContain('data-testid="narrative-legacy-review-container"')
+    expect(html).toContain('data-testid="narrative-legacy-select-btn"')
+    expect(html).not.toContain('data-testid="narrative-single-plan-badge"')
   })
 })

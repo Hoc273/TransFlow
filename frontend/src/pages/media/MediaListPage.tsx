@@ -1,40 +1,49 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   IconChevronLeft,
   IconChevronRight,
+  IconDownload,
   IconFolder,
   IconList,
+  IconLoader2,
+  IconPlayerPlay,
   IconPlus,
   IconRefresh,
+  IconRotate2,
   IconUpload,
   IconVideo,
 } from '@tabler/icons-react'
 import { MediaStudioNav } from '@/components/media-studio/MediaStudioNav'
-import { StageBadge } from '@/components/media-studio/StageBadge'
 import { StageLegend } from '@/components/media-studio/StageLegend'
 import { StudioAccordion, type StudioPanel } from '@/components/media-studio/StudioAccordion'
 import { UploadConsentPanel } from '@/components/media-studio/UploadConsentPanel'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { Modal } from '@/components/shared/Modal'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+import { useDocuments } from '@/hooks/useDocuments'
 import { useMediaJobs } from '@/hooks/useMedia'
 import { useProjects } from '@/hooks/useProjects'
+import { exportTransformationJobApi, rerunTransformationStageApi } from '@/api/transformation'
 import {
   currentStage,
   domainPhaseLabelKey,
   isActiveMediaJobStatus,
+  isRedundantPhaseBadge,
   overallProgress,
   recipeLabelKey,
   recipeModeBadgeClass,
+  resolveEffectivePhase,
 } from '@/lib/media'
 import { formatRelativeTime } from '@/lib/format'
 import { formatLanguageOption } from '@/lib/languages'
 import { asJobStatus } from '@/lib/status'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
+import type { DocumentItem } from '@/types/document'
 import type { MediaJob } from '@/types/media'
 
 const PAGE_SIZE = 8
@@ -48,22 +57,18 @@ export function MediaListPage() {
   const { workspaceId = '' } = useParams()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const queryProjectId = searchParams.get('projectId') || ''
-
+  const location = useLocation()
   const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const language = useUiStore((s) => s.language)
 
   const { data: projects = [] } = useProjects(workspaceId)
-  const [projectId, setProjectId] = useState(queryProjectId)
-  const [openPanel, setOpenPanel] = useState<string | null>('overview')
-  const [page, setPage] = useState(0)
+  const projectFromUrl = searchParams.get('project') || ''
+  const [projectId, setProjectId] = useState(projectFromUrl)
 
-  // Sync state if query param in URL changes
-  useEffect(() => {
-    if (queryProjectId !== projectId) {
-      setProjectId(queryProjectId)
-    }
-  }, [queryProjectId])
+  const hashPanel = location.hash.replace(/^#/, '')
+  const initialPanel = hashPanel === 'upload' ? 'upload' : 'overview'
+  const [openPanel, setOpenPanel] = useState<string | null>(initialPanel)
+  const [page, setPage] = useState(0)
 
   useDocumentTitle(t('media:title'))
 
@@ -74,6 +79,7 @@ export function MediaListPage() {
     dataUpdatedAt,
     refetch,
   } = useMediaJobs(workspaceId, projectId || undefined)
+  const { data: documents = [] } = useDocuments(workspaceId, projectId || undefined)
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === projectId) ?? null,
@@ -89,6 +95,53 @@ export function MediaListPage() {
   useEffect(() => {
     setPage(0)
   }, [projectId, jobs.length])
+
+  // Sync projectId with URL search parameter (?project=...)
+  useEffect(() => {
+    const urlProj = searchParams.get('project') || ''
+    if (urlProj !== projectId) {
+      setProjectId(urlProj)
+    }
+  }, [searchParams])
+
+  // Sync openPanel with URL hash (#overview, #upload)
+  useEffect(() => {
+    const h = location.hash.replace(/^#/, '')
+    if (h === 'upload') {
+      setOpenPanel('upload')
+    } else if (h === 'overview' || !h) {
+      setOpenPanel('overview')
+    }
+  }, [location.hash])
+
+  const handlePanelToggle = (panelId: string | null) => {
+    const next = openPanel === panelId ? null : panelId
+    setOpenPanel(next)
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash: next ? `#${next}` : '',
+      },
+      { replace: false },
+    )
+  }
+
+  const handleSelectProject = (newId: string) => {
+    setProjectId(newId)
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (newId) {
+          next.set('project', newId)
+        } else {
+          next.delete('project')
+        }
+        return next
+      },
+      { replace: true },
+    )
+  }
 
   const panels: StudioPanel[] = [
     {
@@ -106,12 +159,14 @@ export function MediaListPage() {
           workspaceId={workspaceId}
           projectId={projectId}
           jobs={jobs}
+          documents={documents}
           isLoading={isLoading}
           language={language}
           page={page}
           pageSize={PAGE_SIZE}
           onPageChange={setPage}
           onOpen={(id) => navigate(`/w/${workspaceId}/media/jobs/${id}`)}
+          onRefresh={() => void refetch()}
         />
       ),
     },
@@ -126,7 +181,14 @@ export function MediaListPage() {
         <UploadConsentPanel
           workspaceId={workspaceId}
           projectId={projectId}
-          onCreated={() => setOpenPanel('overview')}
+          onCreated={() => {
+            setOpenPanel('overview')
+            navigate({
+              pathname: location.pathname,
+              search: location.search,
+              hash: '#overview',
+            })
+          }}
         />
       ) : (
         <p className="text-sm text-[var(--color-text-secondary)]">{t('media:noProjectDesc')}</p>
@@ -186,7 +248,14 @@ export function MediaListPage() {
             type="button"
             className="btn-primary"
             disabled={!projectId}
-            onClick={() => setOpenPanel('upload')}
+            onClick={() => {
+              setOpenPanel('upload')
+              navigate({
+                pathname: location.pathname,
+                search: location.search,
+                hash: '#upload',
+              })
+            }}
           >
             <IconPlus size={16} />
             {t('media:newJob')}
@@ -228,21 +297,13 @@ export function MediaListPage() {
           className="field-input media-project-picker-select"
           value={projectId}
           onChange={(e) => {
-            const nextId = e.target.value
-            setProjectId(nextId)
+            handleSelectProject(e.target.value)
             setOpenPanel('overview')
-            setSearchParams(
-              (prev) => {
-                const next = new URLSearchParams(prev)
-                if (nextId) {
-                  next.set('projectId', nextId)
-                } else {
-                  next.delete('projectId')
-                }
-                return next
-              },
-              { replace: true },
-            )
+            navigate({
+              pathname: location.pathname,
+              search: e.target.value ? `?project=${e.target.value}` : '',
+              hash: '#overview',
+            })
           }}
           aria-label={t('media:selectProject')}
         >
@@ -258,34 +319,129 @@ export function MediaListPage() {
       <StudioAccordion
         panels={panels}
         openId={openPanel}
-        onToggle={(id) => setOpenPanel((cur) => (cur === id ? null : id))}
+        onToggle={handlePanelToggle}
       />
     </div>
   )
 }
 
-function JobsTable({
+export function JobsTable({
   workspaceId,
   projectId,
   jobs,
+  documents = [],
   isLoading,
   language,
   page,
   pageSize,
   onPageChange,
   onOpen,
+  onRefresh,
 }: {
   workspaceId: string
   projectId: string
   jobs: MediaJob[]
+  documents?: DocumentItem[]
   isLoading: boolean
   language: string
   page: number
   pageSize: number
   onPageChange: (page: number) => void
   onOpen: (id: string) => void
+  onRefresh?: () => void
 }) {
   const { t } = useTranslation(['media', 'common'])
+
+  const [previewJob, setPreviewJob] = useState<{
+    job: MediaJob
+    title: string
+    videoUrl: string | null
+    loading: boolean
+    error: string | null
+  } | null>(null)
+  const [downloadingJobId, setDownloadingJobId] = useState<string | null>(null)
+  const [rerunningJobId, setRerunningJobId] = useState<string | null>(null)
+
+  const handlePreview = async (e: React.MouseEvent, job: MediaJob, title: string) => {
+    e.stopPropagation()
+    setPreviewJob({ job, title, videoUrl: null, loading: true, error: null })
+    try {
+      const res = await exportTransformationJobApi(workspaceId, job.id, 'VIDEO')
+      if (res.downloadUrl) {
+        setPreviewJob((prev) => (prev ? { ...prev, videoUrl: res.downloadUrl, loading: false } : null))
+      } else {
+        setPreviewJob((prev) =>
+          prev
+            ? {
+                ...prev,
+                loading: false,
+                error: language === 'vi' ? 'Không tìm thấy video preview' : 'No preview video available',
+              }
+            : null,
+        )
+      }
+    } catch (err) {
+      setPreviewJob((prev) =>
+        prev
+          ? {
+              ...prev,
+              loading: false,
+              error:
+                err instanceof Error
+                  ? err.message
+                  : language === 'vi'
+                    ? 'Không thể tải video preview'
+                    : 'Failed to load video preview',
+            }
+          : null,
+      )
+    }
+  }
+
+  const handleDownload = async (e: React.MouseEvent, job: MediaJob, title: string) => {
+    e.stopPropagation()
+    setDownloadingJobId(job.id)
+    try {
+      const res = await exportTransformationJobApi(workspaceId, job.id, 'VIDEO')
+      if (res.downloadUrl) {
+        const a = document.createElement('a')
+        a.href = res.downloadUrl
+        a.download = res.fileName || `${title}.mp4`
+        a.target = '_blank'
+        a.rel = 'noopener noreferrer'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      }
+    } catch (err) {
+      console.error('Download failed', err)
+    } finally {
+      setDownloadingJobId(null)
+    }
+  }
+
+  const handleRerun = async (e: React.MouseEvent, job: MediaJob) => {
+    e.stopPropagation()
+    const failedStage =
+      job.stages?.find((s) => s.status === 'FAILED') ??
+      job.stages?.find((s) => s.status === 'PARTIALLY_FAILED') ??
+      currentStage(job)
+    const stageName = failedStage?.stageName ?? job.stages?.[0]?.stageName ?? 'RENDER'
+
+    setRerunningJobId(job.id)
+    try {
+      await rerunTransformationStageApi(workspaceId, job.id, stageName)
+      onRefresh?.()
+    } catch (err) {
+      console.error('Rerun failed', err)
+    } finally {
+      setRerunningJobId(null)
+    }
+  }
+
+  const docMap = useMemo(() => {
+    return new Map(documents.map((d) => [d.id, d.name]))
+  }, [documents])
 
   const totalPages = Math.max(1, Math.ceil(jobs.length / pageSize))
   const safePage = Math.min(page, totalPages - 1)
@@ -339,13 +495,16 @@ function JobsTable({
               <th>{t('media:col.currentStage')}</th>
               <th>{t('media:col.status')}</th>
               <th>{t('media:col.created')}</th>
-              <th style={{ width: 48 }} />
+              <th className="!text-center" style={{ width: 140, textAlign: 'center' }}>
+                {t('media:col.action', { defaultValue: language === 'vi' ? 'Hành động' : 'Actions' })}
+              </th>
             </tr>
           </thead>
           <tbody>
             {pageJobs.map((job) => {
               const stage = currentStage(job)
               const progress = overallProgress(job)
+              const videoTitle = docMap.get(job.documentId) || `Video ${job.id.slice(0, 8)}`
               return (
                 <tr
                   key={job.id}
@@ -353,13 +512,16 @@ function JobsTable({
                   onClick={() => onOpen(job.id)}
                 >
                   <td>
-                    <div className="flex items-center gap-3">
-                      <div className="media-job-thumb">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="media-job-thumb shrink-0">
                         <IconVideo size={16} />
                       </div>
-                      <div>
-                        <div className="font-semibold text-[13px]">
-                          {formatLanguageOption(job.targetLang, language)}
+                      <div className="min-w-0 max-w-[260px]">
+                        <div
+                          className="font-semibold text-[13px] truncate"
+                          title={videoTitle}
+                        >
+                          {videoTitle}
                         </div>
                         <div className="font-mono text-[11px] text-[var(--color-text-tertiary)]">
                           {job.id.slice(0, 8)}
@@ -380,13 +542,10 @@ function JobsTable({
                   <td>
                     {stage ? (
                       <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-[12.5px]">
-                          <span>
-                            {t(`media:stages.${stage.stageName}`, {
-                              defaultValue: stage.stageName.replaceAll('_', ' '),
-                            })}
-                          </span>
-                          <StageBadge status={stage.status} />
+                        <div className="text-[12.5px] font-medium text-[var(--color-text-primary)]">
+                          {t(`media:stages.${stage.stageName}`, {
+                            defaultValue: stage.stageName.replaceAll('_', ' '),
+                          })}
                         </div>
                         {isActiveMediaJobStatus(job.status) && (
                           <div className="flex max-w-[140px] items-center gap-2">
@@ -404,29 +563,84 @@ function JobsTable({
                   <td>
                     <div className="space-y-1">
                       <StatusBadge status={asJobStatus(job.status)} />
-                      {job.domainPhase && (
-                        <div
-                          className="text-[11px] text-[var(--color-text-tertiary)]"
-                          title={String(job.domainPhase)}
-                        >
-                          {t(`media:${domainPhaseLabelKey(job.domainPhase)}`, {
-                            defaultValue: String(job.domainPhase).replaceAll('_', ' '),
-                          })}
-                        </div>
-                      )}
+                      {(() => {
+                        const phase = resolveEffectivePhase(job)
+                        if (!phase || isRedundantPhaseBadge({ status: job.status, domainPhase: phase })) {
+                          return null
+                        }
+                        return (
+                          <div
+                            className="text-[11px] text-[var(--color-text-tertiary)]"
+                            title={String(phase)}
+                          >
+                            {t(`media:${domainPhaseLabelKey(phase)}`, {
+                              defaultValue: String(phase).replaceAll('_', ' '),
+                            })}
+                          </div>
+                        )
+                      })()}
                     </div>
                   </td>
                   <td className="text-xs text-[var(--color-text-tertiary)]">
                     {formatRelativeTime(job.createdAt, language)}
                   </td>
-                  <td>
-                    <Link
-                      to={`/w/${workspaceId}/media/jobs/${job.id}`}
-                      className="btn-ghost btn-sm"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <IconChevronRight size={16} />
-                    </Link>
+                  <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                    <div className="flex items-center justify-center gap-1">
+                      {job.status === 'COMPLETED' && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn-ghost btn-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                            title={language === 'vi' ? 'Xem video' : 'Watch video'}
+                            aria-label={language === 'vi' ? 'Xem video' : 'Watch video'}
+                            data-testid={`preview-job-${job.id}`}
+                            onClick={(e) => handlePreview(e, job, videoTitle)}
+                          >
+                            <IconPlayerPlay size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost btn-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                            title={language === 'vi' ? 'Tải video' : 'Download video'}
+                            aria-label={language === 'vi' ? 'Tải video' : 'Download video'}
+                            data-testid={`download-job-${job.id}`}
+                            disabled={downloadingJobId === job.id}
+                            onClick={(e) => handleDownload(e, job, videoTitle)}
+                          >
+                            {downloadingJobId === job.id ? (
+                              <IconLoader2 size={16} className="animate-spin text-[var(--color-accent)]" />
+                            ) : (
+                              <IconDownload size={16} />
+                            )}
+                          </button>
+                        </>
+                      )}
+                      {(job.status === 'FAILED' || job.status === 'PARTIALLY_FAILED') && (
+                        <button
+                          type="button"
+                          className="btn-ghost btn-sm text-red-500 hover:text-red-600 dark:text-red-400"
+                          title={language === 'vi' ? 'Chạy lại' : 'Rerun'}
+                          aria-label={language === 'vi' ? 'Chạy lại' : 'Rerun'}
+                          data-testid={`rerun-job-${job.id}`}
+                          disabled={rerunningJobId === job.id}
+                          onClick={(e) => handleRerun(e, job)}
+                        >
+                          {rerunningJobId === job.id ? (
+                            <IconLoader2 size={16} className="animate-spin text-red-500" />
+                          ) : (
+                            <IconRotate2 size={16} />
+                          )}
+                        </button>
+                      )}
+                      <Link
+                        to={`/w/${workspaceId}/media/jobs/${job.id}`}
+                        className="btn-ghost btn-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                        title={language === 'vi' ? 'Chi tiết pipeline' : 'Pipeline details'}
+                        aria-label={language === 'vi' ? 'Chi tiết pipeline' : 'Pipeline details'}
+                      >
+                        <IconChevronRight size={16} />
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               )
@@ -463,6 +677,70 @@ function JobsTable({
           </button>
         </div>
       </div>
+
+      {previewJob && (
+        <Modal
+          open={true}
+          onClose={() => setPreviewJob(null)}
+          title={previewJob.title}
+          description={`Job ID: ${previewJob.job.id}`}
+          size="lg"
+          footer={
+            <div className="flex w-full items-center justify-between">
+              <div>
+                {previewJob.videoUrl && (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm inline-flex items-center gap-1.5"
+                    onClick={() => {
+                      const a = document.createElement('a')
+                      a.href = previewJob.videoUrl!
+                      a.download = `${previewJob.title || 'video'}.mp4`
+                      a.target = '_blank'
+                      a.rel = 'noopener noreferrer'
+                      document.body.appendChild(a)
+                      a.click()
+                      document.body.removeChild(a)
+                    }}
+                  >
+                    <IconDownload size={14} />
+                    <span>{language === 'vi' ? 'Tải video' : 'Download video'}</span>
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => setPreviewJob(null)}
+              >
+                {t('common:actions.close', { defaultValue: 'Đóng' })}
+              </button>
+            </div>
+          }
+        >
+          {previewJob.loading ? (
+            <div className="flex h-64 flex-col items-center justify-center gap-3 text-[var(--color-text-tertiary)]">
+              <IconLoader2 size={32} className="animate-spin text-[var(--color-accent)]" />
+              <span className="text-sm">
+                {language === 'vi' ? 'Đang tải video…' : 'Loading video…'}
+              </span>
+            </div>
+          ) : previewJob.error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-400">
+              {previewJob.error}
+            </div>
+          ) : previewJob.videoUrl ? (
+            <div className="flex flex-col items-center">
+              <video
+                src={previewJob.videoUrl}
+                controls
+                autoPlay
+                className="max-h-[65vh] w-full rounded-lg bg-black object-contain shadow"
+              />
+            </div>
+          ) : null}
+        </Modal>
+      )}
     </div>
   )
 }

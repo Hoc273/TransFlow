@@ -27,7 +27,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
 
   return (
     <div className="auth-shell">
-      <aside className="auth-brand-panel">
+      <aside className="hidden lg:flex auth-brand-panel">
         <video
           src="/auth_circle_loop.mp4"
           autoPlay
@@ -90,22 +90,30 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         </div>
       </aside>
 
-      <main className="relative flex flex-col items-center justify-center px-8 py-12">
-        <div className="absolute right-7 top-6 flex items-center gap-2">
+      <main className="relative flex min-h-screen flex-col items-center justify-center px-4 py-6 sm:px-8 sm:py-12 lg:min-h-0">
+        {/* Desktop top-right controls */}
+        <div className="hidden lg:flex absolute right-7 top-6 items-center gap-2">
           <LanguageSwitcher />
           <ThemeToggle />
         </div>
 
-        <div className="w-full max-w-[400px]">
-          <Link
-            to="/"
-            className="auth-mobile-logo mb-8 hidden items-center gap-3 text-[18px] font-bold text-[var(--color-text-primary)] no-underline"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-[10px] overflow-hidden p-0.5">
-              <img src="/favicon.svg" alt="TransFlow" className="h-full w-full object-contain drop-shadow-[0_0_6px_rgba(0,192,255,0.5)]" />
+        <div className="w-full max-w-[400px] my-auto">
+          {/* Mobile Top Bar: Logo + LanguageSwitcher & ThemeToggle */}
+          <div className="flex lg:hidden items-center justify-between gap-3 mb-6 w-full">
+            <Link
+              to="/"
+              className="flex items-center gap-2.5 text-[17px] font-bold tracking-tight text-[var(--color-text-primary)] no-underline transition-opacity hover:opacity-90"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] overflow-hidden p-0.5">
+                <img src="/favicon.svg" alt="TransFlow" className="h-full w-full object-contain drop-shadow-[0_0_6px_rgba(0,192,255,0.5)]" />
+              </div>
+              <span>TransFlow</span>
+            </Link>
+            <div className="flex items-center gap-1.5">
+              <LanguageSwitcher />
+              <ThemeToggle />
             </div>
-            TransFlow
-          </Link>
+          </div>
           {children}
         </div>
       </main>

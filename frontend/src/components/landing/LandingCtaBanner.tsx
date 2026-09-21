@@ -111,7 +111,7 @@ export function LandingCtaBanner() {
         }
       `}</style>
 
-      <div className="relative rounded-[32px] overflow-hidden border border-neutral-200/80 dark:border-white/10 aspect-[21/9] sm:aspect-[24/8] min-h-[360px] flex flex-col items-center justify-center text-center p-8 sm:p-12 shadow-sm dark:shadow-2xl bg-neutral-100 dark:bg-[#13151b] group">
+      <div className="relative rounded-2xl sm:rounded-[32px] overflow-hidden border border-neutral-200/80 dark:border-white/10 aspect-auto sm:aspect-[24/8] min-h-[280px] sm:min-h-[360px] flex flex-col items-center justify-center text-center p-5 sm:p-12 shadow-sm dark:shadow-2xl bg-neutral-100 dark:bg-[#13151b] group">
         {/* Ambient Video Background (Darkskip in dark mode, footer_brand in light mode) */}
         <video
           ref={videoRef}
@@ -132,24 +132,24 @@ export function LandingCtaBanner() {
         <div className="absolute inset-0 bg-black/15 dark:bg-black/25 pointer-events-none" />
 
         {/* Content */}
-        <div className="relative z-10 flex flex-col items-center max-w-3xl">
+        <div className="relative z-10 flex flex-col items-center max-w-3xl w-full">
           {/* Benefits Notification Pill */}
           <Link
             to={authTarget}
-            className="group/pill inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/20 bg-white/15 dark:bg-black/40 backdrop-blur-md text-xs font-medium text-white hover:bg-white/25 transition-all shadow-sm mb-6"
+            className="group/pill inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-full border border-white/20 bg-white/15 dark:bg-black/40 backdrop-blur-md text-xs font-medium text-white hover:bg-white/25 transition-all shadow-sm mb-4 sm:mb-6"
           >
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
             </span>
-            <span>{t('ctaBanner.pill')}</span>
-            <span className="text-blue-300 group-hover/pill:text-blue-200 font-semibold flex items-center transition-transform duration-200 group-hover/pill:translate-x-0.5">
+            <span className="truncate max-w-[200px] sm:max-w-none">{t('ctaBanner.pill')}</span>
+            <span className="text-blue-300 group-hover/pill:text-blue-200 font-semibold flex items-center transition-transform duration-200 group-hover/pill:translate-x-0.5 shrink-0">
               {t('ctaBanner.pillCta')}
             </span>
           </Link>
 
           {/* Action-Oriented Headline with Real-Time Video-Synced Shimmer */}
-          <h2 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-white tracking-tight leading-tight mb-4 drop-shadow-[0_4px_24px_rgba(0,0,0,0.9)]">
+          <h2 className="text-2xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-white tracking-tight leading-tight mb-3 sm:mb-4 drop-shadow-[0_4px_24px_rgba(0,0,0,0.9)]">
             <span
               style={{
                 backgroundImage: `linear-gradient(120deg, ${dynamicColors.c1} 0%, ${dynamicColors.c2} 45%, ${dynamicColors.c3} 80%, ${dynamicColors.c1} 100%)`,
@@ -166,22 +166,22 @@ export function LandingCtaBanner() {
             </span>
           </h2>
 
-          <p className="text-white/95 text-xs sm:text-sm md:text-base max-w-xl mx-auto mb-8 font-medium leading-relaxed drop-shadow-[0_2px_10px_rgba(0,0,0,0.85)]">
+          <p className="text-white/95 text-xs sm:text-sm md:text-base max-w-xl mx-auto mb-6 sm:mb-8 font-medium leading-relaxed drop-shadow-[0_2px_10px_rgba(0,0,0,0.85)] line-clamp-3 sm:line-clamp-none">
             {t('ctaBanner.desc')}
           </p>
 
           {/* Action Buttons */}
-          <div className="flex flex-wrap items-center justify-center gap-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2.5 sm:gap-4 w-full sm:w-auto px-2 sm:px-0">
             <Link
               to={authTarget}
-              className="inline-flex items-center justify-center px-8 py-3.5 rounded-full bg-white hover:bg-neutral-100 text-neutral-950 font-semibold text-sm transition-all shadow-lg hover:scale-105 active:scale-95 duration-200"
+              className="inline-flex items-center justify-center px-6 sm:px-8 py-3 sm:py-3.5 rounded-full bg-white hover:bg-neutral-100 text-neutral-950 font-semibold text-xs sm:text-sm transition-all shadow-lg hover:scale-105 active:scale-95 duration-200 w-full sm:w-auto text-center cursor-pointer"
             >
               {t('ctaBanner.btnFree')}
             </Link>
 
             <a
               href="#pricing"
-              className="inline-flex items-center justify-center px-8 py-3.5 rounded-full bg-black/40 hover:bg-black/60 border border-white/30 text-white font-medium text-sm transition-all shadow-sm backdrop-blur-md hover:border-white/50 hover:scale-105 active:scale-95 duration-200"
+              className="inline-flex items-center justify-center px-6 sm:px-8 py-3 sm:py-3.5 rounded-full bg-black/40 hover:bg-black/60 border border-white/30 text-white font-medium text-xs sm:text-sm transition-all shadow-sm backdrop-blur-md hover:border-white/50 hover:scale-105 active:scale-95 duration-200 w-full sm:w-auto text-center cursor-pointer"
             >
               {t('ctaBanner.btnPricing')}
             </a>

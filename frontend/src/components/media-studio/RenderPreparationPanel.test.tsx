@@ -429,9 +429,10 @@ describe('AudioPresentationConfig — PRESET-VIZ FE follow-up (docs/97 §19.16)'
     expect(html).toContain('data-testid="render-prep-background-alpha"')
     expect(html).toContain('data-testid="render-prep-text-color"')
     // §1.8.2 redesign: the live sample mirrors the UNSAVED draft — with the
-    // hydrated defaults (black box @ 50% alpha) the sample shows that box.
+    // 2026-09 defaults (yellow box @ 100% alpha, black text) the sample shows it.
     const sample = /<div[^>]*render-prep-draft-sample[^>]*>/.exec(html)![0]
-    expect(sample).toContain('background:rgba(0, 0, 0, 0.5)')
+    expect(sample).toContain('background:rgba(255, 255, 0, 1)')
+    expect(sample).toContain('color:#000000')
   })
 })
 
@@ -534,7 +535,7 @@ describe('RenderPreparationPanel — M-B CHARACTERS display mode (docs/16 §7.4,
       stages: charsStages,
     })
 
-    expect(html).toContain('render-prep-frozen')
+    expect(html).not.toContain('render-prep-frozen')
     expect(html).not.toContain('>media:renderPrep.confirm<')
     expect(html).not.toContain('media:renderPrep.maxCharactersInvalid')
   })
@@ -571,7 +572,7 @@ describe('RenderPreparationPanel — M-A workflow mode locking (docs/19 §1.8.2)
     configQuery.data = frozenConfig
   })
 
-  it('AUTO job is frozen read-only: frozen banner, no confirm path', () => {
+  it('AUTO job remains read-only without a frozen banner', () => {
     const html = renderPanel({
       recipeId: 'localization.full',
       workflowMode: 'AUTO',
@@ -579,8 +580,8 @@ describe('RenderPreparationPanel — M-A workflow mode locking (docs/19 §1.8.2)
       stages: readyStages('PENDING'),
     })
 
-    expect(html).toContain('render-prep-frozen')
-    expect(html).toContain('media:renderPrep.frozenHint')
+    expect(html).not.toContain('render-prep-frozen')
+    expect(html).not.toContain('media:renderPrep.frozenHint')
     expect(html).not.toContain('>media:renderPrep.confirm<')
     expect(html).not.toContain('render-prep-locked')
   })
@@ -593,7 +594,7 @@ describe('RenderPreparationPanel — M-A workflow mode locking (docs/19 §1.8.2)
       stages: readyStages('FAILED'),
     })
 
-    expect(html).toContain('render-prep-frozen')
+    expect(html).not.toContain('render-prep-frozen')
     expect(html).not.toContain('>media:renderPrep.confirm<')
   })
 
@@ -605,7 +606,7 @@ describe('RenderPreparationPanel — M-A workflow mode locking (docs/19 §1.8.2)
       stages: readyStages('CANCELLED'),
     })
 
-    expect(html).toContain('render-prep-frozen')
+    expect(html).not.toContain('render-prep-frozen')
     expect(html).not.toContain('>media:renderPrep.confirm<')
   })
 
@@ -617,7 +618,7 @@ describe('RenderPreparationPanel — M-A workflow mode locking (docs/19 §1.8.2)
       stages: readyStages('PENDING'),
     })
 
-    expect(html).toContain('render-prep-frozen')
+    expect(html).not.toContain('render-prep-frozen')
     expect(html).not.toContain('>media:renderPrep.confirm<')
   })
 

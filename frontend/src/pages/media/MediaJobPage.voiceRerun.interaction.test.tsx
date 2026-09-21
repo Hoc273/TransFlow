@@ -90,13 +90,10 @@ vi.mock('@/components/media-studio/MediaReviewSection', () => ({
 }))
 vi.mock('@/components/media-studio/RenderPreparationPanel', () => ({
   // §1.8.2 redesign: the section passes the real VoiceSelector through the
-  // panel's group ① slot — the stub must render the slots for the voice
+  // panel's group ① slot — the stub must render the slot for the voice
   // interaction under test to exist.
-  RenderPreparationPanel: ({ voiceSlot, styleSlot }: { voiceSlot?: React.ReactNode; styleSlot?: React.ReactNode }) => (
-    <div data-testid="render-prep-stub">
-      {voiceSlot}
-      {styleSlot}
-    </div>
+  RenderPreparationPanel: ({ voiceSlot }: { voiceSlot?: React.ReactNode }) => (
+    <div data-testid="render-prep-stub">{voiceSlot}</div>
   ),
   AudioPresentationConfig: () => <div data-testid="audio-config-stub" />,
   DEFAULT_AUDIO_PRESENTATION: {
@@ -110,10 +107,6 @@ vi.mock('@/components/media-studio/RenderPreparationPanel', () => ({
 vi.mock('@/components/media-studio/ExportPanel', () => ({
   ExportPanel: () => <div data-testid="export-panel-stub" />,
 }))
-vi.mock('@/components/media-studio/SubtitleStylePanel', () => ({
-  SubtitleStylePanel: () => <div data-testid="style-panel-stub" />,
-}))
-
 const { MediaJobPage } = await import('./MediaJobPage')
 import type { MediaJob } from '@/types/media'
 

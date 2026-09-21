@@ -70,15 +70,15 @@ export function StageRerunDropdown({
 
         {open && (
           <div
-            className="app-dropdown-menu"
+            className="app-dropdown-menu shadow-lg"
             role="menu"
             data-testid="stage-rerun-menu"
-            style={{ minWidth: 240, right: 0, left: 'auto' }}
+            style={{ minWidth: 260, right: 0, left: 'auto' }}
           >
-            <div className="border-b border-[var(--color-border)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-text-tertiary)]">
+            <div className="border-b border-[var(--color-border)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-text-tertiary)] shrink-0">
               {t('media:pipeline.rerunFromStageDesc')}
             </div>
-            <div className="py-1">
+            <div className="py-1 max-h-64 overflow-y-auto" tabIndex={-1}>
               {eligibleStages.map((s) => (
                 <button
                   key={s.id}

@@ -188,14 +188,26 @@ describe('MediaJobPage — Phase C Job Studio voice binding', () => {
     expect(html).toContain('Studio standard')
   })
 
-  it('hides the preset badge when the referenced preset name cannot be resolved', () => {
-    // BA review v1 P2: never render raw/reduced UUIDs — badge hidden instead.
+  it('shows "Không" in the overview when the job has no preset', () => {
+    jobQuery.data = job({ workflowPresetId: null })
+    presetsQuery.data = []
+
+    const html = renderToStaticMarkup(<MediaJobPage />)
+
+    expect(html).toContain('media:workflowPreset.label')
+    expect(html).toContain('media:workflowPreset.noPreset')
+  })
+
+  it('shows "Không" instead of the id when the referenced preset name cannot be resolved', () => {
+    // BA review v1 P2: never render raw/reduced UUIDs — the row falls back
+    // to the none value instead of being hidden.
     jobQuery.data = job({ workflowPresetId: 'preset-1' })
     presetsQuery.data = []
 
     const html = renderToStaticMarkup(<MediaJobPage />)
 
-    expect(html).not.toContain('media:workflowPreset.label')
+    expect(html).toContain('media:workflowPreset.label')
+    expect(html).toContain('media:workflowPreset.noPreset')
     expect(html).not.toContain('preset-1')
   })
 
