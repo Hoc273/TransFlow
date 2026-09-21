@@ -209,10 +209,9 @@
     "testOk": "Kết nối TTS provider thành công."
   },
   "roles": {
-    "ADMIN": "Admin",
-    "PM": "PM",
-    "TRANSLATOR": "Translator",
-    "PROOFREADER": "Proofreader",
-    "CLIENT": "Client"
+    "LEAD": "Trưởng nhóm",
+    "MEMBER": "Thành viên",
+    "CLIENT": "Khách hàng",
+    "ADMIN": "Quản trị viên"
   }
 }
