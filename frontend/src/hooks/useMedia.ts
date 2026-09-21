@@ -244,7 +244,12 @@ export function useSelectVoice(workspaceId: string, jobId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: SelectVoiceBody) => selectTransformationVoiceApi(workspaceId, jobId, body),
-    onSuccess: () => {
+    onSuccess: (job) => {
+      // BE returns the updated MediaJob (200); mock returns 204 (undefined).
+      // Apply the fresh job synchronously when present, then revalidate.
+      if (job) {
+        void qc.setQueryData(queryKeys.mediaJob(workspaceId, jobId), job)
+      }
       void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, jobId) })
     },
   })
