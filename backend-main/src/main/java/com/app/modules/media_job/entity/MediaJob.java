@@ -95,6 +95,11 @@ public class MediaJob extends BaseEntity {
     @Column(name = "render_config", nullable = false)
     private String renderConfig = "{}";
 
+    /** Assigned {@code SubtitleStyleSnapshot} JSON; null = no style assigned yet. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "subtitle_style")
+    private String subtitleStyle;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "workflow_mode", nullable = false, length = 20)
     private WorkflowMode workflowMode = WorkflowMode.MANUAL;

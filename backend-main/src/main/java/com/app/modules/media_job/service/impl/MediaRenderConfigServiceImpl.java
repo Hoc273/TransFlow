@@ -100,13 +100,13 @@ public class MediaRenderConfigServiceImpl implements MediaRenderConfigService {
         String position = c.subtitlePosition() != null ? c.subtitlePosition() : "BOTTOM";
         int offset = c.verticalOffsetPercent() != null ? c.verticalOffsetPercent() : 0;
         boolean box = Boolean.TRUE.equals(c.backgroundBox());
-        // ponytail: no SubtitleStyle yet (§4) => ownedByStyle=false, no dead controls; revisit with subtitle-styles
+        // a style snapshot owns colors/font once assigned; ponytail: no dead-control list yet
         int base = switch (position) {
             case "TOP" -> 10;
             case "CENTER" -> 50;
             default -> 88;
         };
-        var effective = new RenderConfigResponse.Effective(box, false, Math.max(3, Math.min(95, base + offset)), List.of());
+        var effective = new RenderConfigResponse.Effective(box, job.getSubtitleStyle() != null, Math.max(3, Math.min(95, base + offset)), List.of());
 
         return new RenderConfigResponse(
                 c.subtitleMode() != null ? c.subtitleMode() : job.getSubtitleMode().name(),
