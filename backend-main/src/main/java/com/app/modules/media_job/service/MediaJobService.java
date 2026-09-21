@@ -43,6 +43,13 @@ public interface MediaJobService {
 
     SubtitleSegment patchSubtitle(UUID workspaceId, UUID userId, UUID jobId, UUID segmentId, PatchSubtitleRequest request);
 
+    /**
+     * Sets {@code source_language} once STT is done and marks TRANSLATE and later COMPLETED stages STALE (no auto rerun).
+     * Unsupported language or same as target -> VALIDATION_ERROR; STT not done / job FAILED, CANCELLED or in flight
+     * -> STAGE_NOT_READY. LEAD or owning MEMBER only.
+     */
+    MediaJob overrideSourceLang(UUID workspaceId, UUID userId, UUID jobId, String sourceLang);
+
     /** All-or-nothing edit of many segments in one transaction; result is in request order. */
     List<SubtitleSegment> batchUpdateSubtitles(UUID workspaceId, UUID userId, UUID jobId, BatchEditSegmentsRequest request);
 

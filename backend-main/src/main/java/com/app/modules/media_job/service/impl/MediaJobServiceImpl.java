@@ -26,7 +26,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -50,6 +52,10 @@ public class MediaJobServiceImpl implements MediaJobService {
     // field-injected (not via constructor) so unit tests keep the default
     @Value("${app.media-job.max-batch-subtitle-updates:200}")
     private int maxBatchUpdates = 200;
+
+    // ponytail: comma-separated ISO 639-1 codes; SRS has no supported-language list, so this default is ours to confirm
+    @Value("${app.media-job.supported-source-langs:vi,en,zh,ja,ko,fr,de,es,th,id,ru}")
+    private String supportedSourceLangs = "vi,en,zh,ja,ko,fr,de,es,th,id,ru";
 
     public MediaJobServiceImpl(MediaJobRepository mediaJobRepository,
                                 MediaJobStageRepository mediaJobStageRepository,
@@ -462,21 +468,62 @@ public class MediaJobServiceImpl implements MediaJobService {
         boolean pastTtsOrRender = stages.stream().anyMatch(s ->
                 (s.getStageName() == MediaJobStage.StageName.TTS || s.getStageName() == MediaJobStage.StageName.RENDER)
                         && s.getStatus() == MediaJobStage.StageStatus.COMPLETED);
-        if (pastTtsOrRender) {
-            boolean staled = false;
-            for (MediaJobStage stage : stages) {
-                if (stage.getStageOrder() >= MediaJobStage.StageName.TTS.order()
-                        && stage.getStatus() == MediaJobStage.StageStatus.COMPLETED) {
-                    stage.setStatus(MediaJobStage.StageStatus.STALE);
-                    mediaJobStageRepository.save(stage);
-                    staled = true;
-                }
-            }
-            if (staled) {
-                notification.notify(workspaceId, job.getCreatedByUserId(), "JOB_NEEDS_RERUN", jobId,
-                        "Subtitle edited after TTS/RENDER — affected stages need a rerun");
+        if (pastTtsOrRender && markStale(stages, MediaJobStage.StageName.TTS)) {
+            notification.notify(workspaceId, job.getCreatedByUserId(), "JOB_NEEDS_RERUN", jobId,
+                    "Subtitle edited after TTS/RENDER — affected stages need a rerun");
+        }
+    }
+
+    /** COMPLETED stages from {@code from} onward become STALE; true when at least one changed. */
+    private boolean markStale(List<MediaJobStage> stages, MediaJobStage.StageName from) {
+        boolean staled = false;
+        for (MediaJobStage stage : stages) {
+            if (stage.getStageOrder() >= from.order() && stage.getStatus() == MediaJobStage.StageStatus.COMPLETED) {
+                stage.setStatus(MediaJobStage.StageStatus.STALE);
+                mediaJobStageRepository.save(stage);
+                staled = true;
             }
         }
+        return staled;
+    }
+
+    @Override
+    @Transactional
+    public MediaJob overrideSourceLang(UUID workspaceId, UUID userId, UUID jobId, String sourceLang) {
+        MediaJob job = lockJobForEdit(workspaceId, userId, jobId);
+
+        String lang = sourceLang == null ? "" : sourceLang.trim().toLowerCase(Locale.ROOT);
+        if (!Arrays.asList(supportedSourceLangs.toLowerCase(Locale.ROOT).split("\\s*,\\s*")).contains(lang)
+                || lang.equals(primaryLang(job.getTargetLang()))) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        // Only a settled job after STT: no zombie revival of FAILED/CANCELLED, no rewind while a stage is in flight.
+        List<MediaJobStage> stages = mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId);
+        boolean sttDone = stages.stream().anyMatch(s ->
+                s.getStageName() == MediaJobStage.StageName.STT && s.getStatus() == MediaJobStage.StageStatus.COMPLETED);
+        boolean inFlight = stages.stream().anyMatch(s ->
+                s.getStatus() == MediaJobStage.StageStatus.PROCESSING
+                        || s.getStatus() == MediaJobStage.StageStatus.CANCEL_REQUESTED);
+        if (!sttDone || inFlight || job.getStatus() == MediaJob.JobStatus.FAILED
+                || job.getStatus() == MediaJob.JobStatus.CANCELLED) {
+            throw new AppException(ErrorCode.STAGE_NOT_READY);
+        }
+
+        if (!lang.equals(job.getSourceLanguage())) { // same language again = no-op
+            job.setSourceLanguage(lang);
+            mediaJobRepository.save(job);
+            // STT output is language-independent, so only TRANSLATE onward is stale; never auto-rerun (Credit spend).
+            if (markStale(stages, MediaJobStage.StageName.TRANSLATE)) {
+                notification.notify(workspaceId, job.getCreatedByUserId(), "JOB_NEEDS_RERUN", jobId,
+                        "Source language changed — TRANSLATE and later stages need a rerun");
+            }
+        }
+        return job;
+    }
+
+    private static String primaryLang(String code) {
+        return code == null ? "" : code.toLowerCase(Locale.ROOT).split("[-_]")[0];
     }
 
     private MediaJob requireJobInWorkspace(UUID workspaceId, UUID jobId) {
