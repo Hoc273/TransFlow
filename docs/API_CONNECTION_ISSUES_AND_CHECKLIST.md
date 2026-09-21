@@ -148,19 +148,36 @@ GOOGLE_REDIRECT_URI=http://localhost:8080/api/auth/google/callback
 Dưới đây là danh sách phân loại chi tiết theo trạng thái thực tế trong mã nguồn:
 
 ### Phase 2: Project, Asset Ingestion & Worker Capabilities
-* 🟢 **ĐÃ CÓ TRONG BACKEND:**
-  - `GET/POST /api/workspaces/{wsId}/projects`: Quản lý danh sách và tạo Project (`ProjectController`).
-  - `GET/POST/DELETE /api/workspaces/{wsId}/projects/{pId}/members`: Gán và quản lý thành viên trong Project.
-  - `GET /api/workspaces/{wsId}/media/terms-version`: Lấy phiên bản điều khoản bản quyền (`MediaAssetController`).
-  - `POST /api/workspaces/{wsId}/projects/{pId}/media/assets`: Tải lên video gốc (Multipart upload trực tiếp lên MinIO).
-  - `GET /api/workspaces/{wsId}/projects/{pId}/media/assets`: Liệt kê tài nguyên video gốc.
-  - `GET /api/workspaces/{wsId}/media/assets/{assetId}`: Lấy chi tiết tài nguyên video.
-  - `POST /api/workspaces/{wsId}/media/assets/{assetId}/consent`: Ghi nhận cam kết bản quyền của người dùng.
-* 🟢 **ĐÃ BỔ SUNG HOÀN THÀNH:**
+* 🟢 **TRẠNG THÁI KẾT NỐI (100% HOÀN THÀNH - ĐÃ VERIFY):**
+  - `GET/POST /api/workspaces/{wsId}/projects`:
+    - **Backend:** `ProjectController.java` (`listProjects`, `createProject`).
+    - **Frontend:** `listProjectsApi`, `createProjectApi`, hooks `useProjects`, `useCreateProject`.
+    - **Đồng bộ DTO:** Đã thêm `@JsonIgnoreProperties(ignoreUnknown = true)` tại `CreateProjectRequest.java` để tương thích linh hoạt với các trường mở rộng từ Frontend (`domain`, `tone`, `defaultGlossaryId`, `tmEnabled`) mà không bị lỗi `400 Bad Request`.
+  - `GET/POST/DELETE /api/workspaces/{wsId}/projects/{pId}/members`:
+    - **Backend:** `ProjectController.java` (`listMembers`, `assignMember`, `removeMember`).
+    - **Frontend:** Đã bổ sung `listProjectMembersApi`, `assignProjectMemberApi`, `removeProjectMemberApi` (`frontend/src/api/projects.ts`), các types `ProjectMember`, `AssignProjectMemberBody` (`frontend/src/types/project.ts`), query key `projectMembers` (`queryClient.ts`) và hooks `useProjectMembers`, `useAssignProjectMember`, `useRemoveProjectMember` (`frontend/src/hooks/useProjects.ts`).
   - `GET /api/transformation/capabilities`:
-    - **Nhiệm vụ:** Trả về trạng thái sẵn sàng của AI Worker (`FAST` và `STUDIO` mode, workerCount, readiness).
-    - **Giải pháp:** Đã tạo `TransformationController.java` trả về `AvailabilityProjection` chuẩn, kết hợp cùng `TransformationService` và `TransformationServiceImpl`.
-    - **Kiểm thử:** Đã viết `TransformationControllerTest.java` (PASS 100%) và kiểm thử tương thích Frontend `transformation.test.ts` (PASS 100%).
+    - **Backend:** `TransformationController.java` trả về `AvailabilityProjection` chuẩn (kiểm tra FAST/STUDIO modes, worker count, readiness).
+    - **Frontend:** `getTransformationCapabilitiesApi`, hook `useTransformationCapabilities` (`frontend/src/hooks/useMedia.ts`). Test backend `TransformationControllerTest` và frontend `transformation.test.ts` pass 100%.
+  - `GET /api/workspaces/{wsId}/media/terms-version`:
+    - **Backend:** `MediaAssetController.java` (`currentTermsVersion`).
+    - **Frontend:** `getMediaTermsVersionApi` / `getTransformationTermsVersionApi`.
+  - `POST /api/workspaces/{wsId}/projects/{pId}/media/assets`:
+    - **Backend:** `MediaAssetController.java` (Multipart upload stream trực tiếp lên MinIO).
+    - **Frontend:** `uploadTransformationMediaApi` (XHR upload kèm theo dõi tiến độ thời gian thực % và hỗ trợ AbortSignal).
+  - `GET /api/workspaces/{wsId}/projects/{pId}/media/assets`:
+    - **Backend:** `MediaAssetController.java` (`listAssets`).
+    - **Frontend:** Đã bổ sung `listProjectMediaAssetsApi` (`frontend/src/api/media.ts` & `frontend/src/api/transformation.ts`), query key `mediaAssets` (`queryClient.ts`), hook `useProjectMediaAssets` (`frontend/src/hooks/useMedia.ts`).
+  - `GET /api/workspaces/{wsId}/media/assets/{assetId}`:
+    - **Backend:** `MediaAssetController.java` (`getAsset`).
+    - **Frontend:** Đã bổ sung `getMediaAssetApi` (`frontend/src/api/media.ts` & `frontend/src/api/transformation.ts`), query key `mediaAsset` (`queryClient.ts`), hook `useMediaAsset` (`frontend/src/hooks/useMedia.ts`), cập nhật type `MediaAsset` hỗ trợ `parentAssetId`.
+  - `POST /api/workspaces/{wsId}/media/assets/{assetId}/consent`:
+    - **Backend:** `MediaAssetController.java` (`consent`).
+    - **Frontend:** `consentTransformationAssetApi` (`frontend/src/api/transformation.ts`).
+* 🟢 **KIỂM THỬ & ĐÓNG GÓI:**
+  - Backend: 335/335 unit/integration tests **PASS 100%** (`mvn test`).
+  - Frontend: 689/689 Vitest tests **PASS 100%** (`npx vitest run`).
+  - Build Frontend: `tsc -b && vite build` **PASS 100%**, không có lỗi TypeScript hay cú pháp.
 
 ### Phase 3: Media Job Orchestration & Pipeline Execution
 * 🟢 **ĐÃ CÓ TRONG BACKEND:**

@@ -27,7 +27,13 @@ import {
   uploadTransformationMediaApi,
   type BatchEditMediaSegmentItem,
 } from '@/api/transformation'
-import { editMediaSegmentApi, getMediaTermsVersionApi, type EditMediaSegmentBody } from '@/api/media'
+import {
+  editMediaSegmentApi,
+  getMediaTermsVersionApi,
+  listProjectMediaAssetsApi,
+  getMediaAssetApi,
+  type EditMediaSegmentBody,
+} from '@/api/media'
 import { getJobApi } from '@/api/jobs'
 import { hasActiveMediaStages, isActiveMediaJobStatus } from '@/lib/media'
 import { STALE, queryKeys } from '@/lib/queryClient'
@@ -123,6 +129,7 @@ export function useUploadMedia(workspaceId: string, projectId: string) {
     }) => uploadTransformationMediaApi(workspaceId, projectId, file, { name, onProgress, signal }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.mediaJobs(workspaceId, projectId) })
+      void qc.invalidateQueries({ queryKey: queryKeys.mediaAssets(workspaceId, projectId) })
     },
   })
 }
@@ -407,5 +414,29 @@ export function useTransformationCapabilities() {
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: 'always',
+  })
+}
+
+export function useProjectMediaAssets(
+  workspaceId: string | undefined,
+  projectId: string | undefined,
+) {
+  return useQuery({
+    queryKey: queryKeys.mediaAssets(workspaceId ?? '', projectId ?? ''),
+    queryFn: () => listProjectMediaAssetsApi(workspaceId!, projectId!),
+    enabled: !!workspaceId && !!projectId,
+    staleTime: STALE.semiLive,
+  })
+}
+
+export function useMediaAsset(
+  workspaceId: string | undefined,
+  assetId: string | undefined,
+) {
+  return useQuery({
+    queryKey: queryKeys.mediaAsset(workspaceId ?? '', assetId ?? ''),
+    queryFn: () => getMediaAssetApi(workspaceId!, assetId!),
+    enabled: !!workspaceId && !!assetId,
+    staleTime: STALE.semiLive,
   })
 }

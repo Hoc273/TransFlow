@@ -43,6 +43,7 @@ export type MediaStageName =
 export type MediaAsset = {
   id: string
   projectId: string
+  parentAssetId?: string | null
   assetType: string
   fileName: string
   mimeType: string
