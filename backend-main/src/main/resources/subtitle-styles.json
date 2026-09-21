@@ -1,0 +1,12 @@
+[
+  {"key":"style-classic","name":"Classic","revision":1,"preview_text":"Classic subtitle",
+   "snapshot":{"font_family":"Arial","font_size":44,"primary_color":"#FFFFFF","outline_color":"#000000","outline_width":3,"shadow":false,"bold":false,"italic":false,"alignment":"center","margin_v":24,"line_spacing":0,"opacity":100}},
+  {"key":"style-modern-clean","name":"Modern Clean","revision":1,"preview_text":"Modern clean subtitle",
+   "snapshot":{"font_family":"DejaVu Sans","font_size":42,"primary_color":"#FFFFFF","outline_color":"#000000","outline_width":0,"shadow":true,"bold":true,"italic":false,"alignment":"center","margin_v":32,"line_spacing":0,"background":"#00000099","opacity":100}},
+  {"key":"style-tiktok","name":"TikTok","revision":1,"preview_text":"TikTok subtitle",
+   "snapshot":{"font_family":"Arial","font_size":60,"primary_color":"#FFFF00","outline_color":"#000000","outline_width":5,"shadow":false,"bold":true,"italic":false,"alignment":"center","margin_v":120,"line_spacing":0,"opacity":100}},
+  {"key":"style-cinema","name":"Cinema","revision":1,"preview_text":"Cinema subtitle",
+   "snapshot":{"font_family":"DejaVu Sans","font_size":40,"primary_color":"#F5F5DC","outline_color":"#000000","outline_width":2,"shadow":false,"bold":false,"italic":true,"alignment":"center","margin_v":40,"line_spacing":0,"opacity":95}},
+  {"key":"style-neon","name":"Neon","revision":1,"preview_text":"Neon subtitle",
+   "snapshot":{"font_family":"Arial","font_size":48,"primary_color":"#00FFFF","outline_color":"#FF00FF","outline_width":4,"shadow":true,"bold":true,"italic":false,"alignment":"center","margin_v":28,"line_spacing":0,"opacity":100}}
+]

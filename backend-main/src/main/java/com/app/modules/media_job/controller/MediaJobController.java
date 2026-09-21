@@ -2,16 +2,22 @@ package com.app.modules.media_job.controller;
 
 import com.app.common.dto.ApiResponse;
 import com.app.common.security.AuthenticatedUser;
+import com.app.modules.media_job.dto.BatchEditSegmentsRequest;
 import com.app.modules.media_job.dto.CreateMediaJobRequest;
+import com.app.modules.media_job.dto.MediaExportResponse;
 import com.app.modules.media_job.dto.MediaJobResponse;
 import com.app.modules.media_job.dto.MediaJobStageResponse;
 import com.app.modules.media_job.dto.PatchSubtitleRequest;
 import com.app.modules.media_job.dto.SubtitleSegmentResponse;
+import com.app.modules.media_job.dto.render.RenderConfigResponse;
+import com.app.modules.media_job.dto.render.UpdateRenderConfigRequest;
 import com.app.modules.media_job.dto.VoiceRequest;
 import com.app.modules.media_job.entity.Checkpoint;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
+import com.app.modules.media_job.service.MediaExportService;
 import com.app.modules.media_job.service.MediaJobService;
+import com.app.modules.media_job.service.MediaRenderConfigService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -22,17 +28,21 @@ import java.util.UUID;
 
 /**
  * Media Job orchestrator — Localization + Summarization (API_Contract.md §5).
- * Proposal/refine/summary-languages endpoints (§5.1) belong to the summarization module;
- * export (§5, last row) needs the qa module's blocking-issue gate — both out of this module's scope.
+ * Proposal/refine/summary-languages endpoints (§5.1) belong to the summarization module.
  */
 @RestController
 @RequestMapping("/api/workspaces/{workspaceId}")
 public class MediaJobController {
 
     private final MediaJobService jobService;
+    private final MediaExportService exportService;
+    private final MediaRenderConfigService renderConfigService;
 
-    public MediaJobController(MediaJobService jobService) {
+    public MediaJobController(MediaJobService jobService, MediaExportService exportService,
+                              MediaRenderConfigService renderConfigService) {
         this.jobService = jobService;
+        this.exportService = exportService;
+        this.renderConfigService = renderConfigService;
     }
 
     @PostMapping("/media/jobs")
@@ -117,6 +127,52 @@ public class MediaJobController {
                                                                 @RequestBody PatchSubtitleRequest request) {
         var segment = jobService.patchSubtitle(workspaceId, user.id(), jobId, segmentId, request);
         return ApiResponse.<SubtitleSegmentResponse>builder().data(SubtitleSegmentResponse.from(segment)).build();
+    }
+
+    @PutMapping("/media/jobs/{jobId}/segments/batch")
+    public ApiResponse<List<SubtitleSegmentResponse>> batchUpdateSubtitles(@AuthenticationPrincipal AuthenticatedUser user,
+                                                                             @PathVariable UUID workspaceId,
+                                                                             @PathVariable UUID jobId,
+                                                                             @Valid @RequestBody BatchEditSegmentsRequest request) {
+        List<SubtitleSegmentResponse> segments = jobService.batchUpdateSubtitles(workspaceId, user.id(), jobId, request)
+                .stream().map(SubtitleSegmentResponse::from).toList();
+        return ApiResponse.<List<SubtitleSegmentResponse>>builder().data(segments).build();
+    }
+
+    @GetMapping("/media/jobs/{jobId}/render-config")
+    public ApiResponse<RenderConfigResponse> getRenderConfig(@AuthenticationPrincipal AuthenticatedUser user,
+                                                               @PathVariable UUID workspaceId,
+                                                               @PathVariable UUID jobId) {
+        return ApiResponse.<RenderConfigResponse>builder()
+                .data(renderConfigService.get(workspaceId, user.id(), jobId)).build();
+    }
+
+    @PutMapping("/media/jobs/{jobId}/render-config")
+    public ApiResponse<RenderConfigResponse> updateRenderConfig(@AuthenticationPrincipal AuthenticatedUser user,
+                                                                  @PathVariable UUID workspaceId,
+                                                                  @PathVariable UUID jobId,
+                                                                  @Valid @RequestBody UpdateRenderConfigRequest request) {
+        return ApiResponse.<RenderConfigResponse>builder()
+                .data(renderConfigService.update(workspaceId, user.id(), jobId, request)).build();
+    }
+
+    @PostMapping("/media/jobs/{jobId}/rerun-render")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ApiResponse<MediaJobResponse> rerunRender(@AuthenticationPrincipal AuthenticatedUser user,
+                                                       @PathVariable UUID workspaceId,
+                                                       @PathVariable UUID jobId,
+                                                       @Valid @RequestBody(required = false) UpdateRenderConfigRequest request) {
+        MediaJob job = renderConfigService.rerunRender(workspaceId, user.id(), jobId, request);
+        return ApiResponse.<MediaJobResponse>builder().data(toResponse(job)).build();
+    }
+
+    @GetMapping("/media/jobs/{jobId}/export")
+    public ApiResponse<MediaExportResponse> exportJob(@AuthenticationPrincipal AuthenticatedUser user,
+                                                       @PathVariable UUID workspaceId,
+                                                       @PathVariable UUID jobId,
+                                                       @RequestParam(defaultValue = "VIDEO") String format) {
+        return ApiResponse.<MediaExportResponse>builder()
+                .data(exportService.export(workspaceId, user.id(), jobId, format)).build();
     }
 
     private MediaJobResponse toResponse(MediaJob job) {

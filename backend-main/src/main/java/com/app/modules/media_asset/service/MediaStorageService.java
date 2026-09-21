@@ -15,4 +15,10 @@ public interface MediaStorageService {
 
     /** Uploads a media object, creating the bucket on first use. */
     void putMediaObject(String objectKey, InputStream stream, long sizeBytes, String contentType);
+
+    /**
+     * Time-limited download URL for an object referenced as {@code "<bucket>/<objectKey>"} (the format
+     * backend-media-worker reports in stage {@code output_ref}). TTL = {@code app.storage.presigned-ttl-seconds}.
+     */
+    String presignedGetUrl(String storageRef);
 }
