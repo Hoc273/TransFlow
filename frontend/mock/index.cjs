@@ -1030,11 +1030,11 @@ function buildRoutes() {
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/voice', '/workspaces/:workspaceId/transformation/jobs/:jobId/voice', 'POST', async (ctx) => {
     const body = await readJson(ctx.req)
     const job = d.mediaJobs.find((j) => j.id === ctx.params.jobId)
-    if (job) {
-      job.ttsProviderId = body.ttsProviderId ?? null
-      job.ttsVoiceId = body.ttsVoiceId ?? null
-    }
-    sendNoContent(ctx.res)
+    if (!job) return sendJson(ctx.res, 404, { errorCode: 'NOT_FOUND', message: 'Job not found' })
+    job.ttsProviderId = body.ttsProviderId ?? null
+    job.ttsVoiceId = body.ttsVoiceId ?? null
+    // Match BE `MediaJobController.setVoice`: 200 + updated job (was 204).
+    sendJson(ctx.res, 200, job)
   })
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/render-config', '/workspaces/:workspaceId/transformation/jobs/:jobId/render-config', 'GET', (ctx) =>
     sendJson(ctx.res, 200, makeRenderConfig(ctx.params.jobId)),
