@@ -21,6 +21,7 @@ export type RegisterRequest = {
   email: string
   password: string
   fullName: string
+  otp?: string
 }
 
 export type RefreshRequest = {

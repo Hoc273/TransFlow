@@ -29,9 +29,10 @@ import java.util.List;
 public class SecurityConfig {
 
     private static final String[] PUBLIC_PATHS = {
-            "/api/auth/register",
+            "/api/auth/register/**",
             "/api/auth/login",
             "/api/auth/refresh",
+            "/api/auth/forgot-password/**",
             "/api/auth/google/**",
             "/actuator/health",
             "/actuator/health/**",
@@ -90,7 +91,7 @@ public class SecurityConfig {
         String origin = (props != null && props.cors() != null && props.cors().allowedOrigin() != null)
                 ? props.cors().allowedOrigin()
                 : "http://localhost:5173";
-        cfg.setAllowedOrigins(List.of(origin));
+        cfg.setAllowedOrigins(List.of(origin, "http://localhost:5173", "http://127.0.0.1:5173"));
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("*"));
         cfg.setAllowCredentials(true);

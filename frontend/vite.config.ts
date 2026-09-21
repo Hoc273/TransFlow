@@ -18,16 +18,15 @@ function mockApiPlugin(): Plugin {
   }
 }
 
+// Set VITE_USE_MOCK=true to fallback to internal mock; otherwise proxy to real Spring Boot backend
+const useMock = process.env.VITE_USE_MOCK === 'true'
+const backendUrl = process.env.VITE_BACKEND_URL || 'http://localhost:8080'
+
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    // =========================================================================
-    // [CHẾ ĐỘ 1: DÙNG MOCK API NỘI BỘ]
-    // Mặc định Vite dev server chặn request /api và trả về dữ liệu mẫu (mock).
-    // KHI CHUYỂN SANG DÙNG BACKEND THẬT: Hãy COMMENT dòng `mockApiPlugin()` dưới đây.
-    // =========================================================================
-    mockApiPlugin(),
+    ...(useMock ? [mockApiPlugin()] : []),
   ],
   resolve: {
     alias: {
@@ -36,23 +35,15 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    // =========================================================================
-    // [CHẾ ĐỘ 2: DÙNG BACKEND API THẬT QUA VITE PROXY]
-    // Để chuyển sang Backend thật:
-    //   1. Comment `mockApiPlugin()` ở mảng plugins phía trên.
-    //   2. Mở comment khối `proxy` bên dưới và điền đúng cổng/domain của Backend thật.
-    // Lợi ích: Tránh hoàn toàn lỗi CORS khi dev ở localhost.
-    // =========================================================================
-    /*
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8080', // TODO: Thay bằng địa chỉ backend thật (VD: http://localhost:8080)
-        changeOrigin: true,
-        secure: false,
-        // rewrite: (path) => path.replace(/^\/api/, ''), // Mở dòng này nếu Backend không dùng tiền tố /api
-      },
-    },
-    */
+    proxy: useMock
+      ? undefined
+      : {
+          '/api': {
+            target: backendUrl,
+            changeOrigin: true,
+            secure: false,
+          },
+        },
   },
   test: {
     // React.act only exists in the non-production React build. Vitest does not

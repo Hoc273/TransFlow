@@ -28,6 +28,10 @@ public class GoogleAuthController {
     public void start(@RequestParam(value = "mode", required = false) String mode,
                       @RequestParam(value = "redirect", required = false) String redirect,
                       HttpServletResponse response) throws IOException {
+        if (!googleOAuthService.isConfigured()) {
+            response.sendRedirect(googleOAuthService.buildErrorUrl("google_not_configured"));
+            return;
+        }
         String authorizeUrl = googleOAuthService.buildAuthorizationUrl(mode, redirect);
         response.sendRedirect(authorizeUrl);
     }

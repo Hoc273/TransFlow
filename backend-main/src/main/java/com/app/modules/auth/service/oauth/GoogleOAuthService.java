@@ -12,4 +12,8 @@ public interface GoogleOAuthService {
     String handleCallback(String code, String state, String errorFromGoogle);
 
     AuthResponse exchange(String code);
+
+    boolean isConfigured();
+
+    String buildErrorUrl(String error);
 }

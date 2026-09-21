@@ -199,10 +199,20 @@ public class GoogleOAuthServiceImpl implements GoogleOAuthService {
 
     private String feErrorRedirect(String error) {
         return UriComponentsBuilder
-                .fromUriString(feOrigin() + "/auth/login")
+                .fromUriString(feOrigin() + "/auth/google/done")
                 .queryParam("error", error)
                 .build(true)
                 .toUriString();
+    }
+
+    @Override
+    public boolean isConfigured() {
+        return props.oauth().google().isConfigured();
+    }
+
+    @Override
+    public String buildErrorUrl(String error) {
+        return feErrorRedirect(error);
     }
 
     private String feOrigin() {

@@ -15,6 +15,8 @@ public interface AuthService {
 
     AuthResponse register(RegisterRequest req);
 
+    OtpMessageResponse sendRegisterOtp(RegisterOtpRequest req);
+
     AuthResponse login(LoginRequest req);
 
     TokenRefreshResponse refresh(RefreshRequest req);
@@ -32,6 +34,12 @@ public interface AuthService {
     WorkspaceProjectInit resolveOrCreateDefaultWorkspaceAndProject(User user);
 
     AuthResponse issueAuthTokens(User user, UUID workspaceId, UUID projectId);
+
+    OtpMessageResponse sendForgotPasswordOtp(ForgotPasswordOtpRequest req);
+
+    OtpVerifyResponse verifyForgotPasswordOtp(VerifyPasswordOtpRequest req);
+
+    OtpMessageResponse resetPasswordWithOtp(ResetPasswordOtpRequest req);
 
     record WorkspaceProjectInit(UUID workspaceId, UUID projectId) {}
 }
