@@ -87,13 +87,14 @@ export type LocalizationCreateBody = {
  *
  * Mirrors the single-create invariants byte-for-byte:
  * - provider+voice must be sent together or neither — a partial pair throws
- *   (the backend rejects it with 422 regardless);
- * - `keepOriginalAudio` forces null/null (the backend rejects any TTS pair
- *   combined with it);
+ *   client-side (BE enforces `ORIGINAL_ONLY <=> ttsVoiceId == null` with
+ *   VALIDATION_ERROR);
+ * - `keepOriginalAudio` forces null/null (BE `ck_audio_mode_voice` rejects any
+ *   TTS pair combined with `ORIGINAL_ONLY`);
  * - a preset-provided voice pair forces null/null so the backend applies the
  *   preset pair (JOB explicit fields would otherwise win over the preset);
  * - picker "no preset" (workflowPresetId null/undefined) opts OUT of backend
- *   default resolution (skipPresetResolution: true).
+ *   default resolution (skipPresetResolution: true — FE-only for now, BE gap B3).
  */
 export function buildLocalizationCreateJobInput(
   input: LocalizationJobPayloadInput,
