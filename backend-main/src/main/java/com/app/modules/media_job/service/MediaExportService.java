@@ -10,7 +10,7 @@ import java.util.UUID;
  */
 public interface MediaExportService {
 
-    /** {@code format}: VIDEO | SUBTITLE (case-insensitive). */
+    /** {@code format}: VIDEO | SRT | VTT | SUBTITLE (alias of SRT), case-insensitive. */
     MediaExportResponse export(UUID workspaceId, UUID userId, UUID jobId, String format);
 
     /**
@@ -19,4 +19,7 @@ public interface MediaExportService {
      * RENDER output present (else STAGE_NOT_READY).
      */
     String renderOutputRef(UUID workspaceId, UUID userId, UUID jobId);
+
+    /** The publish quality gate alone: an unresolved BLOCK_PUBLISH QA issue -> QA_BLOCKED (403). */
+    void requirePublishAllowed(UUID workspaceId, UUID userId, UUID jobId);
 }

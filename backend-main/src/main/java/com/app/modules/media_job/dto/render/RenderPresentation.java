@@ -14,7 +14,7 @@ import java.util.List;
 /** Render Studio presentation envelope (subtitle cover layers + audio mix); replaced as a whole when sent. */
 public record RenderPresentation(@Valid Subtitle subtitle, @Valid Audio audio) {
 
-    public static final int MAX_LAYERS = 10;
+    public static final int MAX_LAYERS = 4; // backend-media-worker rejects more than 4 layers (max_length=4)
 
     public record Subtitle(
             @Pattern(regexp = "SENTENCE|PHRASE|WORD") String displayMode,

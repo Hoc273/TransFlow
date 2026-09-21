@@ -90,6 +90,9 @@ class MediaJobControllerTest {
     @Autowired
     private SubtitleSegmentRepository subtitleSegmentRepository;
 
+    @Autowired
+    private com.app.modules.qa.repository.QaIssueRepository qaIssueRepository;
+
     @MockBean
     private MediaStorageService storageService;
     @MockBean
@@ -97,6 +100,7 @@ class MediaJobControllerTest {
 
     @BeforeEach
     void setUpAndCleanDb() {
+        qaIssueRepository.deleteAll();
         subtitleSegmentRepository.deleteAll();
         mediaJobStageRepository.deleteAll();
         mediaJobRepository.deleteAll();
@@ -711,6 +715,17 @@ class MediaJobControllerTest {
     }
 
     @Test
+    void renderConfig_layerCountCappedAtWorkerLimit() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-rc-layers@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        String layer = "{\"layerType\":\"COVER_BOX\",\"xPercent\":10,\"yPercent\":80,\"widthPercent\":50,\"heightPercent\":10}";
+
+        // 4 layers (the worker's max) are accepted, 5 are rejected up front instead of failing later at render time
+        putRenderConfig(lead, jobId, "{\"presentation\":{\"subtitle\":{\"layers\":[" + String.join(",", java.util.Collections.nCopies(4, layer)) + "]}}}", 200);
+        putRenderConfig(lead, jobId, "{\"presentation\":{\"subtitle\":{\"layers\":[" + String.join(",", java.util.Collections.nCopies(5, layer)) + "]}}}", 400);
+    }
+
+    @Test
     void rerunRender_requiresEarlierStagesDone_thenResetsRender() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-rc-rerun@transflow.com");
         UUID jobId = createLocalizationJob(lead, "en");
@@ -754,6 +769,113 @@ class MediaJobControllerTest {
         }
         mockMvc.perform(get(renderUrl(lead, jobId, "render-config")).header("Authorization", "Bearer " + client.accessToken()))
                 .andExpect(status().isOk());
+    }
+
+    // ---- output-package / publish-package ----
+
+    private String pkgUrl(Lead lead, UUID jobId, String suffix) {
+        return "/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId + "/" + suffix;
+    }
+
+    private void putPublish(Lead lead, UUID jobId, String token, String json, int expected) throws Exception {
+        mockMvc.perform(put(pkgUrl(lead, jobId, "publish-package")).header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(json))
+                .andExpect(status().is(expected));
+    }
+
+    @Test
+    void outputPackage_requiresRender_thenListsTracksAndSubtitles() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-outpkg@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        String auth = "Bearer " + lead.accessToken();
+        org.mockito.Mockito.when(storageService.presignedGetUrl(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn("http://minio/signed");
+
+        mockMvc.perform(get(pkgUrl(lead, jobId, "output-package")).header("Authorization", auth))
+                .andExpect(status().isConflict()); // RENDER not done
+
+        completeJobWithOutput(jobId);
+        var tts = mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.TTS).orElseThrow();
+        tts.setStatus(MediaJobStage.StageStatus.COMPLETED);
+        tts.setOutputRef("\"transflow-media/audio/tts.wav\"");
+        mediaJobStageRepository.save(tts);
+        saveSubtitle(jobId, 1, 0, 1000);
+
+        RegisteredUser client = registerPlainUser("client-outpkg@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), client.userId(), Role.CLIENT);
+        addProjectMember(lead.projectId(), client.userId(), lead.userId());
+
+        mockMvc.perform(get(pkgUrl(lead, jobId, "output-package")).header("Authorization", "Bearer " + client.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.primaryVideoDownloadUrl").value("http://minio/signed"))
+                .andExpect(jsonPath("$.data.primaryVideoRef").value("transflow-media/out/" + jobId + ".mp4"))
+                .andExpect(jsonPath("$.data.audioTracks[0].role").value("ORIGINAL"))
+                .andExpect(jsonPath("$.data.audioTracks[1].role").value("DUB"))
+                .andExpect(jsonPath("$.data.audioTracks[1].downloadUrl").value("http://minio/signed"))
+                .andExpect(jsonPath("$.data.subtitleTracks.length()").value(2))
+                .andExpect(jsonPath("$.data.subtitleTracks[1].format").value("VTT"))
+                .andExpect(jsonPath("$.data.subtitleTracks[1].available").value(true))
+                .andExpect(jsonPath("$.data.subtitleTracks[1].language").value("en"));
+    }
+
+    @Test
+    void publishPackage_defaultsThenPartialPut_andValidation() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-pubpkg@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        String auth = "Bearer " + lead.accessToken();
+
+        mockMvc.perform(get(pkgUrl(lead, jobId, "publish-package")).header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.profile").value("GENERIC"))
+                .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andExpect(jsonPath("$.data.language").value("en"))
+                .andExpect(jsonPath("$.data.tags.length()").value(0))
+                .andExpect(jsonPath("$.data.sourceJobId").value(jobId.toString()));
+
+        putPublish(lead, jobId, lead.accessToken(), "{\"title\":\"My video\",\"tags\":[\"a\",\"b\"]}", 200);
+        putPublish(lead, jobId, lead.accessToken(), "{\"description\":\"desc\",\"language\":\"vi\"}", 200);
+        mockMvc.perform(get(pkgUrl(lead, jobId, "publish-package")).header("Authorization", auth))
+                .andExpect(jsonPath("$.data.title").value("My video")) // kept from 1st PUT
+                .andExpect(jsonPath("$.data.description").value("desc"))
+                .andExpect(jsonPath("$.data.language").value("vi"))
+                .andExpect(jsonPath("$.data.tags.length()").value(2));
+
+        putPublish(lead, jobId, lead.accessToken(), "{\"title\":\"" + "x".repeat(101) + "\"}", 400);
+        putPublish(lead, jobId, lead.accessToken(), "{\"description\":\"" + "x".repeat(5001) + "\"}", 400);
+        putPublish(lead, jobId, lead.accessToken(), "{\"language\":\"not a lang\"}", 400);
+        String tooManyTags = "[" + java.util.stream.IntStream.range(0, 31).mapToObj(i -> "\"t" + i + "\"")
+                .collect(java.util.stream.Collectors.joining(",")) + "]";
+        putPublish(lead, jobId, lead.accessToken(), "{\"tags\":" + tooManyTags + "}", 400);
+        putPublish(lead, jobId, lead.accessToken(), "{\"tags\":[\"" + "x".repeat(51) + "\"]}", 400);
+    }
+
+    @Test
+    void publishPackage_rbac_andQaGate() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-pubpkg-rbac@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        RegisteredUser member = registerPlainUser("member-pubpkg-rbac@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), member.userId(), Role.MEMBER);
+        addProjectMember(lead.projectId(), member.userId(), lead.userId());
+        RegisteredUser client = registerPlainUser("client-pubpkg-rbac@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), client.userId(), Role.CLIENT);
+        addProjectMember(lead.projectId(), client.userId(), lead.userId());
+
+        putPublish(lead, jobId, member.accessToken(), "{\"title\":\"x\"}", 403);  // not the job creator
+        putPublish(lead, jobId, client.accessToken(), "{\"title\":\"x\"}", 403);
+        mockMvc.perform(get(pkgUrl(lead, jobId, "publish-package")).header("Authorization", "Bearer " + client.accessToken()))
+                .andExpect(status().isOk());
+
+        var seg = saveSubtitle(jobId, 1, 0, 1000);
+        var issue = new com.app.modules.qa.entity.QaIssue();
+        issue.setSubtitleSegmentId(seg.getId());
+        issue.setIssueType("TEST");
+        issue.setSeverity(com.app.modules.qa.entity.QaIssue.Severity.CRITICAL);
+        issue.setBlockingActions(java.util.List.of("BLOCK_PUBLISH"));
+        issue.setCreatedAt(java.time.Instant.now());
+        qaIssueRepository.save(issue);
+        putPublish(lead, jobId, lead.accessToken(), "{\"title\":\"x\"}", 403); // QA_BLOCKED
+        mockMvc.perform(get(pkgUrl(lead, jobId, "publish-package")).header("Authorization", "Bearer " + lead.accessToken()))
+                .andExpect(status().isOk()); // reading the draft is not gated
     }
 
     // ---- override source language ----

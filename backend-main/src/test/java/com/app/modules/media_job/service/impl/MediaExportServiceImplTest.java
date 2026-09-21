@@ -42,7 +42,7 @@ class MediaExportServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new MediaExportServiceImpl(jobService, qaService, storage, new ObjectMapper());
+        service = new MediaExportServiceImpl(jobService, qaService, storage);
         job = new MediaJob();
         job.setStatus(MediaJob.JobStatus.COMPLETED);
         lenient().when(jobService.getJob(ws, user, jobId)).thenReturn(job);
@@ -111,6 +111,19 @@ class MediaExportServiceImplTest {
         assertEquals("1\n00:00:00,000 --> 00:00:01,500\nHello\n\n"
                 + "2\n01:02:03,004 --> 01:02:05,000\nWorld\n\n", res.content());
         assertNull(res.downloadUrl());
+    }
+
+    @Test
+    void srt_isSameAsSubtitleAlias_andVtt_usesWebVttHeaderAndDotMillis() {
+        when(jobService.listSubtitles(ws, user, jobId))
+                .thenReturn(List.of(seg(0, 1500, "Hello"), seg(3_723_004, 3_725_000, "World")));
+
+        assertEquals(service.export(ws, user, jobId, "SUBTITLE").content(), service.export(ws, user, jobId, "srt").content());
+
+        MediaExportResponse vtt = service.export(ws, user, jobId, "vtt");
+        assertEquals("WEBVTT\n\n00:00:00.000 --> 00:00:01.500\nHello\n\n"
+                + "01:02:03.004 --> 01:02:05.000\nWorld\n\n", vtt.content());
+        assertEquals("subtitles_" + jobId + ".vtt", vtt.fileName());
     }
 
     @Test

@@ -100,6 +100,11 @@ public class MediaJob extends BaseEntity {
     @Column(name = "subtitle_style")
     private String subtitleStyle;
 
+    /** Saved {@code UpdatePublishPackageRequest} JSON; null = no draft yet. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "publish_package")
+    private String publishPackage;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "workflow_mode", nullable = false, length = 20)
     private WorkflowMode workflowMode = WorkflowMode.MANUAL;
