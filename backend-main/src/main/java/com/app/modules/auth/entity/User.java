@@ -31,4 +31,7 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserStatus status = UserStatus.ACTIVE;
+
+    @Column(name = "is_platform_admin", nullable = false)
+    private boolean isPlatformAdmin = false;
 }
