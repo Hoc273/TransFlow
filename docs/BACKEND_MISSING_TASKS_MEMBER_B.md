@@ -1,20 +1,9 @@
-# Kế hoạch thực hiện: các API Backend còn thiếu (theo từng nhánh)
+# Việc Backend còn thiếu — Thành viên B
 
-> Nguồn nội dung: `docs/BACKEND_MISSING_IMPLEMENTATION_AND_INTEGRATION_PLAN.md` (Phần 1).
-> Người thực hiện: 2 người (Thành viên A và B) — tổng 11 hạng mục, phân công ở mục 12.
-> Khác biệt so với plan gốc: **hạng mục 1.4 đã đổi thiết kế** (tải theo tập video được chọn, không theo Batch) — xem mục 5.
->
-> **Cập nhật theo plan v2.0 (21/09/2026):** thêm 2 hạng mục mới — **mục 10** (Worker Capabilities) và **mục 11**
-> (Output Package & Publish Package); mục 3 (`render-config`) đổi sang DTO Render Studio v2 và thêm `rerun-render`;
-> mục 1 ghi chú `format` mở rộng `SRT|VTT`.
->
-> **Phân công 2 người** (file này là bản tổng hợp/nguồn; mỗi người có file riêng chứa phần việc của mình):
-> - Thành viên A → [`BACKEND_MISSING_TASKS_MEMBER_A.md`](BACKEND_MISSING_TASKS_MEMBER_A.md): mục 7, 8, 9, 10 (auth / provider / platform / capabilities).
-> - Thành viên B → [`BACKEND_MISSING_TASKS_MEMBER_B.md`](BACKEND_MISSING_TASKS_MEMBER_B.md): mục 1–6, 11 (pipeline Media Job).
->
-> Cách chia dựa trên ranh giới module ở `CLAUDE.md` §4.8 (A: auth/provider/dashboard…; B: media_job/media_asset/batch…).
-> Mục 10 (capabilities) giao A vì gắn với kiểm tra sức khoẻ hạ tầng, dùng chung logic với `/api/platform/status` (mục 9).
-> Muốn đổi người cho mục nào thì sửa bảng ở mục 12 và chuyển mục đó sang file của người nhận (đồng bộ thủ công).
+> File này là **bản trích** từ `BACKEND_MISSING_TASKS_BY_BRANCH.md` (bản tổng hợp/nguồn) — phần việc giao cho **Thành viên B**: pipeline Media Job (export, sửa phụ đề, render, subtitle style, tải nhiều video, ghi đè ngôn ngữ, output/publish package).
+> Số mục giữ nguyên như file tổng hợp. Khi nội dung mục thay đổi, sửa ở file tổng hợp rồi đồng bộ lại file này;
+> việc tích tiến độ (`[x]`) làm ở **file của mình** và báo lại để cập nhật bảng tổng.
+> Phân công dựa trên ranh giới module `CLAUDE.md` §4.8; muốn đổi người cho mục nào thì thống nhất rồi chuyển mục đó.
 
 ## 0. Quy ước chung cho mọi nhánh
 
@@ -45,6 +34,8 @@ Mỗi nhánh = 1 PR nhỏ.
 - `media_jobs` đã có cột `subtitle_style JSONB NOT NULL` và `render_config JSONB DEFAULT '{}'` (V1__init_tables.sql).
 - `ErrorCode` đã có `QA_BLOCKED` (3300), `STAGE_NOT_READY` (2902), `VALIDATION_ERROR` (9998).
 - Thư mục migration hiện dừng ở `V6`; migration mới đánh số tiếp `V7__...` (không sửa file cũ).
+
+---
 
 ---
 
@@ -89,6 +80,8 @@ Mỗi nhánh = 1 PR nhỏ.
 
 ---
 
+---
+
 ## 2. Sửa phụ đề hàng loạt — `/segments/batch`
 
 - **Nhánh:** `feature/media-job-segments-batch-edit`
@@ -109,6 +102,8 @@ Mỗi nhánh = 1 PR nhỏ.
   1 segment thuộc job khác → 400 và **không segment nào bị đổi** (rollback);
   MEMBER sửa job người khác → 403; CLIENT → 403.
 - Thủ công: gửi mảng 3 segment, GET `/subtitles` xác nhận đã đổi; gọi lại 2 lần vẫn idempotent.
+
+---
 
 ---
 
@@ -154,6 +149,8 @@ Mỗi nhánh = 1 PR nhỏ.
 
 ---
 
+---
+
 ## 4. Phong cách phụ đề — `/media/subtitle-styles`
 
 - **Nhánh:** `feature/media-subtitle-styles`
@@ -180,6 +177,8 @@ Mỗi nhánh = 1 PR nhỏ.
 **Cách kiểm tra:**
 - Test: list trả đủ style seed; get key sai → lỗi đúng mã; POST đổi style → GET job-style trả snapshot mới, đủ 13 trường.
 - Thủ công: Studio mở `SubtitleStylePanel` không bị 404/loading treo; chọn style → render ra phụ đề đúng style.
+
+---
 
 ---
 
@@ -229,6 +228,8 @@ Mỗi nhánh = 1 PR nhỏ.
 
 ---
 
+---
+
 ## 6. Ghi đè ngôn ngữ nguồn — `/override-source-lang`
 
 - **Nhánh:** `feature/media-job-override-source-lang`
@@ -246,128 +247,6 @@ Mỗi nhánh = 1 PR nhỏ.
 - Thủ công: đổi ngôn ngữ, rerun `TRANSLATE`, bản dịch dùng ngôn ngữ nguồn mới.
 
 ---
-
-## 7. Nghe thử giọng TTS — `/tts-voices/preview`
-
-- **Nhánh:** `feature/tts-voice-preview`
-- **Endpoint:** `POST /api/tts-voices/preview`, body `{ "voiceId": "uuid", "text": "Xin chào" }`. Mọi user đăng nhập.
-
-**Cần thay đổi:**
-1. DTO (`text` tối đa ~50 ký tự, `@NotBlank`), response `{ audioUrl }`.
-2. Service (module `provider`): tra `tts_voices` theo `voiceId`, resolve provider (BYOK/platform) qua
-   `ProviderResolverService`, gọi `backend-ai` `/media/tts/synthesize` (FastAPI stateless), lưu mp3 ngắn lên MinIO key tạm
-   và trả presigned URL ngắn hạn.
-3. Chống lạm dụng: rate limit theo user (tái dùng cơ chế giống `BatchCreateRateLimiter`); **không trừ Credit lớn** —
-   quyết định: preview miễn phí hay tính phí nhỏ (ghi rõ vào contract).
-
-**Cách kiểm tra:**
-- Test: voiceId không tồn tại → 404; text quá dài → 400; vượt rate limit → 429.
-- Thủ công: gọi preview với 1 giọng platform, mở `audioUrl` nghe được ~2–3 giây; kiểm tra log FastAPI nhận đúng request.
-
----
-
-## 8. Quên mật khẩu qua OTP
-
-- **Nhánh:** `feature/auth-forgot-password-otp`
-- **Endpoint (public, không cần JWT — thêm vào `permitAll` trong `SecurityConfig`):**
-  1. `POST /api/auth/forgot-password/otp` — body `{email}`: sinh OTP 6 số, lưu Redis `otp:pwd_reset:<email>` TTL 5 phút,
-     gửi email (dev: log ra console). **Luôn trả 200 dù email không tồn tại** (tránh dò tài khoản).
-  2. `POST /api/auth/forgot-password/verify` — body `{email, otp}`: kiểm tra khớp.
-  3. `POST /api/auth/forgot-password/reset` — body `{email, otp, newPassword}`: xác thực lại OTP, BCrypt, cập nhật
-     `users.password_hash`, xoá OTP.
-
-**Cần thay đổi:**
-1. `AuthService` thêm 3 hàm; lưu OTP hash (không lưu plain) hoặc chấp nhận plain trong Redis TTL ngắn (ghi rõ lựa chọn).
-2. Giới hạn: số lần verify sai (vd 5 lần → xoá OTP), rate limit gửi OTP theo email/IP.
-3. Gửi email: nếu chưa có mail sender → thêm `spring-boot-starter-mail` vào block dependency phù hợp trong `pom.xml`
-   (§4.9), cấu hình SMTP **qua biến môi trường** + cập nhật `.env.example` (comment cách lấy giá trị); dev fallback log.
-4. Tài khoản Google-only (không có password) → xử lý có chủ đích (từ chối hoặc cho đặt mật khẩu — chốt và ghi contract).
-5. `ErrorCode` mới (OTP sai/hết hạn) trong dải của module `auth`.
-6. Reset xong nên vô hiệu refresh token cũ của user nếu code hiện có hỗ trợ.
-
-**Cách kiểm tra:**
-- Test: OTP đúng → reset thành công, đăng nhập được bằng mật khẩu mới, mật khẩu cũ hết hiệu lực; OTP sai/hết hạn → lỗi
-  đúng mã; verify sai quá số lần → OTP bị xoá; email lạ vẫn trả 200 ở bước 1.
-- Thủ công: chạy với Redis thật, xem `TTL otp:pwd_reset:<email>` ≈ 300s; OTP không xuất hiện trong response.
-
----
-
-## 9. Quản trị nền tảng — `/api/platform/*`
-
-- **Nhánh:** `feature/platform-admin-api`
-- **Ưu tiên:** thấp nhất, phạm vi lớn nhất.
-- **Lưu ý phạm vi:** `CLAUDE.md` §3/§4.2 và `SRS.md` §4.3 đang ghi Platform Admin là **ngoài phạm vi**. Vì đã quyết định làm,
-  trong nhánh này phải sửa các file đó (bỏ khỏi mục "ngoài phạm vi", thêm mô tả SRS/kiến trúc/contract) để docs không
-  mâu thuẫn code.
-- **Endpoint (chỉ user có `isPlatformAdmin = true`):**
-  1. `GET /api/platform/overview?from=&to=&topLimit=` — 6 KPI: số User, Workspace, phân loại Job, token AI theo tác vụ,
-     `failRate`, top workspace tiêu thụ.
-  2. `GET /api/platform/status` — health của PostgreSQL, Redis, RabbitMQ, MinIO, FastAPI (bỏ "Celery" vì kiến trúc này
-     không dùng Celery — chỉ liệt kê thành phần thực sự có).
-  3. `GET /api/platform/users?page=&size=&q=&isPlatformAdmin=`
-  4. `GET /api/platform/workspaces?page=&size=&q=`
-  5. `GET /api/platform/audit-logs?page=&size=&action=`
-
-**Cần thay đổi:**
-1. Kiểm tra `users` đã có cờ platform admin chưa (`Database_Design.md`); chưa có → migration `V7+` thêm cột
-   (`is_platform_admin BOOLEAN NOT NULL DEFAULT false`) và đưa vào JWT claim/`AuthenticatedUser`.
-2. Bảng `audit_logs` chưa có (kiểm tra) → migration + ghi log ở các thao tác admin; cập nhật `Database_Design.md`.
-3. `PlatformController` + `PlatformService`, guard `@PreAuthorize`/kiểm tra ở tầng service (không chỉ ẩn UI).
-4. Truy vấn tổng hợp dùng `ai_usage_logs`, `media_jobs`; **bắt buộc phân trang và có index**, tránh full scan.
-5. Tham khảo `PlatformController` ở `../transflow` (chỉ lấy phần khớp).
-6. Cập nhật `SRS.md`, `System_Architecture.md`, `Database_Design.md`, `API_Contract.md`, `CLAUDE.md` cho nhất quán.
-
-**Cách kiểm tra:**
-- Test: user thường gọi → 403; admin gọi → 200; phân trang/`q` hoạt động; `failRate` tính đúng trên dữ liệu mẫu;
-  `status` báo DOWN khi tắt thử Redis/RabbitMQ.
-- Thủ công: đăng nhập tài khoản admin, mở `/platform/*` trên FE với BE thật, các số liệu khớp truy vấn SQL tay.
-
----
-
-## 10. Worker Capabilities & Readiness — `/api/transformation/capabilities` (MỚI theo plan v2)
-
-- **Nhánh:** `feature/transformation-capabilities`
-- **Ưu tiên:** 🔴 blocker giao diện tạo job: `UploadConsentPanel.tsx` gọi ngay khi mở trang để biết chế độ xử lý nào dùng được
-  (`FAST` = dịch/lồng tiếng chuẩn, `STUDIO` = lồng tiếng nâng cao giữ ngữ điệu) và revalidate trước khi bấm "Tạo Job"
-  để không đẩy job vào hàng đợi chết.
-- **Endpoint:** `GET /api/transformation/capabilities` — toàn hệ thống (không có `workspaceId`), `200 OK`.
-  **Auth: JWT bắt buộc** (plan ghi "Public / Authenticated"; chọn Authenticated để không lộ trạng thái hạ tầng công khai;
-  cần chốt, nếu FE gọi trước đăng nhập thì mới mở `permitAll`).
-- **Hiện trạng:** backend mini chưa có; `../transflow` có `TransformationCapabilitiesController` →
-  `AvailabilityProjectionService` (kèm `WorkerCapabilityProperties`, `InMemoryWorkerCapabilityCache`, các engine
-  scoring/selection thuộc kiến trúc CT10 legacy). `CLAUDE.md` §4.2 đang liệt controller này vào "LOẠI BỎ" → **chỉ lấy ý
-  tưởng projection, viết bản gọn**, không copy engine scoring/selection.
-- **Vị trí code (lệch plan, có chủ đích):** plan đặt trong `media_job`; giao A nên đặt trong module `provider` (nơi đã có
-  `AiGatewayClient`), service tên `WorkerCapabilityService` (interface + impl). Không đụng repository module khác.
-
-**DTO `AvailabilityProjectionResponse`** (camelCase, theo plan): `protocolVersion` ("1.0"), `supportedExecutionModes`
-(`["FAST","STUDIO"]`), `defaultExecutionMode` ("FAST"), `availability{FAST|STUDIO → {available, unavailableReason}}`,
-`workerCapability{state READY|DEGRADED|OFFLINE, workerCount, compatibleFastWorkers, compatibleStudioWorkers}`,
-`readiness{status READY|DRAINING, readyExecutionModes, reasons[], evaluatedAt}`.
-
-**Cần thay đổi:**
-1. Nguồn dữ liệu: gọi `GET /health` của `backend-ai` (có sẵn) và của `backend-media-worker` (có sẵn). Backend-main **chưa có
-   base URL của media worker** → thêm `app.media-worker.base-url` = env `MEDIA_WORKER_URL` (không nhạy cảm; thêm vào
-   `.env.example` và compose) cạnh `hmacSecret` hiện có.
-2. Quy tắc gọn (ghi rõ là mặc định, cần xác nhận): `FAST` available ⇔ backend-ai **và** media-worker đều healthy;
-   `STUDIO` available ⇔ `FAST` available **và** tách nguồn (source separation) bật (theo cấu hình backend-ai,
-   `SEPARATION_ENGINE_ID`). `unavailableReason` điền mã ngắn (ví dụ `AI_GATEWAY_DOWN`, `MEDIA_WORKER_DOWN`,
-   `SEPARATION_DISABLED`). `state`: cả hai lên → `READY`; chỉ một phần → `DEGRADED`; không có → `OFFLINE`.
-   `workerCount` = số worker healthy (hiện tối đa 1 media-worker).
-3. Cache kết quả vài giây trong bộ nhớ (TTL cấu hình, ví dụ 5–10s) để FE polling không dồn request tới worker;
-   health-check có timeout ngắn, lỗi mạng → coi là DOWN (không ném 500).
-4. Controller `TransformationCapabilitiesController` (`/api/transformation`), trả `ApiResponse<AvailabilityProjectionResponse>`.
-5. Dùng chung với nhánh platform-admin (mục 9): hàm health-check MinIO/Redis/RabbitMQ/Postgres dùng cho `/api/platform/status`
-   nên tách thành service chung — làm mục 10 trước, mục 9 tái dùng.
-6. Cập nhật `API_Contract.md` (thêm endpoint), và (tuỳ chọn) validate `requestedMode` khi tạo job: `STUDIO` mà không available
-   → từ chối rõ ràng (cần chốt có làm ở nhánh này không; mặc định **không**, chỉ trả projection).
-
-**Cách kiểm tra:**
-- Test: mock 2 client health → 4 tổ hợp up/down cho ra `READY`/`DEGRADED`/`OFFLINE` và `availability` đúng; timeout/lỗi mạng →
-  DOWN, không 500; cache: 2 lần gọi liên tiếp chỉ health-check 1 lần; không token → 401.
-- Thủ công: chạy compose có `backend-ai` + `media-worker` → `FAST`/`STUDIO` available; `docker stop transflow-media-worker`
-  → `OFFLINE`/`FAST` unavailable với `unavailableReason`; bật lại → phục hồi sau khi cache hết hạn; mở màn upload trên FE
-  và thấy chế độ đúng.
 
 ---
 
@@ -418,7 +297,9 @@ subtitleTracks:[{format, language, available}], durationMs }`.
 
 ---
 
-## 12. Thứ tự đề xuất & phụ thuộc & phân công
+---
+
+## Thứ tự làm & phối hợp — Thành viên B
 
 | Thứ tự | Người | Nhánh | Phụ thuộc |
 |---|:-:|---|---|
@@ -428,10 +309,6 @@ subtitleTracks:[{format, language, available}], durationMs }`.
 | 4 | B | `feature/media-subtitle-styles` | — |
 | 5 | B | `feature/media-library-bulk-download` | nhánh 1 (presigned URL + quality gate dùng chung) |
 | 6 | B | `feature/media-job-override-source-lang` | — |
-| 7 | A | `feature/tts-voice-preview` | — |
-| 8 | A | `feature/auth-forgot-password-otp` | — |
-| 10 | A | `feature/transformation-capabilities` | — (làm trước 9: health-check dùng chung) |
-| 9 | A | `feature/platform-admin-api` | sau mục 10; sửa cả docs phạm vi |
 | 11 | B | `feature/media-job-output-publish-package` | nhánh 1 (presign + quality gate dùng chung); migration `V7` cần thống nhất số với các nhánh khác |
 
 **Lưu ý phối hợp A ↔ B:**
@@ -446,9 +323,9 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 
 ---
 
-## 13. Checklist theo dõi tiến độ
+## Checklist tiến độ — Thành viên B
 
-Đánh dấu `[x]` khi nhánh đã code xong, test xanh và kiểm tra thủ công đạt (theo mục "Cách kiểm tra" của từng phần).
+Đánh dấu `[x]` khi code xong, test xanh và kiểm tra thủ công đạt (theo mục "Cách kiểm tra").
 
 | # | Nhánh | Code | Test tự động | Kiểm tra thủ công | Cập nhật `API_Contract.md` | Commit / PR |
 |---|---|:-:|:-:|:-:|:-:|:-----------:|
@@ -458,17 +335,4 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 | 4 | `feature/media-subtitle-styles` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 5 | `feature/media-library-bulk-download` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 6 | `feature/media-job-override-source-lang` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
-| 7 | `feature/tts-voice-preview` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
-| 8 | `feature/auth-forgot-password-otp` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
-| 9 | `feature/platform-admin-api` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
-| 10 | `feature/transformation-capabilities` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 11 | `feature/media-job-output-publish-package` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
-
-**Việc cần chốt của các mục mới (v2):**
-- [ ] Mục 1: bổ sung `format=SRT|VTT` cho `/export` (giữ `SUBTITLE` làm alias) và cập nhật contract.
-- [ ] Mục 3: xác nhận worker hỗ trợ reframe/blur-pad/cover layers/ducking; DTO `render-config` v2 báo FE.
-- [ ] Mục 10: `capabilities` cần JWT hay public; quy tắc `FAST`/`STUDIO` available; có validate `requestedMode` khi tạo job không.
-- [ ] Mục 10: thêm biến `MEDIA_WORKER_URL` (`.env.example` + compose).
-- [ ] Mục 11: cột `media_jobs.publish_package` (V7) và cập nhật `Database_Design.md`; QA gate chặn PUT hay chỉ bước xuất bản;
-      `audioTracks` trả presigned URL hay `storageRef` thô.
-- [ ] Migration V7/V8: A và B thống nhất số version trước khi tạo.
