@@ -187,6 +187,13 @@ export function consentTransformationAssetApi(
   )
 }
 
+export {
+  listProjectMediaAssetsApi,
+  getMediaAssetApi,
+  listProjectMediaAssetsApi as listTransformationAssetsApi,
+  getMediaAssetApi as getTransformationAssetApi,
+} from '@/api/media'
+
 // ---------- localization runtime controls ----------
 
 export function overrideTransformationSourceLangApi(

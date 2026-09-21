@@ -44,12 +44,16 @@ export const queryKeys = {
     ['notifications', wsId, params ?? {}] as const,
   notificationsInfinite: (wsId: string) => ['notifications', wsId, 'infinite'] as const,
   projects: (wsId: string) => ['projects', wsId] as const,
+  projectMembers: (wsId: string, projectId: string) =>
+    ['projectMembers', wsId, projectId] as const,
   documents: (wsId: string, projectId: string) => ['documents', wsId, projectId] as const,
   document: (wsId: string, documentId: string) => ['document', wsId, documentId] as const,
   jobs: (wsId: string, documentId: string) => ['jobs', wsId, documentId] as const,
   job: (wsId: string, jobId: string) => ['job', wsId, jobId] as const,
   mediaJobs: (wsId: string, projectId: string) => ['mediaJobs', wsId, projectId] as const,
   mediaJob: (wsId: string, jobId: string) => ['mediaJob', wsId, jobId] as const,
+  mediaAssets: (wsId: string, projectId: string) => ['mediaAssets', wsId, projectId] as const,
+  mediaAsset: (wsId: string, assetId: string) => ['mediaAsset', wsId, assetId] as const,
   renderConfig: (wsId: string, jobId: string) =>
     ['mediaJob', wsId, jobId, 'render-config'] as const,
   /** CT3 output package — presigned render output for the Export preview. */

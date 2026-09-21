@@ -209,10 +209,9 @@
     "testOk": "TTS provider connection succeeded."
   },
   "roles": {
-    "ADMIN": "Admin",
-    "PM": "PM",
-    "TRANSLATOR": "Translator",
-    "PROOFREADER": "Proofreader",
-    "CLIENT": "Client"
+    "LEAD": "Lead",
+    "MEMBER": "Member",
+    "CLIENT": "Client",
+    "ADMIN": "Admin"
   }
 }

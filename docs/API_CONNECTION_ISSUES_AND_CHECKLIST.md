@@ -12,13 +12,16 @@
    - [Các lỗi đã gặp & Giải pháp xử lý](#22-các-lỗi-đã-gặp--giải-pháp-xử-lý)
    - [Tài khoản Super Admin mặc định](#23-tài-khoản-super-admin-mặc-định)
    - [Cấu hình môi trường bên ngoài cần bổ sung (.env)](#24-cấu-hình-môi-trường-bên-ngoài-cần-bổ-sung-env)
-3. [Danh mục Chi tiết API Đã có & Còn thiếu (Phase 2 ➔ Phase 6)](#3-danh-mục-chi-tiết-api-đã-có--còn-thiếu-phase-2--phase-6)
-   - [Phase 2: Project, Asset Ingestion & Worker Capabilities](#phase-2-project-asset-ingestion--worker-capabilities)
+3. [Chi tiết Phase 2: Dự án, Tiếp nhận Video Asset & Năng lực Hạ tầng](#3-chi-tiết-phase-2-dự-án-tiếp-nhận-video-asset--năng-lực-hạ-tầng)
+   - [Trạng thái hoàn thành & Bảng đối soát API](#31-trạng-thái-hoàn-thành--bảng-đối-soát-api)
+   - [Các điểm thiếu đã phát hiện & Giải pháp xử lý](#32-các-điểm-thiếu-đã-phát-hiện--giải-pháp-xử-lý)
+   - [Kết quả kiểm thử & Build thực tế](#33-kết-quả-kiểm-thử--build-thực-tế)
+4. [Danh mục Chi tiết API Đã có & Còn thiếu (Phase 3 ➔ Phase 6)](#4-danh-mục-chi-tiết-api-đã-có--còn-thiếu-phase-3--phase-6)
    - [Phase 3: Media Job Orchestration & Pipeline Execution](#phase-3-media-job-orchestration--pipeline-execution)
    - [Phase 4: Subtitles, Review Workbench & QA Gate](#phase-4-subtitles-review-workbench--qa-gate)
    - [Phase 5: Render Studio, Reframe & Cover Layers](#phase-5-render-studio-reframe--cover-layers)
    - [Phase 6: Packaging, Output Delivery & Export](#phase-6-packaging-output-delivery--export)
-4. [Cẩm nang Xử lý Nhanh các Lỗi phổ biến (Troubleshooting Guide)](#4-cẩm-nang-xử-lý-nhanh-các-lỗi-phổ-biến-troubleshooting-guide)
+5. [Cẩm nang Xử lý Nhanh các Lỗi phổ biến (Troubleshooting Guide)](#5-cẩm-nang-xử-lý-nhanh-các-lỗi-phổ-biến-troubleshooting-guide)
 
 ---
 
@@ -27,8 +30,8 @@
 | Phase | Tên phân hệ | Backend Code | Frontend Code | Trạng thái Kết nối | Ghi chú |
 | :---: | :--- | :---: | :---: | :---: | :--- |
 | **Phase 1** | **Xác thực, Người dùng, Workspace & Super Admin** | 🟢 100% | 🟢 100% | 🟢 **HOÀN THÀNH** | Đã bao gồm Super Admin Platform (`/api/platform/*`) |
-| **Phase 2** | **Dự án & Năng lực Hạ tầng** (Asset Ingestion & Capabilities) | 🟢 85% | 🟢 100% | 🟡 **ĐANG KẾT NỐI** | Đã có Project, MinIO Asset Upload, Consent; chỉ còn thiếu `/api/transformation/capabilities` |
-| **Phase 3** | **Khởi tạo & Điều phối Job** (Job Orchestration & Pipeline) | 🟢 80% | 🟢 100% | ⚪ Chờ Phase 2 | Đã có CRUD Job, Stages rerun, Checkpoint, Voice, Batch, Proposal; cần gắn AI Worker Python |
+| **Phase 2** | **Dự án & Năng lực Hạ tầng** (Asset Ingestion & Capabilities) | 🟢 100% | 🟢 100% | 🟢 **HOÀN THÀNH** | Đã có Project, MinIO Asset Upload, Consent, và Transformation Capabilities |
+| **Phase 3** | **Khởi tạo & Điều phối Job** (Job Orchestration & Pipeline) | 🟢 80% | 🟢 100% | 🟡 **ĐANG KẾT NỐI** | Đã có CRUD Job, Stages rerun, Checkpoint, Voice, Batch, Proposal; cần gắn AI Worker Python |
 | **Phase 4** | **Biên tập Phụ đề & QA** (Review Workbench & Subtitles) | 🟡 70% | 🟢 100% | ⚪ Chờ Phase 3 | Đã có Single Patch Subtitle, QA Override; thiếu `/segments/batch` |
 | **Phase 5** | **Studio Dựng hình & Lớp phủ** (Render Studio & Reframe) | 🔴 10% | 🟢 100% | ⚪ Chờ Phase 4 | Cần xây dựng `/render-config`, `/subtitle-styles` |
 | **Phase 6** | **Đóng gói & Xuất bản** (Packaging & Delivery Export) | 🔴 10% | 🟢 100% | ⚪ Chờ Phase 5 | Cần xây dựng `/export`, `/output-package`, `/publish-package` |
@@ -97,7 +100,7 @@
   2. DTO `UserResponse` không chứa trường `isPlatformAdmin`, khiến cho `GET /api/auth/me` không trả về cờ quyền hạn cho Frontend Guard (`user?.isPlatformAdmin`).
   3. Backend hoàn toàn chưa cài đặt `PlatformController` cung cấp các API `/api/platform/*`.
 - **Giải pháp xử lý (Đã hoàn thành 100%):**
-  1. Tạo Flyway migration `backend-main/src/main/resources/db/migration/V7__add_is_platform_admin.sql` thêm cột `is_platform_admin BOOLEAN NOT NULL DEFAULT FALSE`.
+  1. Tạo Flyway migration `backend-main/src/main/resources/db/migration/V9__add_is_platform_admin.sql` thêm cột `is_platform_admin BOOLEAN NOT NULL DEFAULT FALSE`.
   2. Bổ sung trường `isPlatformAdmin` vào `User.java` và `@JsonProperty("isPlatformAdmin")` trong `UserResponse.java` (giữ constructor tương thích ngược).
   3. Xây dựng `PlatformController.java` (`com.app.modules.platform.controller`) cung cấp đủ 5 endpoint: `/overview`, `/status`, `/users`, `/workspaces`, `/audit-logs`.
   4. Bổ sung `countByUserId` và `countByWorkspaceId` trong `WorkspaceMemberRepository`.
@@ -143,24 +146,63 @@ GOOGLE_REDIRECT_URI=http://localhost:8080/api/auth/google/callback
 
 ---
 
-## 3. DANH MỤC CHI TIẾT API ĐÃ CÓ & CÒN THIẾU (PHASE 2 ➔ PHASE 6)
+## 3. CHI TIẾT PHASE 2: DỰ ÁN, TIẾP NHẬN VIDEO ASSET & NĂNG LỰC HẠ TẦNG
+
+### 3.1 Trạng thái hoàn thành & Bảng đối soát API (100% Hoàn thành)
+
+| STT | Luồng nghiệp vụ | Endpoint & Method | Phía Backend | Phía Frontend | Trạng thái |
+| :-: | :--- | :--- | :--- | :--- | :---: |
+| 1 | **Quản lý & tạo Dự án (Project)** | `GET/POST /api/workspaces/{wsId}/projects` | `ProjectController.java`<br/>`CreateProjectRequest.java` | `listProjectsApi`, `createProjectApi`<br/>Hooks: `useProjects`, `useCreateProject` | 🟢 Hoàn thành |
+| 2 | **Quản lý thành viên Dự án (Project Members)** | `GET/POST/DELETE /api/workspaces/{wsId}/projects/{pId}/members` | `ProjectController.java`<br/>`ProjectMemberResponse.java` | `projects.ts`: `listProjectMembersApi`, `assignProjectMemberApi`, `removeProjectMemberApi`<br/>Hooks: `useProjects.ts` | 🟢 Hoàn thành |
+| 3 | **Kiểm tra năng lực Worker AI** | `GET /api/transformation/capabilities` | `TransformationController.java`<br/>`AvailabilityProjection.java` | `getTransformationCapabilitiesApi`<br/>Hook: `useTransformationCapabilities` | 🟢 Hoàn thành |
+| 4 | **Lấy phiên bản Điều khoản Bản quyền** | `GET /api/workspaces/{wsId}/media/terms-version` | `MediaAssetController.java` | `getMediaTermsVersionApi`<br/>`getTransformationTermsVersionApi` | 🟢 Hoàn thành |
+| 5 | **Upload video gốc lên MinIO** | `POST /api/workspaces/{wsId}/projects/{pId}/media/assets` | `MediaAssetController.java`<br/>(Multipart upload trực tiếp vào MinIO) | `uploadTransformationMediaApi`<br/>(XHR upload kèm % tiến độ & AbortSignal) | 🟢 Hoàn thành |
+| 6 | **Liệt kê danh sách video gốc của Project** | `GET /api/workspaces/{wsId}/projects/{pId}/media/assets` | `MediaAssetController.java` (`listAssets`) | `media.ts`: `listProjectMediaAssetsApi`<br/>Hook: `useProjectMediaAssets` | 🟢 Hoàn thành |
+| 7 | **Lấy chi tiết metadata 1 Video Asset** | `GET /api/workspaces/{wsId}/media/assets/{assetId}` | `MediaAssetController.java` (`getAsset`) | `media.ts`: `getMediaAssetApi`<br/>Hook: `useMediaAsset` | 🟢 Hoàn thành |
+| 8 | **Ký cam kết bản quyền Asset (Consent)** | `POST /api/workspaces/{wsId}/media/assets/{assetId}/consent` | `MediaAssetController.java` (`consent`) | `consentTransformationAssetApi`<br/>Hook: `useConsentMediaAsset` | 🟢 Hoàn thành |
+
+---
+
+### 3.2 Các điểm thiếu đã phát hiện & Giải pháp xử lý
+
+#### Vấn đề 1: Frontend thiếu bộ API & Hooks quản lý thành viên Dự án (Project Members)
+- **Hiện tượng:** Backend đã hỗ trợ phân quyền theo Project (`/members`), nhưng Frontend chưa định nghĩa types, API methods và React Query hooks, làm gián đoạn việc quản lý thành viên dự án.
+- **Giải pháp xử lý:**
+  1. Thêm type `ProjectMember` và `AssignProjectMemberBody` tại `frontend/src/types/project.ts`.
+  2. Bổ sung 3 hàm `listProjectMembersApi`, `assignProjectMemberApi`, `removeProjectMemberApi` trong `frontend/src/api/projects.ts`.
+  3. Đăng ký query key `projectMembers: (wsId, projectId) => ['projectMembers', wsId, projectId]` tại `frontend/src/lib/queryClient.ts`.
+  4. Viết 3 hooks `useProjectMembers`, `useAssignProjectMember`, `useRemoveProjectMember` tại `frontend/src/hooks/useProjects.ts` có cơ chế tự động invalidate cache khi thay đổi thành viên.
+
+#### Vấn đề 2: Bổ sung đầy đủ các trường cấu hình Project (`defaultGlossaryId`, `tmEnabled`, `domain`, `tone`) vào Backend
+- **Hiện tượng:** Form `CreateProjectModal.tsx:59-67` trên Frontend gửi payload gồm `name`, `sourceLang`, `defaultGlossaryId`, `tmEnabled`, `domain`, `tone` nhằm cung cấp ngữ cảnh thiết yếu để AI dịch thuật, tạo phụ đề và lồng tiếng chuẩn xác. Trước đó Backend `Project.java` và DTO `CreateProjectRequest.java`, `ProjectResponse.java` chỉ khai báo 2 trường `name` và `sourceLang`.
+- **Giải pháp xử lý:**
+  1. Tạo Flyway migration `V11__add_project_settings_fields.sql` đảm bảo 4 cột `default_glossary_id`, `tm_enabled`, `domain`, `tone` luôn hiện diện trên bảng `projects`.
+  2. Cập nhật Entity `Project.java` ánh xạ đầy đủ 4 trường với JPA.
+  3. Bổ sung các trường vào `CreateProjectRequest.java` và `ProjectResponse.java` (kèm constructor tương thích ngược tránh ảnh hưởng các test hiện hữu).
+  4. Cập nhật `ProjectServiceImpl.java` lưu trữ và trả về trọn vẹn các thuộc tính khi tạo mới Project.
+  5. Viết test `testCreateProjectWithAllFields` trong `ProjectControllerTest.java` (Pass 100%).
+
+#### Vấn đề 3: Frontend thiếu API & Hooks truy vấn danh sách Media Assets gốc trên MinIO
+- **Hiện tượng:** Frontend chỉ có hàm upload `uploadTransformationMediaApi`, chưa có API để query danh sách video gốc đã tải lên của một Project hoặc chi tiết 1 asset.
+- **Giải pháp xử lý:**
+  1. Bổ sung trường `parentAssetId?: string | null` vào type `MediaAsset` tại `frontend/src/types/media.ts` để đồng bộ 100% với DTO `MediaAssetResponse.java` của Backend.
+  2. Bổ sung 2 hàm `listProjectMediaAssetsApi(wsId, projectId)` và `getMediaAssetApi(wsId, assetId)` vào `frontend/src/api/media.ts` và re-export tại `frontend/src/api/transformation.ts`.
+  3. Thêm query keys `mediaAssets` và `mediaAsset` tại `frontend/src/lib/queryClient.ts`.
+  4. Viết hooks `useProjectMediaAssets` và `useMediaAsset` tại `frontend/src/hooks/useMedia.ts`, đồng thời cấu hình `useUploadMedia` tự động invalidate cache `mediaAssets` sau khi tải video thành công.
+
+---
+
+### 3.3 Kết quả kiểm thử & Build thực tế
+- **Backend Tests:** `mvn test` ➔ **335/335 tests PASS 100%** (`BUILD SUCCESS`).
+- **Frontend Tests:** `npx vitest run` ➔ **689/689 tests PASS 100%** (69 test files).
+- **Frontend Build:** `npm run build` (`tsc -b && vite build`) ➔ **THÀNH CÔNG 100%** (0 errors).
+- **Linter:** `npm run lint` ➔ **0 errors**.
+
+---
+
+## 4. DANH MỤC CHI TIẾT API ĐÃ CÓ & CÒN THIẾU (PHASE 3 ➔ PHASE 6)
 
 Dưới đây là danh sách phân loại chi tiết theo trạng thái thực tế trong mã nguồn:
-
-### Phase 2: Project, Asset Ingestion & Worker Capabilities
-* 🟢 **ĐÃ CÓ TRONG BACKEND:**
-  - `GET/POST /api/workspaces/{wsId}/projects`: Quản lý danh sách và tạo Project (`ProjectController`).
-  - `GET/POST/DELETE /api/workspaces/{wsId}/projects/{pId}/members`: Gán và quản lý thành viên trong Project.
-  - `GET /api/workspaces/{wsId}/media/terms-version`: Lấy phiên bản điều khoản bản quyền (`MediaAssetController`).
-  - `POST /api/workspaces/{wsId}/projects/{pId}/media/assets`: Tải lên video gốc (Multipart upload trực tiếp lên MinIO).
-  - `GET /api/workspaces/{wsId}/projects/{pId}/media/assets`: Liệt kê tài nguyên video gốc.
-  - `GET /api/workspaces/{wsId}/media/assets/{assetId}`: Lấy chi tiết tài nguyên video.
-  - `POST /api/workspaces/{wsId}/media/assets/{assetId}/consent`: Ghi nhận cam kết bản quyền của người dùng.
-* 🔴 **CÒN THIẾU CẦN BỔ SUNG:**
-  - `GET /api/transformation/capabilities`:
-    - **Mức độ:** Cực kỳ quan trọng (Khởi tạo Media Studio không bị fallback).
-    - **Nhiệm vụ:** Trả về trạng thái sẵn sàng của AI Worker (`FAST` và `STUDIO` mode, workerCount, readiness).
-    - **Giải pháp:** Cần tạo `TransformationController.java` trả về `AvailabilityProjection`.
 
 ### Phase 3: Media Job Orchestration & Pipeline Execution
 * 🟢 **ĐÃ CÓ TRONG BACKEND:**
@@ -200,7 +242,7 @@ Dưới đây là danh sách phân loại chi tiết theo trạng thái thực t
 
 ---
 
-## 4. CẨM NANG XỬ LÝ NHANH CÁC LỖI PHỔ BIẾN (TROUBLESHOOTING GUIDE)
+## 5. CẨM NANG XỬ LÝ NHANH CÁC LỖI PHỔ BIẾN (TROUBLESHOOTING GUIDE)
 
 ```mermaid
 flowchart TD
@@ -216,3 +258,4 @@ flowchart TD
 
 ---
 *Tài liệu này được duy trì liên tục trong suốt quá trình kết nối API giữa Frontend và Backend.*
+

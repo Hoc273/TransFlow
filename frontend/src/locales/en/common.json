@@ -68,7 +68,7 @@
   },
   "roles": {
     "owner": "Owner",
-    "lead": "Lead / Owner",
+    "lead": "Lead",
     "admin": "Admin",
     "member": "Member",
     "client": "Client",

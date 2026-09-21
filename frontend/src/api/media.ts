@@ -20,6 +20,7 @@
  *     prep); this file has no create-job helper.
  */
 import { apiRequest, buildWorkspacePath } from '@/lib/api/client'
+import type { MediaAsset } from '@/types/media'
 
 /**
  * PUT media subtitle segment (target + original-timeline timing).
@@ -91,5 +92,19 @@ export type TermsVersionResponse = {
 export function getMediaTermsVersionApi(workspaceId: string) {
   return apiRequest<TermsVersionResponse>(
     buildWorkspacePath(workspaceId, '/media/terms-version'),
+  )
+}
+
+/** List root media assets for a project (API Contract §4, MediaAssetController). */
+export function listProjectMediaAssetsApi(workspaceId: string, projectId: string) {
+  return apiRequest<MediaAsset[]>(
+    buildWorkspacePath(workspaceId, `/projects/${projectId}/media/assets`),
+  )
+}
+
+/** Get single media asset metadata by ID (API Contract §4, MediaAssetController). */
+export function getMediaAssetApi(workspaceId: string, assetId: string) {
+  return apiRequest<MediaAsset>(
+    buildWorkspacePath(workspaceId, `/media/assets/${assetId}`),
   )
 }

@@ -48,7 +48,7 @@ public class MediaAssetController {
                 .build();
     }
 
-    @PostMapping(value = "/projects/{projectId}/media/assets", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = {"/projects/{projectId}/media/assets", "/projects/{projectId}/media/upload"}, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<MediaAssetResponse> upload(@AuthenticationPrincipal AuthenticatedUser user,
                                                    @PathVariable UUID workspaceId,
@@ -84,8 +84,11 @@ public class MediaAssetController {
     public ApiResponse<ConsentResponse> consent(@AuthenticationPrincipal AuthenticatedUser user,
                                                  @PathVariable UUID workspaceId,
                                                  @PathVariable UUID assetId,
-                                                 @Valid @RequestBody ConsentRequest req) {
-        var consent = mediaAssetService.consent(workspaceId, user.id(), assetId, req.termsVersion());
+                                                 @RequestBody(required = false) ConsentRequest req) {
+        String version = (req != null && req.termsVersion() != null && !req.termsVersion().isBlank())
+                ? req.termsVersion()
+                : mediaAssetService.currentTermsVersion();
+        var consent = mediaAssetService.consent(workspaceId, user.id(), assetId, version);
         return ApiResponse.<ConsentResponse>builder().data(ConsentResponse.from(consent)).build();
     }
 }
