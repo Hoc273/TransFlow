@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.app.modules.auth.service.ForgotPasswordOtpStore;
+import com.app.modules.auth.service.RegisterOtpStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +44,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtService jwtService;
     private final AppProperties appProperties;
     private final ForgotPasswordOtpStore otpStore;
+    private final RegisterOtpStore registerOtpStore;
 
     public AuthServiceImpl(UserRepository userRepository,
                            WorkspaceService workspaceService,
@@ -51,7 +53,8 @@ public class AuthServiceImpl implements AuthService {
                            PasswordEncoder passwordEncoder,
                            JwtService jwtService,
                            AppProperties appProperties,
-                           ForgotPasswordOtpStore otpStore) {
+                           ForgotPasswordOtpStore otpStore,
+                           RegisterOtpStore registerOtpStore) {
         this.userRepository = userRepository;
         this.workspaceService = workspaceService;
         this.projectService = projectService;
@@ -60,6 +63,7 @@ public class AuthServiceImpl implements AuthService {
         this.jwtService = jwtService;
         this.appProperties = appProperties;
         this.otpStore = otpStore;
+        this.registerOtpStore = registerOtpStore;
     }
 
     @Override
@@ -68,6 +72,19 @@ public class AuthServiceImpl implements AuthService {
         String email = req.email().trim().toLowerCase(Locale.ROOT);
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
+        }
+
+        if (registerOtpStore.hasOtp(email)) {
+            if (req.otp() == null || req.otp().isBlank()) {
+                throw new AppException(ErrorCode.OTP_REQUIRED);
+            }
+            if (!registerOtpStore.verifyAndConsumeOtp(email, req.otp())) {
+                throw new AppException(ErrorCode.INVALID_OTP);
+            }
+        } else if (req.otp() != null && !req.otp().isBlank()) {
+            if (!registerOtpStore.verifyAndConsumeOtp(email, req.otp())) {
+                throw new AppException(ErrorCode.INVALID_OTP);
+            }
         }
 
         User user = new User();
@@ -82,6 +99,20 @@ public class AuthServiceImpl implements AuthService {
         WorkspaceProjectInit init = initDefaultWorkspaceAndCredit(user);
 
         return issueAuthTokens(user, init.workspaceId(), init.projectId());
+    }
+
+    @Override
+    public OtpMessageResponse sendRegisterOtp(RegisterOtpRequest req) {
+        String email = req.email().trim().toLowerCase(Locale.ROOT);
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
+        }
+
+        String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
+        registerOtpStore.saveOtp(email, otp);
+        log.info("Generated register verification OTP for email [{}]: {}", email, otp);
+
+        return new OtpMessageResponse("Mã xác thực OTP 6 chữ số đã được gửi đến email " + email);
     }
 
     @Override

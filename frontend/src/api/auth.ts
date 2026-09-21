@@ -19,6 +19,16 @@ export function registerApi(body: RegisterRequest) {
   })
 }
 
+/** Request registration verification OTP for email. */
+export function sendRegisterOtpApi(email: string) {
+  return apiRequest<{ message: string }>('/auth/register/otp', {
+    method: 'POST',
+    body: { email },
+    skipAuth: true,
+    skipRefresh: true,
+  })
+}
+
 /** Fresh profile from DB — includes isPlatformAdmin (docs/34 Q-SA-08). */
 export function getMeApi() {
   return apiRequest<User>('/auth/me')

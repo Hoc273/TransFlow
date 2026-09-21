@@ -30,6 +30,13 @@ public class AuthController {
                 .build();
     }
 
+    @PostMapping("/register/otp")
+    public ApiResponse<OtpMessageResponse> sendRegisterOtp(@Valid @RequestBody RegisterOtpRequest req) {
+        return ApiResponse.<OtpMessageResponse>builder()
+                .data(authService.sendRegisterOtp(req))
+                .build();
+    }
+
     @PostMapping("/login")
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest req) {
         return ApiResponse.<AuthResponse>builder()

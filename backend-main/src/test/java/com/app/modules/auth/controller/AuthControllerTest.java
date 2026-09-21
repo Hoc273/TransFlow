@@ -69,6 +69,9 @@ class AuthControllerTest {
     @Autowired
     private WorkspaceBillingConfigRepository workspaceBillingConfigRepository;
 
+    @Autowired
+    private com.app.modules.auth.service.RegisterOtpStore registerOtpStore;
+
     @BeforeEach
     void cleanDb() {
         workspaceBillingConfigRepository.deleteAll();
@@ -302,5 +305,44 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.ForgotPasswordOtpRequest("unknown@transflow.com"))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(ErrorCode.USER_NOT_FOUND.getCode()));
+    }
+
+    @Test
+    void testRegisterOtp_Success() throws Exception {
+        mockMvc.perform(post("/api/auth/register/otp")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.RegisterOtpRequest("newuser@transflow.com"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.data.message").isNotEmpty());
+
+        assertTrue(registerOtpStore.hasOtp("newuser@transflow.com"));
+    }
+
+    @Test
+    void testRegisterWithOtp_Success() throws Exception {
+        registerOtpStore.saveOtp("otpuser@transflow.com", "654321");
+
+        RegisterRequest req = new RegisterRequest("otpuser@transflow.com", "Password123!", "OTP User", "654321");
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.data.user.email").value("otpuser@transflow.com"));
+
+        assertFalse(registerOtpStore.hasOtp("otpuser@transflow.com"));
+    }
+
+    @Test
+    void testRegisterWithOtp_InvalidOtp() throws Exception {
+        registerOtpStore.saveOtp("otpuser2@transflow.com", "654321");
+
+        RegisterRequest req = new RegisterRequest("otpuser2@transflow.com", "Password123!", "OTP User 2", "000000");
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_OTP.getCode()));
     }
 }

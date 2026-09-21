@@ -15,6 +15,8 @@ public interface AuthService {
 
     AuthResponse register(RegisterRequest req);
 
+    OtpMessageResponse sendRegisterOtp(RegisterOtpRequest req);
+
     AuthResponse login(LoginRequest req);
 
     TokenRefreshResponse refresh(RefreshRequest req);
