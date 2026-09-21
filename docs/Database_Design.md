@@ -378,6 +378,7 @@ media_jobs(
   preset_id UUID REFERENCES media_presets(id),
   preset_snapshot JSONB NOT NULL DEFAULT '{}',
   render_config JSONB NOT NULL DEFAULT '{}',   -- Render Studio config của job (V7); {} = chưa cấu hình
+  subtitle_style JSONB,                          -- snapshot 13 trường style phụ đề đã gán (V8); NULL = chưa gán
 
   workflow_mode VARCHAR CHECK (workflow_mode IN ('MANUAL','AUTO')) NOT NULL DEFAULT 'MANUAL',
 

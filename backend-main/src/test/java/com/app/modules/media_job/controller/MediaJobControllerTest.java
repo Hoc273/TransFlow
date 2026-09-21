@@ -755,6 +755,101 @@ class MediaJobControllerTest {
                 .andExpect(status().isOk());
     }
 
+    // ---- subtitle styles ----
+
+    private void postStyle(UUID jobId, String key, String token, int expectedStatus) throws Exception {
+        mockMvc.perform(post("/api/media/jobs/" + jobId + "/subtitle-style")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"key\":\"" + key + "\"}"))
+                .andExpect(status().is(expectedStatus));
+    }
+
+    private void setRenderStatus(UUID jobId, MediaJobStage.StageStatus status) {
+        var render = mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.RENDER).orElseThrow();
+        render.setStatus(status);
+        mediaJobStageRepository.save(render);
+    }
+
+    private MediaJobStage.StageStatus renderStatus(UUID jobId) {
+        return mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.RENDER).orElseThrow().getStatus();
+    }
+
+    @Test
+    void subtitleStyles_listAndDetail_andKeyErrors() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-style-list@transflow.com");
+        String auth = "Bearer " + lead.accessToken();
+
+        mockMvc.perform(get("/api/media/subtitle-styles").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(5))
+                .andExpect(jsonPath("$.data[0].key").value("style-classic"))
+                .andExpect(jsonPath("$.data[0].preview_text").exists());
+        mockMvc.perform(get("/api/media/subtitle-styles/style-tiktok").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("TikTok"))
+                .andExpect(jsonPath("$.data.font_family").value("Arial"))
+                .andExpect(jsonPath("$.data.margin_v").value(120))
+                .andExpect(jsonPath("$.data.opacity").value(100));
+        mockMvc.perform(get("/api/media/subtitle-styles/no-such-style").header("Authorization", auth))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value(2903));
+        mockMvc.perform(get("/api/media/subtitle-styles/BAD_KEY!").header("Authorization", auth))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(2904));
+    }
+
+    @Test
+    void subtitleStyle_assign_overwrites_stalesRenderOnlyWhenChanged() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-style-assign@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        String auth = "Bearer " + lead.accessToken();
+        String url = "/api/media/jobs/" + jobId + "/subtitle-style";
+
+        mockMvc.perform(get(url).header("Authorization", auth))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value(2903)); // nothing assigned yet
+
+        setRenderStatus(jobId, MediaJobStage.StageStatus.COMPLETED);
+        postStyle(jobId, "style-tiktok", lead.accessToken(), 200);
+        assertEquals(MediaJobStage.StageStatus.STALE, renderStatus(jobId));
+
+        // same style again: no change => a re-finished RENDER is left alone
+        setRenderStatus(jobId, MediaJobStage.StageStatus.COMPLETED);
+        postStyle(jobId, "style-tiktok", lead.accessToken(), 200);
+        assertEquals(MediaJobStage.StageStatus.COMPLETED, renderStatus(jobId));
+
+        // a different style overwrites
+        postStyle(jobId, "style-neon", lead.accessToken(), 200);
+        mockMvc.perform(get(url).header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.primary_color").value("#00FFFF"))
+                .andExpect(jsonPath("$.data.outline_color").value("#FF00FF"));
+        mockMvc.perform(get(renderUrl(lead, jobId, "render-config")).header("Authorization", auth))
+                .andExpect(jsonPath("$.data.effective.ownedByStyle").value(true));
+
+        postStyle(jobId, "nope", lead.accessToken(), 404);
+    }
+
+    @Test
+    void subtitleStyle_memberOnOthersJobAndClient_cannotAssign_clientCanRead() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-style-rbac@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        RegisteredUser member = registerPlainUser("member-style-rbac@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), member.userId(), Role.MEMBER);
+        addProjectMember(lead.projectId(), member.userId(), lead.userId());
+        RegisteredUser client = registerPlainUser("client-style-rbac@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), client.userId(), Role.CLIENT);
+        addProjectMember(lead.projectId(), client.userId(), lead.userId());
+        RegisteredUser outsider = registerPlainUser("outsider-style-rbac@transflow.com");
+
+        postStyle(jobId, "style-classic", member.accessToken(), 403);
+        postStyle(jobId, "style-classic", client.accessToken(), 403);
+        postStyle(jobId, "style-classic", lead.accessToken(), 200);
+        mockMvc.perform(get("/api/media/jobs/" + jobId + "/subtitle-style")
+                        .header("Authorization", "Bearer " + client.accessToken()))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/media/jobs/" + jobId + "/subtitle-style")
+                        .header("Authorization", "Bearer " + outsider.accessToken()))
+                .andExpect(status().isForbidden());
+    }
+
     @Test
     void listSubtitles_asClient_isAllowedReadOnly() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-subtitle-client@transflow.com");

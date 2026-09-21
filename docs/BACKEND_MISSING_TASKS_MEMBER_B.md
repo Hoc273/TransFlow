@@ -169,7 +169,19 @@ Mỗi nhánh = 1 PR nhỏ.
 
 ---
 
-## 4. Phong cách phụ đề — `/media/subtitle-styles`
+## 4. Phong cách phụ đề — `/media/subtitle-styles` — ✅ CODE + TEST + CURL THẬT XONG (2026-09-21), chưa commit
+
+> Đã làm: 4 endpoint (`SubtitleStyleController`, `SubtitleStyleService`), catalog cố định `resources/subtitle-styles.json` (5 style,
+> key `style-classic|style-modern-clean|style-tiktok|style-cinema|style-neon`), migration **V8** thêm `media_jobs.subtitle_style JSONB` (NULL = chưa gán).
+> **Lệch kế hoạch (dev đã duyệt):** `media_jobs.subtitle_style` không có sẵn (chỉ `media_presets` có) nên phải migration; route giữ `/api/media/...`
+> KHÔNG có `workspaceId` + field **snake_case** để khớp FE hiện có (quyền enforce theo workspace của job); catalog trong code thay vì bảng/seed;
+> POST **ghi đè** (không first-write-wins), snapshot đổi + RENDER COMPLETED → STALE, gán lại đúng style cũ là no-op. `ErrorCode` mới:
+> `STYLE_NOT_FOUND`=2903 (404), `INVALID_STYLE_KEY`=2904 (400). `render-config.effective.ownedByStyle` giờ = job có style.
+> Mục 4 của "Cần thay đổi" (tạo job ghi style mặc định): không cần — cột nullable, chưa gán → GET 404 và FE coi là "chưa chọn".
+> **Việc còn lại ở FE:** `useSubtitleStyle.ts` so `error.code === 'STYLE_NOT_FOUND'` nhưng backend trả mã số (`"2903"`) → cần FE chấp nhận `2903`/`2904`
+> (hoặc map), nếu không panel sẽ coi "chưa gán style" là lỗi. Chưa sửa FE (ngoài phạm vi backend).
+> 319 test xanh (4 mới); curl thật Postgres: list/detail, key sai/không có, GET chưa gán 404, POST → STALE, gán lại cùng style giữ COMPLETED
+> (JSONB đổi thứ tự key vẫn so đúng), MEMBER khác chủ/CLIENT 403, không token 401. Chưa kiểm: render ASS thật (mini chưa nối dispatch/worker).
 
 - **Nhánh:** `feature/media-subtitle-styles`
 - **Endpoint:**
@@ -350,7 +362,7 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 | 1 | `feature/media-job-export` | [x] | [x] | [x] | [x] |     [x]     |
 | 2 | `feature/media-job-segments-batch-edit` | [x] | [x] | [x] | [x] |     [ ]     |
 | 3 | `feature/media-job-render-config` | [x] | [x] | [x] | [x] |     [ ]     |
-| 4 | `feature/media-subtitle-styles` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 4 | `feature/media-subtitle-styles` | [x] | [x] | [x] | [x] |     [ ]     |
 | 5 | `feature/media-library-bulk-download` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 6 | `feature/media-job-override-source-lang` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 11 | `feature/media-job-output-publish-package` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
