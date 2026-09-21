@@ -47,7 +47,7 @@
 - [x] `POST /api/auth/forgot-password/reset`: Đổi mật khẩu mới sau khi xác thực OTP thành công.
 - [x] `GET/POST /api/workspaces`: Xem danh sách và tạo không gian làm việc mới.
 - [x] `GET/PUT /api/workspaces/{id}/billing-config`: Cấu hình chế độ trừ phí Workspace.
-- [x] `GET/POST /api/workspaces/{id}/members`: Danh sách và mời thành viên (hỗ trợ cả alias `/members/invite`).
+- [x] `GET/POST /api/workspaces/{id}/members`: Danh sách và mời thành viên (Chuẩn RESTful duy nhất).
 - [x] `PUT/DELETE /api/workspaces/{id}/members/{id}`: Phân quyền và xóa thành viên khỏi Workspace.
 - [x] `GET/POST /api/auth/google/*`: Bộ điều khiển OAuth2 với bảo mật PKCE + OIDC.
 
@@ -80,9 +80,9 @@
   - Nhà phát triển có thể copy mã từ terminal để tiếp tục kiểm thử web bình thường.
 
 #### Lỗi 3: Lệch đường dẫn API Mời thành viên (`/members` vs `/members/invite`)
-- **Hiện tượng:** Một số tài liệu gọi `/api/workspaces/{id}/members/invite` trong khi controller backend ban đầu chỉ nhận `/api/workspaces/{id}/members`.
-- **Giải pháp xử lý (Đã cài đặt):**
-  - Đã bổ sung alias `@PostMapping(path = {"/{workspaceId}/members", "/{workspaceId}/members/invite"})` trong `WorkspaceController.java`.
+- **Hiện tượng:** Tài liệu cũ ghi nhầm `/members/invite` trong khi Backend và Frontend chuẩn RESTful dùng `/members`.
+- **Giải pháp xử lý (Đã thống nhất 1 chuẩn duy nhất):**
+  - Đã thống nhất toàn diện 1 chuẩn duy nhất theo Hợp đồng API (`docs/API_Contract.md`): `POST /api/workspaces/{workspaceId}/members`. Cả Frontend (`members.ts`), Backend (`WorkspaceController.java`) và tài liệu kế hoạch đều đồng bộ 100%.
 
 ---
 

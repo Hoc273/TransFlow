@@ -492,7 +492,7 @@ Giai đoạn thiết lập phiên làm việc, quản lý danh tính và phân q
 
 #### 1.5 Thành viên Workspace & Mời thành viên
 * **Danh sách:** `GET /api/workspaces/{workspaceId}/members`
-* **Mời thành viên:** `POST /api/workspaces/{workspaceId}/members/invite` — Body: `{ "email": "colleague@transflow.com", "role": "MEMBER" }`
+* **Mời thành viên:** `POST /api/workspaces/{workspaceId}/members` — Body: `{ "email": "colleague@transflow.com", "role": "MEMBER" }`
 
 ---
 
