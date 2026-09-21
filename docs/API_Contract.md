@@ -129,7 +129,7 @@
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/stages/{stageName}/rerun` | LEAD/MEMBER (project) | Rerun-from-stage (Arch §5.7). `409` nếu stage trước chưa `COMPLETED/SKIPPED`. Không tính lại Credit cho stage output tái sử dụng. |
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/subtitles` | LEAD/MEMBER/CLIENT | List `subtitle_segments` theo `seq`. |
 | PATCH | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/subtitles/{segmentId}` | LEAD/MEMBER (project) | `{targetText?, startMs?, endMs?}`. Nếu job đã qua TTS/RENDER → set các stage sau `STALE`, không tự rerun (SRS §5.3). |
-| GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/export?format=VIDEO\|SUBTITLE` | LEAD/MEMBER/CLIENT | URL tải kết quả đã publish. `403` nếu còn QA lỗi `CRITICAL` chưa override (SRS §5.3). |
+| GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/export?format=VIDEO\|SUBTITLE` | LEAD/MEMBER/CLIENT | Kết quả đã publish: `{format, fileName, downloadUrl, content}`. `VIDEO` → `downloadUrl` là presigned URL video RENDER (TTL `app.storage.presigned-ttl-seconds`, mặc định 3600s); `SUBTITLE` → `content` là nội dung SRT. `409 STAGE_NOT_READY` nếu job chưa `COMPLETED`/chưa có output RENDER; `400 VALIDATION_ERROR` nếu `format` sai; `403 QA_BLOCKED` nếu còn `qa_issues` chưa resolve/override có `BLOCK_PUBLISH` (SRS §5.3). |
 
 **Body mẫu — tạo job Localization:**
 ```json

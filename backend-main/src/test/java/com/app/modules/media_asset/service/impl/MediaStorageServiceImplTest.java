@@ -72,4 +72,39 @@ class MediaStorageServiceImplTest {
                 storageService.putMediaObject("source/key3", new ByteArrayInputStream("data".getBytes()), 4L, "video/mp4"));
         assertEquals(ErrorCode.UNCATEGORIZED_EXCEPTION, ex.getErrorCode());
     }
+
+    @Test
+    void presignedGetUrl_splitsRefIntoBucketAndKey() throws Exception {
+        when(client.getPresignedObjectUrl(any(io.minio.GetPresignedObjectUrlArgs.class))).thenReturn("http://signed");
+
+        assertEquals("http://signed", storageService.presignedGetUrl("bkt/rendered/j1/a.mp4"));
+
+        org.mockito.ArgumentCaptor<io.minio.GetPresignedObjectUrlArgs> cap =
+                org.mockito.ArgumentCaptor.forClass(io.minio.GetPresignedObjectUrlArgs.class);
+        verify(client).getPresignedObjectUrl(cap.capture());
+        assertEquals("bkt", cap.getValue().bucket());
+        assertEquals("rendered/j1/a.mp4", cap.getValue().object());
+        assertEquals(3600, cap.getValue().expiry());
+    }
+
+    @Test
+    void presignedGetUrl_withPublicEndpoint_signsAgainstPublicHostOffline() {
+        AppProperties props = new AppProperties(null, null, null, null, null,
+                new AppProperties.Storage("http://minio:9000", "key", "secret", "bkt", 0, "http://public.example:9000"), null);
+        MediaStorageServiceImpl svc = new MediaStorageServiceImpl(client, props);
+
+        String url = svc.presignedGetUrl("bkt/rendered/j1/a.mp4");
+
+        assertTrue(url.startsWith("http://public.example:9000/bkt/rendered/j1/a.mp4?"), url);
+        assertTrue(url.contains("X-Amz-Expires=3600"), url);
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void presignedGetUrl_malformedRef_isNotFound() {
+        for (String bad : new String[]{null, "", "nobucketkey", "/key", "bucket/"}) {
+            org.junit.jupiter.api.Assertions.assertThrows(com.app.common.exception.AppException.class,
+                    () -> storageService.presignedGetUrl(bad));
+        }
+    }
 }
