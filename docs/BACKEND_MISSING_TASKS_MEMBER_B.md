@@ -27,13 +27,13 @@ Mỗi nhánh = 1 PR nhỏ.
 4. Đối chiếu response với `API_Contract.md` đã cập nhật (shape, mã lỗi).
 5. Không có secret hard-code; `.env.example` đồng bộ.
 
-**Trạng thái code hiện tại (đã khảo sát):**
+**Trạng thái code lúc bắt đầu (ảnh chụp trước khi làm các mục; xem ghi chú ở từng mục để biết hiện trạng):**
 - `MediaJobController` mới có: create/list/get/cancel, `voice`, `checkpoints/{cp}/confirm`, `stages/{stage}/rerun`,
   `GET subtitles`, `PATCH subtitles/{segmentId}`.
 - `MediaStorageService` (`media_asset`) chỉ có `putMediaObject`, **chưa có presigned URL / đọc object** → nhánh 1 phải thêm.
-- `media_jobs` đã có cột `subtitle_style JSONB NOT NULL` và `render_config JSONB DEFAULT '{}'` (V1__init_tables.sql).
+- ~~`media_jobs` đã có cột `subtitle_style`/`render_config`~~ — **sai**: hai cột này chỉ có ở `media_presets`; `media_jobs` được thêm `subtitle_style` (V8), `render_config` (V9), `publish_package` (V10).
 - `ErrorCode` đã có `QA_BLOCKED` (3300), `STAGE_NOT_READY` (2902), `VALIDATION_ERROR` (9998).
-- Thư mục migration hiện dừng ở `V6`; migration mới đánh số tiếp `V7__...` (không sửa file cũ).
+- Migration lúc đó dừng ở `V6`. Hiện: V7 `add_is_platform_admin` (Thành viên A), V8 `media_jobs_subtitle_style`, V9 `media_jobs_render_config` (đã đổi từ V7 vì trùng), V10 `media_jobs_publish_package`; số tiếp theo là V11.
 
 ---
 
@@ -52,7 +52,7 @@ Mỗi nhánh = 1 PR nhỏ.
 - **Ưu tiên:** 🔴 blocker (không có thì user không lấy được kết quả).
 - **Endpoint:** `GET /api/workspaces/{workspaceId}/media/jobs/{jobId}/export?format=VIDEO|SUBTITLE`
   (đã có trong contract §5). Role: LEAD/MEMBER/CLIENT có quyền truy cập Project của job.
-- **Bổ sung theo plan v2 (chưa làm):** plan mới ghi `format=VIDEO|SRT|VTT` (tải `SRT`/`VTT` trả nội dung trong `content`),
+- **Bổ sung theo plan v2 (✅ đã làm ở nhánh 11, 2026-09-21):** plan mới ghi `format=VIDEO|SRT|VTT` (tải `SRT`/`VTT` trả nội dung trong `content`),
   trong khi bản đã làm và `API_Contract.md` dùng `VIDEO|SUBTITLE` (SUBTITLE = SRT). Việc còn lại khi chốt: chấp nhận thêm
   `SRT`, `VTT` (thêm hàm sinh WebVTT: header `WEBVTT`, mốc `HH:MM:SS.mmm`), giữ `SUBTITLE` làm alias của `SRT` để không
   gãy FE cũ, rồi cập nhật contract. Phần này có thể làm cùng nhánh 11 hoặc một commit nhỏ trên nhánh 1.
@@ -122,7 +122,7 @@ Mỗi nhánh = 1 PR nhỏ.
 > `rerun-render` tái dùng `rerunFromStage(RENDER)` nên stage trước RENDER phải COMPLETED/SKIPPED (kể cả TTS `STALE` → 409, phải rerun từ TTS).
 > **Mục 5 (worker) — còn thiếu:** mini chưa nối worker/queue dispatch nên chưa có payload để đối chiếu. Worker hiện hỗ trợ
 > `outputAspectRatio` và layer `SOLID|BLUR` (tối đa **4** layer, geometry/style riêng) + mix ducking; **chưa** có `COVER_BOX/IMAGE/WATERMARK`
-> (API nhận tối đa 10 layer) → khi nối dispatch cần map COVER_BOX→SOLID, và chốt IMAGE/WATERMARK + giới hạn 4 vs 10.
+> (API đã hạ giới hạn xuống 4 layer cho khớp worker) → khi nối dispatch cần map COVER_BOX→SOLID và chốt cách xử lý IMAGE/WATERMARK.
 > 315 test xanh (5 test mới); curl thật Postgres: GET mặc định, PUT 2 layer + ducking, PUT một phần giữ field cũ, giá trị sai → 400,
 > MEMBER/CLIENT ghi → 403, rerun-render thiếu stage trước → 409 (không lưu config) / đủ → 202 + RENDER PENDING, không token → 401.
 > Chưa kiểm chứng: `sourceVideoUrl` với file thật (asset seed là `b/k`, ký lỗi → null), render video thực tế.
@@ -302,7 +302,21 @@ Mỗi nhánh = 1 PR nhỏ.
 
 ---
 
-## 11. Gói phân phối đầu ra — `/output-package` & `/publish-package` (MỚI theo plan v2)
+## 11. Gói phân phối đầu ra — `/output-package` & `/publish-package` (MỚI theo plan v2) — ✅ CODE + TEST + CURL THẬT XONG (2026-09-21), chưa commit
+
+> Đã làm: `GET output-package`, `GET/PUT publish-package` (`MediaPackageController` + `MediaPackageService`), migration **V10** thêm `media_jobs.publish_package JSONB`
+> (nullable; **số V10 cần báo Thành viên A để không trùng**), phần bổ sung export `SRT|VTT` (`SUBTITLE` = alias `SRT`, sinh WebVTT), tách `MediaExportService.requirePublishAllowed`
+> (QA gate dùng chung), `API_Contract.md` + `Database_Design.md`.
+> Quyết định của dev: shape **theo FE/project gốc** (superset: `profile=GENERIC`, `status=DRAFT`, `thumbnailRef`, `sourceJobId`, `primaryVideoRef`, `checksumSha256=null`, `artifactPins=[]`),
+> `title` ≤100 nhưng **không bắt buộc** (bản nháp); PUT bị chặn bởi QA gate (`BLOCK_PUBLISH` → 403 `QA_BLOCKED`), `output-package` và GET publish-package không bị chặn; làm luôn export SRT/VTT
+> (FE `ExportPanel` đã gọi `format=SRT|VTT`, trước đó trả 400).
+> Ghi chú: audio track có thêm `downloadUrl` (presigned) bên cạnh `storageRef` (FE cũ khai báo `storageRef`); `language` chỉ kiểm định dạng (`^[A-Za-z]{2,3}(-…)?$`) —
+> **TODO cùng danh sách ngôn ngữ ở mục 6**; `durationMs` lấy từ asset gốc (mini không ghi asset render), `checksumSha256`/`artifactPins` không theo dõi. `DUB`/`MIX` chỉ có khi
+> `output_ref` của stage `TTS`/`AUDIO_MIX` là chuỗi `"<bucket>/<key>"` (chưa có worker thật để đối chiếu).
+> 341 test xanh (5 mới: SRT/VTT unit, output-package, publish validation/partial, RBAC + QA gate). Curl thật Postgres+MinIO: output-package (CLIENT) đủ ORIGINAL+DUB, SRT/VTT available,
+> presigned URL tải được file; publish GET mặc định → PUT một phần giữ field cũ → dữ liệu lưu đúng JSONB; title 101 ký tự/language sai → 400; MEMBER job người khác + CLIENT → 403;
+> còn `BLOCK_PUBLISH` → 403 `QA_BLOCKED` (đọc vẫn được) rồi resolve → 200; export SRT/VTT/SUBTITLE đúng, `PDF` → 400; RENDER chưa xong → 409; không token 401.
+> Chưa kiểm: FE Quick Preview thật, `durationMs` (asset seed không có duration).
 
 - **Nhánh:** `feature/media-job-output-publish-package`
 - **Ưu tiên:** 🔴 (modal Quick Preview và phần đăng bài của FE phụ thuộc).
@@ -311,7 +325,7 @@ Mỗi nhánh = 1 PR nhỏ.
   - `GET /api/workspaces/{workspaceId}/media/jobs/{jobId}/publish-package` — LEAD/MEMBER/CLIENT.
   - `PUT /api/workspaces/{workspaceId}/media/jobs/{jobId}/publish-package` — job-ownership (LEAD mọi job; MEMBER chỉ job
     mình; CLIENT bị chặn).
-- **Hiện trạng:** chưa có controller; **chưa có nơi lưu** metadata đăng bài trong DB (`Database_Design.md` không có bảng/cột).
+- **Hiện trạng (lúc bắt đầu, nay đã xong — xem ghi chú đầu mục):** chưa có controller; **chưa có nơi lưu** metadata đăng bài trong DB (`Database_Design.md` không có bảng/cột).
   `API_Contract.md` §15 đã nhắc `QA_BLOCKED` áp dụng cho "publish-package".
 
 **Response `output-package`** (theo plan §6.1): `{ jobId, primaryVideoDownloadUrl, audioTracks:[{role, storageRef}],
@@ -382,9 +396,9 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 | # | Nhánh | Code | Test tự động | Kiểm tra thủ công | Cập nhật `API_Contract.md` | Commit / PR |
 |---|---|:-:|:-:|:-:|:-:|:-----------:|
 | 1 | `feature/media-job-export` | [x] | [x] | [x] | [x] |     [x]     |
-| 2 | `feature/media-job-segments-batch-edit` | [x] | [x] | [x] | [x] |     [ ]     |
-| 3 | `feature/media-job-render-config` | [x] | [x] | [x] | [x] |     [ ]     |
-| 4 | `feature/media-subtitle-styles` | [x] | [x] | [x] | [x] |     [ ]     |
-| 5 | `feature/media-library-bulk-download` | [x] | [x] | [x] | [x] |     [ ]     |
-| 6 | `feature/media-job-override-source-lang` | [x] | [x] | [x] | [x] |     [ ]     |
-| 11 | `feature/media-job-output-publish-package` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 2 | `feature/media-job-segments-batch-edit` | [x] | [x] | [x] | [x] |     [x]     |
+| 3 | `feature/media-job-render-config` | [x] | [x] | [x] | [x] |     [x]     |
+| 4 | `feature/media-subtitle-styles` | [x] | [x] | [x] | [x] |     [x]     |
+| 5 | `feature/media-library-bulk-download` | [x] | [x] | [x] | [x] |     [x]     |
+| 6 | `feature/media-job-override-source-lang` | [x] | [x] | [x] | [x] |     [x]     |
+| 11 | `feature/media-job-output-publish-package` | [x] | [x] | [x] | [x] |     [ ]     |

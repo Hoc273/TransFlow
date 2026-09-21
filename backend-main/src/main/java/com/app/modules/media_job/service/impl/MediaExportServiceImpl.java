@@ -26,27 +26,28 @@ public class MediaExportServiceImpl implements MediaExportService {
     private final MediaJobService jobService;
     private final QaService qaService;
     private final MediaStorageService storage;
-    private final ObjectMapper objectMapper;
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     public MediaExportServiceImpl(MediaJobService jobService, QaService qaService,
-                                  MediaStorageService storage, ObjectMapper objectMapper) {
+                                  MediaStorageService storage) {
         this.jobService = jobService;
         this.qaService = qaService;
         this.storage = storage;
-        this.objectMapper = objectMapper;
     }
 
     @Override
     public MediaExportResponse export(UUID workspaceId, UUID userId, UUID jobId, String format) {
         String fmt = format == null ? "" : format.toUpperCase(Locale.ROOT);
-        if (!fmt.equals("VIDEO") && !fmt.equals("SUBTITLE")) {
+        if (!List.of("VIDEO", "SUBTITLE", "SRT", "VTT").contains(fmt)) {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
 
-        if (fmt.equals("SUBTITLE")) {
+        if (!fmt.equals("VIDEO")) { // SUBTITLE is the legacy alias of SRT
             checkPublishable(workspaceId, userId, jobId);
-            String srt = toSrt(jobService.listSubtitles(workspaceId, userId, jobId));
-            return new MediaExportResponse(fmt, "subtitles_" + jobId + ".srt", null, srt);
+            List<SubtitleSegment> segments = jobService.listSubtitles(workspaceId, userId, jobId);
+            boolean vtt = fmt.equals("VTT");
+            return new MediaExportResponse(fmt, "subtitles_" + jobId + (vtt ? ".vtt" : ".srt"), null,
+                    vtt ? toVtt(segments) : toSrt(segments));
         }
 
         String ref = renderOutputRef(workspaceId, userId, jobId);
@@ -72,6 +73,11 @@ public class MediaExportServiceImpl implements MediaExportService {
             throw new AppException(ErrorCode.STAGE_NOT_READY);
         }
 
+        requirePublishAllowed(workspaceId, userId, jobId);
+    }
+
+    @Override
+    public void requirePublishAllowed(UUID workspaceId, UUID userId, UUID jobId) {
         // Unresolved (not fixed / not overridden) issues that block publishing — SRS §5.3.
         boolean blocked = qaService.listIssues(workspaceId, userId, jobId, false).stream()
                 .anyMatch(i -> i.getBlockingActions() != null && i.getBlockingActions().contains(BLOCK_PUBLISH));
@@ -81,12 +87,12 @@ public class MediaExportServiceImpl implements MediaExportService {
     }
 
     /** Stage {@code output_ref} is JSON text holding the worker's {@code "<bucket>/<key>"} string. */
-    private String parseRef(String outputRef) {
+    static String parseRef(String outputRef) {
         if (outputRef == null) {
             return null;
         }
         try {
-            JsonNode node = objectMapper.readTree(outputRef);
+            JsonNode node = JSON.readTree(outputRef);
             return node.isTextual() ? node.asText() : null;
         } catch (Exception ex) {
             return outputRef;
@@ -104,7 +110,21 @@ public class MediaExportServiceImpl implements MediaExportService {
         return sb.toString();
     }
 
+    /** WebVTT: {@code WEBVTT} header, cue times use '.' before the milliseconds. */
+    static String toVtt(List<SubtitleSegment> segments) {
+        StringBuilder sb = new StringBuilder("WEBVTT\n\n");
+        for (SubtitleSegment s : segments) {
+            sb.append(vttTime(s.getStartMs())).append(" --> ").append(vttTime(s.getEndMs())).append('\n')
+              .append(s.getTargetText()).append("\n\n");
+        }
+        return sb.toString();
+    }
+
     private static String srtTime(long ms) {
-        return String.format("%02d:%02d:%02d,%03d", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000);
+        return vttTime(ms).replace('.', ',');
+    }
+
+    private static String vttTime(long ms) {
+        return String.format("%02d:%02d:%02d.%03d", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000);
     }
 }
