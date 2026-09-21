@@ -9,6 +9,7 @@ import com.app.modules.media_job.dto.CreateMediaJobRequest;
 import com.app.modules.media_job.dto.MediaExportResponse;
 import com.app.modules.media_job.dto.MediaJobResponse;
 import com.app.modules.media_job.dto.MediaJobStageResponse;
+import com.app.modules.media_job.dto.OverrideSourceLangRequest;
 import com.app.modules.media_job.dto.PatchSubtitleRequest;
 import com.app.modules.media_job.dto.SubtitleSegmentResponse;
 import com.app.modules.media_job.dto.render.RenderConfigResponse;
@@ -142,6 +143,15 @@ public class MediaJobController {
                                                                 @RequestBody PatchSubtitleRequest request) {
         var segment = jobService.patchSubtitle(workspaceId, user.id(), jobId, segmentId, request);
         return ApiResponse.<SubtitleSegmentResponse>builder().data(SubtitleSegmentResponse.from(segment)).build();
+    }
+
+    @PostMapping("/media/jobs/{jobId}/override-source-lang")
+    public ApiResponse<MediaJobResponse> overrideSourceLang(@AuthenticationPrincipal AuthenticatedUser user,
+                                                              @PathVariable UUID workspaceId,
+                                                              @PathVariable UUID jobId,
+                                                              @Valid @RequestBody OverrideSourceLangRequest request) {
+        MediaJob job = jobService.overrideSourceLang(workspaceId, user.id(), jobId, request.sourceLang());
+        return ApiResponse.<MediaJobResponse>builder().data(toResponse(job)).build();
     }
 
     @PutMapping("/media/jobs/{jobId}/segments/batch")

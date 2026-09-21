@@ -756,6 +756,84 @@ class MediaJobControllerTest {
                 .andExpect(status().isOk());
     }
 
+    // ---- override source language ----
+
+    private org.springframework.test.web.servlet.ResultActions overrideLang(Lead lead, UUID jobId, String token, String lang)
+            throws Exception {
+        String body = lang == null ? "{}" : "{\"sourceLang\":\"" + lang + "\"}";
+        return mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId + "/override-source-lang")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    private void setStageStatus(UUID jobId, MediaJobStage.StageName name, MediaJobStage.StageStatus status) {
+        var stage = mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, name).orElseThrow();
+        stage.setStatus(status);
+        mediaJobStageRepository.save(stage);
+    }
+
+    private MediaJobStage.StageStatus stageStatus(UUID jobId, MediaJobStage.StageName name) {
+        return mediaJobStageRepository.findByMediaJobIdAndStageName(jobId, name).orElseThrow().getStatus();
+    }
+
+    @Test
+    void overrideSourceLang_setsLangAndStalesTranslateOnward_idempotent() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-lang-ok@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        for (var n : new MediaJobStage.StageName[]{MediaJobStage.StageName.STT, MediaJobStage.StageName.TRANSLATE,
+                MediaJobStage.StageName.TTS, MediaJobStage.StageName.RENDER}) {
+            setStageStatus(jobId, n, MediaJobStage.StageStatus.COMPLETED);
+        }
+
+        overrideLang(lead, jobId, lead.accessToken(), "zh").andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sourceLanguage").value("zh"));
+        assertEquals(MediaJobStage.StageStatus.STALE, stageStatus(jobId, MediaJobStage.StageName.TRANSLATE));
+        assertEquals(MediaJobStage.StageStatus.STALE, stageStatus(jobId, MediaJobStage.StageName.RENDER));
+        assertEquals(MediaJobStage.StageStatus.COMPLETED, stageStatus(jobId, MediaJobStage.StageName.STT)); // STT kept
+
+        // same language again is a no-op: a re-finished TRANSLATE is not staled a second time
+        setStageStatus(jobId, MediaJobStage.StageName.TRANSLATE, MediaJobStage.StageStatus.COMPLETED);
+        overrideLang(lead, jobId, lead.accessToken(), "ZH").andExpect(status().isOk());
+        assertEquals(MediaJobStage.StageStatus.COMPLETED, stageStatus(jobId, MediaJobStage.StageName.TRANSLATE));
+
+        overrideLang(lead, jobId, lead.accessToken(), "vi").andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sourceLanguage").value("vi"));
+        assertEquals(MediaJobStage.StageStatus.STALE, stageStatus(jobId, MediaJobStage.StageName.TRANSLATE));
+    }
+
+    @Test
+    void overrideSourceLang_invalidOrNotReady_rejected() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-lang-bad@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+
+        overrideLang(lead, jobId, lead.accessToken(), "vi").andExpect(status().isConflict()); // STT not done yet
+        setStageStatus(jobId, MediaJobStage.StageName.STT, MediaJobStage.StageStatus.COMPLETED);
+
+        overrideLang(lead, jobId, lead.accessToken(), "xx").andExpect(status().isBadRequest());  // unsupported
+        overrideLang(lead, jobId, lead.accessToken(), "en").andExpect(status().isBadRequest());  // = target language
+        overrideLang(lead, jobId, lead.accessToken(), " ").andExpect(status().isBadRequest());
+        overrideLang(lead, jobId, lead.accessToken(), null).andExpect(status().isBadRequest());
+
+        setStageStatus(jobId, MediaJobStage.StageName.TRANSLATE, MediaJobStage.StageStatus.PROCESSING);
+        overrideLang(lead, jobId, lead.accessToken(), "vi").andExpect(status().isConflict());    // in flight
+    }
+
+    @Test
+    void overrideSourceLang_memberOnOthersJobAndClient_forbidden() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-lang-rbac@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        setStageStatus(jobId, MediaJobStage.StageName.STT, MediaJobStage.StageStatus.COMPLETED);
+        RegisteredUser member = registerPlainUser("member-lang-rbac@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), member.userId(), Role.MEMBER);
+        addProjectMember(lead.projectId(), member.userId(), lead.userId());
+        RegisteredUser client = registerPlainUser("client-lang-rbac@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), client.userId(), Role.CLIENT);
+        addProjectMember(lead.projectId(), client.userId(), lead.userId());
+
+        overrideLang(lead, jobId, member.accessToken(), "vi").andExpect(status().isForbidden());
+        overrideLang(lead, jobId, client.accessToken(), "vi").andExpect(status().isForbidden());
+    }
+
     // ---- bulk download ----
 
     /** Marks the job COMPLETED with a rendered output so it passes the publish checks. */

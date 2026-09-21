@@ -109,6 +109,7 @@ app:
   media-job:
     max-batch-subtitle-updates: ${MEDIA_MAX_BATCH_SUBTITLE_UPDATES:200}
     max-bulk-download: ${MEDIA_MAX_BULK_DOWNLOAD:20}
+    supported-source-langs: ${MEDIA_SUPPORTED_SOURCE_LANGS:vi,en,zh,ja,ko,fr,de,es,th,id,ru}
   media-worker:
     hmac-secret: ${MEDIA_WORKER_HMAC_SECRET:}
   crypto:

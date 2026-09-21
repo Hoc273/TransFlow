@@ -117,7 +117,7 @@ Mỗi nhánh = 1 PR nhỏ.
 
 > Đã làm: `GET/PUT render-config`, `POST rerun-render` (202), `MediaRenderConfigService`, DTO ở `media_job.dto.render`.
 > **Lệch so với kế hoạch (dev đã duyệt):** `media_jobs` KHÔNG có sẵn cột `render_config` (chỉ `media_presets` có) → thêm
-> **migration `V7__media_jobs_render_config.sql`** + cập nhật `Database_Design.md`; `effective` rút gọn (`ownedByStyle=false`,
+> **migration `V9__media_jobs_render_config.sql`** (ban đầu là V7, đổi số vì trùng `V7__add_is_platform_admin.sql` của Thành viên A; dùng `IF NOT EXISTS`) + cập nhật `Database_Design.md`; `effective` rút gọn (`ownedByStyle=false`,
 > `deadControls=[]` cho tới khi làm mục 4); màu/aspect chỉ thay được, chưa xoá về unset (không tri-state).
 > `rerun-render` tái dùng `rerunFromStage(RENDER)` nên stage trước RENDER phải COMPLETED/SKIPPED (kể cả TTS `STALE` → 409, phải rerun từ TTS).
 > **Mục 5 (worker) — còn thiếu:** mini chưa nối worker/queue dispatch nên chưa có payload để đối chiếu. Worker hiện hỗ trợ
@@ -273,7 +273,16 @@ Mỗi nhánh = 1 PR nhỏ.
 
 ---
 
-## 6. Ghi đè ngôn ngữ nguồn — `/override-source-lang`
+## 6. Ghi đè ngôn ngữ nguồn — `/override-source-lang` — ✅ CODE + TEST + CURL THẬT XONG (2026-09-21), chưa commit
+
+> Đã làm: `POST .../media/jobs/{jobId}/override-source-lang` (`MediaJobService.overrideSourceLang`), DTO `OverrideSourceLangRequest`, cấu hình
+> `app.media-job.supported-source-langs` (env `MEDIA_SUPPORTED_SOURCE_LANGS`, mặc định `vi,en,zh,ja,ko,fr,de,es,th,id,ru`), `API_Contract.md`.
+> Không có migration: `media_jobs.source_language` đã có (trước đó chưa nơi nào ghi vào cột này).
+> **TODO (dev bổ sung sau): danh sách ngôn ngữ hỗ trợ.** SRS và project gốc `../transflow` đều KHÔNG có danh sách này (gốc chỉ kiểm tra không rỗng; danh sách duy nhất ở FE Creative Production `en,vi,ja,ko,zh,es,fr,de` đã bị loại khỏi mini). Mặc định hiện tại `vi,en,zh,ja,ko,fr,de,es,th,id,ru` là do mình đặt — chỉnh trong `application.yaml`/env `MEDIA_SUPPORTED_SOURCE_LANGS` khi chốt.
+> Theo file task (không theo legacy): đánh dấu STALE, không tự chạy lại/không reset PENDING; STT giữ nguyên (transcript không phụ thuộc ngôn ngữ).
+> Guard STT chưa COMPLETED / job FAILED, CANCELLED / có stage PROCESSING, CANCEL_REQUESTED → `STAGE_NOT_READY` (dùng lại mã có sẵn, không thêm `ErrorCode`).
+> Đặt lại đúng ngôn ngữ hiện có là no-op. Tách `markStale` dùng chung với sửa phụ đề. Trả `MediaJob` (FE cũ khai báo `void` vẫn chạy được).
+> 337 test xanh (3 mới). Curl thật (Postgres, cổng 8081): LEAD `zh` → 200, TRANSLATE/TTS/RENDER `STALE`, STT giữ, 1 notification; cùng ngôn ngữ (`ZH`) no-op; đổi `vi` → stale lại; `xx`/trùng đích `en`/rỗng/thiếu → 400; MEMBER job người khác + CLIENT → 403; không token 401; STT chưa xong / stage PROCESSING / job FAILED → 409; sau đó `stages/TRANSLATE/rerun` chạy được (PENDING). Chạy thật cũng phát hiện **trùng số migration V7** → đã đổi migration mục 3 thành V9 (xem mục 3).
 
 - **Nhánh:** `feature/media-job-override-source-lang`
 - **Endpoint:** `POST /api/workspaces/{workspaceId}/media/jobs/{jobId}/override-source-lang`, body `{ "sourceLang": "vi" }`.
@@ -377,5 +386,5 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 | 3 | `feature/media-job-render-config` | [x] | [x] | [x] | [x] |     [ ]     |
 | 4 | `feature/media-subtitle-styles` | [x] | [x] | [x] | [x] |     [ ]     |
 | 5 | `feature/media-library-bulk-download` | [x] | [x] | [x] | [x] |     [ ]     |
-| 6 | `feature/media-job-override-source-lang` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 6 | `feature/media-job-override-source-lang` | [x] | [x] | [x] | [x] |     [ ]     |
 | 11 | `feature/media-job-output-publish-package` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
