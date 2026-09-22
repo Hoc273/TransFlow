@@ -182,6 +182,45 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional
+    public UserResponse updateProfile(UUID userId, UpdateProfileRequest req) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        user.setFullName(req.fullName().trim());
+        if (req.avatarUrl() != null) {
+            user.setAvatarUrl(req.avatarUrl().trim().isEmpty() ? null : req.avatarUrl().trim());
+        }
+        userRepository.save(user);
+        return UserResponse.from(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse deleteAvatar(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        user.setAvatarUrl(null);
+        userRepository.save(user);
+        return UserResponse.from(user);
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(UUID userId, ChangePasswordRequest req) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (user.getPasswordHash() != null && !user.getPasswordHash().isBlank()) {
+            if (req.currentPassword() == null || !passwordEncoder.matches(req.currentPassword(), user.getPasswordHash())) {
+                throw new AppException(ErrorCode.INVALID_CREDENTIALS);
+            }
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
+        userRepository.save(user);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public Optional<UserResponse> findUserById(UUID userId) {
         if (userId == null) {

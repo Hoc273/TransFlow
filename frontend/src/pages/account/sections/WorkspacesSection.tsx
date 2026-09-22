@@ -1,19 +1,22 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   IconBuilding,
   IconCheck,
   IconDoorExit,
+  IconGripVertical,
   IconInfoCircle,
   IconPlus,
-  IconSwitchHorizontal,
 } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { CreateWorkspaceModal } from '@/components/workspace/CreateWorkspaceModal'
 import { useWorkspaces } from '@/hooks/useWorkspaces'
 import { initialsFromName } from '@/lib/format'
 import { useAuthStore } from '@/store/authStore'
+import { queryKeys } from '@/lib/queryClient'
 import { ApiError } from '@/types/api'
+import { cn } from '@/lib/cn'
 import type { Workspace } from '@/types/workspace'
 
 const WS_GRADIENTS = [
@@ -36,14 +39,38 @@ export function WorkspacesSection() {
   const { t } = useTranslation(['account', 'common', 'settings'])
   const { workspaceId = '' } = useParams()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const setCurrentWorkspace = useAuthStore((s) => s.setCurrentWorkspace)
+  const user = useAuthStore((s) => s.user)
   const { data: workspaces = [], isLoading, isError, error, refetch } = useWorkspaces()
   const [createOpen, setCreateOpen] = useState(false)
   const [leaveNote, setLeaveNote] = useState<string | null>(null)
 
+  const [items, setItems] = useState<Workspace[]>([])
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+
+  useEffect(() => {
+    setItems(workspaces)
+  }, [workspaces])
+
   const switchTo = (ws: Workspace) => {
     setCurrentWorkspace(ws)
     navigate(`/w/${ws.id}/account/workspaces`)
+  }
+
+  const handleReorder = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return
+    const reordered = [...items]
+    const [moved] = reordered.splice(fromIdx, 1)
+    reordered.splice(toIdx, 0, moved)
+    setItems(reordered)
+    try {
+      localStorage.setItem('tf-workspaces-order', JSON.stringify(reordered.map((w) => w.id)))
+    } catch {
+      /* ignore */
+    }
+    queryClient.setQueryData(queryKeys.workspaces, reordered)
   }
 
   return (
@@ -109,33 +136,79 @@ export function WorkspacesSection() {
           </div>
         )}
 
-        {!isLoading && workspaces.length > 0 && (
+        {!isLoading && items.length > 0 && (
           <div className="grid grid-cols-1 gap-3">
-            {workspaces.map((ws) => {
+            {items.map((ws, index) => {
               const isCurrent = ws.id === workspaceId
+              const isOwner = ws.ownerUserId ? ws.ownerUserId === user?.id : ws.myRole === 'LEAD'
+              const isInvited = !isOwner && ws.myRole !== 'LEAD'
+
               return (
                 <div
                   key={ws.id}
-                  className={`group relative flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border p-4 transition-all duration-150 ${
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedIdx(index)
+                    e.dataTransfer.effectAllowed = 'move'
+                  }}
+                  onDragEnter={() => {
+                    if (draggedIdx !== null && draggedIdx !== index) {
+                      setDragOverIdx(index)
+                    }
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    if (draggedIdx !== null && draggedIdx !== index) {
+                      handleReorder(draggedIdx, index)
+                    }
+                    setDraggedIdx(null)
+                    setDragOverIdx(null)
+                  }}
+                  onDragEnd={() => {
+                    setDraggedIdx(null)
+                    setDragOverIdx(null)
+                  }}
+                  onClick={() => {
+                    if (draggedIdx !== null) return
+                    if (!isCurrent) switchTo(ws)
+                  }}
+                  className={cn(
+                    'group relative flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border p-4 transition-all duration-150 select-none',
                     isCurrent
-                      ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]/20 shadow-xs'
-                      : 'border-[var(--color-border)] bg-[var(--color-bg-surface-2)]/50 hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-surface-2)]'
-                  }`}
+                      ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]/20 shadow-xs cursor-default'
+                      : 'border-[var(--color-border)] bg-[var(--color-bg-surface-2)]/50 hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-surface-2)] hover:shadow-xs cursor-pointer',
+                    dragOverIdx === index && 'border-dashed border-[var(--color-accent)] bg-[var(--color-accent-soft)]/30',
+                    draggedIdx === index && 'opacity-40',
+                  )}
                 >
-                  <div className="flex items-center gap-3.5">
+                  <div className="flex items-center gap-3">
+                    {/* Drag Handle */}
+                    <div
+                      className="flex items-center text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] cursor-grab active:cursor-grabbing p-1 -ml-1 rounded transition-colors"
+                      title={t('account:ws.dragToReorder', { defaultValue: 'Kéo thả để sắp xếp thứ tự' })}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <IconGripVertical size={16} />
+                    </div>
+
                     <div
                       className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-sm"
                       style={{ background: gradientFor(ws.id) }}
                     >
                       {initialsFromName(ws.name)}
                     </div>
+
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-[var(--color-text-primary)]">
                           {ws.name}
                         </span>
                         {isCurrent && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-500 border border-emerald-500/20">
                             <IconCheck size={10} stroke={2.5} />
                             <span>{t('account:ws.current')}</span>
                           </span>
@@ -156,31 +229,46 @@ export function WorkspacesSection() {
 
                   <div className="flex items-center gap-2 self-end sm:self-center">
                     {isCurrent ? (
-                      <span className="rounded-lg bg-[var(--color-bg-surface-3)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-tertiary)]">
-                        Workspace hiện tại
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-lg bg-[var(--color-bg-surface-3)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-tertiary)] select-none">
+                          {t('account:ws.currentWorkspace', { defaultValue: 'Workspace hiện tại' })}
+                        </span>
+                        {isInvited && (
+                          <button
+                            type="button"
+                            className="btn-ghost btn-sm text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-error)] hover:bg-[var(--color-error)]/10 cursor-pointer"
+                            title={t('account:ws.leave')}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setLeaveNote(t('account:ws.leavePending'))
+                              window.setTimeout(() => setLeaveNote(null), 3500)
+                            }}
+                          >
+                            <IconDoorExit size={13} />
+                            <span>{t('account:ws.leave')}</span>
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       <>
-                        <button
-                          type="button"
-                          className="btn-secondary btn-sm flex items-center gap-1.5 text-xs"
-                          onClick={() => switchTo(ws)}
-                        >
-                          <IconSwitchHorizontal size={13} />
-                          <span>{t('account:ws.switch')}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-ghost btn-sm text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-error)]"
-                          title={t('account:ws.leave')}
-                          onClick={() => {
-                            setLeaveNote(t('account:ws.leavePending'))
-                            window.setTimeout(() => setLeaveNote(null), 3500)
-                          }}
-                        >
-                          <IconDoorExit size={13} />
-                          <span>{t('account:ws.leave')}</span>
-                        </button>
+                        <span className="text-xs text-[var(--color-text-tertiary)] group-hover:text-[var(--color-accent)] transition-colors opacity-0 group-hover:opacity-100 hidden sm:inline-flex items-center gap-1 select-none">
+                          {t('account:ws.clickToSwitch', { defaultValue: 'Nhấp để chuyển' })} →
+                        </span>
+                        {isInvited && (
+                          <button
+                            type="button"
+                            className="btn-ghost btn-sm text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-error)] hover:bg-[var(--color-error)]/10 cursor-pointer"
+                            title={t('account:ws.leave')}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setLeaveNote(t('account:ws.leavePending'))
+                              window.setTimeout(() => setLeaveNote(null), 3500)
+                            }}
+                          >
+                            <IconDoorExit size={13} />
+                            <span>{t('account:ws.leave')}</span>
+                          </button>
+                        )}
                       </>
                     )}
                   </div>

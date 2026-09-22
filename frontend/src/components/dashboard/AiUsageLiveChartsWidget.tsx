@@ -118,9 +118,6 @@ export function AiUsageLiveChartsWidget() {
                 {t('live.indicator')}
               </span>
             </div>
-            <p className="text-[11px] text-[var(--color-text-tertiary)]">
-              {t('live.chartSubtitle')}
-            </p>
           </div>
         </div>
 

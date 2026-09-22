@@ -35,6 +35,7 @@
   "logout": "Đăng xuất",
   "buildPhase": "Giai đoạn",
   "buildPhaseValue": "Giai đoạn C/D/E · Tác vụ · QA · Trình biên tập",
+  "creditBalance": "Số dư credit",
   "actions": {
     "cancel": "Hủy",
     "save": "Lưu",

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { IconLogout, IconSettings, IconUser } from '@tabler/icons-react'
+import { IconLogout, IconSettings, IconShieldCheck, IconUser } from '@tabler/icons-react'
 import { useAuthStore, getLastWorkspaceId } from '@/store/authStore'
 import { useLogout } from '@/hooks/useAuth'
 import { initialsFromName } from '@/lib/format'
@@ -37,13 +37,17 @@ export function AvatarMenu() {
     <div className="app-dropdown" ref={ref}>
       <button
         type="button"
-        className="app-avatar"
+        className="app-avatar overflow-hidden"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
         title={name}
       >
-        {initials}
+        {user?.avatarUrl ? (
+          <img src={user.avatarUrl} alt={name} className="h-full w-full object-cover" />
+        ) : (
+          initials
+        )}
       </button>
       {open && (
         <div className="app-dropdown-menu" role="menu">
@@ -87,6 +91,20 @@ export function AvatarMenu() {
                 <IconSettings size={15} />
                 {t('settings')}
               </button>
+            </>
+          )}
+          {Boolean(user?.isPlatformAdmin) && (
+            <>
+              <div className="app-dropdown-divider" />
+              <Link
+                to="/platform"
+                className="app-dropdown-item text-[var(--color-accent)] font-medium"
+                role="menuitem"
+                onClick={close}
+              >
+                <IconShieldCheck size={15} />
+                <span>{t('common:nav.platformAdmin', { defaultValue: 'Platform Super Admin' })}</span>
+              </Link>
             </>
           )}
           <div className="app-dropdown-divider" />

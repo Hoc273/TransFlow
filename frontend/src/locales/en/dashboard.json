@@ -1,6 +1,5 @@
 {
   "title": "Dashboard",
-  "subtitle": "Workspace overview · AI resource consumption and active batches",
   "updatedAt": "Refresh",
   "loading": "Loading…",
   "widget": {
@@ -27,7 +26,6 @@
       "title": "Recent Notifications",
       "subtitle": "Batch terminal events",
       "emptyTitle": "No notifications",
-      "emptyDesc": "BATCH_* events for your account will show here.",
       "loadError": "Could not load notifications"
     },
     "recentProjects": {
@@ -106,7 +104,6 @@
     "indicator": "Live",
     "statusOnline": "Realtime Data",
     "chartTitle": "Realtime AI Resource Analytics",
-    "chartSubtitle": "Live data from token telemetry system",
     "byOperation": "By Operation",
     "byModel": "By Model",
     "operationsTitle": "AI Operations Breakdown",

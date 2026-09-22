@@ -1,8 +1,6 @@
 {
   "title": "Media Studio",
-  "subtitle": "Bản địa hóa & lồng tiếng video · pipeline 6 bước",
   "newJob": "Media Job mới",
-  "scopeBanner": "Phạm vi Media Localization: dịch, lồng tiếng, phụ đề cho video bạn đã sở hữu. Sinh creative nằm ở Creative Studio (Preview).",
   "partialBanner": "Job hoàn tất với lỗi một phần (một số segment). Vẫn có thể export phần thành công.",
   "error": {
     "NO_AUDIO_STREAM": "Video không chứa âm thanh, không thể thực hiện dịch/tóm tắt."

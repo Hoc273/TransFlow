@@ -1,19 +1,23 @@
 import { useState, type FormEvent } from 'react'
 import {
   IconAlertCircle,
-  IconBrandGithub,
   IconCheck,
   IconEye,
   IconEyeOff,
   IconInfoCircle,
   IconKey,
+  IconLoader2,
+  IconLock,
   IconShieldCheck,
   IconShieldLock,
 } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
-import { PasswordStrength } from '@/components/auth/PasswordStrength'
-import { featureFlags } from '@/config/featureFlags'
+import { featureFlags, apiBaseUrl } from '@/config/featureFlags'
 import { scorePassword } from '@/lib/validation'
+import { useChangePassword, useMe } from '@/hooks/useAuth'
+import { useAuthStore } from '@/store/authStore'
+import { ApiError } from '@/types/api'
+import { cn } from '@/lib/cn'
 
 function GoogleMark() {
   return (
@@ -45,6 +49,8 @@ function PwField({
   onChange,
   error,
   autoComplete,
+  placeholder = '••••••••',
+  rightBadge,
 }: {
   id: string
   label: string
@@ -52,35 +58,51 @@ function PwField({
   onChange: (v: string) => void
   error?: string | null
   autoComplete: string
+  placeholder?: string
+  rightBadge?: React.ReactNode
 }) {
   const [show, setShow] = useState(false)
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-medium text-[var(--color-text-secondary)] flex items-center justify-between" htmlFor={id}>
-        <span>{label}</span>
-        <span className="text-[var(--color-error)]">*</span>
-      </label>
-      <div className="relative">
+      <div className="flex items-center justify-between">
+        <label
+          className="flex items-center gap-1 text-xs font-medium text-[var(--color-text-secondary)]"
+          htmlFor={id}
+        >
+          <span>{label}</span>
+          <span className="font-semibold text-[var(--color-error)]">*</span>
+        </label>
+        {rightBadge}
+      </div>
+      <div className="relative flex items-center">
+        <div className="pointer-events-none absolute left-3 flex items-center text-[var(--color-text-tertiary)]">
+          <IconLock size={15} stroke={1.75} />
+        </div>
         <input
           id={id}
           type={show ? 'text' : 'password'}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           autoComplete={autoComplete}
-          className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] px-3 py-2 pr-9 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-accent)] focus:outline-hidden transition"
+          placeholder={placeholder}
+          className={cn(
+            'w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] pl-9.5 pr-9 py-2 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] transition focus:border-[var(--color-accent)] focus:outline-hidden focus:ring-2 focus:ring-[var(--color-accent)]/20',
+            error &&
+              'border-[var(--color-error)] focus:border-[var(--color-error)] focus:ring-[var(--color-error)]/20',
+          )}
         />
         <button
           type="button"
           onClick={() => setShow((s) => !s)}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition"
+          className="absolute right-2.5 flex h-6 w-6 items-center justify-center rounded text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] transition cursor-pointer"
           aria-label={show ? 'Hide password' : 'Show password'}
         >
           {show ? <IconEyeOff size={15} /> : <IconEye size={15} />}
         </button>
       </div>
       {error && (
-        <div className="flex items-center gap-1 text-[11px] text-[var(--color-error)] mt-1">
-          <IconAlertCircle size={12} />
+        <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-error)] mt-1 animate-in fade-in">
+          <IconAlertCircle size={13} className="shrink-0" />
           <span>{error}</span>
         </div>
       )}
@@ -93,6 +115,11 @@ function PwField({
  */
 export function SecuritySection() {
   const { t } = useTranslation(['account', 'common', 'auth'])
+  const changePassword = useChangePassword()
+  useMe()
+
+  const user = useAuthStore((s) => s.user)
+  const isGoogleLinked = Boolean(user?.googleLinked)
 
   const [currentPw, setCurrentPw] = useState('')
   const [newPw, setNewPw] = useState('')
@@ -101,14 +128,24 @@ export function SecuritySection() {
   const [info, setInfo] = useState<string | null>(null)
   const [oauthNote, setOauthNote] = useState<string | null>(null)
 
-  const onPasswordSubmit = (e: FormEvent) => {
+  const { hasLen, hasUpper, hasNum } = scorePassword(newPw)
+  const matches = Boolean(newPw && confirmPw && newPw === confirmPw)
+
+  const onResetForm = () => {
+    setCurrentPw('')
+    setNewPw('')
+    setConfirmPw('')
+    setErrors({})
+    setInfo(null)
+  }
+
+  const onPasswordSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setInfo(null)
     const next: Record<string, string> = {}
     if (!currentPw) next.current = t('account:security.required')
     if (newPw.length < 8) next.new = t('account:security.tooShort')
     else {
-      const { hasLen, hasUpper, hasNum } = scorePassword(newPw)
       if (!hasLen || !hasUpper || !hasNum) {
         next.new = t('auth:password.reqLen')
       }
@@ -117,22 +154,54 @@ export function SecuritySection() {
     setErrors(next)
     if (Object.keys(next).length > 0) return
 
-    setInfo(t('account:security.success'))
-    setCurrentPw('')
-    setNewPw('')
-    setConfirmPw('')
-    window.setTimeout(() => setInfo(null), 4000)
+    try {
+      await changePassword.mutateAsync({
+        currentPassword: currentPw,
+        newPassword: newPw,
+      })
+      setInfo(t('account:security.success'))
+      setCurrentPw('')
+      setNewPw('')
+      setConfirmPw('')
+      window.setTimeout(() => setInfo(null), 4000)
+    } catch (err: unknown) {
+      if (
+        err instanceof ApiError &&
+        (err.status === 401 ||
+          err.code === 'INVALID_CREDENTIALS' ||
+          String(err.code) === '2001')
+      ) {
+        setErrors({
+          current: t('auth:errors.invalidCredentials', {
+            defaultValue: 'Mật khẩu hiện tại không chính xác',
+          }),
+        })
+      } else {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : t('account:security.failed', { defaultValue: 'Đổi mật khẩu thất bại' })
+        setErrors({ current: msg })
+      }
+    }
   }
 
-  const onGoogleAction = () => {
-    setOauthNote(t('account:security.googlePending'))
-    window.setTimeout(() => setOauthNote(null), 3500)
+  const onGoogleConnect = () => {
+    if (featureFlags.googleAuth) {
+      window.location.assign(`${apiBaseUrl}/auth/google/start?mode=login`)
+    } else {
+      setOauthNote(t('account:security.googlePending'))
+      window.setTimeout(() => setOauthNote(null), 3500)
+    }
   }
 
   return (
     <div className="space-y-6">
       {/* Change Password Card */}
-      <form onSubmit={onPasswordSubmit} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-6 shadow-xs">
+      <form
+        onSubmit={onPasswordSubmit}
+        className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-6 shadow-xs"
+      >
         <div className="border-b border-[var(--color-border)] pb-4 mb-6">
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
             <IconKey size={16} className="text-[var(--color-accent)]" />
@@ -144,13 +213,20 @@ export function SecuritySection() {
         </div>
 
         {info && (
-          <div className="mb-6 flex items-center gap-2.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-400 animate-in fade-in">
-            <IconCheck size={16} className="shrink-0" />
-            <span>{info}</span>
+          <div className="mb-6 flex items-center gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-400 animate-in fade-in">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-500/20">
+              <IconCheck size={16} className="text-emerald-400" />
+            </div>
+            <div>
+              <div className="font-semibold text-emerald-300">{info}</div>
+              <div className="text-[11px] text-emerald-400/80 mt-0.5">
+                Mật khẩu đã được cập nhật an toàn trong hệ thống.
+              </div>
+            </div>
           </div>
         )}
 
-        <div className="max-w-md space-y-4">
+        <div className="max-w-lg space-y-4">
           <PwField
             id="current-pw"
             label={t('account:security.current')}
@@ -160,21 +236,16 @@ export function SecuritySection() {
             autoComplete="current-password"
           />
 
-          <div>
-            <PwField
-              id="new-pw"
-              label={t('account:security.new')}
-              value={newPw}
-              onChange={setNewPw}
-              error={errors.new}
-              autoComplete="new-password"
-            />
-            {newPw && (
-              <div className="mt-2">
-                <PasswordStrength password={newPw} showRequirements />
-              </div>
-            )}
-          </div>
+          <div className="my-1 border-t border-[var(--color-border)] opacity-60" />
+
+          <PwField
+            id="new-pw"
+            label={t('account:security.new')}
+            value={newPw}
+            onChange={setNewPw}
+            error={errors.new}
+            autoComplete="new-password"
+          />
 
           <PwField
             id="confirm-pw"
@@ -183,17 +254,47 @@ export function SecuritySection() {
             onChange={setConfirmPw}
             error={errors.confirm}
             autoComplete="new-password"
+            rightBadge={
+              confirmPw.length > 0 &&
+              (matches ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-500">
+                  <IconCheck size={12} stroke={2.5} />
+                  <span>{t('account:security.reqMatch')}</span>
+                </span>
+              ) : (
+                <span className="text-[11px] font-medium text-[var(--color-error)]">
+                  {t('account:security.mismatch')}
+                </span>
+              ))
+            }
           />
-        </div>
 
-        <div className="mt-8 flex items-center justify-start border-t border-[var(--color-border)] pt-5">
-          <button
-            type="submit"
-            className="btn-primary btn-sm flex items-center gap-1.5 text-xs shadow-xs"
-          >
-            <IconShieldLock size={14} />
-            <span>{t('account:security.change')}</span>
-          </button>
+          <div className="mt-6 flex items-center justify-between border-t border-[var(--color-border)] pt-4">
+            <button
+              type="button"
+              onClick={onResetForm}
+              className="btn-ghost btn-sm text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] cursor-pointer"
+              disabled={!currentPw && !newPw && !confirmPw}
+            >
+              {t('account:security.resetForm')}
+            </button>
+            <button
+              type="submit"
+              disabled={changePassword.isPending}
+              className="btn-primary btn-sm flex items-center gap-1.5 text-xs shadow-xs cursor-pointer"
+            >
+              {changePassword.isPending ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : (
+                <IconShieldLock size={14} />
+              )}
+              <span>
+                {changePassword.isPending
+                  ? t('common:saving', { defaultValue: 'Đang lưu...' })
+                  : t('account:security.change')}
+              </span>
+            </button>
+          </div>
         </div>
       </form>
 
@@ -220,79 +321,37 @@ export function SecuritySection() {
           {/* Google */}
           <div className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface-2)]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] shadow-2xs">
                 <GoogleMark />
               </div>
-              <div>
+              <div className="space-y-0.5">
                 <div className="text-xs font-semibold text-[var(--color-text-primary)]">Google</div>
                 <div className="text-[11px] text-[var(--color-text-tertiary)]">
-                  {featureFlags.googleAuth
-                    ? t('account:security.googleNotConnected')
-                    : t('account:security.googlePending')}
+                  {isGoogleLinked
+                    ? user?.email
+                      ? `${t('account:security.googleLinkedEmail')}: ${user.email}`
+                      : t('account:security.googleConnected')
+                    : featureFlags.googleAuth
+                      ? t('account:security.googleNotConnected')
+                      : t('account:security.googlePending')}
                 </div>
               </div>
             </div>
-            <button
-              type="button"
-              className="btn-secondary btn-sm text-xs"
-              onClick={onGoogleAction}
-            >
-              {t('account:common.connect')}
-            </button>
-          </div>
-
-          {/* GitHub */}
-          <div className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0 opacity-70">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] text-[var(--color-text-primary)]">
-                <IconBrandGithub size={20} />
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-primary)]">
-                  <span>GitHub</span>
-                  <span className="rounded-sm bg-[var(--color-bg-surface-3)] px-1.5 py-0.2 text-[10px] font-mono text-[var(--color-text-tertiary)]">
-                    Soon
-                  </span>
-                </div>
-                <div className="text-[11px] text-[var(--color-text-tertiary)]">
-                  {t('account:security.githubComing')}
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              disabled
-              className="btn-ghost btn-sm text-xs cursor-not-allowed text-[var(--color-text-tertiary)]"
-            >
-              {t('account:common.connect')}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 2FA Card */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-6 shadow-xs">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">
-                {t('account:security.twofaTitle')}
-              </h2>
-              <span className="rounded-sm bg-[var(--color-bg-surface-3)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--color-text-tertiary)]">
-                Enterprise
+            {isGoogleLinked ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 select-none">
+                <IconCheck size={13} stroke={2.5} />
+                <span>{t('account:security.googleConnected')}</span>
               </span>
-            </div>
-            <p className="text-xs text-[var(--color-text-secondary)] mt-1 max-w-xl">
-              {t('account:security.twofaDesc')}. {t('account:security.twofaHint')}
-            </p>
+            ) : (
+              <button
+                type="button"
+                className="btn-secondary btn-sm text-xs cursor-pointer"
+                onClick={onGoogleConnect}
+              >
+                {t('account:common.connect')}
+              </button>
+            )}
           </div>
-          <button
-            type="button"
-            disabled
-            className="btn-secondary btn-sm text-xs shrink-0 cursor-not-allowed opacity-60"
-          >
-            {t('account:security.twofaEnable')}
-          </button>
         </div>
       </div>
     </div>

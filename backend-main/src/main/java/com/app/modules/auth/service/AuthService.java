@@ -23,6 +23,12 @@ public interface AuthService {
 
     UserResponse me(UUID userId);
 
+    UserResponse updateProfile(UUID userId, UpdateProfileRequest req);
+
+    UserResponse deleteAvatar(UUID userId);
+
+    void changePassword(UUID userId, ChangePasswordRequest req);
+
     Optional<UserResponse> findUserById(UUID userId);
 
     Map<UUID, UserResponse> findUsersByIds(Collection<UUID> userIds);

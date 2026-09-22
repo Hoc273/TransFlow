@@ -1,6 +1,5 @@
 {
   "title": "Project glossaries",
-  "subtitle": "Each project has one terminology list for consistent localization",
   "sidebar": "Projects",
   "sourceLang": "Source: {{language}}",
   "noProjectsTitle": "No project yet",
@@ -59,5 +58,9 @@
     "drop": "Click to select a .csv file",
     "importing": "Importing…",
     "result": "Added {{added}} · skipped {{skipped}}"
+  },
+  "template": {
+    "button": "CSV Template",
+    "download": "Download CSV template"
   }
 }

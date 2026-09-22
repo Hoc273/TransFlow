@@ -1,9 +1,10 @@
 import type { ComponentType } from 'react'
-import { NavLink, useParams } from 'react-router-dom'
+import { Link, NavLink, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   IconBook2,
   IconChartBar,
+  IconCoins,
   IconFolder,
   IconLayoutGrid,
   IconUsers,
@@ -11,7 +12,10 @@ import {
 } from '@tabler/icons-react'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useUiStore } from '@/store/uiStore'
+import { useAuthStore } from '@/store/authStore'
 import { usePermission } from '@/hooks/usePermission'
+import { useUserCredit } from '@/hooks/useCredit'
+import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import type { PermissionAction } from '@/lib/permissions'
 
@@ -91,11 +95,18 @@ interface SidebarNavProps {
 }
 
 export function SidebarNav({ mobileOpen, className }: SidebarNavProps) {
-  const { t } = useTranslation('common')
+  const { t } = useTranslation(['common', 'account'])
   const { workspaceId = '' } = useParams()
   const collapsed = useUiStore((s) => s.sidebarCollapsed)
+  const language = useUiStore((s) => s.language)
+  const currentWorkspace = useAuthStore((s) => s.currentWorkspace)
   const canUsage = usePermission('dashboard.usage')
+  const { data: creditData, isLoading: isCreditLoading } = useUserCredit()
   const groups = buildGroups(workspaceId)
+
+  const balanceValue = Number(creditData?.balance ?? 0)
+  const activeWsId = workspaceId || currentWorkspace?.id || ''
+  const creditPath = activeWsId ? `/w/${activeWsId}/account/credit` : '/dashboard'
 
   const allowed = (item: NavItem) => {
     if (!item.permission) return true
@@ -155,14 +166,41 @@ export function SidebarNav({ mobileOpen, className }: SidebarNavProps) {
         ))}
       </nav>
 
-      <div className="mt-auto border-t border-[var(--color-border)] px-4 py-3">
-        <div className="sidebar-footer-text mb-1 text-[10px] tracking-wide text-[var(--color-text-tertiary)] uppercase">
-          {t('buildPhase')}
+      <Link
+        to={creditPath}
+        className={cn(
+          'mt-auto border-t border-[var(--color-border)] p-3 text-inherit no-underline transition-colors hover:bg-[var(--color-bg-hover)] block',
+          collapsed && 'flex justify-center p-2',
+        )}
+        title={
+          collapsed
+            ? `${t('common:creditBalance', { defaultValue: 'Số dư credit' })}: ${formatNumber(balanceValue, language)} ${t('account:credit.unit', { defaultValue: 'credit' })}`
+            : undefined
+        }
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
+            <IconCoins size={18} stroke={1.75} />
+          </div>
+          <div className="sidebar-footer-text min-w-0 flex-1">
+            <div className="text-[10px] font-medium tracking-wide text-[var(--color-text-tertiary)] uppercase">
+              {t('common:creditBalance', { defaultValue: 'Số dư credit' })}
+            </div>
+            <div className="text-xs font-semibold text-[var(--color-accent)]">
+              {isCreditLoading ? (
+                <span className="font-normal text-[var(--color-text-tertiary)]">…</span>
+              ) : (
+                <span>
+                  {formatNumber(balanceValue, language)}{' '}
+                  <span className="text-[10px] font-normal text-[var(--color-text-secondary)]">
+                    {t('account:credit.unit', { defaultValue: 'credit' })}
+                  </span>
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="sidebar-footer-text text-xs font-semibold text-[var(--color-accent)]">
-          {t('buildPhaseValue')}
-        </div>
-      </div>
+      </Link>
     </aside>
   )
 }

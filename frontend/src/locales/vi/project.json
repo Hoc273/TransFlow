@@ -1,7 +1,6 @@
 {
   "list": {
     "title": "Dự án",
-    "subtitle": "Quản lý các dự án dịch thuật và bản địa hóa",
     "create": "Tạo dự án mới",
     "emptyTitle": "Chưa có dự án nào",
     "emptyDesc": "Tạo dự án đầu tiên để bắt đầu tổ chức các video.",

@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { IconArrowRight, IconChevronRight, IconPlus, IconStack2 } from '@tabler/icons-react'
+import { IconArrowRight, IconPlus, IconStack2 } from '@tabler/icons-react'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { StatusBadge, type JobStatus } from '@/components/shared/StatusBadge'
 import { ProgressBar } from '@/components/shared/ProgressBar'
@@ -50,10 +50,6 @@ export function QueueBatchStatusWidget() {
             {t('live.indicator')}
           </span>
         </div>
-        <Link to={`/w/${workspaceId}/batches`} className="btn-ghost-sm no-underline flex items-center gap-1 text-[11px] py-1 px-2">
-          <span>{t('viewAll')}</span>
-          <IconChevronRight size={12} />
-        </Link>
       </div>
 
       {/* Content */}

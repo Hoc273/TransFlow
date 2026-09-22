@@ -32,9 +32,10 @@ import {
   getMediaTermsVersionApi,
   listProjectMediaAssetsApi,
   getMediaAssetApi,
+  listMediaJobSubtitlesApi,
   type EditMediaSegmentBody,
 } from '@/api/media'
-import { overrideQaIssueApi, resolveQaIssueApi } from '@/api/segments'
+import { overrideQaIssueApi, resolveQaIssueApi, listMediaJobQaIssuesApi } from '@/api/segments'
 import type { OverrideQaIssueBody, ResolveIssueBody } from '@/types/qa'
 import { hasActiveMediaStages, isActiveMediaJobStatus } from '@/lib/media'
 import { STALE, queryKeys } from '@/lib/queryClient'
@@ -108,6 +109,33 @@ export function useMediaLinkedJob(
   _translationJobId: string | null | undefined,
 ): { data: JobDetail | null; isLoading: boolean } {
   return { data: null, isLoading: false }
+}
+
+/** Subtitle cues for a media job (API Contract §5, MediaJobController:128). */
+export function useMediaSubtitles(
+  workspaceId: string | undefined,
+  jobId: string | null | undefined,
+) {
+  return useQuery({
+    queryKey: queryKeys.mediaSubtitles(workspaceId ?? '', jobId ?? ''),
+    queryFn: () => listMediaJobSubtitlesApi(workspaceId!, jobId!),
+    enabled: !!workspaceId && !!jobId,
+    staleTime: STALE.semiLive,
+  })
+}
+
+/** QA issues for a media job (API Contract §8, QaController:31). */
+export function useMediaJobQaIssues(
+  workspaceId: string | undefined,
+  jobId: string | null | undefined,
+  resolved?: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.mediaQaIssues(workspaceId ?? '', jobId ?? '', resolved),
+    queryFn: () => listMediaJobQaIssuesApi(workspaceId!, jobId!, resolved),
+    enabled: !!workspaceId && !!jobId,
+    staleTime: STALE.semiLive,
+  })
 }
 
 export function useResolveQaIssue(workspaceId: string | undefined, jobId: string | undefined) {
@@ -200,6 +228,8 @@ export function useEditMediaSegment(
         void qc.invalidateQueries({ queryKey: queryKeys.job(workspaceId, translationJobId) })
       }
       void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, mediaJobId) })
+      void qc.invalidateQueries({ queryKey: queryKeys.mediaSubtitles(workspaceId, mediaJobId) })
+      void qc.invalidateQueries({ queryKey: queryKeys.mediaQaIssues(workspaceId, mediaJobId) })
     },
   })
 }
@@ -222,6 +252,8 @@ export function useBatchEditMediaSegments(
         void qc.invalidateQueries({ queryKey: queryKeys.job(workspaceId, translationJobId) })
       }
       void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, mediaJobId) })
+      void qc.invalidateQueries({ queryKey: queryKeys.mediaSubtitles(workspaceId, mediaJobId) })
+      void qc.invalidateQueries({ queryKey: queryKeys.mediaQaIssues(workspaceId, mediaJobId) })
     },
   })
 }

@@ -15,10 +15,15 @@ public record UserResponse(
         String email,
         String fullName,
         boolean googleLinked,
-        @JsonProperty("isPlatformAdmin") boolean isPlatformAdmin
+        @JsonProperty("isPlatformAdmin") boolean isPlatformAdmin,
+        String avatarUrl
 ) {
     public UserResponse(UUID id, String email, String fullName, boolean googleLinked) {
-        this(id, email, fullName, googleLinked, false);
+        this(id, email, fullName, googleLinked, false, null);
+    }
+
+    public UserResponse(UUID id, String email, String fullName, boolean googleLinked, boolean isPlatformAdmin) {
+        this(id, email, fullName, googleLinked, isPlatformAdmin, null);
     }
 
     public static UserResponse from(User u) {
@@ -27,7 +32,8 @@ public record UserResponse(
                 u.getEmail(),
                 u.getFullName(),
                 u.isGoogleLinked(),
-                u.isPlatformAdmin()
+                u.isPlatformAdmin(),
+                u.getAvatarUrl()
         );
     }
 }

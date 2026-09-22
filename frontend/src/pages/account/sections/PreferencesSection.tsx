@@ -1,27 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import {
-  IconCheck,
-  IconLayoutList,
-  IconList,
-  IconMoon,
-  IconSun,
-  IconWorld,
-} from '@tabler/icons-react'
+import { IconCheck, IconMoon, IconSun, IconWorld } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { applyThemeToDocument, useUiStore, type Language, type ThemeMode } from '@/store/uiStore'
 import { cn } from '@/lib/cn'
-
-const DENSITY_KEY = 'tf-table-density'
-type Density = 'comfortable' | 'dense'
-
-function readDensity(): Density {
-  try {
-    const v = localStorage.getItem(DENSITY_KEY)
-    return v === 'dense' ? 'dense' : 'comfortable'
-  } catch {
-    return 'comfortable'
-  }
-}
 
 /**
  * Preferences Section — Visual customization & display settings.
@@ -32,7 +13,6 @@ export function PreferencesSection() {
   const theme = useUiStore((s) => s.theme)
   const setLanguage = useUiStore((s) => s.setLanguage)
   const setTheme = useUiStore((s) => s.setTheme)
-  const [density, setDensity] = useState<Density>(readDensity)
   const [flash, setFlash] = useState(false)
 
   useEffect(() => {
@@ -58,16 +38,6 @@ export function PreferencesSection() {
   const changeTheme = (mode: ThemeMode) => {
     setTheme(mode)
     applyThemeToDocument(mode)
-    showSaved()
-  }
-
-  const changeDensity = (d: Density) => {
-    setDensity(d)
-    try {
-      localStorage.setItem(DENSITY_KEY, d)
-    } catch {
-      /* ignore */
-    }
     showSaved()
   }
 
@@ -151,36 +121,6 @@ export function PreferencesSection() {
               </div>
             }
             onClick={() => changeTheme('light')}
-          />
-        </div>
-      </div>
-
-      {/* Density Card */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-6 shadow-xs">
-        <div className="border-b border-[var(--color-border)] pb-4 mb-5">
-          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
-            <IconLayoutList size={16} className="text-[var(--color-accent)]" />
-            {t('account:prefs.densityTitle')}
-          </h2>
-          <p className="text-xs text-[var(--color-text-secondary)] mt-1">
-            {t('account:prefs.densityDesc')}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-          <OptionCard
-            selected={density === 'comfortable'}
-            icon={<IconLayoutList size={18} className="text-[var(--color-text-secondary)]" />}
-            title={t('account:prefs.densityComfortable')}
-            subtitle={t('account:prefs.densityComfortableSub')}
-            onClick={() => changeDensity('comfortable')}
-          />
-          <OptionCard
-            selected={density === 'dense'}
-            icon={<IconList size={18} className="text-[var(--color-text-secondary)]" />}
-            title={t('account:prefs.densityDense')}
-            subtitle={t('account:prefs.densityDenseSub')}
-            onClick={() => changeDensity('dense')}
           />
         </div>
       </div>

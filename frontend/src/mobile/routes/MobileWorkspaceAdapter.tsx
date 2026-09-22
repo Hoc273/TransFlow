@@ -15,8 +15,6 @@ const MediaJobPage = lazy(() => import('@/pages/media/MediaJobPage').then(m => (
 const MembersPage = lazy(() => import('@/pages/settings/MembersPage').then(m => ({ default: m.MembersPage })))
 const PresetSettingsPage = lazy(() => import('@/pages/settings/PresetSettingsPage').then(m => ({ default: m.PresetSettingsPage })))
 const AccountSettingsPage = lazy(() => import('@/pages/account/AccountSettingsPage').then(m => ({ default: m.AccountSettingsPage })))
-const BatchListPage = lazy(() => import('@/pages/batch/BatchListPage').then(m => ({ default: m.BatchListPage })))
-const BatchDetailPage = lazy(() => import('@/pages/batch/BatchDetailPage').then(m => ({ default: m.BatchDetailPage })))
 const ProjectListPage = lazy(() => import('@/pages/project/ProjectListPage').then(m => ({ default: m.ProjectListPage })))
 const NotificationCenterPage = lazy(() => import('@/pages/notification/NotificationCenterPage').then(m => ({ default: m.NotificationCenterPage })))
 const GlossaryPage = lazy(() => import('@/pages/glossary/GlossaryPage').then(m => ({ default: m.GlossaryPage })))
@@ -25,8 +23,6 @@ const GlossaryPage = lazy(() => import('@/pages/glossary/GlossaryPage').then(m =
 const MobileDashboardPage = lazy(() => import('../pages/dashboard/MobileDashboardPage').then(m => ({ default: m.MobileDashboardPage })))
 const MobileUsagePage = lazy(() => import('../pages/dashboard/MobileUsagePage').then(m => ({ default: m.MobileUsagePage })))
 const MobileProjectListPage = lazy(() => import('../pages/projects/MobileProjectListPage').then(m => ({ default: m.MobileProjectListPage })))
-const MobileBatchListPage = lazy(() => import('../pages/batches/MobileBatchListPage').then(m => ({ default: m.MobileBatchListPage })))
-const MobileBatchDetailPage = lazy(() => import('../pages/batches/MobileBatchDetailPage').then(m => ({ default: m.MobileBatchDetailPage })))
 const MobileGlossaryPage = lazy(() => import('../pages/glossary/MobileGlossaryPage').then(m => ({ default: m.MobileGlossaryPage })))
 const MobileMediaListPage = lazy(() => import('../pages/media/MobileMediaListPage').then(m => ({ default: m.MobileMediaListPage })))
 const MobileMembersPage = lazy(() => import('../pages/settings/MobileMembersPage').then(m => ({ default: m.MobileMembersPage })))
@@ -83,8 +79,8 @@ export function MobileWorkspaceAdapter() {
             <Route index element={<MobileDashboardPage />} />
             <Route path="notifications" element={<MobileNotificationPage />} />
             <Route path="projects" element={<MobileProjectListPage />} />
-            <Route path="batches" element={<MobileBatchListPage />} />
-            <Route path="batches/:batchId" element={<MobileBatchDetailPage />} />
+            <Route path="batches/*" element={<Navigate to="" replace />} />
+            <Route path="batches" element={<Navigate to="" replace />} />
             <Route path="glossaries" element={<MobileGlossaryPage />} />
             <Route path="media" element={<MobileMediaListPage />} />
             <Route path="media/presets" element={<MobilePresetSettingsPage />} />
@@ -121,8 +117,8 @@ export function MobileWorkspaceAdapter() {
           <Route index element={<DashboardPage />} />
           <Route path="notifications" element={<NotificationCenterPage />} />
           <Route path="projects" element={<ProjectListPage />} />
-          <Route path="batches" element={<BatchListPage />} />
-          <Route path="batches/:batchId" element={<BatchDetailPage />} />
+          <Route path="batches/*" element={<Navigate to="" replace />} />
+          <Route path="batches" element={<Navigate to="" replace />} />
           <Route path="glossaries" element={<GlossaryPage />} />
           <Route path="media" element={<MediaListPage />} />
           <Route path="media/presets" element={<PresetSettingsPage />} />

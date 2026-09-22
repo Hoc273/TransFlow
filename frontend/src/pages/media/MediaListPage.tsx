@@ -208,7 +208,6 @@ export function MediaListPage() {
             <IconVideo size={26} className="text-[var(--color-media)]" />
             {t('media:title')}
           </h1>
-          <div className="page-subtitle">{t('media:subtitle')}</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {projectId && (
@@ -262,11 +261,6 @@ export function MediaListPage() {
       </div>
 
       <MediaStudioNav />
-
-      <div className="media-banner info mb-4">
-        <IconVideo size={18} />
-        <div className="flex-1 text-sm">{t('media:scopeBanner')}</div>
-      </div>
 
       <div className="media-project-picker mb-4">
         <div className="media-project-picker-icon">

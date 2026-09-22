@@ -54,7 +54,6 @@ export function ProjectListPage() {
               </span>
             )}
           </div>
-          <div className="page-subtitle">{t('project:list.subtitle')}</div>
         </div>
 
         {canCreate && (

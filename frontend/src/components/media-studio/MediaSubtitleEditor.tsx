@@ -177,7 +177,7 @@ export function MediaSubtitleEditor({
     if (linkedJob?.segments && linkedJob.segments.length > 0) {
       return linkedJob.segments
     }
-    return realSubtitles.map((sub) => subtitleToSegmentItem(sub, realQaIssues))
+    return realSubtitles.map((sub: import('@/types/media').MediaSubtitleCue) => subtitleToSegmentItem(sub, realQaIssues))
   }, [linkedJob, realSubtitles, realQaIssues])
 
   // QA cross-check marker (docs/19 §1.8.2): open issues per segment, tone from

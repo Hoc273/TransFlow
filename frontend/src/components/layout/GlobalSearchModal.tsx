@@ -87,16 +87,6 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
         path: `${base}/projects`,
       },
       {
-        id: 'page-batches',
-        category: 'pages',
-        categoryLabel: t('common:commandPalette.pages', { defaultValue: 'Trang & Công cụ' }),
-        title: t('common:nav.batches', { defaultValue: 'Xử lý hàng loạt' }),
-        subtitle: 'Tải lên và dịch tự động song song nhiều file',
-        icon: IconStack2,
-        iconColor: 'bg-cyan-500/10 text-cyan-500 dark:bg-cyan-500/20 dark:text-cyan-400',
-        path: `${base}/batches`,
-      },
-      {
         id: 'page-glossaries',
         category: 'pages',
         categoryLabel: t('common:commandPalette.pages', { defaultValue: 'Trang & Công cụ' }),
