@@ -466,8 +466,10 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 **Việc cần chốt của các mục mới (v2):**
 - [ ] Mục 1: bổ sung `format=SRT|VTT` cho `/export` (giữ `SUBTITLE` làm alias) và cập nhật contract.
 - [ ] Mục 3: xác nhận worker hỗ trợ reframe/blur-pad/cover layers/ducking; DTO `render-config` v2 báo FE.
-- [ ] Mục 10: `capabilities` cần JWT hay public; quy tắc `FAST`/`STUDIO` available; có validate `requestedMode` khi tạo job không.
-- [ ] Mục 10: thêm biến `MEDIA_WORKER_URL` (`.env.example` + compose).
+- [x] Mục 10: `capabilities` cần JWT hay public; quy tắc `FAST`/`STUDIO` available; có validate `requestedMode` khi tạo job không.
+  → **Đã chốt**: JWT bắt buộc; `FAST` ⇔ ai+worker healthy, `STUDIO` ⇔ FAST + `separation.engine` hợp lệ (bỏ qua `gpu_available`);
+  KHÔNG validate `requestedMode` (FE tự guard). Chi tiết: `BACKEND_MISSING_TASKS_MEMBER_A.md` mục 10 "Ghi chú đã làm".
+- [x] Mục 10: thêm biến `MEDIA_WORKER_URL` (`.env.example` + compose). → Đã thêm (`app.media-worker.base-url` qua `@Value`).
 - [ ] Mục 11: cột `media_jobs.publish_package` (V7) và cập nhật `Database_Design.md`; QA gate chặn PUT hay chỉ bước xuất bản;
       `audioTracks` trả presigned URL hay `storageRef` thô.
 - [ ] Migration V7/V8: A và B thống nhất số version trước khi tạo.
