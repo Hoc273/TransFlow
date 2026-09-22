@@ -190,6 +190,20 @@ public class SummarizationServiceImpl implements SummarizationService {
                 workspaceId, userId, jobId, targetLang, ttsProviderId, ttsVoiceId);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public SummaryProposal getProposalById(UUID proposalId) {
+        return summaryProposalRepository.findById(proposalId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional
+    public SummaryProposal persistAiProposalResult(UUID stageId, short round, SummaryAiClient.ScriptProposalResult result,
+                                                   String feedbackText, int requestedDurationSeconds) {
+        return persistAiProposal(stageId, round, result, feedbackText, requestedDurationSeconds);
+    }
+
     // ---- helpers ----
 
     private UUID findStageId(UUID jobId, MediaJobStage.StageName name) {

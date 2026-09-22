@@ -38,4 +38,9 @@ public interface SummarizationService {
     /** Arch §7.7 — "tóm tắt thêm ngôn ngữ", only when the source job's selected proposal is AI-generated. */
     MediaJob createSummaryLanguageJob(UUID workspaceId, UUID userId, UUID jobId, String targetLang,
                                       UUID ttsProviderId, UUID ttsVoiceId);
+
+    SummaryProposal getProposalById(UUID proposalId);
+
+    SummaryProposal persistAiProposalResult(UUID stageId, short round, SummaryAiClient.ScriptProposalResult result,
+                                           String feedbackText, int requestedDurationSeconds);
 }
