@@ -15,7 +15,7 @@ export function LandingProductivity() {
 
   const qaTarget = accessToken
     ? currentWorkspace?.id
-      ? `/w/${currentWorkspace.id}/tm`
+      ? `/w/${currentWorkspace.id}/glossaries`
       : '/dashboard'
     : '/login'
 

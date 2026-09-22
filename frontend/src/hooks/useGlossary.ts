@@ -1,120 +1,77 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  addTermsApi,
-  createGlossaryApi,
-  deleteGlossaryApi,
+  addTermApi,
   deleteTermApi,
+  getProjectGlossaryApi,
   importGlossaryCsvApi,
-  listGlossariesApi,
   listTermsApi,
-  updateGlossaryApi,
   updateTermApi,
 } from '@/api/glossary'
 import { STALE, queryKeys } from '@/lib/queryClient'
-import type {
-  CreateGlossaryBody,
-  TermBody,
-  UpdateGlossaryBody,
-} from '@/types/glossary'
+import type { TermBody } from '@/types/glossary'
 
-export function useGlossaries(workspaceId: string | undefined) {
+export function useProjectGlossary(
+  workspaceId: string | undefined,
+  projectId: string | undefined,
+) {
   return useQuery({
-    queryKey: queryKeys.glossaries(workspaceId ?? ''),
-    queryFn: () => listGlossariesApi(workspaceId!),
-    enabled: !!workspaceId,
+    queryKey: queryKeys.projectGlossary(workspaceId ?? '', projectId ?? ''),
+    queryFn: () => getProjectGlossaryApi(workspaceId!, projectId!),
+    enabled: Boolean(workspaceId && projectId),
     staleTime: STALE.static,
   })
 }
 
 export function useGlossaryTerms(
   workspaceId: string | undefined,
-  glossaryId: string | undefined,
+  projectId: string | undefined,
 ) {
   return useQuery({
-    queryKey: queryKeys.glossaryTerms(workspaceId ?? '', glossaryId ?? ''),
-    queryFn: () => listTermsApi(workspaceId!, glossaryId!),
-    enabled: !!workspaceId && !!glossaryId,
+    queryKey: queryKeys.glossaryTerms(workspaceId ?? '', projectId ?? ''),
+    queryFn: () => listTermsApi(workspaceId!, projectId!),
+    enabled: Boolean(workspaceId && projectId),
     staleTime: STALE.static,
   })
 }
 
-export function useCreateGlossary(workspaceId: string | undefined) {
+export function useAddTerm(workspaceId: string | undefined, projectId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: CreateGlossaryBody) => createGlossaryApi(workspaceId!, body),
+    mutationFn: (body: TermBody) => addTermApi(workspaceId!, projectId!, body),
     onSuccess: () => {
-      if (workspaceId) {
-        void qc.invalidateQueries({ queryKey: queryKeys.glossaries(workspaceId) })
-      }
-    },
-  })
-}
-
-export function useUpdateGlossary(workspaceId: string | undefined) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ glossaryId, body }: { glossaryId: string; body: UpdateGlossaryBody }) =>
-      updateGlossaryApi(workspaceId!, glossaryId, body),
-    onSuccess: () => {
-      if (workspaceId) {
-        void qc.invalidateQueries({ queryKey: queryKeys.glossaries(workspaceId) })
-      }
-    },
-  })
-}
-
-export function useDeleteGlossary(workspaceId: string | undefined) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (glossaryId: string) => deleteGlossaryApi(workspaceId!, glossaryId),
-    onSuccess: () => {
-      if (workspaceId) {
-        void qc.invalidateQueries({ queryKey: queryKeys.glossaries(workspaceId) })
-      }
-    },
-  })
-}
-
-export function useAddTerms(workspaceId: string | undefined, glossaryId: string | undefined) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (terms: TermBody[]) => addTermsApi(workspaceId!, glossaryId!, terms),
-    onSuccess: () => {
-      if (workspaceId && glossaryId) {
+      if (workspaceId && projectId) {
         void qc.invalidateQueries({
-          queryKey: queryKeys.glossaryTerms(workspaceId, glossaryId),
+          queryKey: queryKeys.glossaryTerms(workspaceId, projectId),
         })
-        void qc.invalidateQueries({ queryKey: queryKeys.glossaries(workspaceId) })
       }
     },
   })
 }
 
-export function useUpdateTerm(workspaceId: string | undefined, glossaryId: string | undefined) {
+export function useUpdateTerm(workspaceId: string | undefined, projectId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ termId, body }: { termId: string; body: TermBody }) =>
-      updateTermApi(workspaceId!, glossaryId!, termId, body),
+      updateTermApi(workspaceId!, projectId!, termId, body),
     onSuccess: () => {
-      if (workspaceId && glossaryId) {
+      if (workspaceId && projectId) {
         void qc.invalidateQueries({
-          queryKey: queryKeys.glossaryTerms(workspaceId, glossaryId),
+          queryKey: queryKeys.glossaryTerms(workspaceId, projectId),
         })
       }
     },
   })
 }
 
-export function useDeleteTerm(workspaceId: string | undefined, glossaryId: string | undefined) {
+export function useDeleteTerm(workspaceId: string | undefined, projectId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (termId: string) => deleteTermApi(workspaceId!, glossaryId!, termId),
+    mutationFn: (termId: string) => deleteTermApi(workspaceId!, projectId!, termId),
     onSuccess: () => {
-      if (workspaceId && glossaryId) {
+      if (workspaceId && projectId) {
         void qc.invalidateQueries({
-          queryKey: queryKeys.glossaryTerms(workspaceId, glossaryId),
+          queryKey: queryKeys.glossaryTerms(workspaceId, projectId),
         })
-        void qc.invalidateQueries({ queryKey: queryKeys.glossaries(workspaceId) })
       }
     },
   })
@@ -122,17 +79,16 @@ export function useDeleteTerm(workspaceId: string | undefined, glossaryId: strin
 
 export function useImportGlossaryCsv(
   workspaceId: string | undefined,
-  glossaryId: string | undefined,
+  projectId: string | undefined,
 ) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (file: File) => importGlossaryCsvApi(workspaceId!, glossaryId!, file),
+    mutationFn: (file: File) => importGlossaryCsvApi(workspaceId!, projectId!, file),
     onSuccess: () => {
-      if (workspaceId && glossaryId) {
+      if (workspaceId && projectId) {
         void qc.invalidateQueries({
-          queryKey: queryKeys.glossaryTerms(workspaceId, glossaryId),
+          queryKey: queryKeys.glossaryTerms(workspaceId, projectId),
         })
-        void qc.invalidateQueries({ queryKey: queryKeys.glossaries(workspaceId) })
       }
     },
   })

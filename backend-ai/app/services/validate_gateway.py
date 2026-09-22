@@ -31,6 +31,8 @@ from app.schemas.validate import (
     SttProbeResponse,
     TtsProbeRequest,
     TtsProbeResponse,
+    VisionProbeRequest,
+    VisionProbeResponse,
 )
 from app.services.protocol import AudioInput, get_adapter, require_adapter
 from app.services.protocol.http_utils import normalize_base_url
@@ -99,6 +101,12 @@ def tiny_wav_bytes() -> bytes:
     if _TINY_WAV is None:
         _TINY_WAV = _generate_tiny_wav()
     return _TINY_WAV
+
+
+_TINY_VISION_DATA_URL = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
 
 
 # ── Phase 1: CONNECTION ──────────────────────────────────────────────────────
@@ -273,6 +281,46 @@ async def probe_stt_capability(req: SttProbeRequest) -> SttProbeResponse:
         except Exception as exc:
             elapsed = int((time.monotonic() - start) * 1000)
             return SttProbeResponse(ok=False, duration_ms=elapsed, message=str(exc))
+
+
+async def probe_vision_capability(req: VisionProbeRequest) -> VisionProbeResponse:
+    """Phase 3 VISION - prove the configured model accepts image input."""
+    provider = req.provider
+
+    if settings.mock_mode or not settings.key_is_usable(provider.api_key):
+        return VisionProbeResponse(ok=True, duration_ms=0, message="VISION probe skipped (mock mode)")
+
+    start = time.monotonic()
+    try:
+        adapter = require_adapter(provider.protocol, capability="VISION")
+        image_data_url = req.image_data_url or _TINY_VISION_DATA_URL
+        result = await adapter.chat(
+            provider,
+            system="You are a connectivity probe.",
+            user="Look at the image and reply with one short word.",
+            max_tokens=8,
+            images=[image_data_url],
+        )
+        elapsed = int((time.monotonic() - start) * 1000)
+        answer = (result.text or "").strip()
+        if not answer:
+            return VisionProbeResponse(
+                ok=False,
+                duration_ms=elapsed,
+                message="VISION provider returned an empty answer",
+            )
+        return VisionProbeResponse(
+            ok=True,
+            duration_ms=elapsed,
+            message="VISION image-input probe successful",
+            detected_text=answer[:80],
+        )
+    except ProviderException as exc:
+        elapsed = int((time.monotonic() - start) * 1000)
+        return VisionProbeResponse(ok=False, duration_ms=elapsed, message=exc.message or str(exc))
+    except Exception as exc:
+        elapsed = int((time.monotonic() - start) * 1000)
+        return VisionProbeResponse(ok=False, duration_ms=elapsed, message=str(exc))
 
 
 async def probe_tts_capability(req: TtsProbeRequest) -> TtsProbeResponse:

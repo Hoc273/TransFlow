@@ -6,6 +6,7 @@ import uuid
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.core.async_utils import blocking as _blocking
 from app.services.callback import send_complete
 from app.services.ffmpeg import FFmpegError, extract_audio, get_duration
 from app.services.storage import get_storage
@@ -32,24 +33,15 @@ class ExtractAudioResponse(BaseModel):
 @router.post("/extract-audio", response_model=ExtractAudioResponse)
 async def extract_audio_endpoint(req: ExtractAudioRequest) -> ExtractAudioResponse:
     logger.info("Extract audio request: correlation=%s job=%s", req.correlation_id, req.media_job_id)
-    storage = get_storage()
     temp_dir = tempfile.mkdtemp(prefix="extract_")
     try:
-        source_path = os.path.join(temp_dir, "source_video")
-        storage.download(req.source_video_ref, source_path)
-
-        output_path = os.path.join(temp_dir, "extracted_audio.wav")
-        extract_audio(source_path, output_path)
-
-        duration = get_duration(output_path)
-        object_key = f"extracted/{req.media_job_id}/{uuid.uuid4()}.wav"
-        audio_ref = storage.upload(output_path, object_key)
+        audio_ref, duration_ms = await _blocking(_extract_audio_sync, req, temp_dir)
 
         return ExtractAudioResponse(
             correlation_id=req.correlation_id,
             status="COMPLETED",
             audio_ref=audio_ref,
-            duration_ms=int(duration * 1000),
+            duration_ms=duration_ms,
         )
     except FFmpegError as exc:
         logger.exception("Extract audio failed: %s", exc.code)
@@ -67,6 +59,20 @@ async def extract_audio_endpoint(req: ExtractAudioRequest) -> ExtractAudioRespon
         )
     finally:
         _cleanup(temp_dir)
+
+
+def _extract_audio_sync(req: ExtractAudioRequest, temp_dir: str) -> tuple[str, int]:
+    storage = get_storage()
+    source_path = os.path.join(temp_dir, "source_video")
+    storage.download(req.source_video_ref, source_path)
+
+    output_path = os.path.join(temp_dir, "extracted_audio.wav")
+    extract_audio(source_path, output_path)
+
+    duration = get_duration(output_path)
+    object_key = f"extracted/{req.media_job_id}/{uuid.uuid4()}.wav"
+    audio_ref = storage.upload(output_path, object_key)
+    return audio_ref, int(duration * 1000)
 
 
 def _cleanup(temp_dir: str) -> None:

@@ -9,8 +9,7 @@ import {
 import { EmptyState } from '@/components/shared/EmptyState'
 import { QaOverrideModal } from '@/components/qa/QaOverrideModal'
 import { SeverityBadge } from '@/components/qa/SeverityBadge'
-import { useMediaLinkedJob } from '@/hooks/useMedia'
-import { useOverrideQaIssue, useResolveQaIssue } from '@/hooks/useJobs'
+import { useMediaLinkedJob, useOverrideQaIssue, useResolveQaIssue } from '@/hooks/useMedia'
 import { asSeverity, issueBlockingActions } from '@/lib/qa'
 import { hasEffectiveBlockExport, hasEffectiveBlockRender } from '@/lib/media'
 import { featureFlags } from '@/config/featureFlags'
@@ -19,7 +18,7 @@ import { cn } from '@/lib/cn'
 import { ApiError } from '@/types/api'
 import type { MediaJob } from '@/types/media'
 import type { BlockingAction, QaIssue } from '@/types/qa'
-import type { SegmentItem } from '@/types/job'
+import type { SegmentItem } from '@/types/media'
 
 type Props = {
   workspaceId: string

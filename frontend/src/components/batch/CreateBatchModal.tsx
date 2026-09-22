@@ -156,7 +156,7 @@ export function CreateBatchModal({
         onSuccess: (res) => {
           reset()
           onClose()
-          navigate(`/w/${workspaceId}/batches/${res.batchId}`)
+          navigate(`/w/${workspaceId}/batches/${res.id || (res as any).batchId}`)
         },
         onError: (err) => {
           if (err instanceof ApiError && err.code === 'RATE_LIMITED') {

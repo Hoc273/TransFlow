@@ -33,7 +33,8 @@ Mỗi nhánh = 1 PR nhỏ.
 - `MediaStorageService` (`media_asset`) chỉ có `putMediaObject`, **chưa có presigned URL / đọc object** → nhánh 1 phải thêm.
 - ~~`media_jobs` đã có cột `subtitle_style`/`render_config`~~ — **sai**: hai cột này chỉ có ở `media_presets`; `media_jobs` được thêm `subtitle_style` (V8), `render_config` (V9), `publish_package` (V10).
 - `ErrorCode` đã có `QA_BLOCKED` (3300), `STAGE_NOT_READY` (2902), `VALIDATION_ERROR` (9998).
-- Migration lúc đó dừng ở `V6`. Hiện: V7 `add_is_platform_admin` (Thành viên A), V8 `media_jobs_subtitle_style`, V9 `media_jobs_render_config` (đã đổi từ V7 vì trùng), V10 `media_jobs_publish_package`; số tiếp theo là V11.
+- Migration đã được squash thành baseline mới gồm đúng `V1__init_tables.sql` (schema cuối cùng) và
+  `V2__init_indexes.sql` (index + seed). Các tên V7–V12 dưới đây chỉ còn là ghi chú lịch sử triển khai.
 
 ---
 
@@ -117,7 +118,7 @@ Mỗi nhánh = 1 PR nhỏ.
 
 > Đã làm: `GET/PUT render-config`, `POST rerun-render` (202), `MediaRenderConfigService`, DTO ở `media_job.dto.render`.
 > **Lệch so với kế hoạch (dev đã duyệt):** `media_jobs` KHÔNG có sẵn cột `render_config` (chỉ `media_presets` có) → thêm
-> **migration `V9__media_jobs_render_config.sql`** (ban đầu là V7, đổi số vì trùng `V7__add_is_platform_admin.sql` của Thành viên A; dùng `IF NOT EXISTS`) + cập nhật `Database_Design.md`; `effective` rút gọn (`ownedByStyle=false`,
+> cột `media_jobs.render_config` (hiện nằm trực tiếp trong baseline `V1__init_tables.sql`) + cập nhật `Database_Design.md`; `effective` rút gọn (`ownedByStyle=false`,
 > `deadControls=[]` cho tới khi làm mục 4); màu/aspect chỉ thay được, chưa xoá về unset (không tri-state).
 > `rerun-render` tái dùng `rerunFromStage(RENDER)` nên stage trước RENDER phải COMPLETED/SKIPPED (kể cả TTS `STALE` → 409, phải rerun từ TTS).
 > **Mục 5 (worker) — còn thiếu:** mini chưa nối worker/queue dispatch nên chưa có payload để đối chiếu. Worker hiện hỗ trợ

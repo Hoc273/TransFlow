@@ -13,6 +13,7 @@ import com.app.modules.provider.service.ProviderResolverService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -92,7 +93,79 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
 
     @Override
     @Transactional(readOnly = true)
-    public Optional<String> resolveVoiceLanguage(UUID ttsVoiceId) {
-        return ttsVoiceRepository.findById(ttsVoiceId).map(TtsVoice::getLanguage);
+    public Optional<String> resolveVoiceLanguage(UUID userId, UUID ttsProviderId, UUID ttsVoiceId) {
+        if (ttsProviderId == null || ttsVoiceId == null) {
+            return Optional.empty();
+        }
+        return ttsVoiceRepository.findById(ttsVoiceId)
+                .filter(TtsVoice::isActive)
+                .filter(voice -> providerOwnsVoiceAndIsAvailable(userId, ttsProviderId, voice))
+                .map(TtsVoice::getLanguage);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ResolvedVoice resolveLegacyVoice(UUID userId, String voiceId, String targetLang) {
+        if (voiceId == null || voiceId.isBlank()) {
+            throw new AppException(ErrorCode.VOICE_LANGUAGE_MISMATCH);
+        }
+        String trimmed = voiceId.trim();
+        List<TtsVoice> candidates = ttsVoiceRepository.findByVoiceIdAndIsActiveTrue(trimmed);
+
+        List<TtsVoice> langMatches = candidates.stream()
+                .filter(v -> v.isLanguageCompatible(targetLang))
+                .toList();
+
+        if (langMatches.isEmpty()) {
+            throw new AppException(ErrorCode.VOICE_LANGUAGE_MISMATCH);
+        }
+
+        List<ResolvedVoice> available = new ArrayList<>();
+        for (TtsVoice voice : langMatches) {
+            UUID providerId = "USER".equalsIgnoreCase(voice.getProviderSource())
+                    ? voice.getUserProviderId()
+                    : voice.getPlatformProviderId();
+            if (providerId != null && providerOwnsVoiceAndIsAvailable(userId, providerId, voice)) {
+                available.add(new ResolvedVoice(providerId, voice.getId(), voice.getLanguage()));
+            }
+        }
+
+        if (available.isEmpty()) {
+            throw new AppException(ErrorCode.VOICE_LANGUAGE_MISMATCH);
+        }
+
+        if (available.size() == 1) {
+            return available.get(0);
+        }
+
+        // Prefer user BYOK match if exists
+        for (ResolvedVoice r : available) {
+            for (TtsVoice v : langMatches) {
+                if (v.getId().equals(r.voiceId()) && "USER".equalsIgnoreCase(v.getProviderSource())) {
+                    return r;
+                }
+            }
+        }
+
+        return available.get(0);
+    }
+
+    private boolean providerOwnsVoiceAndIsAvailable(UUID userId, UUID providerId, TtsVoice voice) {
+        if ("USER".equalsIgnoreCase(voice.getProviderSource())) {
+            return providerId.equals(voice.getUserProviderId())
+                    && userId != null
+                    && userAiProviderRepository.findByIdAndUserId(providerId, userId)
+                    .filter(UserAiProvider::isActive)
+                    .filter(provider -> provider.hasCapability("TTS"))
+                    .isPresent();
+        }
+        if ("PLATFORM".equalsIgnoreCase(voice.getProviderSource())) {
+            return providerId.equals(voice.getPlatformProviderId())
+                    && platformAiProviderRepository.findById(providerId)
+                    .filter(PlatformAiProvider::isActive)
+                    .filter(provider -> provider.hasCapability("TTS"))
+                    .isPresent();
+        }
+        return false;
     }
 }

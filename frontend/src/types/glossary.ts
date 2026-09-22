@@ -1,50 +1,25 @@
 export type Glossary = {
   id: string
-  name: string
-  description: string | null
-  termCount: number
-  updatedAt: string
-}
-
-export type GlossaryDetail = {
-  id: string
-  name: string
-  description: string | null
-  updatedAt: string
-  terms: GlossaryTerm[]
+  projectId: string
+  createdAt: string
 }
 
 export type GlossaryTerm = {
   id: string
+  glossaryId: string
   sourceTerm: string
   targetTerm: string
-  caseSensitive: boolean
-  partOfSpeech: string | null
-  note: string | null
-  updatedAt: string
-}
-
-export type CreateGlossaryBody = {
-  name: string
-  description?: string
-}
-
-export type UpdateGlossaryBody = {
-  name: string
-  description?: string
+  targetLang: string
 }
 
 export type TermBody = {
   sourceTerm: string
   targetTerm: string
-  targetLang?: string
-  caseSensitive?: boolean
-  partOfSpeech?: string
-  note?: string
+  targetLang: string
 }
 
 export type ImportResult = {
-  added: number
+  imported: number
   skipped: number
   errors: string[]
 }

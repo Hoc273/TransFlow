@@ -19,12 +19,11 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/hooks/useMedia', () => ({
   useMediaLinkedJob: () => ({ data: { segments: segments }, isLoading: false }),
+  useMediaSubtitles: () => ({ data: [], isLoading: false }),
+  useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
   useEditMediaSegment: () => ({ isPending: false, mutateAsync: editMutate }),
   useBatchEditMediaSegments: () => ({ isPending: false, mutateAsync: batchMutate }),
   useRerunTtsRender: () => ({ isPending: false, mutateAsync: vi.fn() }),
-}))
-
-vi.mock('@/hooks/useJobs', () => ({
   useResolveQaIssue: () => ({ isPending: false, mutate: resolveMutate, variables: null }),
   useOverrideQaIssue: () => ({ isPending: false, mutate: overrideMutate, variables: null }),
 }))
@@ -37,8 +36,7 @@ const { MediaSubtitleEditor } = await import('@/components/media-studio/MediaSub
 const { MediaQaPanel } = await import('@/components/media-studio/MediaQaPanel')
 const { ReviewVideoPane } = await import('@/components/media-studio/ReviewVideoPane')
 
-import type { MediaJob } from '@/types/media'
-import type { SegmentItem } from '@/types/job'
+import type { MediaJob, SegmentItem } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
 
 const segments: SegmentItem[] = [

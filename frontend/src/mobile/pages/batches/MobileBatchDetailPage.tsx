@@ -80,7 +80,7 @@ export function MobileBatchDetailPage() {
           <IconArrowLeft size={20} />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-bold text-neutral-900 dark:text-white" title={batch?.name}>
+          <h1 className="truncate text-lg font-bold text-neutral-900 dark:text-white" title={batch?.name || undefined}>
             {batch?.name || 'Chi tiết lô'}
           </h1>
           <span className="block truncate text-[11px] font-mono text-neutral-400" title={batchId}>

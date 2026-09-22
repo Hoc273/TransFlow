@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -16,19 +16,15 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { Modal } from '@/components/shared/Modal'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
-  useAddTerms,
-  useCreateGlossary,
-  useDeleteGlossary,
+  useAddTerm,
   useDeleteTerm,
-  useGlossaries,
   useGlossaryTerms,
   useImportGlossaryCsv,
   useUpdateTerm,
 } from '@/hooks/useGlossary'
 import { usePermission } from '@/hooks/usePermission'
-import { formatDateTime } from '@/lib/format'
+import { useProjects } from '@/hooks/useProjects'
 import { useAuthStore } from '@/store/authStore'
-import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
 import type { GlossaryTerm, ImportResult } from '@/types/glossary'
 
@@ -37,28 +33,21 @@ export function GlossaryPage() {
   const { t } = useTranslation(['glossary', 'common'])
   const { workspaceId = '' } = useParams()
   const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
-  const language = useUiStore((s) => s.language)
   const canEdit = usePermission('glossary.crud')
   useDocumentTitle(t('glossary:title'))
 
   const {
-    data: glossaries = [],
+    data: projects = [],
     isLoading,
     isError,
     error,
     refetch,
-  } = useGlossaries(workspaceId)
+  } = useProjects(workspaceId)
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const activeId = selectedId && glossaries.some((g) => g.id === selectedId)
-    ? selectedId
-    : glossaries[0]?.id ?? null
-
-  useEffect(() => {
-    if (!selectedId && glossaries[0]?.id) {
-      setSelectedId(glossaries[0].id)
-    }
-  }, [glossaries, selectedId])
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const activeProjectId = selectedProjectId && projects.some((p) => p.id === selectedProjectId)
+    ? selectedProjectId
+    : projects[0]?.id ?? null
 
   const {
     data: terms = [],
@@ -66,20 +55,15 @@ export function GlossaryPage() {
     isError: termsError,
     error: termsErr,
     refetch: refetchTerms,
-  } = useGlossaryTerms(workspaceId, activeId ?? undefined)
+  } = useGlossaryTerms(workspaceId, activeProjectId ?? undefined)
 
-  const createGlossary = useCreateGlossary(workspaceId)
-  const deleteGlossary = useDeleteGlossary(workspaceId)
-  const addTerms = useAddTerms(workspaceId, activeId ?? undefined)
-  const updateTerm = useUpdateTerm(workspaceId, activeId ?? undefined)
-  const deleteTerm = useDeleteTerm(workspaceId, activeId ?? undefined)
-  const importCsv = useImportGlossaryCsv(workspaceId, activeId ?? undefined)
+  const addTerm = useAddTerm(workspaceId, activeProjectId ?? undefined)
+  const updateTerm = useUpdateTerm(workspaceId, activeProjectId ?? undefined)
+  const deleteTerm = useDeleteTerm(workspaceId, activeProjectId ?? undefined)
+  const importCsv = useImportGlossaryCsv(workspaceId, activeProjectId ?? undefined)
 
-  const [createOpen, setCreateOpen] = useState(false)
   const [addTermOpen, setAddTermOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newDesc, setNewDesc] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
@@ -92,50 +76,13 @@ export function GlossaryPage() {
   const [termForm, setTermForm] = useState({
     sourceTerm: '',
     targetTerm: '',
-    partOfSpeech: '',
-    note: '',
-    caseSensitive: false,
+    targetLang: 'all',
   })
 
-  const activeGlossary = useMemo(
-    () => glossaries.find((g) => g.id === activeId) ?? null,
-    [glossaries, activeId],
+  const activeProject = useMemo(
+    () => projects.find((p) => p.id === activeProjectId) ?? null,
+    [projects, activeProjectId],
   )
-
-  const onCreateGlossary = (e: FormEvent) => {
-    e.preventDefault()
-    setFormError(null)
-    const name = newName.trim()
-    if (!name) {
-      setFormError(t('glossary:create.nameRequired'))
-      return
-    }
-    createGlossary.mutate(
-      { name, description: newDesc.trim() || undefined },
-      {
-        onSuccess: (g) => {
-          setCreateOpen(false)
-          setNewName('')
-          setNewDesc('')
-          setSelectedId(g.id)
-        },
-        onError: (err) => {
-          setFormError(err instanceof ApiError ? err.message : t('common:error.generic'))
-        },
-      },
-    )
-  }
-
-  const onDeleteGlossary = () => {
-    if (!activeId || !activeGlossary) return
-    if (!window.confirm(t('glossary:confirmDelete', { name: activeGlossary.name }))) return
-    deleteGlossary.mutate(activeId, {
-      onSuccess: () => setSelectedId(null),
-      onError: (err) => {
-        setRowError(err instanceof ApiError ? err.message : t('common:error.generic'))
-      },
-    })
-  }
 
   const onAddTerm = (e: FormEvent) => {
     e.preventDefault()
@@ -146,57 +93,29 @@ export function GlossaryPage() {
       setFormError(t('glossary:term.required'))
       return
     }
-    // Client-side duplicate check (Q-G5)
-    const pos = termForm.partOfSpeech.trim() || null
     const dup = terms.some(
       (x) =>
         x.sourceTerm.toLowerCase() === sourceTerm.toLowerCase() &&
-        (x.partOfSpeech || null) === pos,
+        x.targetLang.toLowerCase() === termForm.targetLang.toLowerCase(),
     )
     if (dup) {
       setFormError(t('glossary:term.duplicate'))
       return
     }
 
-    addTerms.mutate(
-      [
-        {
-          sourceTerm,
-          targetTerm,
-          caseSensitive: termForm.caseSensitive,
-          partOfSpeech: termForm.partOfSpeech.trim() || undefined,
-          note: termForm.note.trim() || undefined,
-        },
-      ],
+    addTerm.mutate(
       {
-        onSuccess: (result) => {
-          if (result.skipped > 0 || result.errors.length > 0) {
-            setFormError(
-              [
-                result.skipped > 0 ? t('glossary:term.skipped', { n: result.skipped }) : null,
-                ...result.errors,
-              ]
-                .filter(Boolean)
-                .join(' · '),
-            )
-            if (result.added > 0) {
-              setTermForm({
-                sourceTerm: '',
-                targetTerm: '',
-                partOfSpeech: '',
-                note: '',
-                caseSensitive: false,
-              })
-            }
-            return
-          }
+        sourceTerm,
+        targetTerm,
+        targetLang: termForm.targetLang.trim() || 'all',
+      },
+      {
+        onSuccess: () => {
           setAddTermOpen(false)
           setTermForm({
             sourceTerm: '',
             targetTerm: '',
-            partOfSpeech: '',
-            note: '',
-            caseSensitive: false,
+            targetLang: 'all',
           })
         },
         onError: (err) => {
@@ -216,9 +135,7 @@ export function GlossaryPage() {
         body: {
           sourceTerm: term.sourceTerm,
           targetTerm: trimmed,
-          caseSensitive: term.caseSensitive,
-          partOfSpeech: term.partOfSpeech ?? undefined,
-          note: term.note ?? undefined,
+          targetLang: term.targetLang,
         },
       },
       {
@@ -239,8 +156,8 @@ export function GlossaryPage() {
     const targetTerm = quickTarget.trim()
     if (!sourceTerm || !targetTerm) return
 
-    addTerms.mutate(
-      [{ sourceTerm, targetTerm }],
+    addTerm.mutate(
+      { sourceTerm, targetTerm, targetLang: 'all' },
       {
         onSuccess: () => {
           setQuickSource('')
@@ -256,20 +173,18 @@ export function GlossaryPage() {
 
   const onExportCsv = () => {
     if (!terms.length) return
-    const headers = ['source_term', 'target_term', 'part_of_speech', 'case_sensitive', 'note']
+    const headers = ['source_term', 'target_term', 'target_lang']
     const rows = terms.map((t) => [
       `"${(t.sourceTerm || '').replace(/"/g, '""')}"`,
       `"${(t.targetTerm || '').replace(/"/g, '""')}"`,
-      `"${(t.partOfSpeech || '').replace(/"/g, '""')}"`,
-      t.caseSensitive ? 'TRUE' : 'FALSE',
-      `"${(t.note || '').replace(/"/g, '""')}"`,
+      `"${(t.targetLang || '').replace(/"/g, '""')}"`,
     ])
     const csv = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${activeGlossary?.name || 'glossary'}_terms.csv`
+    link.download = `${activeProject?.name || 'glossary'}_terms.csv`
     link.click()
     URL.revokeObjectURL(url)
   }
@@ -281,8 +196,7 @@ export function GlossaryPage() {
       (t) =>
         t.sourceTerm.toLowerCase().includes(q) ||
         t.targetTerm.toLowerCase().includes(q) ||
-        (t.partOfSpeech && t.partOfSpeech.toLowerCase().includes(q)) ||
-        (t.note && t.note.toLowerCase().includes(q)),
+        t.targetLang.toLowerCase().includes(q),
     )
   }, [terms, termSearchQuery])
 
@@ -323,12 +237,6 @@ export function GlossaryPage() {
           <h1 className="page-title">{t('glossary:title')}</h1>
           <div className="page-subtitle">{t('glossary:subtitle')}</div>
         </div>
-        {canEdit && (
-          <button type="button" className="btn-primary" onClick={() => setCreateOpen(true)}>
-            <IconPlus size={16} />
-            {t('glossary:create.button')}
-          </button>
-        )}
       </div>
 
       {isLoading && (
@@ -352,46 +260,39 @@ export function GlossaryPage() {
         </div>
       )}
 
-      {!isLoading && !isError && glossaries.length === 0 && (
+      {!isLoading && !isError && projects.length === 0 && (
         <div className="app-card">
           <EmptyState
             icon={<IconBook2 size={40} stroke={1.25} />}
-            title={t('glossary:emptyTitle')}
-            description={t('glossary:emptyDesc')}
+            title={t('glossary:noProjectsTitle')}
+            description={t('glossary:noProjectsDesc')}
             className="py-14"
-          >
-            {canEdit && (
-              <button type="button" className="btn-primary mt-4" onClick={() => setCreateOpen(true)}>
-                <IconPlus size={16} />
-                {t('glossary:create.button')}
-              </button>
-            )}
-          </EmptyState>
+          />
         </div>
       )}
 
-      {!isLoading && !isError && glossaries.length > 0 && (
+      {!isLoading && !isError && projects.length > 0 && (
         <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-          {/* Sidebar list */}
+          {/* Project list */}
           <div className="app-card overflow-hidden p-0">
             <div className="border-b border-[var(--color-border)] px-3 py-2 text-[11px] font-semibold tracking-wide text-[var(--color-text-tertiary)] uppercase">
               {t('glossary:sidebar')}
             </div>
             <ul className="max-h-[60vh] overflow-y-auto">
-              {glossaries.map((g) => (
-                <li key={g.id}>
+              {projects.map((project) => (
+                <li key={project.id}>
                   <button
                     type="button"
                     className={`flex w-full flex-col items-start gap-0.5 border-l-2 px-3 py-2.5 text-left text-sm transition ${
-                      g.id === activeId
+                      project.id === activeProjectId
                         ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-text-primary)]'
                         : 'border-transparent text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'
                     }`}
-                    onClick={() => setSelectedId(g.id)}
+                    onClick={() => setSelectedProjectId(project.id)}
                   >
-                    <span className="font-medium">{g.name}</span>
+                    <span className="font-medium">{project.name}</span>
                     <span className="text-[11px] text-[var(--color-text-tertiary)]">
-                      {t('glossary:termCount', { count: g.termCount })}
+                      {t('glossary:sourceLang', { language: project.sourceLang })}
                     </span>
                   </button>
                 </li>
@@ -404,13 +305,11 @@ export function GlossaryPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
               <div>
                 <div className="text-sm font-semibold text-[var(--color-text-primary)]">
-                  {activeGlossary?.name}
+                  {activeProject?.name}
                 </div>
-                {activeGlossary?.description && (
-                  <div className="text-[12px] text-[var(--color-text-tertiary)]">
-                    {activeGlossary.description}
-                  </div>
-                )}
+                <div className="text-[12px] text-[var(--color-text-tertiary)]">
+                  {t('glossary:termCount', { count: terms.length })}
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -454,7 +353,7 @@ export function GlossaryPage() {
                 )}
 
                 {/* Import CSV */}
-                {canEdit && activeId && (
+                {canEdit && activeProjectId && (
                   <button
                     type="button"
                     className="btn-secondary btn-sm"
@@ -470,7 +369,7 @@ export function GlossaryPage() {
                 )}
 
                 {/* Detailed add term modal button */}
-                {canEdit && activeId && (
+                {canEdit && activeProjectId && (
                   <button
                     type="button"
                     className="btn-primary btn-sm"
@@ -483,24 +382,11 @@ export function GlossaryPage() {
                     <span className="col-hide-mobile">{t('glossary:term.add')}</span>
                   </button>
                 )}
-
-                {/* Delete glossary */}
-                {canEdit && activeId && (
-                  <button
-                    type="button"
-                    className="btn-icon-danger"
-                    title={t('glossary:delete')}
-                    onClick={onDeleteGlossary}
-                    disabled={deleteGlossary.isPending}
-                  >
-                    <IconTrash size={16} />
-                  </button>
-                )}
               </div>
             </div>
 
             {/* Quick Inline Add Row */}
-            {canEdit && activeId && (
+            {canEdit && activeProjectId && (
               <form
                 onSubmit={onQuickAdd}
                 className="flex items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg-surface-2)]/30 px-4 py-2 text-xs"
@@ -526,7 +412,7 @@ export function GlossaryPage() {
                 </div>
                 <button
                   type="submit"
-                  disabled={!quickSource.trim() || !quickTarget.trim() || addTerms.isPending}
+                  disabled={!quickSource.trim() || !quickTarget.trim() || addTerm.isPending}
                   className="btn-primary btn-sm shrink-0 flex items-center gap-1 disabled:opacity-40 shadow-xs"
                 >
                   <IconPlus size={13} />
@@ -597,8 +483,7 @@ export function GlossaryPage() {
                     <tr>
                       <th className="w-2/5">{t('glossary:term.col.source')}</th>
                       <th className="w-2/5">{t('glossary:term.col.target')}</th>
-                      <th className="col-hide-mobile">{t('glossary:term.col.case')}</th>
-                      <th className="col-hide-tablet">{t('glossary:term.col.updated')}</th>
+                      <th className="col-hide-mobile">{t('glossary:term.col.targetLang')}</th>
                       {canEdit && <th style={{ width: 44 }} />}
                     </tr>
                   </thead>
@@ -606,16 +491,9 @@ export function GlossaryPage() {
                     {filteredTerms.map((term) => (
                       <tr key={term.id} className="hover:bg-[var(--color-bg-surface-2)]/40 transition">
                         <td>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-xs text-[var(--color-text-primary)]">
-                              {term.sourceTerm}
-                            </span>
-                            {term.partOfSpeech && (
-                              <span className="rounded bg-[var(--color-bg-surface-3)] px-1.5 py-0.2 text-[10px] font-mono text-[var(--color-text-tertiary)]">
-                                {term.partOfSpeech}
-                              </span>
-                            )}
-                          </div>
+                          <span className="font-semibold text-xs text-[var(--color-text-primary)]">
+                            {term.sourceTerm}
+                          </span>
                         </td>
                         <td>
                           <div className="relative flex items-center">
@@ -623,7 +501,7 @@ export function GlossaryPage() {
                               <input
                                 className="field-input py-1 text-xs pr-7 transition w-full"
                                 defaultValue={term.targetTerm}
-                                key={`${term.id}-${term.updatedAt}`}
+                                key={`${term.id}-${term.targetTerm}`}
                                 onBlur={(e) => onInlineTarget(term, e.target.value)}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
@@ -642,29 +520,9 @@ export function GlossaryPage() {
                           </div>
                         </td>
                         <td className="col-hide-mobile">
-                          <div className="flex items-center gap-1.5">
-                            {term.caseSensitive ? (
-                              <span
-                                className="rounded bg-[var(--color-accent-soft)] px-1.5 py-0.5 text-[10px] font-mono font-bold text-[var(--color-accent)]"
-                                title={t('glossary:term.caseOn')}
-                              >
-                                Aa
-                              </span>
-                            ) : null}
-                            {term.note ? (
-                              <span
-                                className="text-[11px] text-[var(--color-text-tertiary)] italic truncate max-w-[180px]"
-                                title={term.note}
-                              >
-                                {term.note}
-                              </span>
-                            ) : (
-                              !term.caseSensitive && <span className="text-[var(--color-text-tertiary)] text-xs">—</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="text-[11px] text-[var(--color-text-tertiary)] col-hide-tablet">
-                          {term.updatedAt ? formatDateTime(term.updatedAt, language) : '—'}
+                          <span className="rounded bg-[var(--color-bg-surface-3)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--color-text-tertiary)]">
+                            {term.targetLang}
+                          </span>
                         </td>
                         {canEdit && (
                           <td className="text-right">
@@ -689,70 +547,17 @@ export function GlossaryPage() {
         </div>
       )}
 
-      {/* Create glossary */}
-      <Modal
-        open={createOpen}
-        onClose={() => !createGlossary.isPending && setCreateOpen(false)}
-        title={t('glossary:create.title')}
-        footer={
-          <>
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={createGlossary.isPending}
-              onClick={() => setCreateOpen(false)}
-            >
-              {t('common:actions.cancel')}
-            </button>
-            <button
-              type="submit"
-              form="create-glossary-form"
-              className="btn-primary"
-              disabled={createGlossary.isPending}
-            >
-              {createGlossary.isPending
-                ? t('glossary:create.submitting')
-                : t('glossary:create.submit')}
-            </button>
-          </>
-        }
-      >
-        <form id="create-glossary-form" onSubmit={onCreateGlossary} className="space-y-3">
-          {formError && createOpen && <div className="field-error">{formError}</div>}
-          <label className="field-label">
-            <span>{t('glossary:create.name')}</span>
-            <input
-              className="field-input"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              autoFocus
-              required
-              maxLength={200}
-            />
-          </label>
-          <label className="field-label">
-            <span>{t('glossary:create.description')}</span>
-            <textarea
-              className="field-input min-h-[80px]"
-              value={newDesc}
-              onChange={(e) => setNewDesc(e.target.value)}
-              maxLength={2000}
-            />
-          </label>
-        </form>
-      </Modal>
-
       {/* Add term */}
       <Modal
         open={addTermOpen}
-        onClose={() => !addTerms.isPending && setAddTermOpen(false)}
+        onClose={() => !addTerm.isPending && setAddTermOpen(false)}
         title={t('glossary:term.addTitle')}
         footer={
           <>
             <button
               type="button"
               className="btn-secondary"
-              disabled={addTerms.isPending}
+              disabled={addTerm.isPending}
               onClick={() => setAddTermOpen(false)}
             >
               {t('common:actions.cancel')}
@@ -761,9 +566,9 @@ export function GlossaryPage() {
               type="submit"
               form="add-term-form"
               className="btn-primary"
-              disabled={addTerms.isPending}
+              disabled={addTerm.isPending}
             >
-              {addTerms.isPending ? t('glossary:term.adding') : t('glossary:term.add')}
+              {addTerm.isPending ? t('glossary:term.adding') : t('glossary:term.add')}
             </button>
           </>
         }
@@ -794,29 +599,14 @@ export function GlossaryPage() {
             />
           </label>
           <label className="field-label">
-            <span>{t('glossary:term.col.pos')}</span>
+            <span>{t('glossary:term.col.targetLang')}</span>
             <input
               className="field-input"
-              value={termForm.partOfSpeech}
-              onChange={(e) => setTermForm((s) => ({ ...s, partOfSpeech: e.target.value }))}
-              placeholder="noun / verb / …"
+              value={termForm.targetLang}
+              onChange={(e) => setTermForm((s) => ({ ...s, targetLang: e.target.value }))}
+              placeholder="vi / en / all"
+              required
             />
-          </label>
-          <label className="field-label">
-            <span>{t('glossary:term.note')}</span>
-            <input
-              className="field-input"
-              value={termForm.note}
-              onChange={(e) => setTermForm((s) => ({ ...s, note: e.target.value }))}
-            />
-          </label>
-          <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
-            <input
-              type="checkbox"
-              checked={termForm.caseSensitive}
-              onChange={(e) => setTermForm((s) => ({ ...s, caseSensitive: e.target.checked }))}
-            />
-            {t('glossary:term.caseSensitive')}
           </label>
         </form>
       </Modal>
@@ -860,7 +650,7 @@ export function GlossaryPage() {
             <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] px-3 py-2 text-xs">
               <div>
                 {t('glossary:import.result', {
-                  added: importResult.added,
+                  added: importResult.imported,
                   skipped: importResult.skipped,
                 })}
               </div>

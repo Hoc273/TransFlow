@@ -37,7 +37,6 @@ const sampleProjects = [
     name: 'Website Localization',
     sourceLang: 'en',
     mediaCount: 3,
-    documentCount: 3,
     progressPercent: 65,
   },
   {
@@ -45,7 +44,6 @@ const sampleProjects = [
     name: 'Mobile App Marketing',
     sourceLang: 'ja',
     mediaCount: 1,
-    documentCount: 1,
     progressPercent: 20,
   },
 ]

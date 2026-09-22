@@ -71,4 +71,13 @@ public class TtsVoice {
             this.cachedAt = Instant.now();
         }
     }
+
+    public boolean isLanguageCompatible(String targetLang) {
+        if (targetLang == null) return false;
+        if (targetLang.equalsIgnoreCase(this.language)) return true;
+        if (this.languages != null) {
+            return this.languages.stream().anyMatch(targetLang::equalsIgnoreCase);
+        }
+        return false;
+    }
 }

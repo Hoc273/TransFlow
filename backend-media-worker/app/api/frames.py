@@ -18,6 +18,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.async_utils import blocking as _blocking
 from app.services.frame_sampler import extract_frames_as_data_urls, MAX_FRAMES_BATCH
 from app.services.ffmpeg import FFmpegError
 
@@ -87,7 +88,8 @@ async def extract_frames(req: ExtractFramesRequest):
         if ts < 0 or ts > 30 * 60 * 1000:
             raise HTTPException(status_code=400, detail=f"Invalid timestamp {ts}ms")
     try:
-        frames = extract_frames_as_data_urls(
+        frames = await _blocking(
+            extract_frames_as_data_urls,
             str(p),
             req.timestamps_ms,
             max_frames=MAX_FRAMES_BATCH,

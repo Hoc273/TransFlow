@@ -103,12 +103,13 @@
   2. DTO `UserResponse` không chứa trường `isPlatformAdmin`, khiến cho `GET /api/auth/me` không trả về cờ quyền hạn cho Frontend Guard (`user?.isPlatformAdmin`).
   3. Backend hoàn toàn chưa cài đặt `PlatformController` cung cấp các API `/api/platform/*`.
 - **Giải pháp xử lý (Đã hoàn thành 100%):**
-  1. Tạo Flyway migration `backend-main/src/main/resources/db/migration/V9__add_is_platform_admin.sql` thêm cột `is_platform_admin BOOLEAN NOT NULL DEFAULT FALSE`.
+  1. Thêm `is_platform_admin BOOLEAN NOT NULL DEFAULT FALSE` trực tiếp vào baseline Flyway
+     `V1__init_tables.sql`.
   2. Bổ sung trường `isPlatformAdmin` vào `User.java` và `@JsonProperty("isPlatformAdmin")` trong `UserResponse.java` (giữ constructor tương thích ngược).
   3. Xây dựng `PlatformController.java` (`com.app.modules.platform.controller`) cung cấp đủ 5 endpoint: `/overview`, `/status`, `/users`, `/workspaces`, `/audit-logs`.
   4. Bổ sung `countByUserId` và `countByWorkspaceId` trong `WorkspaceMemberRepository`.
   5. Viết bộ kiểm thử `PlatformControllerTest.java` (4/4 test cases pass 100%).
-  6. Khởi tạo tài khoản Super Admin mẫu sẵn sàng sử dụng.
+  6. Không seed tài khoản/mật khẩu Super Admin mặc định; quyền phải được cấp có kiểm soát theo môi trường.
 
 #### Lỗi 5 (Lỗi tiềm ẩn đã phát hiện & đồng bộ): Lệch giá trị Enum `CostMode` giữa Frontend và Backend
 - **Hiện tượng:** Frontend `frontend/src/api/workspaces.ts` từng khai báo type là `'WORKSPACE_OWNER' | 'INDIVIDUAL_USER'`.
@@ -122,11 +123,10 @@
 
 ---
 
-### 2.3 Tài khoản Super Admin mặc định
-Để kiểm thử phân hệ Super Admin Platform (`/platform`), sử dụng tài khoản sau:
-- **Email:** `admin@transflow.com`
-- **Mật khẩu:** `AdminPassword123!`
-- **Quyền hạn:** `isPlatformAdmin: true`, Workspace Role: `LEAD`, Số dư Credit: `999,999`.
+### 2.3 Cấp quyền Super Admin cho môi trường kiểm thử
+Hệ thống không cung cấp tài khoản hoặc mật khẩu Super Admin mặc định. Sau khi tạo một user kiểm thử bằng
+luồng auth bình thường, quản trị viên môi trường cấp `users.is_platform_admin = true` bằng quy trình vận
+hành an toàn. Cờ này độc lập với Workspace Role và số dư Credit.
 
 ---
 
@@ -179,7 +179,8 @@ GOOGLE_REDIRECT_URI=http://localhost:8080/api/auth/google/callback
 #### Vấn đề 2: Bổ sung đầy đủ các trường cấu hình Project (`defaultGlossaryId`, `tmEnabled`, `domain`, `tone`) vào Backend
 - **Hiện tượng:** Form `CreateProjectModal.tsx:59-67` trên Frontend gửi payload gồm `name`, `sourceLang`, `defaultGlossaryId`, `tmEnabled`, `domain`, `tone` nhằm cung cấp ngữ cảnh thiết yếu để AI dịch thuật, tạo phụ đề và lồng tiếng chuẩn xác. Trước đó Backend `Project.java` và DTO `CreateProjectRequest.java`, `ProjectResponse.java` chỉ khai báo 2 trường `name` và `sourceLang`.
 - **Giải pháp xử lý:**
-  1. Tạo Flyway migration `V11__add_project_settings_fields.sql` đảm bảo 4 cột `default_glossary_id`, `tm_enabled`, `domain`, `tone` luôn hiện diện trên bảng `projects`.
+  1. Đưa 4 cột `default_glossary_id`, `tm_enabled`, `domain`, `tone` trực tiếp vào bảng `projects` trong
+     baseline `V1__init_tables.sql`.
   2. Cập nhật Entity `Project.java` ánh xạ đầy đủ 4 trường với JPA.
   3. Bổ sung các trường vào `CreateProjectRequest.java` và `ProjectResponse.java` (kèm constructor tương thích ngược tránh ảnh hưởng các test hiện hữu).
   4. Cập nhật `ProjectServiceImpl.java` lưu trữ và trả về trọn vẹn các thuộc tính khi tạo mới Project.
@@ -279,18 +280,68 @@ GOOGLE_REDIRECT_URI=http://localhost:8080/api/auth/google/callback
 
 ---
 
-## 5. DANH MỤC CHI TIẾT API ĐÃ CÓ & CÒN THIẾU (PHASE 4 ➔ PHASE 6)
+## 5. CHI TIẾT PHASE 4: SUBTITLES, REVIEW WORKBENCH & QA GATE
+
+### 5.1 Trạng thái hoàn thành & Bảng đối soát API (100% Hoàn thành)
+
+| STT | Luồng nghiệp vụ | Endpoint & Method | Phía Backend | Phía Frontend | Trạng thái |
+| :-: | :--- | :--- | :--- | :--- | :---: |
+| 1 | **Lấy danh sách phụ đề (Cues)** | `GET /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles` | `MediaJobController.java` (`listSubtitles`) | `media.ts`: `listMediaJobSubtitlesApi`<br/>Hook: `useMediaSubtitles` | 🟢 Hoàn thành |
+| 2 | **Chỉnh sửa 1 dòng phụ đề lẻ** | `PATCH /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles/{segmentId}` | `MediaJobController.java` (`updateSubtitle`) | `media.ts`: `editMediaSegmentApi`<br/>Hook: `useEditMediaSegment` | 🟢 Hoàn thành |
+| 3 | **Lưu đồng loạt danh sách phụ đề (Save all)** | `PUT /api/workspaces/{wsId}/media/jobs/{jobId}/segments/batch` | `MediaJobController.java` (`batchUpdateSegments`) | `transformation.ts`: `batchEditTransformationSegmentsApi`<br/>Hook: `useBatchEditMediaSegments` | 🟢 Hoàn thành |
+| 4 | **Liệt kê cảnh báo chất lượng dịch (QA Issues)** | `GET /api/workspaces/{wsId}/media/jobs/{jobId}/qa-issues` | `QaController.java` (`listMediaJobQaIssues`) | `segments.ts`: `listMediaJobQaIssuesApi`<br/>Hook: `useMediaJobQaIssues`<br/>Normalize: `normalizeQaIssue` | 🟢 Hoàn thành |
+| 5 | **Giải quyết cảnh báo QA (Resolve Issue)** | `POST /api/workspaces/{wsId}/qa-issues/{issueId}/resolve` | `QaController.java` (`resolveQaIssue`) | `segments.ts`: `resolveQaIssueApi`<br/>Hook: `useResolveQaIssue` (tự động invalidate cache) | 🟢 Hoàn thành |
+| 6 | **Ghi đè cảnh báo QA (Override Issue - Admin/PM)** | `POST /api/workspaces/{wsId}/qa-issues/{issueId}/override` | `QaController.java` (`overrideQaIssue`) | `segments.ts`: `overrideQaIssueApi`<br/>Hook: `useOverrideQaIssue` (tự động invalidate cache) | 🟢 Hoàn thành |
+| 7 | **Xác nhận qua Checkpoint kiểm duyệt** | `POST /api/workspaces/{wsId}/media/jobs/{jobId}/checkpoints/{checkpoint}/confirm` | `MediaJobController.java` (`confirmCheckpoint`) | `transformation.ts`: `continueWorkflowApi`<br/>Hook: `useWorkflowContinue` | 🟢 Hoàn thành |
+
+---
+
+### 5.2 Các vấn đề & Sai lệch hợp đồng đã phát hiện & Giải pháp xử lý
+
+#### Vấn đề 1: Frontend phụ thuộc vào `translationJobId` nguyên mẫu cũ thay vì gọi API Subtitles thực tế
+- **Hiện tượng:** Bản prototype ban đầu giả định Media Job liên kết sang một Text Translation Job độc lập thông qua `job.translationJobId` (`useMediaLinkedJob`). Trong kiến trúc Spring Boot thực tế, `MediaJob` trực tiếp sở hữu các `subtitle_segments` trong DB và phục vụ qua endpoint riêng biệt `GET .../media/jobs/{jobId}/subtitles`.
+- **Giải pháp xử lý:**
+  1. Thêm `listMediaJobSubtitlesApi(workspaceId, jobId)` vào [`frontend/src/api/media.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/media.ts).
+  2. Bổ sung query key `mediaSubtitles` trong [`frontend/src/lib/queryClient.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/lib/queryClient.ts).
+  3. Tạo hook `useMediaSubtitles(workspaceId, jobId)` trong [`frontend/src/hooks/useMedia.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/hooks/useMedia.ts).
+  4. Đấu nối hook mới vào `MediaReviewSection`, `MediaSubtitleEditor`, `MediaQaPanel`. Đồng thời duy trì fallback sang `linkedJob` để bảo đảm 100% tương thích ngược với các test fixture hiện hữu.
+
+#### Vấn đề 2: Lệch cấu trúc dữ liệu cảnh báo chất lượng `QaIssue`
+- **Hiện tượng:** Backend `QaIssueResponse` trả về `issueType`, `resolvedAt` (timestamp kiểu Long), `detail` (chuỗi JSON), `ruleCode`. Trong khi Frontend type `QaIssue` yêu cầu `type`, `resolved` (boolean), `message`, `suggestion`, `blockingActions`.
+- **Giải pháp xử lý (Đồng bộ hai đầu):**
+  1. **Backend ([`QaIssueResponse.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/qa/dto/QaIssueResponse.java)):** Bổ sung getter `@JsonProperty("type")` trả về `issueType` và `@JsonProperty("resolved")` trả về `resolvedAt != null`.
+  2. **Frontend ([`qa.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/lib/qa.ts)):** Xây dựng hàm chuẩn hóa `normalizeQaIssue(raw)` gán mặc định an toàn cho `type`, `resolved`, `message`, `blockingActions`, `subtitleSegmentId`, trích xuất `suggestion` từ `detail`.
+  3. **Frontend API & Hook:** Cập nhật `listMediaJobQaIssuesApi` tự động chạy qua `normalizeQaIssue`, đồng thời tạo hook `useMediaJobQaIssues` trong [`useMedia.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/hooks/useMedia.ts).
+
+#### Vấn đề 3: Lệch giá trị Enum Checkpoint (`CUT` vs `CUT_CONFIRMED`)
+- **Hiện tượng:** Backend `Checkpoint.java` quy định các giá trị enum là `CUT_CONFIRMED`, `REVIEW_CONFIRMED`, `PUBLISH_CONFIRMED`. Tuy nhiên Frontend gửi short name `'CUT'`, `'REVIEW'`, `'EXPORT'`/`'PUBLISH'`, dẫn tới lỗi `400 Bad Request` khi gọi confirm checkpoint.
+- **Giải pháp xử lý (Tương thích mềm mại 2 chiều):**
+  1. **Frontend ([`transformation.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/transformation.ts)):** Thêm hàm `normalizeCheckpoint` tự động chuyển `'CUT' ➔ 'CUT_CONFIRMED'`, `'REVIEW' ➔ 'REVIEW_CONFIRMED'`, `'EXPORT'/'PUBLISH' ➔ 'PUBLISH_CONFIRMED'`.
+  2. **Backend Converter ([`StringToCheckpointConverter.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/media_job/controller/StringToCheckpointConverter.java)):** Đăng ký Spring Converter bean tự động nhận diện cả tên ngắn (`CUT`, `REVIEW`, `EXPORT`, `PUBLISH`) lẫn tên đầy đủ (`CUT_CONFIRMED`, ...).
+  3. **Backend Enum ([`Checkpoint.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/media_job/entity/Checkpoint.java)):** Thêm `@JsonCreator fromString(String)` hỗ trợ cả 2 dạng định danh.
+
+#### Vấn đề 4: Suy diễn Checkpoint (`checkpointOf`) khi Backend không trả mảng `workflowCheckpoints`
+- **Hiện tượng:** Backend lưu trữ trạng thái xác nhận checkpoint trong stage `inputRef` (`CONFIRMED_AT=...`) và không chiếu mảng `workflowCheckpoints` trong `MediaJobResponse`. Khi đó `checkpointOf` trên Frontend trả về `null`, khiến nút xác nhận chuyển bước không kích hoạt.
+- **Giải pháp xử lý:** Cập nhật `checkpointOf` trong [`frontend/src/lib/media.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/lib/media.ts): nếu không có mảng `workflowCheckpoints`, hàm tự động suy luận trạng thái từng checkpoint (`CUT`, `REVIEW`, `EXPORT`) dựa trên trạng thái của các stage (`SUMMARIZE`, `TRANSLATE`, `TTS`, `RENDER`) và chế độ `workflowMode`.
+
+#### Vấn đề 5: Tự động Invalidate Cache liên quan khi chỉnh sửa phụ đề và QA
+- **Giải pháp xử lý:**
+  - `useEditMediaSegment` và `useBatchEditMediaSegments` tự động invalidate đồng thời: `mediaSubtitles`, `mediaQaIssues`, `mediaJob`, và `job` (nếu có translationJobId).
+  - `useResolveQaIssue` và `useOverrideQaIssue` hỗ trợ tham số `mediaJobId` và tự động làm mới `mediaQaIssues` và `mediaSubtitles`.
+
+---
+
+### 5.3 Kết quả kiểm thử & Build thực tế
+- **Backend Tests:**
+  - `MediaJobControllerTest`, `QaControllerTest`, `QaServiceImplTest`, `MediaJobServiceImplTest`: **86/86 tests PASS 100%**.
+- **Frontend Tests:** `npm test` ➔ **690/690 tests PASS 100%** (69 test files).
+- **Frontend Build:** `npm run build` (`tsc -b && vite build`) ➔ **THÀNH CÔNG 100%** với 0 lỗi TypeScript và bundle tối ưu.
+
+---
+
+## 6. DANH MỤC CHI TIẾT API ĐÃ CÓ & CÒN THIẾU (PHASE 5 ➔ PHASE 6)
 
 Dưới đây là danh sách phân loại chi tiết theo trạng thái thực tế trong mã nguồn:
-
-### Phase 4: Subtitles, Review Workbench & QA Gate
-* 🟢 **ĐÃ CÓ ĐẦY ĐỦ TRONG BACKEND:**
-  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles`: Lấy danh sách timeline phân đoạn phụ đề.
-  - `PATCH /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles/{segmentId}`: Chỉnh sửa 1 dòng phụ đề lẻ.
-  - `PUT /api/workspaces/{wsId}/media/jobs/{jobId}/segments/batch`: Lưu đồng loạt toàn bộ danh sách phụ đề đã chỉnh sửa trên Review Workbench (`MediaJobController:157`).
-  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/qa-issues`: Liệt kê các cảnh báo chất lượng dịch (`QaController`).
-  - `POST /api/workspaces/{wsId}/qa-issues/{issueId}/override`: Vượt qua cảnh báo QA có ghi chú lý do.
-  - `POST /api/workspaces/{wsId}/media/jobs/{jobId}/checkpoints/{checkpoint}/confirm`: Xác nhận qua checkpoint kiểm duyệt (`CUT_CONFIRMED`, `REVIEW_CONFIRMED`, `PUBLISH_CONFIRMED`).
 
 ### Phase 5: Render Studio, Reframe & Cover Layers
 * 🟢 **ĐÃ CÓ ĐẦY ĐỦ TRONG BACKEND:**
@@ -305,8 +356,6 @@ Dưới đây là danh sách phân loại chi tiết theo trạng thái thực t
   - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/export`: Yêu cầu xuất bản video hoặc tải phụ đề .SRT, .VTT, .MP4 (`MediaJobController:194`).
   - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/output-package`: Tải gói phân phối thành phẩm (`MediaPackageController:26`).
   - `GET/PUT /api/workspaces/{wsId}/media/jobs/{jobId}/publish-package`: Quản lý tiêu đề, mô tả và metadata phát hành mạng xã hội (`MediaPackageController:33-41`).
-  - `POST /api/workspaces/{wsId}/projects/{pId}/media/jobs/download`: Tải gói nén zip nhiều video thành phẩm của dự án (`MediaJobController:76`).
-
 ---
 
 ## 6. CẨM NANG XỬ LÝ NHANH CÁC LỖI PHỔ BIẾN (TROUBLESHOOTING GUIDE)
@@ -317,7 +366,7 @@ flowchart TD
 
     CheckType -->|"Port 8080 in use / Exit code 1"| PortErr["Tắt tiến trình chiếm cổng 8080:<br/>Stop-Process -Id (Get-NetTCPConnection -LocalPort 8080).OwningProcess -Force"]
     CheckType -->|"Không nhận được OTP email"| MailErr["Xem mã OTP in trực tiếp tại cửa sổ Terminal Backend<br/>Dòng: [EMAIL LOCAL FALLBACK] OTP for ..."]
-    CheckType -->|"Vào /platform bị 403 Forbidden"| AdminErr["Tài khoản chưa có quyền Super Admin.<br/>Đăng nhập tài khoản mẫu admin@transflow.com / AdminPassword123!"]
+    CheckType -->|"Vào /platform bị 403 Forbidden"| AdminErr["Tài khoản chưa có quyền Super Admin.<br/>Cấp is_platform_admin=true theo quy trình vận hành của môi trường."]
     CheckType -->|"Lỗi 401 Unauthorized"| AuthErr["Token hết hạn hoặc chưa đăng nhập.<br/>Đăng nhập lại tại /login để lấy cặp JWT mới."]
     CheckType -->|"Báo Google chưa cấu hình"| GoogleErr["Thêm GOOGLE_CLIENT_ID & GOOGLE_CLIENT_SECRET vào file .env"]
     CheckType -->|"Docker Postgres / Redis không kết nối"| DockerErr["Chạy lệnh: docker compose up -d<br/>Kiểm tra lại trạng thái container: docker ps"]

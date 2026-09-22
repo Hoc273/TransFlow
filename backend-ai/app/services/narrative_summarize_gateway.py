@@ -23,10 +23,13 @@ from app.schemas.contract import (
 from app.services.allocator import (
     AllocationError,
     allocate_blocks,
+    compute_effective_coverage_ms,
     duration_window,
+    is_bridged_gap,
+    chronology_coverage_metrics,
     source_coverage_target_representable,
 )
-from app.services.llm_gateway import chat
+from app.services.llm_gateway import chat, text_reasoning_extra
 from app.services.sentence_splitter import split_sentences
 from app.services.narrative_planning_models import (
     AllocatedSection,
@@ -48,7 +51,6 @@ from app.services.protocol.types import ChatResult
 from app.services.summary.beat_grounding import (
     NARRATION_TARGET_CPS,
     VISUAL_GROUNDING_DEGRADED_WARNING,
-    detect_future_event_leakage,
     find_sections_without_visual_coverage,
     narration_target_chars,
     rewrite_section_refs_from_candidates,
@@ -72,6 +74,29 @@ _BLOCK_MIN_MS = 30_000
 _BLOCK_MAX_MS = 75_000
 _BLOCK_PREVIEW_CHARS = 240
 _JSON_MODE_PROTOCOLS = {"openai_compatible", "dashscope_native"}
+# Semantic planning is intentionally much smaller than the final presentation
+# plan. Boundary-driven splitting may produce any number of presentation beats.
+_SEMANTIC_ARC_BUDGET = 12
+_SINGLE_PLAN_TARGET_BEAT_MS = 6000
+_WRITER_BATCH_SIZE = 12
+_MAX_QUALITY_REPAIR_ROUNDS = 2
+_SHORTER_THAN_REQUESTED_WARNING = "SHORTER_THAN_REQUESTED"
+
+
+def _resolve_beat_budget(target_duration_ms: int | None, max_sections: int | None) -> int:
+    """Legacy pacing helper; no longer used as a product cap by the gateway."""
+    if max_sections is not None and int(max_sections) > 0:
+        return max(1, int(max_sections))
+    if target_duration_ms is None or int(target_duration_ms) <= 0:
+        return 1
+    return max(1, round(int(target_duration_ms) / _SINGLE_PLAN_TARGET_BEAT_MS))
+
+
+def _resolve_semantic_arc_budget(max_sections: int | None) -> int:
+    """Resolve the internal story-arc budget, separate from presentation beats."""
+    if max_sections is not None and int(max_sections) > 0:
+        return max(1, int(max_sections))
+    return _SEMANTIC_ARC_BUDGET
 
 _NON_RETRYABLE_OUTPUT_CODES = {
     ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
@@ -93,6 +118,34 @@ def _safe_preview(text: str | None, limit: int) -> str:
     if len(cleaned) <= limit:
         return cleaned
     return cleaned[:limit] + f"...<truncated {len(cleaned) - limit} chars>"
+
+
+def _safe_prompt_preview(text: str | None, limit: int) -> str:
+    """Preview prompt structure without logging generated narration contents."""
+    if text is None:
+        return ""
+    redacted = text
+    for tag in (
+        "current_script",
+        "current_target_text",
+        "duplicate_sentence",
+        "verbatim_span",
+    ):
+        opening = f"<{tag}>"
+        closing = f"</{tag}>"
+        cursor = 0
+        while True:
+            start = redacted.find(opening, cursor)
+            if start < 0:
+                break
+            content_start = start + len(opening)
+            end = redacted.find(closing, content_start)
+            if end < 0:
+                redacted = redacted[:content_start] + "<redacted>"
+                break
+            redacted = redacted[:content_start] + "<redacted>" + redacted[end:]
+            cursor = content_start + len("<redacted>") + len(closing)
+    return _safe_preview(redacted, limit)
 
 
 def _failed(
@@ -215,6 +268,140 @@ def _build_transcript_blocks(transcript: list[dict]) -> list[TranscriptBlock]:
     return blocks
 
 
+def _request_source_duration_ms(req: NarrativeSummarizeRequest) -> int:
+    request_duration = int(getattr(req, "duration_ms", 0) or 0)
+    if request_duration > 0:
+        return request_duration
+    return max(
+        (int(segment.end_ms) for segment in (getattr(req, "transcript", None) or [])),
+        default=0,
+    )
+
+
+def _source_shorter_than_target(req: NarrativeSummarizeRequest) -> bool:
+    target_duration_ms = getattr(req, "target_duration_ms", None)
+    return (
+        target_duration_ms is not None
+        and int(target_duration_ms) > 0
+        and 0 < _request_source_duration_ms(req) < int(target_duration_ms)
+    )
+
+
+def _effective_narration_target_ms(
+    req: NarrativeSummarizeRequest,
+    selected_coverage_ms: int,
+) -> int | None:
+    """Use grounded fallback coverage for writer pacing on short sources."""
+    if _source_shorter_than_target(req) and int(selected_coverage_ms) > 0:
+        return int(selected_coverage_ms)
+    return getattr(req, "target_duration_ms", None)
+
+
+def _build_finer_allocation_units(
+    blocks: list[TranscriptBlock],
+) -> tuple[list[TranscriptBlock], dict[str, str]]:
+    """Split canonical context blocks into timed STT allocation units when useful.
+
+    Semantic planning continues to consume ``blocks``. The returned units are
+    only for deterministic duration allocation and inherit their canonical
+    parent's ranking after the semantic plan is parsed.
+    """
+    raw_units: list[tuple[TranscriptBlock, str]] = []
+    split_any = False
+    for block in blocks:
+        segments = list(block.segments or [])
+        if len(segments) <= 1:
+            raw_units.append((block, block.block_id))
+            continue
+        previous_end_ms = -1
+        overlapping_segments = False
+        for segment in segments:
+            start_ms = int(segment.start_ms)
+            end_ms = int(segment.end_ms)
+            if end_ms <= start_ms or start_ms < previous_end_ms:
+                overlapping_segments = True
+                break
+            previous_end_ms = end_ms
+        if overlapping_segments:
+            raw_units.append((block, block.block_id))
+            continue
+        split_any = True
+        for segment_index, segment in enumerate(segments, start=1):
+            start_ms = int(segment.start_ms)
+            end_ms = int(segment.end_ms)
+            if end_ms <= start_ms:
+                continue
+            text = str(segment.text or "").strip()
+            preview = text
+            if len(preview) > _BLOCK_PREVIEW_CHARS:
+                preview = preview[:_BLOCK_PREVIEW_CHARS].rstrip() + "..."
+            unit = TranscriptBlock(
+                block_id=f"{block.block_id}.T{segment_index:03d}",
+                start_ms=start_ms,
+                end_ms=end_ms,
+                duration_ms=end_ms - start_ms,
+                text_preview=preview,
+                ordered_index=0,
+                full_text=text,
+                segments=[segment],
+            )
+            raw_units.append((unit, block.block_id))
+        if not any(parent_id == block.block_id for _, parent_id in raw_units[-len(segments):]):
+            raw_units.append((block, block.block_id))
+
+    if not split_any or len(raw_units) <= len(blocks):
+        return blocks, {block.block_id: block.block_id for block in blocks}
+
+    units: list[TranscriptBlock] = []
+    parent_by_unit: dict[str, str] = {}
+    for ordered_index, (unit, parent_id) in enumerate(raw_units, start=1):
+        normalized = unit.model_copy(update={"ordered_index": ordered_index})
+        units.append(normalized)
+        parent_by_unit[normalized.block_id] = parent_id
+    return units, parent_by_unit
+
+
+def _expand_semantic_plan_to_allocation_units(
+    semantic_plan: SemanticPlan,
+    allocation_units: list[TranscriptBlock],
+    parent_by_unit: dict[str, str],
+) -> SemanticPlan:
+    ranking_by_parent = {
+        ranking.block_id: ranking for ranking in semantic_plan.block_rankings
+    }
+    expanded_rankings = []
+    for unit in allocation_units:
+        parent_id = parent_by_unit.get(unit.block_id)
+        ranking = ranking_by_parent.get(parent_id or "")
+        if ranking is None:
+            raise AllocationError(
+                f"Fine allocation unit {unit.block_id} has no canonical semantic ranking"
+            )
+        expanded_rankings.append(
+            BlockRanking(
+                block_id=unit.block_id,
+                importance=ranking.importance,
+                section_id=ranking.section_id,
+                reason=ranking.reason,
+            )
+        )
+
+    expanded_sections = []
+    for section in semantic_plan.sections:
+        preferred = [
+            unit.block_id
+            for unit in allocation_units
+            if parent_by_unit.get(unit.block_id) in set(section.preferred_blocks)
+        ]
+        expanded_sections.append(
+            section.model_copy(update={"preferred_blocks": preferred})
+        )
+    return semantic_plan.model_copy(update={
+        "sections": expanded_sections,
+        "block_rankings": expanded_rankings,
+    })
+
+
 def _json_response_format(protocol: str | None) -> dict[str, str] | None:
     return {"type": "json_object"} if protocol in _JSON_MODE_PROTOCOLS else None
 
@@ -243,12 +430,11 @@ async def _call_json_stage(
         req.provider.protocol,
         _safe_preview(req.provider.model, _MODEL_NAME_PREVIEW_CHARS),
         settings.narrative_summarize_max_tokens,
-        _safe_preview(user, _PROMPT_PREVIEW_CHARS),
+        _safe_prompt_preview(user, _PROMPT_PREVIEW_CHARS),
     )
-    extra_body = (
-        {"thinking": {"type": "disabled"}}
-        if settings.disable_thinking_for_summarize
-        else None
+    extra_body = text_reasoning_extra(
+        req.provider,
+        disabled=settings.disable_thinking_for_summarize,
     )
     response_format = _json_response_format(req.provider.protocol)
     try:
@@ -341,13 +527,128 @@ def _pacing_estimate_residual_warning(diagnostics: list[dict]) -> str:
     return f"{_PACING_ESTIMATE_RESIDUAL_WARNING};sections={section_ids}"
 
 
+def _effective_narration_cps(req: NarrativeSummarizeRequest) -> int:
+    """Cold-start pacing rate for the writer. Request hint wins; default is global 14."""
+    try:
+        hint = getattr(req, "narration_cps_estimate", None)
+        if hint is not None and int(hint) > 0:
+            return int(hint)
+    except (TypeError, ValueError):
+        pass
+    return NARRATION_TARGET_CPS
+
+
+def _narration_pacing_targets(
+    allocated_sections: list[dict],
+    presentation_refs_by_section: dict[str, list[tuple[int, int]]] | None,
+    *,
+    target_duration_ms: int | None,
+    cps: int = NARRATION_TARGET_CPS,
+) -> list[dict]:
+    """Build writer pacing targets without changing deterministic source coverage."""
+    try:
+        effective_cps = max(1, int(cps or NARRATION_TARGET_CPS))
+    except (TypeError, ValueError):
+        effective_cps = NARRATION_TARGET_CPS
+
+    refs_by_section = presentation_refs_by_section or {}
+    section_spans: list[tuple[str, int]] = []
+    for section in allocated_sections:
+        section_id = str(section.get("section_id") or "")
+        presentation_refs = refs_by_section.get(section_id)
+        if presentation_refs is None:
+            presentation_refs = [
+                (int(block.get("start_ms", 0)), int(block.get("end_ms", 0)))
+                for block in (section.get("blocks") or [])
+            ]
+        try:
+            span_ms = max(
+                0,
+                sum(int(end_ms) - int(start_ms) for start_ms, end_ms in presentation_refs),
+            )
+        except (TypeError, ValueError):
+            span_ms = 0
+        section_spans.append((section_id, span_ms))
+
+    total_presentation_span_ms = sum(span_ms for _, span_ms in section_spans)
+    try:
+        requested_narration_ms = (
+            int(target_duration_ms) if target_duration_ms is not None else None
+        )
+    except (TypeError, ValueError):
+        requested_narration_ms = None
+
+    eligible_indexes = [
+        index for index, (_, span_ms) in enumerate(section_spans) if span_ms > 0
+    ]
+    normalized_to_requested = (
+        requested_narration_ms is not None
+        and requested_narration_ms > 0
+        and total_presentation_span_ms > 0
+        and bool(eligible_indexes)
+    )
+    narration_targets_ms = [span_ms for _, span_ms in section_spans]
+    if normalized_to_requested:
+        remaining_ms = requested_narration_ms
+        aggregate_target_chars = int(
+            round(requested_narration_ms * effective_cps / 1000)
+        )
+        remaining_chars = aggregate_target_chars
+        target_chars_by_index = [0] * len(section_spans)
+        last_eligible_index = eligible_indexes[-1]
+        for index in eligible_indexes:
+            if index == last_eligible_index:
+                narration_targets_ms[index] = remaining_ms
+                target_chars_by_index[index] = remaining_chars
+            else:
+                allocated_ms = (
+                    requested_narration_ms * section_spans[index][1]
+                ) // total_presentation_span_ms
+                allocated_chars = (
+                    aggregate_target_chars * section_spans[index][1]
+                ) // total_presentation_span_ms
+                narration_targets_ms[index] = allocated_ms
+                target_chars_by_index[index] = allocated_chars
+                remaining_ms -= allocated_ms
+                remaining_chars -= allocated_chars
+    else:
+        target_chars_by_index = [
+            narration_target_chars(narration_target_ms, cps=effective_cps)
+            for narration_target_ms in narration_targets_ms
+        ]
+
+    return [
+        {
+            "section_id": section_id,
+            "presentation_span_ms": span_ms,
+            "narration_target_ms": narration_target_ms,
+            "target_chars": target_chars,
+            "effective_cps": effective_cps,
+            "requested_narration_target_ms": requested_narration_ms,
+            "total_presentation_span_ms": total_presentation_span_ms,
+            "normalized_to_requested": normalized_to_requested,
+        }
+        for (section_id, span_ms), narration_target_ms, target_chars in zip(
+            section_spans, narration_targets_ms, target_chars_by_index
+        )
+    ]
+
+
 def _narration_pacing_diagnostics(
     draft: NarrativeDraft,
     allocated_sections: list[dict],
     *,
     correlation_id: str | None = None,
+    cps: int = NARRATION_TARGET_CPS,
+    stage: str = "NARRATIVE_WRITING",
+    repair_round: int = 0,
+    correction_applied: bool = False,
 ) -> list[dict]:
     """Run source-language pacing preflight; measured TTS remains authoritative."""
+    try:
+        effective_cps = max(1, int(cps or NARRATION_TARGET_CPS))
+    except (TypeError, ValueError):
+        effective_cps = NARRATION_TARGET_CPS
     written_by_id = {section.section_id: section for section in draft.sections}
     diagnostics: list[dict] = []
     for allocated in allocated_sections:
@@ -371,11 +672,14 @@ def _narration_pacing_diagnostics(
             "ratio": ratio,
             "deficit_chars": deficit_chars,
             "overage_chars": overage_chars,
+            "acceptable_lower_chars": round(target_chars * _NARRATION_MIN_RATIO),
+            "acceptable_upper_chars": round(target_chars * _NARRATION_MAX_RATIO),
+            "current_script": (written.script_source_lang if written else "").strip(),
             "pacing_status": pacing_status,
             "estimate_only": True,
             "duration_authority": "TTS",
             "predicted_duration_ms": round(
-                actual_chars * 1000 / max(1, NARRATION_TARGET_CPS)
+                actual_chars * 1000 / effective_cps
             ),
         })
 
@@ -386,10 +690,11 @@ def _narration_pacing_diagnostics(
     )
     for item in diagnostics:
         _int_log.info(
-            "NARRATIVE_SUMMARIZE pacing preflight correlation_id=%s section_id=%s "
+            "NARRATIVE_SUMMARIZE pacing preflight stage=%s correlation_id=%s section_id=%s "
             "target_chars=%d actual_chars=%d ratio=%.3f pacing_status=%s "
             "deficit_chars=%d overage_chars=%d estimate_only=true duration_authority=TTS "
-            "predicted_narration_duration_ms=%d",
+            "predicted_narration_duration_ms=%d repair_round=%d correction_applied=%s",
+            stage,
             correlation_id,
             item["section_id"],
             item["target_chars"],
@@ -399,19 +704,24 @@ def _narration_pacing_diagnostics(
             item["deficit_chars"],
             item["overage_chars"],
             item["predicted_duration_ms"],
+            repair_round,
+            correction_applied,
         )
     aggregate_duration_ms = round(
-        total_actual_chars * 1000 / max(1, NARRATION_TARGET_CPS)
+        total_actual_chars * 1000 / effective_cps
     )
     _int_log.info(
-        "NARRATIVE_SUMMARIZE pacing aggregate preflight correlation_id=%s target_chars=%d "
+        "NARRATIVE_SUMMARIZE pacing aggregate preflight stage=%s correlation_id=%s target_chars=%d "
         "actual_chars=%d ratio=%.3f estimate_only=true duration_authority=TTS "
-        "predicted_narration_duration_ms=%d",
+        "predicted_narration_duration_ms=%d repair_round=%d correction_applied=%s",
+        stage,
         correlation_id,
         total_target_chars,
         total_actual_chars,
         aggregate_ratio,
         aggregate_duration_ms,
+        repair_round,
+        correction_applied,
     )
     return diagnostics
 
@@ -433,21 +743,160 @@ def _pacing_repair_feedback(diagnostics: list[dict]) -> list[dict]:
     ]
 
 
-def _validate_recap_sentence_structure(
-    draft: NarrativeDraft,
-    allocation,
-    language: str | None = None,
-) -> None:
-    """Enforce the sentence-level generative recap contract (fail-closed).
+def _pacing_aggregate_ratio(diagnostics: list[dict]) -> float:
+    total_target_chars = sum(int(item.get("target_chars") or 0) for item in diagnostics)
+    total_actual_chars = sum(int(item.get("actual_chars") or 0) for item in diagnostics)
+    return (
+        total_actual_chars / total_target_chars
+        if total_target_chars > 0
+        else 1.0
+    )
 
-    Raises AllocationError (mapped by the caller to
-    PROVIDER_OUTPUT_BUSINESS_RULE_VIOLATION, non-retryable) when the Writer
-    produces an obviously invalid recap: empty output, a single huge
-    paragraph for a whole section, duplicated narration, long verbatim
-    dialogue copies (>15 words from source), or long Han/kana runs that must
-    be summarized/translated instead of copied. The worker never dedups, so
-    rejection happens here.
-    """
+
+def _pacing_aggregate_needs_correction(diagnostics: list[dict]) -> bool:
+    ratio = _pacing_aggregate_ratio(diagnostics)
+    return not _NARRATION_MIN_RATIO <= ratio <= _NARRATION_MAX_RATIO
+
+
+def _narrative_duplicate_diagnostics(
+    draft: NarrativeDraft,
+    allocated_sections: list[dict],
+) -> list[dict]:
+    """Identify only duplicate sections/sentences that the final validator rejects."""
+    import re as _re
+
+    target_chars_by_id = {
+        str(item.get("section_id") or ""): int(item.get("target_chars") or 0)
+        for item in allocated_sections
+    }
+    seen_scripts: dict[str, str] = {}
+    sentence_counts: dict[str, int] = {}
+    diagnostics: list[dict] = []
+
+    for section in draft.sections:
+        section_id = section.section_id
+        current_script = (section.script_source_lang or "").strip()
+        normalized_script = _re.sub(r"\s+", " ", current_script.lower()).strip()
+        if normalized_script and normalized_script in seen_scripts:
+            diagnostics.append({
+                "section_id": section_id,
+                "duplicate_kind": "WHOLE_SECTION",
+                "duplicate_sentence": current_script,
+                "duplicate_with_section_id": seen_scripts[normalized_script],
+                "current_script": current_script,
+                "target_chars": target_chars_by_id.get(section_id, 0),
+            })
+        elif normalized_script:
+            seen_scripts[normalized_script] = section_id
+
+        for sentence in split_sentences(current_script):
+            key = _re.sub(r"\s+", " ", sentence.lower()).strip()
+            if len(key) < _DUP_MIN_SENTENCE_CHARS:
+                continue
+            occurrence = sentence_counts.get(key, 0) + 1
+            sentence_counts[key] = occurrence
+            if occurrence > _DUP_MAX_ALLOWED:
+                diagnostics.append({
+                    "section_id": section_id,
+                    "duplicate_kind": "EXACT_SENTENCE",
+                    "duplicate_sentence": sentence.strip(),
+                    "occurrence": occurrence,
+                    "current_script": current_script,
+                    "target_chars": target_chars_by_id.get(section_id, 0),
+                })
+    return diagnostics
+
+
+def _normalized_source_words(text: str | None) -> list[str]:
+    import re as _re
+    import unicodedata
+
+    normalized = unicodedata.normalize("NFKC", str(text or "")).casefold()
+    return _re.findall(r"[\w]+", normalized, flags=_re.UNICODE)
+
+
+def _longest_source_copy(
+    script_words: list[str],
+    source_words: list[str],
+    minimum_words: int,
+) -> tuple[int, int, int] | None:
+    """Return (script_start, script_end, run_length) for the longest exact run."""
+    if len(script_words) < minimum_words or len(source_words) < minimum_words:
+        return None
+    source_ngrams: dict[int, set[tuple[str, ...]]] = {}
+    for length in range(minimum_words, len(source_words) + 1):
+        source_ngrams[length] = {
+            tuple(source_words[index:index + length])
+            for index in range(len(source_words) - length + 1)
+        }
+    for length in range(min(len(script_words), len(source_words)), minimum_words - 1, -1):
+        ngrams = source_ngrams.get(length, set())
+        for start in range(len(script_words) - length + 1):
+            if tuple(script_words[start:start + length]) in ngrams:
+                return start, start + length, length
+    return None
+
+
+def _narrative_verbatim_diagnostics(
+    draft: NarrativeDraft,
+    allocated_sections: list[dict],
+) -> list[dict]:
+    """Find source-copy runs using only the evidence locked to each beat."""
+    target_chars_by_id = {
+        str(item.get("section_id") or ""): int(item.get("target_chars") or 0)
+        for item in allocated_sections
+    }
+    evidence_by_id = {
+        str(item.get("section_id") or ""): " ".join(
+            str(block.get("full_text") or "").strip()
+            for block in (item.get("blocks") or [])
+        ).strip()
+        for item in allocated_sections
+    }
+    diagnostics: list[dict] = []
+    for section in draft.sections:
+        source_evidence = evidence_by_id.get(section.section_id, "")
+        source_words = _normalized_source_words(source_evidence)
+        script = (section.script_source_lang or "").strip()
+        for sentence in split_sentences(script):
+            script_words = _normalized_source_words(sentence)
+            match = _longest_source_copy(
+                script_words,
+                source_words,
+                _VERBATIM_WORD_WINDOW,
+            )
+            if match is None:
+                continue
+            start, end, run_length = match
+            sentence_word_count = max(1, len(script_words))
+            clearly_copied = (
+                run_length > _VERBATIM_WORD_WINDOW + 5
+                or run_length * 100 >= sentence_word_count * 65
+            )
+            diagnostics.append({
+                "section_id": section.section_id,
+                "violation": "VERBATIM_SOURCE_COPY",
+                "target_chars": target_chars_by_id.get(section.section_id, 0),
+                "verbatim_span": " ".join(script_words[start:end]),
+                "source_evidence": source_evidence,
+                "run_words": run_length,
+                "terminal_after_budget": clearly_copied,
+                "current_script": script,
+                "message": (
+                    f"Narrative section {section.section_id} contains an exact source-copy "
+                    f"run of {run_length} normalized words"
+                ),
+            })
+            break
+    return diagnostics
+
+
+def _narrative_quality_diagnostics(
+    draft: NarrativeDraft,
+    allocated_sections: list[dict],
+    language: str | None = None,
+) -> list[dict]:
+    """Collect repairable writer-quality diagnostics for the complete draft."""
     import re as _re
 
     global _CJK_COPY_RE
@@ -457,74 +906,87 @@ def _validate_recap_sentence_structure(
     is_cjk_language = bool(
         language and language.lower().startswith(("zh", "ja", "ko", "cmn", "yue"))
     )
-
-    source_text = " ".join(
-        str(getattr(block, "full_text", "") or "")
-        for section in getattr(allocation, "sections", [])
-        for block in getattr(section, "blocks", [])
-    )
-    normalized_source = _re.sub(r"\s+", " ", source_text.lower()).strip()
-
-    seen_scripts: set[str] = set()
-    sentence_counts: dict[str, int] = {}
+    target_chars_by_id = {
+        str(item.get("section_id") or ""): int(item.get("target_chars") or 0)
+        for item in allocated_sections
+    }
+    diagnostics: list[dict] = []
     for section in draft.sections:
-        script = section.script_source_lang or ""
-        if not script.strip():
-            raise AllocationError(
-                f"Narrative section {section.section_id} has empty script"
-            )
+        section_id = section.section_id
+        script = (section.script_source_lang or "").strip()
+        base = {
+            "section_id": section_id,
+            "target_chars": target_chars_by_id.get(section_id, 0),
+            "current_script": script,
+        }
+        if not script:
+            diagnostics.append({
+                **base,
+                "violation": "EMPTY_SCRIPT",
+                "terminal_after_budget": True,
+                "message": f"Narrative section {section_id} has empty script",
+            })
+            continue
         if not is_cjk_language and _CJK_COPY_RE.search(script):
-            raise AllocationError(
-                f"Narrative section {section.section_id} copies Han/kana source "
-                "material instead of summarizing it"
-            )
+            diagnostics.append({
+                **base,
+                "violation": "CJK_SOURCE_COPY",
+                "terminal_after_budget": True,
+                "message": (
+                    f"Narrative section {section_id} copies Han/kana source material "
+                    "instead of recapping it"
+                ),
+            })
         sentences = split_sentences(script)
         if not sentences:
-            raise AllocationError(
-                f"Narrative section {section.section_id} has no sentence structure"
-            )
-        if len(sentences) == 1 and len(sentences[0]) > _RECAP_SINGLE_PARAGRAPH_CHARS:
-            raise AllocationError(
-                f"Narrative section {section.section_id} is a single huge paragraph "
-                f"({len(sentences[0])} chars); sentence-level recap required"
-            )
-        normalized_script = _re.sub(r"\s+", " ", script.lower()).strip()
-        if normalized_script in seen_scripts:
-            raise AllocationError(
-                f"Narrative section {section.section_id} duplicates another section"
-            )
-        seen_scripts.add(normalized_script)
-        for sentence in sentences:
-            key = _re.sub(r"\s+", " ", sentence.lower()).strip()
-            if len(key) >= _DUP_MIN_SENTENCE_CHARS:
-                sentence_counts[key] = sentence_counts.get(key, 0) + 1
-                if sentence_counts[key] > _DUP_MAX_ALLOWED:
-                    raise AllocationError(
-                        "Duplicate narration detected across recap sections"
-                    )
-            words = key.split()
-            if len(words) > _VERBATIM_WORD_WINDOW and normalized_source:
-                if key in normalized_source:
-                    raise AllocationError(
-                        f"Narrative section {section.section_id} reproduces long "
-                        "verbatim dialogue instead of recapping"
-                    )
-                for i in range(len(words) - _VERBATIM_WORD_WINDOW + 1):
-                    shingle = " ".join(words[i : i + _VERBATIM_WORD_WINDOW])
-                    if len(shingle) >= _DUP_MIN_SENTENCE_CHARS and shingle in normalized_source:
-                        raise AllocationError(
-                            f"Narrative section {section.section_id} reproduces long "
-                            "verbatim dialogue instead of recapping"
-                        )
-    # Beat-grounding: one narration unit MUST NOT describe a future visual
-    # event before its visual range begins (e.g. rabbit road-sign + wolf bee
-    # attack merged into one beat). Fail closed, never rewrite.
-    for section in draft.sections:
-        if detect_future_event_leakage(section.script_source_lang or ""):
-            raise AllocationError(
-                f"Narrative section {section.section_id} describes a future visual "
-                "event before its visual range begins (beat grounding violation)"
-            )
+            diagnostics.append({
+                **base,
+                "violation": "SENTENCE_STRUCTURE",
+                "terminal_after_budget": True,
+                "message": f"Narrative section {section_id} has no sentence structure",
+            })
+        elif len(sentences) == 1 and len(sentences[0]) > _RECAP_SINGLE_PARAGRAPH_CHARS:
+            diagnostics.append({
+                **base,
+                "violation": "SENTENCE_STRUCTURE",
+                "terminal_after_budget": True,
+                "message": (
+                    f"Narrative section {section_id} is a single huge paragraph "
+                    f"({len(sentences[0])} chars); sentence-level recap required"
+                ),
+            })
+
+    diagnostics.extend(_narrative_duplicate_diagnostics(draft, allocated_sections))
+    for item in diagnostics:
+        item.setdefault("violation", "DUPLICATE_NARRATION")
+        item.setdefault("terminal_after_budget", True)
+        item.setdefault(
+            "message",
+            f"Narrative section {item.get('section_id')} violates narration de-duplication",
+        )
+    diagnostics.extend(_narrative_verbatim_diagnostics(draft, allocated_sections))
+    return diagnostics
+
+
+def _validate_recap_sentence_structure(
+    draft: NarrativeDraft,
+    allocation,
+    language: str | None = None,
+) -> None:
+    diagnostics = _narrative_quality_diagnostics(
+        draft,
+        [section.model_dump() for section in getattr(allocation, "sections", [])],
+        language=language,
+    )
+    terminal = [
+        item for item in diagnostics
+        if item.get("violation") != "VERBATIM_SOURCE_COPY"
+        or item.get("terminal_after_budget")
+    ]
+    if terminal:
+        raise AllocationError(
+            str(terminal[0].get("message") or "Narrative quality validation failed")
+        )
 
 
 def split_distant_blocks_into_sections(
@@ -534,12 +996,12 @@ def split_distant_blocks_into_sections(
 ) -> list[AllocatedSection]:
     """Ensure distant or skipped canonical ranges are never merged into one section/beat.
 
-    Enforces the Beat Grounding Invariant: A narration unit MUST NOT describe a future visual
-    event before the corresponding visual range begins. If a section contains multiple blocks
-    separated by a gap >= max_gap_ms (e.g. Scene A at 03:05 vs Scene B at 05:09), or skips a
-    canonical block, they are split into distinct sections so narration and visual remain
-    coupled. If that continuity split would exceed ``max_sections``, it raises
-    ``AllocationError`` instead of merging the ranges.
+    Enforces the Beat Grounding Invariant structurally: a narration unit only
+    receives the locked source blocks in its own ordered range. If a section
+    contains multiple blocks separated by a gap >= max_gap_ms, or skips a
+    canonical block, they are split into distinct sections so narration and
+    visual remain coupled. If that continuity split would exceed
+    ``max_sections``, it raises ``AllocationError`` instead of merging ranges.
     """
     result: list[AllocatedSection] = []
     sec_counter = 1
@@ -593,8 +1055,22 @@ def split_distant_blocks_into_sections(
 def _presentation_source_refs(
     sections: list[AllocatedSection],
     refs_by_section: dict[str, list[tuple[int, int]]] | None = None,
+    section_for_index: dict[int, str] | None = None,
 ) -> dict[str, list[tuple[int, int]]]:
-    """Return continuous, duration-accurate source coverage for each beat."""
+    """Return the final render ranges for each beat.
+
+    These refs are render authority, not evidence metadata: backend-main
+    merges them (``NarrativePlan.mergedSourceRefs``), derives cut ranges and
+    the proposal total duration from them, and materializes footage from
+    them. Within a beat, sub-threshold silences between consecutive
+    canonical blocks of one ranking section stay merged (same rule as the
+    allocator). When a presentation cut separates two allocator-bridged
+    blocks into adjacent beats, the bridged silence is deterministically
+    assigned to the following beat's first ref (mirroring
+    ``_coverage_increment``, which attributes the gap to the later block),
+    so no counted coverage is lost to the cut. Gaps >= threshold, skipped
+    canonical blocks and cross-ranking-section gaps are never bridged.
+    """
     refs_by_section = refs_by_section or {}
     result: dict[str, list[tuple[int, int]]] = {}
     for section in sections:
@@ -615,18 +1091,157 @@ def _presentation_source_refs(
             else:
                 merged.append([start, end])
         result[sid] = [(start, end) for start, end in merged]
+    if section_for_index is not None:
+        _assign_bridged_gaps_across_beats(sections, result, section_for_index)
     return result
 
 
-def _split_for_presentation(allocation, max_sections: int):
-    """Split long allocated sections for pacing without changing coverage."""
+def _assign_bridged_gaps_across_beats(
+    sections: list[AllocatedSection],
+    refs_by_section: dict[str, list[tuple[int, int]]],
+    section_for_index: dict[int, str],
+) -> None:
+    """Attach allocator-bridged silences split across beat boundaries.
+
+    For every boundary between two adjacent beats (list order == canonical
+    order by construction of the splits), when the flanking blocks are
+    consecutive canonical blocks of one ranking section separated by a
+    bridged gap (``0 < gap < SILENCE_BOUNDARY_MS``), extend the following
+    beat's first ref backward to the preceding block's end. Mutates the
+    ref lists in place. Deterministic: each gap is assigned exactly once, to
+    exactly one adjacent ref, creating at most touching (never overlapping)
+    ranges.
+    """
+    for prev_section, cur_section in zip(sections, sections[1:]):
+        if not prev_section.blocks or not cur_section.blocks:
+            continue
+        prev_block = max(
+            prev_section.blocks, key=lambda b: (int(b.end_ms), int(b.start_ms))
+        )
+        cur_block = min(
+            cur_section.blocks, key=lambda b: (int(b.start_ms), int(b.end_ms))
+        )
+        prev_key, cur_key = int(prev_block.ordered_index), int(cur_block.ordered_index)
+        if cur_key != prev_key + 1:
+            continue
+        if prev_key not in section_for_index or (
+            section_for_index.get(prev_key) != section_for_index.get(cur_key)
+        ):
+            continue
+        gap_ms = int(cur_block.start_ms) - int(prev_block.end_ms)
+        if not is_bridged_gap(gap_ms):
+            continue
+        cur_refs = refs_by_section.get(str(cur_section.section_id))
+        if not cur_refs:
+            continue
+        first_idx = min(
+            range(len(cur_refs)), key=lambda i: (cur_refs[i][0], cur_refs[i][1])
+        )
+        first_start, first_end = (int(cur_refs[first_idx][0]), int(cur_refs[first_idx][1]))
+        if int(prev_block.end_ms) <= first_start:
+            cur_refs[first_idx] = (int(prev_block.end_ms), first_end)
+
+
+def _split_for_presentation(allocation, max_sections: int | None,
+                            scene_boundaries_ms: list[int] | None = None,
+                            section_for_index: dict[int, str] | None = None):
+    """Split allocated sections into final small beats without changing coverage."""
     sections, refs = split_oversized_sections_at_silence(
         allocation.sections,
         max_sections=max_sections,
+        scene_boundaries_ms=scene_boundaries_ms,
     )
     return allocation.model_copy(update={"sections": sections}), _presentation_source_refs(
-        sections, refs
+        sections, refs, section_for_index
     )
+
+
+def _log_coverage_bridge_detail(
+    correlation_id: str,
+    final_block_items: list[tuple[int, int, int]],
+    section_for_index: dict[int, str] | None = None,
+) -> None:
+    """Debug-level breakdown of bridged silences in the final presentation blocks.
+
+    Lists every adjacent consecutive-canonical pair whose gap the canonical
+    helper bridged, so a future nonzero delta can be attributed to exact
+    (order_key, gap) pairs instead of DB archaeology. Only logged on the
+    invariant-failure path.
+    """
+    ordered = sorted(final_block_items, key=lambda t: (t[2], t[0], t[1]))
+    bridged: list[tuple[int, int, int]] = []
+    for (_, prev_end, prev_key), (cur_start, _, cur_key) in zip(ordered, ordered[1:]):
+        gap_ms = cur_start - prev_end
+        same_section = section_for_index is None or (
+            prev_key in section_for_index
+            and section_for_index.get(prev_key) == section_for_index.get(cur_key)
+        )
+        if cur_key == prev_key + 1 and same_section and is_bridged_gap(gap_ms):
+            bridged.append((prev_key, cur_key, gap_ms))
+    _int_log.debug(
+        "NARRATIVE_SUMMARIZE coverage bridges correlation_id=%s bridged_pairs=%d "
+        "bridged_gap_ms=%d pairs=%s",
+        correlation_id,
+        len(bridged),
+        sum(gap for _, _, gap in bridged),
+        bridged[:25],
+    )
+
+
+def _render_coverage_ms(refs: list[tuple[int, int]]) -> int:
+    """Union span of final render refs.
+
+    Mirrors ``NarrativePlan.mergedSourceRefs`` (backend-main): sort by start,
+    merge touching/overlapping ranges (``next.start <= cur_end``), sum the
+    merged spans. No gap bridging here by design — every silence the
+    allocator counted must already sit inside a ref span (assigned by
+    :func:`_assign_bridged_gaps_across_beats`); anything else would fabricate
+    footage the renderer never claimed.
+    """
+    ordered = sorted(
+        (int(start), int(end)) for start, end in refs if int(end) > int(start)
+    )
+    total = 0
+    cur_start: int | None = None
+    cur_end = 0
+    for start, end in ordered:
+        if cur_start is None:
+            cur_start, cur_end = start, end
+        elif start <= cur_end:
+            cur_end = max(cur_end, end)
+        else:
+            total += cur_end - cur_start
+            cur_start, cur_end = start, end
+    if cur_start is not None:
+        total += cur_end - cur_start
+    return total
+
+
+def _final_coverages(plan, allocation, section_for_index: dict[int, str]):
+    """Coverage numbers the final invariant checks, in one place so tests
+    exercise the exact production computation.
+
+    Returns ``(render_coverage_ms, canonical_ms)`` where the render number is
+    the union over the actual output ``plan.sections[].source_refs`` (what
+    backend-main merges into cut ranges) and the canonical number recomputes
+    the same total from the final presentation blocks (internal consistency).
+    """
+    render_coverage_ms = _render_coverage_ms(
+        [
+            (int(ref.start_ms), int(ref.end_ms))
+            for section in plan.sections
+            for ref in section.source_refs
+        ]
+    )
+    canonical_ms = compute_effective_coverage_ms(
+        [
+            (int(b.start_ms), int(b.end_ms), int(b.ordered_index))
+            for section in allocation.sections
+            for b in section.blocks
+        ],
+        section_for_index=section_for_index,
+    )
+    return render_coverage_ms, canonical_ms
 
 
 def _build_plan(
@@ -721,6 +1336,11 @@ def _build_plan(
             )
         )
     warnings = list(dict.fromkeys([*semantic_plan.warnings, *draft.warnings]))
+    if (
+        _source_shorter_than_target(req)
+        and _SHORTER_THAN_REQUESTED_WARNING not in warnings
+    ):
+        warnings.append(_SHORTER_THAN_REQUESTED_WARNING)
     if visual_grounding_degraded and VISUAL_GROUNDING_DEGRADED_WARNING not in warnings:
         warnings.append(VISUAL_GROUNDING_DEGRADED_WARNING)
     return NarrativePlanModel(
@@ -731,6 +1351,208 @@ def _build_plan(
         confidence=draft.confidence if draft.confidence is not None else semantic_plan.confidence,
         warnings=warnings,
     )
+
+
+def _chunks(items: list[dict], size: int) -> list[list[dict]]:
+    return [items[index:index + size] for index in range(0, len(items), size)]
+
+
+def _section_ranges(section: dict) -> list[tuple[int, int]]:
+    return [
+        (int(block.get("start_ms", 0)), int(block.get("end_ms", 0)))
+        for block in (section.get("blocks") or [])
+        if int(block.get("end_ms", 0)) > int(block.get("start_ms", 0))
+    ]
+
+
+def _ranges_overlap(ranges: list[tuple[int, int]], start_ms: int, end_ms: int) -> bool:
+    return any(start_ms < end and end_ms > start for start, end in ranges)
+
+
+def _batch_multimodal_context(
+    multimodal_context: dict | None,
+    batch: list[dict],
+) -> dict | None:
+    """Keep visual evidence local to the writer batch; omit global summaries."""
+    if not multimodal_context:
+        return None
+    ranges = [item for section in batch for item in _section_ranges(section)]
+    observations = []
+    for observation in multimodal_context.get("visual_observations") or []:
+        try:
+            timestamp = int(observation.get("timestamp", 0))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if _ranges_overlap(ranges, timestamp, timestamp + 1):
+            observations.append(observation)
+    scenes = []
+    for scene in multimodal_context.get("visual_scenes") or []:
+        try:
+            start_ms = int(scene.get("start_ms", 0))
+            end_ms = int(scene.get("end_ms", 0))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if _ranges_overlap(ranges, start_ms, end_ms):
+            scenes.append(scene)
+    boundaries = []
+    for boundary in multimodal_context.get("scene_boundaries_ms") or []:
+        try:
+            boundary_ms = int(boundary)
+        except (TypeError, ValueError):
+            continue
+        if _ranges_overlap(ranges, boundary_ms, boundary_ms + 1):
+            boundaries.append(boundary_ms)
+    return {
+        "visual_observations": observations,
+        "visual_scenes": scenes,
+        "scene_boundaries_ms": boundaries,
+    }
+
+
+def _batch_beat_visuals(beat_visuals: list[dict] | None, batch: list[dict]) -> list[dict] | None:
+    if not beat_visuals:
+        return None
+    ids = {str(section.get("section_id") or "") for section in batch}
+    return [item for item in beat_visuals if str(item.get("section_id") or "") in ids]
+
+
+def _merge_narrative_drafts(
+    drafts: list[NarrativeDraft],
+    expected_section_ids: list[str],
+) -> NarrativeDraft:
+    if not drafts:
+        raise PlanningOutputError("Narrative writer returned no batch output")
+    written_by_id = {
+        section.section_id: section
+        for draft in drafts
+        for section in draft.sections
+    }
+    if set(written_by_id) != set(expected_section_ids):
+        raise PlanningOutputError(
+            "Narrative writer batches did not cover every locked section_id"
+        )
+    first = drafts[0]
+    return first.model_copy(update={
+        "sections": [written_by_id[section_id] for section_id in expected_section_ids],
+        "warnings": list(dict.fromkeys(
+            warning
+            for draft in drafts
+            for warning in draft.warnings
+        )),
+    })
+
+
+async def _call_narrative_writer_batches(
+    req: NarrativeSummarizeRequest,
+    allocated_dicts: list[dict],
+    *,
+    language: str | None,
+    intent: dict,
+    constraints: list[str],
+    content_brief: str | None,
+    multimodal_context: dict | None,
+    beat_visuals: list[dict] | None,
+    stage: str,
+    repair_feedback: dict[str, list[dict]] | None = None,
+    repair_section_ids: set[str] | None = None,
+) -> tuple[NarrativeDraft | dict[str, WrittenSection], list[ChatResult]]:
+    """Write or repair bounded contiguous beat batches in source order."""
+    if repair_section_ids is None:
+        batches = _chunks(allocated_dicts, _WRITER_BATCH_SIZE)
+    else:
+        selected = [
+            section for section in allocated_dicts
+            if str(section.get("section_id") or "") in repair_section_ids
+        ]
+        batches = _chunks(selected, _WRITER_BATCH_SIZE)
+    if not batches:
+        raise PlanningOutputError("Narrative writer has no sections to process")
+
+    results: list[ChatResult] = []
+    if repair_section_ids is None:
+        drafts: list[NarrativeDraft] = []
+        for batch in batches:
+            batch_ids = [str(section["section_id"]) for section in batch]
+            batch_context = _batch_multimodal_context(multimodal_context, batch)
+            batch_visuals = _batch_beat_visuals(beat_visuals, batch)
+            if batch_context:
+                writer_system, writer_user = build_narrative_multimodal_writer_prompt(
+                    batch,
+                    language=language,
+                    intent=intent,
+                    constraints=constraints,
+                    content_brief=None,
+                    multimodal_context=batch_context,
+                    beat_visuals=batch_visuals,
+                )
+            else:
+                writer_system, writer_user = build_narrative_writer_prompt(
+                    batch,
+                    language=language,
+                    intent=intent,
+                    constraints=constraints,
+                    content_brief=None,
+                )
+            result = await _call_json_stage(req, stage, writer_system, writer_user)
+            results.append(result)
+            drafts.append(parse_narrative_draft(result.text, batch_ids))
+        return _merge_narrative_drafts(
+            drafts,
+            [str(section["section_id"]) for section in allocated_dicts],
+        ), results
+
+    repaired: dict[str, WrittenSection] = {}
+    for batch in batches:
+        batch_ids = [str(section["section_id"]) for section in batch]
+        feedback = repair_feedback or {}
+        batch_context = _batch_multimodal_context(multimodal_context, batch)
+        batch_visuals = _batch_beat_visuals(beat_visuals, batch)
+        kwargs = {
+            "pacing_feedback": [item for item in feedback.get("pacing", [])
+                                if item.get("section_id") in batch_ids],
+            "duplicate_feedback": [item for item in feedback.get("duplicate", [])
+                                   if item.get("section_id") in batch_ids],
+            "verbatim_feedback": [item for item in feedback.get("verbatim", [])
+                                  if item.get("section_id") in batch_ids],
+            "structure_feedback": [item for item in feedback.get("structure", [])
+                                    if item.get("section_id") in batch_ids],
+        }
+        if batch_context:
+            writer_system, writer_user = build_narrative_multimodal_writer_prompt(
+                batch,
+                language=language,
+                intent=intent,
+                constraints=constraints,
+                content_brief=None,
+                multimodal_context=batch_context,
+                beat_visuals=batch_visuals,
+                **kwargs,
+            )
+        else:
+            writer_system, writer_user = build_narrative_writer_prompt(
+                batch,
+                language=language,
+                intent=intent,
+                constraints=constraints,
+                content_brief=None,
+                **kwargs,
+            )
+        result = await _call_json_stage(req, stage, writer_system, writer_user)
+        results.append(result)
+        repaired.update(parse_narrative_repair(result.text, batch_ids))
+    return repaired, results
+
+
+def _apply_repaired_sections(
+    draft: NarrativeDraft,
+    repaired: dict[str, WrittenSection],
+) -> NarrativeDraft:
+    return draft.model_copy(update={
+        "sections": [
+            repaired.get(section.section_id, section)
+            for section in draft.sections
+        ]
+    })
 
 
 def _mock_response(req: NarrativeSummarizeRequest) -> NarrativeSummarizeResponse:
@@ -745,7 +1567,8 @@ def _mock_response(req: NarrativeSummarizeRequest) -> NarrativeSummarizeResponse
             "Narrative planning requires a non-empty timed transcript",
             ProviderErrorCode.PROVIDER_VALIDATION_FAILED,
         )
-    section_count = min(len(blocks), req.max_sections or len(blocks))
+    semantic_budget = _resolve_semantic_arc_budget(req.max_sections)
+    section_count = min(len(blocks), semantic_budget)
     sections = [
         SemanticSection(
             section_id=f"S{index:03d}",
@@ -770,13 +1593,27 @@ def _mock_response(req: NarrativeSummarizeRequest) -> NarrativeSummarizeResponse
         confidence=0.8,
     )
     target = req.target_duration_ms or sum(block.duration_ms for block in blocks)
+    source_shorter = _source_shorter_than_target(req)
+    canonical_representable = source_coverage_target_representable(blocks, target)
+    finer_blocks, parent_by_unit = _build_finer_allocation_units(blocks)
+    allocation_blocks = blocks
+    allocation_plan = plan
+    if (
+        not source_shorter
+        and not canonical_representable
+        and finer_blocks is not blocks
+        and source_coverage_target_representable(finer_blocks, target)
+    ):
+        allocation_blocks = finer_blocks
+        allocation_plan = _expand_semantic_plan_to_allocation_units(
+            plan, finer_blocks, parent_by_unit
+        )
     try:
         allocation = allocate_blocks(
-            blocks,
+            allocation_blocks,
             target,
-            plan,
-            allow_fallback=True,
-            max_sections=req.max_sections or 12,
+            allocation_plan,
+            allow_fallback=source_shorter,
         )
         # Keep the representation invariant shared with allocation: natural
         # silence below 2000ms remains one continuous source range. The source
@@ -784,11 +1621,18 @@ def _mock_response(req: NarrativeSummarizeRequest) -> NarrativeSummarizeResponse
         split_sections = split_distant_blocks_into_sections(
             allocation.sections,
             max_gap_ms=SILENCE_BOUNDARY_MS,
-            max_sections=req.max_sections or 12,
         )
         allocation = allocation.model_copy(update={"sections": split_sections})
+        mock_section_for_index = {
+            block.ordered_index: next(
+                ranking.section_id
+                for ranking in allocation_plan.block_rankings
+                if ranking.block_id == block.block_id
+            )
+            for block in allocation_blocks
+        }
         allocation, visual_refs_by_section = _split_for_presentation(
-            allocation, req.max_sections or 12
+            allocation, None, section_for_index=mock_section_for_index
         )
     except AllocationError as exc:
         return _failed(
@@ -847,7 +1691,7 @@ def _mock_response(req: NarrativeSummarizeRequest) -> NarrativeSummarizeResponse
     return NarrativeSummarizeResponse(
         correlation_id=req.correlation_id,
         status="COMPLETED",
-        plans=[_build_plan(req, plan, allocation, draft, validate_narrative=False, visual_candidates=visual_candidates, visual_refs_by_section=visual_refs_by_section, visual_grounding_degraded=visual_grounding_degraded)],
+        plans=[_build_plan(req, allocation_plan, allocation, draft, validate_narrative=False, visual_candidates=visual_candidates, visual_refs_by_section=visual_refs_by_section, visual_grounding_degraded=visual_grounding_degraded)],
         usage=None,
     )
 
@@ -884,17 +1728,31 @@ async def summarize_narrative(req: NarrativeSummarizeRequest) -> NarrativeSummar
     block_dicts = [block.model_dump() for block in blocks]
 
     try:
-        presentation_cap = req.max_sections or 12
-        if not source_coverage_target_representable(
-            blocks,
+        semantic_budget = _resolve_semantic_arc_budget(req.max_sections)
+        _int_log.info(
+            "NARRATIVE_SUMMARIZE semantic planning preflight "
+            "correlation_id=%s transcript_segment_count=%d "
+            "canonical_block_count=%d target_duration_ms=%d semantic_arc_budget=%d",
+            req.correlation_id,
+            len(req.transcript),
+            len(blocks),
             req.target_duration_ms,
-            max_sections=presentation_cap,
-        ):
+            semantic_budget,
+        )
+        source_shorter = _source_shorter_than_target(req)
+        canonical_representable = source_coverage_target_representable(
+            blocks, req.target_duration_ms
+        )
+        finer_blocks, parent_by_unit = _build_finer_allocation_units(blocks)
+        finer_representable = (
+            finer_blocks is not blocks
+            and source_coverage_target_representable(finer_blocks, req.target_duration_ms)
+        )
+        if not source_shorter and not canonical_representable and not finer_representable:
             min_ms, max_ms = duration_window(req.target_duration_ms)
             message = (
                 "source_coverage_target_not_representable: no subset of canonical "
-                f"transcript blocks can cover [{min_ms}, {max_ms}]ms with "
-                f"max_sections={presentation_cap} continuous source ranges"
+                f"or timed transcript allocation units can cover [{min_ms}, {max_ms}]ms"
             )
             _int_log.warning(
                 "%s correlation_id=%s target_duration_ms=%s",
@@ -912,29 +1770,115 @@ async def summarize_narrative(req: NarrativeSummarizeRequest) -> NarrativeSummar
             language=req.language,
             intent=intent,
             constraints=list(req.constraints or []),
-            max_sections=req.max_sections,
+            max_sections=semantic_budget,
             content_brief=content_brief,
         )
         planning_result = await _call_json_stage(
             req, "SEMANTIC_PLANNING", planning_system, planning_user
         )
-        semantic_plan = parse_semantic_plan(planning_result.text, blocks, req.max_sections)
+        semantic_plan = parse_semantic_plan(planning_result.text, blocks, semantic_budget)
+        _int_log.info(
+            "NARRATIVE_SUMMARIZE semantic plan parsed correlation_id=%s "
+            "semantic_section_count=%d essential_section_count=%d",
+            req.correlation_id,
+            len(semantic_plan.sections),
+            sum(1 for section in semantic_plan.sections if section.essential),
+        )
+
+        allocation_blocks = blocks
+        if not source_shorter and not canonical_representable and finer_representable:
+            allocation_blocks = finer_blocks
+            semantic_plan = _expand_semantic_plan_to_allocation_units(
+                semantic_plan, allocation_blocks, parent_by_unit
+            )
+            _int_log.info(
+                "NARRATIVE_SUMMARIZE using timed allocation units "
+                "correlation_id=%s canonical_block_count=%d allocation_unit_count=%d",
+                req.correlation_id,
+                len(blocks),
+                len(allocation_blocks),
+            )
 
         allocation = allocate_blocks(
-            blocks,
+            allocation_blocks,
             req.target_duration_ms,
             semantic_plan,
-            allow_fallback=True,
-            max_sections=presentation_cap,
+            allow_fallback=source_shorter,
         )
         split_sections = split_distant_blocks_into_sections(
             allocation.sections,
             max_gap_ms=SILENCE_BOUNDARY_MS,
-            max_sections=req.max_sections or 12,
         )
         allocation = allocation.model_copy(update={"sections": split_sections})
+        # Ranking section map for render-range accounting: bridged silences
+        # split across beat boundaries are assigned deterministically, using
+        # the exact allocator gap rule (same section + consecutive + <2s).
+        ranking_by_id = {ranking.block_id: ranking for ranking in semantic_plan.block_rankings}
+        section_for_index = {
+            block.ordered_index: ranking_by_id[block.block_id].section_id
+            for block in allocation_blocks
+        }
+        # Final presentation beats are fixed BEFORE narration writing: prefer VLM
+        # scene boundaries when present, then transcript sentence/silence gaps.
+        # One final beat maps to one narration/visual unit downstream.
+        _scene_bounds: list[int] = []
+        for sc in (getattr(req, "visual_scenes", None) or []):
+            try:
+                if isinstance(sc, dict):
+                    _scene_bounds += [int(sc.get("start_ms", 0)), int(sc.get("end_ms", 0))]
+                else:
+                    _scene_bounds += [int(getattr(sc, "start_ms", 0)), int(getattr(sc, "end_ms", 0))]
+            except (TypeError, ValueError, AttributeError):
+                continue
         allocation, visual_refs_by_section = _split_for_presentation(
-            allocation, req.max_sections or 12
+            allocation, None, scene_boundaries_ms=_scene_bounds or None,
+            section_for_index=section_for_index,
+        )
+        chronology_metrics = chronology_coverage_metrics(
+            allocation_blocks,
+            allocation.selected_blocks,
+            req.target_duration_ms,
+            section_for_index=section_for_index,
+        )
+        _int_log.info(
+            "NARRATIVE_SUMMARIZE allocation coverage correlation_id=%s "
+            "source_span_ms=%d target_coverage_ms=%d selected_coverage_ms=%d "
+            "presentation_units=%d timeline_bucket_count=%d "
+            "timeline_buckets_covered=%s largest_uncovered_gap_ms=%d "
+            "selected_run_count=%d source_start_ms=%s source_end_ms=%s "
+            "selected_first_start_ms=%s selected_last_end_ms=%s "
+            "leading_uncovered_ms=%d trailing_uncovered_ms=%d "
+            "first_bucket_covered=%s last_bucket_covered=%s",
+            req.correlation_id,
+            chronology_metrics["source_span_ms"],
+            req.target_duration_ms,
+            allocation.coverage_ms,
+            len(allocation.sections),
+            chronology_metrics["timeline_bucket_count"],
+            chronology_metrics["timeline_buckets_covered"],
+            chronology_metrics["largest_uncovered_gap_ms"],
+            chronology_metrics["selected_run_count"],
+            chronology_metrics["source_start_ms"],
+            chronology_metrics["source_end_ms"],
+            chronology_metrics["selected_first_start_ms"],
+            chronology_metrics["selected_last_end_ms"],
+            chronology_metrics["leading_uncovered_ms"],
+            chronology_metrics["trailing_uncovered_ms"],
+            chronology_metrics["first_bucket_covered"],
+            chronology_metrics["last_bucket_covered"],
+            extra={
+                "narrativeAllocation": chronology_metrics,
+                "narrativeAllocationDiagnostics": {
+                    "sourceStartMs": chronology_metrics["source_start_ms"],
+                    "sourceEndMs": chronology_metrics["source_end_ms"],
+                    "selectedFirstStartMs": chronology_metrics["selected_first_start_ms"],
+                    "selectedLastEndMs": chronology_metrics["selected_last_end_ms"],
+                    "leadingUncoveredMs": chronology_metrics["leading_uncovered_ms"],
+                    "trailingUncoveredMs": chronology_metrics["trailing_uncovered_ms"],
+                    "firstBucketCovered": chronology_metrics["first_bucket_covered"],
+                    "lastBucketCovered": chronology_metrics["last_bucket_covered"],
+                },
+            },
         )
 
         # Beat grounding: VLM enriches already-budgeted presentation beats.
@@ -1019,22 +1963,144 @@ async def summarize_narrative(req: NarrativeSummarizeRequest) -> NarrativeSummar
             visual_grounding_degraded = True
 
         allocated_dicts = [section.model_dump() for section in allocation.sections]
-        # Per-section narration length target (~14 chars/s of footage) so the
-        # writer roughly fills its visual range instead of leaving long
-        # silent tails. Guidance only — measured TTS stays authoritative.
-        for section_dict, section in zip(allocated_dicts, allocation.sections):
-            presentation_refs = visual_refs_by_section.get(section.section_id)
-            if presentation_refs is None:
-                presentation_refs = [
-                    (int(block.start_ms), int(block.end_ms))
-                    for block in section.blocks
+        # Per-section narration length guidance is proportional to the final
+        # presentation beats, but normalizes to the requested narration target
+        # when that target is valid. Source coverage remains allocator-owned.
+        effective_narration_cps = _effective_narration_cps(req)
+        pacing_targets = _narration_pacing_targets(
+            allocated_dicts,
+            visual_refs_by_section,
+            target_duration_ms=_effective_narration_target_ms(
+                req, allocation.coverage_ms
+            ),
+            cps=effective_narration_cps,
+        )
+        for section_dict, pacing in zip(allocated_dicts, pacing_targets):
+            section_dict.update(
+                {
+                    "presentation_span_ms": pacing["presentation_span_ms"],
+                    "narration_target_ms": pacing["narration_target_ms"],
+                    "target_chars": pacing["target_chars"],
+                    "effective_cps": pacing["effective_cps"],
+                }
+            )
+            _int_log.info(
+                "NARRATIVE_SUMMARIZE pacing budget correlation_id=%s section_id=%s "
+                "presentation_span_ms=%d narration_target_ms=%d target_chars=%d "
+                "effective_cps=%d normalized_to_requested=%s",
+                req.correlation_id,
+                pacing["section_id"],
+                pacing["presentation_span_ms"],
+                pacing["narration_target_ms"],
+                pacing["target_chars"],
+                pacing["effective_cps"],
+                pacing["normalized_to_requested"],
+            )
+        _int_log.info(
+            "NARRATIVE_SUMMARIZE pacing budget aggregate correlation_id=%s "
+            "total_presentation_span_ms=%d requested_narration_target_ms=%s "
+            "aggregate_target_chars=%d effective_cps=%d normalized_to_requested=%s",
+            req.correlation_id,
+            pacing_targets[0]["total_presentation_span_ms"] if pacing_targets else 0,
+            pacing_targets[0]["requested_narration_target_ms"] if pacing_targets else None,
+            sum(item["target_chars"] for item in pacing_targets),
+            effective_narration_cps,
+            bool(pacing_targets and pacing_targets[0]["normalized_to_requested"]),
+        )
+        writer_output, writer_results = await _call_narrative_writer_batches(
+            req,
+            allocated_dicts,
+            language=req.language,
+            intent=intent,
+            constraints=list(req.constraints or []),
+            content_brief=content_brief,
+            multimodal_context=multimodal_context,
+            beat_visuals=beat_visuals,
+            stage="NARRATIVE_WRITING",
+        )
+        if not isinstance(writer_output, NarrativeDraft):
+            raise PlanningOutputError("Narrative writer did not return an initial draft")
+        draft = writer_output
+
+        for repair_round in range(_MAX_QUALITY_REPAIR_ROUNDS + 1):
+            pacing_diagnostics = _narration_pacing_diagnostics(
+                draft,
+                allocated_dicts,
+                correlation_id=req.correlation_id,
+                cps=effective_narration_cps,
+                stage="NARRATIVE_WRITING",
+                repair_round=repair_round,
+                correction_applied=repair_round > 0,
+            )
+            quality_diagnostics = _narrative_quality_diagnostics(
+                draft,
+                allocated_dicts,
+                language=req.language,
+            )
+            pacing_feedback = _pacing_repair_feedback(pacing_diagnostics)
+            if not pacing_feedback and not quality_diagnostics:
+                break
+
+            if repair_round >= _MAX_QUALITY_REPAIR_ROUNDS:
+                hard_quality = [
+                    item for item in quality_diagnostics
+                    if item.get("violation") != "VERBATIM_SOURCE_COPY"
+                    or item.get("terminal_after_budget")
                 ]
-            span_ms = sum(end - start for start, end in presentation_refs)
-            section_dict["target_chars"] = narration_target_chars(span_ms)
-        # TASK 7 multimodal: when visual context present, inject it into writer prompt
-        # Grounding (req 9) + Confidence hedging (req 10) + fight-scene narrative (req 8)
-        if multimodal_context:
-            writer_system, writer_user = build_narrative_multimodal_writer_prompt(
+                if hard_quality:
+                    raise AllocationError(
+                        str(hard_quality[0].get("message")
+                            or "Narrative writer quality violations remain after bounded repairs")
+                    )
+                warnings = list(draft.warnings)
+                if pacing_feedback:
+                    warnings.append(_pacing_estimate_residual_warning(pacing_feedback))
+                if quality_diagnostics:
+                    warnings.append(
+                        "NARRATIVE_SOURCE_COPY_RESIDUAL:repairable_short_run_accepted"
+                    )
+                draft = draft.model_copy(update={
+                    "warnings": list(dict.fromkeys(warnings)),
+                })
+                break
+
+            repair_section_ids = {
+                str(item.get("section_id") or "")
+                for item in [*pacing_feedback, *quality_diagnostics]
+                if item.get("section_id")
+            }
+            quality_feedback = {
+                "pacing": pacing_feedback,
+                "duplicate": [
+                    item for item in quality_diagnostics
+                    if item.get("violation") == "DUPLICATE_NARRATION"
+                    or item.get("duplicate_kind")
+                ],
+                "verbatim": [
+                    item for item in quality_diagnostics
+                    if item.get("violation") == "VERBATIM_SOURCE_COPY"
+                ],
+                "structure": [
+                    item for item in quality_diagnostics
+                    if item.get("violation") not in {
+                        "DUPLICATE_NARRATION",
+                        "VERBATIM_SOURCE_COPY",
+                    } and not item.get("duplicate_kind")
+                ],
+            }
+            _int_log.warning(
+                "NARRATIVE_SUMMARIZE NARRATIVE_WRITING quality repair required "
+                "correlation_id=%s repair_round=%d sections=%s violations=%s",
+                req.correlation_id,
+                repair_round + 1,
+                sorted(repair_section_ids),
+                sorted({
+                    str(item.get("violation") or item.get("duplicate_kind") or "PACING")
+                    for item in [*pacing_feedback, *quality_diagnostics]
+                }),
+            )
+            repaired_sections, repair_results = await _call_narrative_writer_batches(
+                req,
                 allocated_dicts,
                 language=req.language,
                 intent=intent,
@@ -1042,116 +2108,95 @@ async def summarize_narrative(req: NarrativeSummarizeRequest) -> NarrativeSummar
                 content_brief=content_brief,
                 multimodal_context=multimodal_context,
                 beat_visuals=beat_visuals,
+                stage="NARRATIVE_WRITING_QUALITY_REPAIR",
+                repair_feedback=quality_feedback,
+                repair_section_ids=repair_section_ids,
             )
-        else:
-            writer_system, writer_user = build_narrative_writer_prompt(
-                allocated_dicts,
-                language=req.language,
-                intent=intent,
-                constraints=list(req.constraints or []),
-                content_brief=content_brief,
-            )
-        writer_result = await _call_json_stage(
-            req, "NARRATIVE_WRITING", writer_system, writer_user
-        )
-        expected_section_ids = [section.section_id for section in allocation.sections]
-        draft = parse_narrative_draft(writer_result.text, expected_section_ids)
-        pacing_diagnostics = _narration_pacing_diagnostics(
-            draft,
-            allocated_dicts,
-            correlation_id=req.correlation_id,
-        )
-        writer_results = [writer_result]
-        if _pacing_needs_repair(pacing_diagnostics):
-            pacing_feedback = _pacing_repair_feedback(pacing_diagnostics)
-            repair_section_ids = [item["section_id"] for item in pacing_feedback]
-            _int_log.warning(
-                "NARRATIVE_SUMMARIZE NARRATIVE_WRITING pacing repair required "
-                "correlation_id=%s sections=%s",
-                req.correlation_id,
-                [item["section_id"] for item in pacing_feedback],
-            )
-            if multimodal_context:
-                writer_system, writer_user = build_narrative_multimodal_writer_prompt(
-                    allocated_dicts,
-                    language=req.language,
-                    intent=intent,
-                    constraints=list(req.constraints or []),
-                    content_brief=content_brief,
-                    multimodal_context=multimodal_context,
-                    beat_visuals=beat_visuals,
-                    pacing_feedback=pacing_feedback,
-                )
-            else:
-                writer_system, writer_user = build_narrative_writer_prompt(
-                    allocated_dicts,
-                    language=req.language,
-                    intent=intent,
-                    constraints=list(req.constraints or []),
-                    content_brief=content_brief,
-                    pacing_feedback=pacing_feedback,
-                )
-            writer_repair_result = await _call_json_stage(
-                req, "NARRATIVE_WRITING_REPAIR", writer_system, writer_user
-            )
-            writer_results.append(writer_repair_result)
-            repaired_sections = parse_narrative_repair(
-                writer_repair_result.text, repair_section_ids
-            )
-            repaired_draft = draft.model_copy(update={
-                "sections": [
-                    repaired_sections[section_id]
-                    if section_id in repaired_sections
-                    else section
-                    for section_id, section in zip(expected_section_ids, draft.sections)
-                ]
-            })
-            repaired_diagnostics = _narration_pacing_diagnostics(
-                repaired_draft,
-                allocated_dicts,
-                correlation_id=req.correlation_id,
-            )
-            repaired_feedback = [
-                item
-                for item in _pacing_repair_feedback(repaired_diagnostics)
-                if item["section_id"] in set(repair_section_ids)
-            ]
-            if repaired_feedback:
-                residual_warning = _pacing_estimate_residual_warning(repaired_feedback)
-                _int_log.warning(
-                    "NARRATIVE_SUMMARIZE NARRATIVE_WRITING pacing estimate residual "
-                    "accepted after one bounded repair "
-                    "correlation_id=%s sections=%s estimate_only=true "
-                    "duration_authority=TTS diagnostics=%s",
-                    req.correlation_id,
-                    [item["section_id"] for item in repaired_feedback],
-                    repaired_feedback,
-                    extra={
-                        "pacingEstimateResidual": repaired_feedback,
-                        "estimateOnly": True,
-                        "durationAuthority": "TTS",
-                    },
-                )
-                repaired_draft = repaired_draft.model_copy(update={
-                    "warnings": list(dict.fromkeys([
-                        *repaired_draft.warnings,
-                        residual_warning,
-                    ]))
-                })
-            draft = repaired_draft
+            writer_results.extend(repair_results)
+            draft = _apply_repaired_sections(draft, repaired_sections)
 
         plan = _build_plan(req, semantic_plan, allocation, draft, visual_candidates=visual_candidates, visual_refs_by_section=visual_refs_by_section, visual_grounding_degraded=visual_grounding_degraded)
 
         min_ms, max_ms = duration_window(req.target_duration_ms)
-        coverage_ms = sum(
-            ref.end_ms - ref.start_ms
-            for section in plan.sections
-            for ref in section.source_refs
+        # Final coverage is measured on the RENDER representation: the union
+        # over the actual output `plan.sections[].source_refs` — exactly what
+        # backend-main merges into cut ranges (`mergedSourceRefs`) and renders.
+        # Bridged silences counted by the allocator are materialized into
+        # those ref spans by `_assign_bridged_gaps_across_beats`, so the union
+        # must equal the allocation total. A second canonical recomputation
+        # from the final presentation blocks guards internal consistency
+        # (lost/duplicated blocks). Exact equality is kept on purpose: any
+        # nonzero delta means real content loss or an accounting divergence,
+        # never rounding (all inputs are integer ms).
+        ranking_by_id = {ranking.block_id: ranking for ranking in semantic_plan.block_rankings}
+        section_for_index = {
+            block.ordered_index: ranking_by_id[block.block_id].section_id
+            for block in allocation_blocks
+        }
+        render_coverage_ms, canonical_ms = _final_coverages(
+            plan, allocation, section_for_index
         )
-        if coverage_ms != allocation.coverage_ms or (
-            not getattr(allocation, "is_fallback", False) and not min_ms <= coverage_ms <= max_ms
+        render_delta_ms = render_coverage_ms - allocation.coverage_ms
+        canonical_delta_ms = canonical_ms - allocation.coverage_ms
+        # Bridge attribution for diagnostics (B1): silences the allocator
+        # counted vs silences present in the rendered ranges.
+        selected_span_ms = sum(
+            int(b.end_ms) - int(b.start_ms) for b in allocation.selected_blocks
+        )
+        allocator_bridged_ms = allocation.coverage_ms - selected_span_ms
+        render_bridged_ms = render_coverage_ms - selected_span_ms
+        if (
+            render_coverage_ms != allocation.coverage_ms
+            or canonical_ms != allocation.coverage_ms
+            or (
+                not getattr(allocation, "is_fallback", False)
+                and not min_ms <= render_coverage_ms <= max_ms
+            )
         ):
-            raise AllocationError("Final NarrativePlan coverage invariant failed")
+            _int_log.warning(
+                "NARRATIVE_SUMMARIZE coverage invariant failed correlation_id=%s "
+                "allocation_coverage_ms=%d render_coverage_ms=%d render_delta_ms=%d "
+                "canonical_ms=%d canonical_delta_ms=%d "
+                "allocator_bridged_ms=%d render_bridged_ms=%d "
+                "window=[%d,%d] target_duration_ms=%d "
+                "allocated_blocks=%d final_blocks=%d presentation_refs=%d beats=%d "
+                "is_fallback=%s",
+                req.correlation_id,
+                allocation.coverage_ms,
+                render_coverage_ms,
+                render_delta_ms,
+                canonical_ms,
+                canonical_delta_ms,
+                allocator_bridged_ms,
+                render_bridged_ms,
+                min_ms,
+                max_ms,
+                req.target_duration_ms,
+                len(allocation.selected_blocks),
+                sum(len(section.blocks) for section in allocation.sections),
+                sum(len(section.source_refs) for section in plan.sections),
+                len(allocation.sections),
+                getattr(allocation, "is_fallback", False),
+            )
+            _log_coverage_bridge_detail(
+                req.correlation_id,
+                [
+                    (int(b.start_ms), int(b.end_ms), int(b.ordered_index))
+                    for section in allocation.sections
+                    for b in section.blocks
+                ],
+                section_for_index,
+            )
+            raise AllocationError(
+                "Final NarrativePlan coverage invariant failed: "
+                f"allocation_coverage_ms={allocation.coverage_ms} "
+                f"render_coverage_ms={render_coverage_ms} "
+                f"render_delta_ms={render_delta_ms} "
+                f"canonical_ms={canonical_ms} "
+                f"canonical_delta_ms={canonical_delta_ms} "
+                f"window=[{min_ms},{max_ms}] "
+                f"target_duration_ms={req.target_duration_ms}"
+            )
 
         usage = _aggregate_usage(req, planning_result, *writer_results)
         _int_log.info(

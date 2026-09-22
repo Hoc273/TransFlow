@@ -74,6 +74,19 @@ class TtsProbeResponse(BaseModel):
     audio_bytes: int = 0
 
 
+class VisionProbeRequest(BaseModel):
+    """Phase 3 VISION — prove the configured model accepts image input."""
+    provider: ProviderPayload
+    image_data_url: Optional[str] = None
+
+
+class VisionProbeResponse(BaseModel):
+    ok: bool
+    duration_ms: int = 0
+    message: Optional[str] = None
+    detected_text: Optional[str] = None
+
+
 # ── Phase 4: OPTIONAL FEATURES ──────────────────────────────────────────────
 
 class OptionalFeatureResult(BaseModel):

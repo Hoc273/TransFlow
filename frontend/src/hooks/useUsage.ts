@@ -7,11 +7,7 @@ export function useUsage(workspaceId: string | undefined, query: UsageQuery = {}
   const canView = usePermission('dashboard.usage')
 
   return useQuery({
-    queryKey: queryKeys.usage(workspaceId ?? '', {
-      projectId: query.projectId,
-      documentId: query.documentId,
-      jobId: query.jobId,
-    }),
+    queryKey: queryKeys.usage(workspaceId ?? '', query),
     queryFn: () => getUsageApi(workspaceId!, query),
     enabled: !!workspaceId && canView,
     staleTime: STALE.realtime,

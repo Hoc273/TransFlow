@@ -35,6 +35,7 @@ const { jobQuery, providersQuery, continueMutate } = vi.hoisted(() => ({
 vi.mock('@/hooks/useMedia', () => ({
   useMediaJob: () => jobQuery,
   useMediaLinkedJob: () => ({ data: undefined as unknown, isLoading: false }),
+  useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
   useCancelMediaJob: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useOverrideSourceLang: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useSelectVoice: () => ({ isPending: false, mutateAsync: vi.fn() }),

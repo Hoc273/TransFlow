@@ -132,6 +132,10 @@ class GoogleOAuthServiceTest {
         var creditOpt = creditAccountRepository.findByUserId(user.getId());
         assertTrue(creditOpt.isPresent());
         assertEquals(0, new BigDecimal("100.0000").compareTo(creditOpt.get().getBalance()));
+
+        AppException reusedCode = assertThrows(AppException.class,
+                () -> googleOAuthService.exchange(exchangeCode));
+        assertEquals(ErrorCode.GOOGLE_OAUTH_FAILED, reusedCode.getErrorCode());
     }
 
     @Test

@@ -24,8 +24,7 @@ vi.mock('@/hooks/useMedia', () => ({
 }))
 
 const { ExportPanel } = await import('./ExportPanel')
-import type { MediaJob } from '@/types/media'
-import type { JobDetail } from '@/types/job'
+import type { MediaJob, JobDetail } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
 
 function job(partial: Partial<MediaJob>): MediaJob {
@@ -176,6 +175,20 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
 
     fireEvent.click(screen.getByTestId('export-quick-download-video'))
     await waitFor(() => expect(exportMutate).toHaveBeenCalledWith('VIDEO'))
+  })
+
+  it('opens the presigned video URL in a new tab after VIDEO export', async () => {
+    linkedJobData.data = linkedJob([])
+    render(<ExportPanel workspaceId="ws" job={job({})} />)
+
+    fireEvent.click(screen.getByTestId('export-quick-download-video'))
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://dl.test/video.mp4',
+        '_blank',
+        'noopener,noreferrer',
+      ),
+    )
   })
 
   it('subtitle download buttons in right column run SRT and VTT export', async () => {

@@ -1,10 +1,11 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconChevronRight, IconDeviceDesktop, IconRefresh, IconStack2 } from '@tabler/icons-react'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
-import { useBatchDetail, useRetryBatchDocument } from '@/hooks/useBatches'
+import { useBatchDetail, useDownloadBulkJobs, useRetryBatchDocument } from '@/hooks/useBatches'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { usePermission } from '@/hooks/usePermission'
 import { formatDateTime, formatRelativeTime } from '@/lib/format'
@@ -20,16 +21,43 @@ export function BatchDetailPage() {
   const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const language = useUiStore((s) => s.language)
   const canRetry = usePermission('batch.retry')
+  const canDownload = usePermission('batch.download')
 
   const { data, isLoading, isError, error, isFetching, dataUpdatedAt, refetch } = useBatchDetail(
     workspaceId,
     batchId,
   )
   const retry = useRetryBatchDocument(workspaceId, batchId)
+  const download = useDownloadBulkJobs(workspaceId, data?.projectId)
+  const [downloadError, setDownloadError] = useState(false)
+  const [skippedCount, setSkippedCount] = useState(0)
+
+  const completedJobIds = (data?.documents ?? [])
+    .flatMap((d) => d.jobs)
+    .filter((j) => String(j.status).toUpperCase() === 'COMPLETED')
+    .map((j) => j.jobId)
+
+  const handleDownload = () => {
+    setDownloadError(false)
+    setSkippedCount(0)
+    void download
+      .mutateAsync(completedJobIds)
+      .then((res) => {
+        if (res.skipped?.length) setSkippedCount(res.skipped.length)
+        if (res.downloadUrl) {
+          window.open(res.downloadUrl, '_blank', 'noopener,noreferrer')
+        } else {
+          setDownloadError(true)
+        }
+      })
+      .catch(() => {
+        setDownloadError(true)
+      })
+  }
 
   useDocumentTitle(data?.name || t('batch:detail.title'))
 
-  const done = data ? data.completedDocuments + data.failedDocuments : 0
+  const done = data ? (data.completedDocuments ?? 0) + (data.failedDocuments ?? 0) : 0
   const total = data?.totalDocuments || 1
   const status = asJobStatus(data?.status)
   const isPartial = status === 'PARTIALLY_FAILED'
@@ -74,11 +102,41 @@ export function BatchDetailPage() {
             )}
           </div>
         </div>
-        <button type="button" className="btn-secondary" onClick={() => void refetch()}>
-          <IconRefresh size={16} />
-          {t('common:retry')}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {canDownload && (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={!completedJobIds.length || download.isPending}
+              onClick={handleDownload}
+            >
+              {download.isPending
+                ? t('batch:detail.downloading')
+                : t('batch:detail.downloadZip')}
+            </button>
+          )}
+          <button type="button" className="btn-secondary" onClick={() => void refetch()}>
+            <IconRefresh size={16} />
+            {t('common:retry')}
+          </button>
+        </div>
       </div>
+
+      {downloadError && (
+        <p className="mt-2 text-sm text-[var(--color-status-failed)]">
+          {t('batch:detail.downloadFailed')}
+        </p>
+      )}
+
+      {skippedCount > 0 && (
+        <div className="mt-2 flex gap-3 rounded-lg border border-[var(--color-accent)]/25 bg-[var(--color-accent-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
+          <div>
+            <p className="mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
+              {t('batch:detail.skippedNotice', { count: skippedCount })}
+            </p>
+          </div>
+        </div>
+      )}
 
       {isLoading && (
         <div className="app-card py-12 text-center text-sm text-[var(--color-text-tertiary)]">
@@ -149,7 +207,7 @@ export function BatchDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.documents.map((doc) => {
+                  {(data.documents ?? []).map((doc) => {
                     const docStatus = asJobStatus(String(doc.status))
                     const hasFailedJob = doc.jobs.some(
                       (j) => String(j.status).toUpperCase() === 'FAILED',
@@ -167,7 +225,7 @@ export function BatchDetailPage() {
                           <div className="flex flex-wrap gap-1">
                             {doc.jobs.map((job) => (
                               <span
-                                key={job.jobId}
+                                key={job.id || (job as any).jobId}
                                 className="inline-flex items-center gap-1 rounded bg-[var(--color-bg-surface-2)] px-1.5 py-0.5 text-[11px]"
                               >
                                 <span className="font-medium uppercase">{job.targetLang}</span>
@@ -198,7 +256,7 @@ export function BatchDetailPage() {
                   })}
                 </tbody>
               </table>
-              {data.documents.length === 0 && (
+              {(data.documents ?? []).length === 0 && (
                 <EmptyState
                   title={t('batch:detail.noDocuments')}
                   className="py-10"

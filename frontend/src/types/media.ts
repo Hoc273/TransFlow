@@ -1,4 +1,5 @@
 import type { AudioExecutionMode } from '@/types/transformation'
+import type { QaIssue } from '@/types/qa'
 
 export type ProcessingMode = 'TRANSLATE_ONLY' | 'HYBRID'
 export type SubtitleMode = 'HARD_SUB' | 'SOFT_SUB'
@@ -256,6 +257,18 @@ export type WorkflowCheckpoint = {
   canContinue: boolean
 }
 
+/** Subtitle cue returned by GET /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles */
+export type MediaSubtitleCue = {
+  id: string
+  seq: number
+  contentSource?: string
+  sourceText: string
+  targetText: string
+  startMs: number
+  endMs: number
+  ttsAudioRef?: string | null
+}
+
 export type SubtitlePosition = 'TOP' | 'CENTER' | 'BOTTOM'
 
 // ─── Phase 2/6 presentation envelope (docs/16 §7.4) ─────────────────────────
@@ -489,10 +502,8 @@ export type CreateMediaJobBody = {
    */
   requestedMode?: AudioExecutionMode | null
   /**
-   * Phase C — explicit TTS provider row id. Must be sent together with
-   * ttsVoiceId (both or neither). Backend gap B1: `CreateMediaJobRequest`
-   * has no `ttsProviderId` yet and ignores it — kept for forward-compat,
-   * see `docs/PHASE3_BACKEND_GAPS_NOTE.md`.
+   * Explicit TTS provider row id. Must be sent together with ttsVoiceId
+   * (both or neither); the backend validates provider ownership and capability.
    */
   ttsProviderId?: string | null
   /**
@@ -602,6 +613,7 @@ export type UpdateCustomProposalBody = {
 
 export type MediaExportFormat = 'VIDEO' | 'SRT' | 'VTT'
 
+
 export type MediaExportResponse = {
   format: MediaExportFormat | string
   fileName: string
@@ -618,8 +630,7 @@ export type OverrideSourceLangBody = {
  * `POST …/media/jobs/{jobId}/voice`. Both null = keep original
  * audio (TTS deselected, requires `outputAudioMode == ORIGINAL_ONLY`).
  * A partial pair must never be sent — the VoiceSelector only emits
- * all-or-nothing. Backend gap B1: BE `VoiceRequest` currently carries
- * only `ttsVoiceId`; `ttsProviderId` is kept for forward-compat.
+ * all-or-nothing. The backend stores both IDs as the authoritative binding.
  */
 export type SelectVoiceBody = {
   /** TTS provider row id (null = deselect / legacy voiceId-only flow). */
@@ -658,4 +669,33 @@ export type UpdatePublishPackageBody = {
   language?: string | null
   tags?: string[] | null
   thumbnailRef?: string | null
+}
+
+export type SegmentStatus = 'NEW' | 'TRANSLATED' | 'QA_FLAGGED' | 'APPROVED' | string
+
+export type SegmentItem = {
+  id: string
+  seq: number
+  sourceText: string
+  targetText: string | null
+  status: SegmentStatus
+  tmScore?: number | null
+  qaIssues: QaIssue[]
+  /** Original video timeline (media segments) */
+  startMs?: number | null
+  endMs?: number | null
+}
+
+export type UpdateSegmentBody = {
+  targetText: string
+}
+
+export type JobDetail = {
+  id: string
+  documentId?: string
+  targetLang: string
+  status: string
+  providerUsed?: string | null
+  modelUsed?: string | null
+  segments: SegmentItem[]
 }

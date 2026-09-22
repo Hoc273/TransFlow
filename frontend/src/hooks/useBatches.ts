@@ -3,7 +3,7 @@ import {
   createBatchApi,
   getBatchApi,
   listBatchesApi,
-  retryBatchDocumentApi,
+  retryBatchJobApi,
 } from '@/api/batches'
 import { isActiveBatchStatus } from '@/lib/status'
 import { STALE, queryKeys } from '@/lib/queryClient'
@@ -71,11 +71,10 @@ export function useCreateBatch(workspaceId: string | undefined) {
   })
 }
 
-export function useRetryBatchDocument(workspaceId: string | undefined, batchId: string | undefined) {
+export function useRetryBatchJob(workspaceId: string | undefined, batchId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (documentId: string) =>
-      retryBatchDocumentApi(workspaceId!, batchId!, documentId),
+    mutationFn: (jobId: string) => retryBatchJobApi(workspaceId!, batchId!, jobId),
     onSuccess: () => {
       if (workspaceId && batchId) {
         void qc.invalidateQueries({
@@ -86,3 +85,5 @@ export function useRetryBatchDocument(workspaceId: string | undefined, batchId: 
     },
   })
 }
+
+export const useRetryBatchDocument = useRetryBatchJob

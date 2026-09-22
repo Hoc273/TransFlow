@@ -20,7 +20,9 @@ import com.app.modules.media_job.repository.SubtitleSegmentRepository;
 import com.app.modules.project.entity.ProjectMember;
 import com.app.modules.project.repository.ProjectMemberRepository;
 import com.app.modules.project.repository.ProjectRepository;
+import com.app.modules.provider.entity.PlatformAiProvider;
 import com.app.modules.provider.entity.TtsVoice;
+import com.app.modules.provider.repository.PlatformAiProviderRepository;
 import com.app.modules.provider.repository.TtsVoiceRepository;
 import com.app.modules.workspace.entity.Role;
 import com.app.modules.workspace.entity.WorkspaceMember;
@@ -84,6 +86,8 @@ class MediaJobControllerTest {
     @Autowired
     private TtsVoiceRepository ttsVoiceRepository;
     @Autowired
+    private PlatformAiProviderRepository platformAiProviderRepository;
+    @Autowired
     private MediaJobRepository mediaJobRepository;
     @Autowired
     private MediaJobStageRepository mediaJobStageRepository;
@@ -105,6 +109,7 @@ class MediaJobControllerTest {
         mediaJobStageRepository.deleteAll();
         mediaJobRepository.deleteAll();
         ttsVoiceRepository.deleteAll();
+        platformAiProviderRepository.deleteAll();
         mediaConsentRepository.deleteAll();
         mediaAssetRepository.deleteAll();
         workspaceBillingConfigRepository.deleteAll();
@@ -203,12 +208,27 @@ class MediaJobControllerTest {
         creditAccountRepository.save(account);
     }
 
-    private UUID createVoice(String language) {
+    private VoiceBinding createVoice(String language) {
+        PlatformAiProvider provider = new PlatformAiProvider();
+        provider.setId(UUID.randomUUID());
+        provider.setProtocol("test-tts");
+        provider.setCapabilities(java.util.List.of("TTS"));
+        provider.setBaseUrl("https://tts.example.test");
+        provider.setApiKeyEnc(new byte[]{1});
+        provider.setActive(true);
+        provider = platformAiProviderRepository.save(provider);
+
         TtsVoice voice = new TtsVoice();
         voice.setId(UUID.randomUUID());
+        voice.setProviderSource("PLATFORM");
+        voice.setPlatformProviderId(provider.getId());
         voice.setLanguage(language);
-        return ttsVoiceRepository.save(voice).getId();
+        voice.setActive(true);
+        voice = ttsVoiceRepository.save(voice);
+        return new VoiceBinding(provider.getId(), voice.getId());
     }
+
+    private record VoiceBinding(UUID providerId, UUID voiceId) {}
 
     // ---- create ----
 
@@ -292,7 +312,7 @@ class MediaJobControllerTest {
     void createJob_dubMixWithoutSourceSeparation_returnsValidationError() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-dubmix@transflow.com");
         UUID assetId = uploadAndConsentAsset(lead, lead.accessToken());
-        UUID voiceId = createVoice("en");
+        VoiceBinding voice = createVoice("en");
 
         var body = objectMapper.createObjectNode();
         body.put("projectId", lead.projectId().toString());
@@ -302,7 +322,8 @@ class MediaJobControllerTest {
         body.put("targetLang", "en");
         body.put("outputAudioMode", "DUB_MIX");
         body.put("sourceSeparationEnabled", false);
-        body.put("ttsVoiceId", voiceId.toString());
+        body.put("ttsProviderId", voice.providerId().toString());
+        body.put("ttsVoiceId", voice.voiceId().toString());
 
         mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs")
                         .header("Authorization", "Bearer " + lead.accessToken())
@@ -339,7 +360,7 @@ class MediaJobControllerTest {
     void createJob_voiceLanguageMismatch_returnsBusinessError() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-voicemismatch@transflow.com");
         UUID assetId = uploadAndConsentAsset(lead, lead.accessToken());
-        UUID voiceId = createVoice("fr"); // wrong language vs targetLang=en
+        VoiceBinding voice = createVoice("fr"); // wrong language vs targetLang=en
 
         var body = objectMapper.createObjectNode();
         body.put("projectId", lead.projectId().toString());
@@ -348,7 +369,8 @@ class MediaJobControllerTest {
         body.put("processingMode", "TRANSLATE_ONLY");
         body.put("targetLang", "en");
         body.put("outputAudioMode", "DUB_REPLACE");
-        body.put("ttsVoiceId", voiceId.toString());
+        body.put("ttsProviderId", voice.providerId().toString());
+        body.put("ttsVoiceId", voice.voiceId().toString());
 
         mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs")
                         .header("Authorization", "Bearer " + lead.accessToken())
@@ -505,6 +527,17 @@ class MediaJobControllerTest {
     }
 
     @Test
+    void confirmCheckpoint_shortAlias_succeeds() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-checkpoint-short@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+
+        mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId
+                        + "/checkpoints/CUT/confirm")
+                        .header("Authorization", "Bearer " + lead.accessToken()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void confirmCheckpoint_invalidCheckpointValue_returnsValidationError() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-checkpoint-badval@transflow.com");
         UUID jobId = createLocalizationJob(lead, "en");
@@ -522,19 +555,38 @@ class MediaJobControllerTest {
     void setVoice_matchingLanguage_succeeds() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-voice-ok@transflow.com");
         UUID jobId = createLocalizationJob(lead, "en");
-        UUID voiceId = createVoice("en");
+        VoiceBinding voice = createVoice("en");
 
         var body = objectMapper.createObjectNode();
-        body.put("ttsProviderId", "openai");
-        body.put("ttsVoiceId", voiceId.toString());
+        body.put("ttsProviderId", voice.providerId().toString());
+        body.put("ttsVoiceId", voice.voiceId().toString());
 
         mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId + "/voice")
                         .header("Authorization", "Bearer " + lead.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.ttsVoiceId").value(voiceId.toString()))
+                .andExpect(jsonPath("$.data.ttsProviderId").value(voice.providerId().toString()))
+                .andExpect(jsonPath("$.data.ttsVoiceId").value(voice.voiceId().toString()))
                 .andExpect(jsonPath("$.data.stages").isArray());
+    }
+
+    @Test
+    void setVoice_providerDoesNotOwnVoice_returnsValidationError() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-voice-provider-mismatch@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+        VoiceBinding voice = createVoice("en");
+
+        var body = objectMapper.createObjectNode();
+        body.put("ttsProviderId", UUID.randomUUID().toString());
+        body.put("ttsVoiceId", voice.voiceId().toString());
+
+        mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId + "/voice")
+                        .header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_ERROR.getCode()));
     }
 
     // ---- subtitles ----

@@ -89,7 +89,7 @@ export function useLogout() {
     logout()
     qc.clear()
     // Hard navigation: SPA navigate('/') races AuthGuard (token cleared while still
-    // on /w/* or /platform/* → immediate redirect to /login?redirect=...).
+    // on /w/* → immediate redirect to /login?redirect=...).
     window.location.replace('/')
   }
 }

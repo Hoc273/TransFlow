@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
+from app.core.async_utils import blocking as _blocking
 from app.services import cancel_registry
 from app.services.callback import send_audio_mix_complete, send_audio_mix_progress
 from app.services.ffmpeg import FFmpegError
@@ -79,14 +80,15 @@ async def process_audio_mix(req: AudioMixRequest) -> None:
         await send_audio_mix_progress(req.media_job_id, req.correlation_id, 10)
 
         _check_cancelled(req.correlation_id)
-        output_path, duration_ms, warnings = execute_mix_plan(req.mix_plan, temp_dir)
+        output_path, duration_ms, warnings = await _blocking(
+            execute_mix_plan, req.mix_plan, temp_dir)
         await send_audio_mix_progress(req.media_job_id, req.correlation_id, 70)
         _check_cancelled(req.correlation_id)
 
         storage = get_storage()
         # Immutable object key per attempt — never overwrite a previous mix.
         object_key = f"mixed/{req.media_job_id}/{uuid.uuid4()}.wav"
-        output_ref = storage.upload(output_path, object_key)
+        output_ref = await _blocking(storage.upload, output_path, object_key)
         await send_audio_mix_progress(req.media_job_id, req.correlation_id, 95)
 
         if cancel_registry.is_cancelled(req.correlation_id):

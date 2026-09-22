@@ -12,13 +12,6 @@ const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage').then(m => ({
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })))
 const GoogleAuthDonePage = lazy(() => import('@/pages/auth/GoogleAuthDonePage').then(m => ({ default: m.GoogleAuthDonePage })))
 const NoWorkspacePage = lazy(() => import('@/pages/workspace/NoWorkspacePage').then(m => ({ default: m.NoWorkspacePage })))
-const PlatformShell = lazy(() => import('@/components/platform/PlatformShell').then(m => ({ default: m.PlatformShell })))
-const PlatformAdminGuard = lazy(() => import('@/components/platform/PlatformAdminGuard').then(m => ({ default: m.PlatformAdminGuard })))
-const PlatformOverviewPage = lazy(() => import('@/pages/platform/PlatformOverviewPage').then(m => ({ default: m.PlatformOverviewPage })))
-const PlatformStatusPage = lazy(() => import('@/pages/platform/PlatformStatusPage').then(m => ({ default: m.PlatformStatusPage })))
-const PlatformUsersPage = lazy(() => import('@/pages/platform/PlatformUsersPage').then(m => ({ default: m.PlatformUsersPage })))
-const PlatformWorkspacesPage = lazy(() => import('@/pages/platform/PlatformWorkspacesPage').then(m => ({ default: m.PlatformWorkspacesPage })))
-const PlatformAuditPage = lazy(() => import('@/pages/platform/PlatformAuditPage').then(m => ({ default: m.PlatformAuditPage })))
 
 function DashboardRedirect() {
   const current = useAuthStore((s) => s.currentWorkspace?.id)
@@ -73,16 +66,12 @@ export function AppRouter() {
 
         <Route path="/dashboard" element={<DashboardRedirect />} />
 
-        {/* Platform Super Admin */}
-        <Route element={<PlatformAdminGuard />}>
-          <Route path="/platform" element={<PlatformShell />}>
-            <Route index element={<PlatformOverviewPage />} />
-            <Route path="status" element={<PlatformStatusPage />} />
-            <Route path="users" element={<PlatformUsersPage />} />
-            <Route path="workspaces" element={<PlatformWorkspacesPage />} />
-            <Route path="audit" element={<PlatformAuditPage />} />
-          </Route>
-        </Route>
+        {/* Legacy top-level redirects */}
+        <Route path="/tm/*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/documents/*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/creative/*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/jobs/*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/editor/*" element={<Navigate to="/dashboard" replace />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

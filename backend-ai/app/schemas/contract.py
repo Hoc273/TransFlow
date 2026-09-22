@@ -282,6 +282,9 @@ class NarrativeSummarizeRequest(BaseModel):
     visual_observations: Optional[list[dict]] = None
     visual_scenes: Optional[list[dict]] = None
     multimodal_context: Optional[dict] = None
+    # Option A+ additive — cold-start narration pacing estimate (chars/sec) from the
+    # bound TTS voice. Same-language jobs only; None preserves the legacy default.
+    narration_cps_estimate: Optional[int] = None
 
 
 class NarrativeSummarizeResponse(BaseModel):

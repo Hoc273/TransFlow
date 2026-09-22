@@ -96,3 +96,4 @@ stt_segments.json
 /backend-media-worker-tmp/
 /backend-smoke-results.json
 /backend-smoke.ps1
+/transflow_origin/

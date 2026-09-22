@@ -24,8 +24,7 @@ import { Modal } from '@/components/shared/Modal'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import { useDocuments } from '@/hooks/useDocuments'
-import { useMediaJobs } from '@/hooks/useMedia'
+import { useMediaJobs, useProjectMediaAssets } from '@/hooks/useMedia'
 import { useProjects } from '@/hooks/useProjects'
 import { exportTransformationJobApi, rerunTransformationStageApi } from '@/api/transformation'
 import {
@@ -43,8 +42,7 @@ import { formatLanguageOption } from '@/lib/languages'
 import { asJobStatus } from '@/lib/status'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
-import type { DocumentItem } from '@/types/document'
-import type { MediaJob } from '@/types/media'
+import type { MediaAsset, MediaJob } from '@/types/media'
 
 const PAGE_SIZE = 8
 
@@ -79,7 +77,7 @@ export function MediaListPage() {
     dataUpdatedAt,
     refetch,
   } = useMediaJobs(workspaceId, projectId || undefined)
-  const { data: documents = [] } = useDocuments(workspaceId, projectId || undefined)
+  const { data: assets = [] } = useProjectMediaAssets(workspaceId, projectId || undefined)
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === projectId) ?? null,
@@ -159,7 +157,7 @@ export function MediaListPage() {
           workspaceId={workspaceId}
           projectId={projectId}
           jobs={jobs}
-          documents={documents}
+          assets={assets}
           isLoading={isLoading}
           language={language}
           page={page}
@@ -329,7 +327,7 @@ export function JobsTable({
   workspaceId,
   projectId,
   jobs,
-  documents = [],
+  assets = [],
   isLoading,
   language,
   page,
@@ -341,7 +339,7 @@ export function JobsTable({
   workspaceId: string
   projectId: string
   jobs: MediaJob[]
-  documents?: DocumentItem[]
+  assets?: MediaAsset[]
   isLoading: boolean
   language: string
   page: number
@@ -439,9 +437,9 @@ export function JobsTable({
     }
   }
 
-  const docMap = useMemo(() => {
-    return new Map(documents.map((d) => [d.id, d.name]))
-  }, [documents])
+  const assetMap = useMemo(() => {
+    return new Map(assets.map((asset) => [asset.id, asset.fileName]))
+  }, [assets])
 
   const totalPages = Math.max(1, Math.ceil(jobs.length / pageSize))
   const safePage = Math.min(page, totalPages - 1)
@@ -504,7 +502,7 @@ export function JobsTable({
             {pageJobs.map((job) => {
               const stage = currentStage(job)
               const progress = overallProgress(job)
-              const videoTitle = docMap.get(job.documentId) || `Video ${job.id.slice(0, 8)}`
+              const videoTitle = assetMap.get(job.rootAssetId) || `Video ${job.id.slice(0, 8)}`
               return (
                 <tr
                   key={job.id}

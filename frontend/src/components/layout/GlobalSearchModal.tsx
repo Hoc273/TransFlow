@@ -16,7 +16,6 @@ import {
   IconX,
 } from '@tabler/icons-react'
 import { useBatches } from '@/hooks/useBatches'
-import { useGlossaries } from '@/hooks/useGlossary'
 import { useProjects } from '@/hooks/useProjects'
 import { asJobStatus } from '@/lib/status'
 import { cn } from '@/lib/cn'
@@ -29,7 +28,7 @@ interface GlobalSearchModalProps {
 
 interface SearchItem {
   id: string
-  category: 'pages' | 'projects' | 'batches' | 'glossaries'
+  category: 'pages' | 'projects' | 'batches'
   categoryLabel: string
   title: string
   subtitle?: string
@@ -52,7 +51,6 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
   // Fetch data across modules
   const { data: projects = [] } = useProjects(workspaceId)
   const { data: batches = [] } = useBatches(workspaceId)
-  const { data: glossaries = [] } = useGlossaries(workspaceId)
 
   // Focus input when modal opens & reset state
   useEffect(() => {
@@ -183,14 +181,14 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
     return batches
       .filter(
         (b) =>
-          b.name.toLowerCase().includes(q) ||
+          (b.name || '').toLowerCase().includes(q) ||
           String(b.status).toLowerCase().includes(q),
       )
       .map((b) => ({
         id: `batch-${b.id}`,
         category: 'batches' as const,
         categoryLabel: t('common:commandPalette.batches', { defaultValue: 'Xử lý hàng loạt' }),
-        title: b.name,
+        title: b.name || b.id.slice(0, 8),
         badge: asJobStatus(String(b.status)),
         badgeColor: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-mono text-[10px]',
         icon: IconStack2,
@@ -199,40 +197,13 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
       }))
   }, [batches, q, workspaceId, t])
 
-  const filteredGlossaries: SearchItem[] = useMemo(() => {
-    if (!q) return []
-    return glossaries
-      .filter(
-        (g) =>
-          g.name.toLowerCase().includes(q) ||
-          (g.description && g.description.toLowerCase().includes(q)),
-      )
-      .map((g) => ({
-        id: `gloss-${g.id}`,
-        category: 'glossaries' as const,
-        categoryLabel: t('common:commandPalette.glossaries', { defaultValue: 'Bảng thuật ngữ' }),
-        title: g.name,
-        subtitle: g.description || undefined,
-        badge: `${g.termCount} terms`,
-        badgeColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px]',
-        icon: IconBook2,
-        iconColor: 'bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20 dark:text-emerald-400',
-        path: `/w/${workspaceId}/glossaries`,
-      }))
-  }, [glossaries, q, workspaceId, t])
-
   // Aggregate results based on active tab filter
   const visibleItems: SearchItem[] = useMemo(() => {
     if (!q) {
       return filteredPages
     }
 
-    const all = [
-      ...filteredPages,
-      ...filteredProjects,
-      ...filteredBatches,
-      ...filteredGlossaries,
-    ]
+    const all = [...filteredPages, ...filteredProjects, ...filteredBatches]
 
     if (activeCategory === 'all') return all
     return all.filter((item) => item.category === activeCategory)
@@ -242,7 +213,6 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
     filteredPages,
     filteredProjects,
     filteredBatches,
-    filteredGlossaries,
   ])
 
   // Ensure selected index is in bounds
@@ -295,8 +265,7 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
   const totalMatches =
     filteredPages.length +
     filteredProjects.length +
-    filteredBatches.length +
-    filteredGlossaries.length
+    filteredBatches.length
 
   return (
     <div
@@ -413,20 +382,6 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
               </button>
             )}
 
-            {filteredGlossaries.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setActiveCategory('glossaries')}
-                className={cn(
-                  'px-2.5 py-1 rounded-lg font-medium transition cursor-pointer shrink-0',
-                  activeCategory === 'glossaries'
-                    ? 'bg-[#714ffc] text-white shadow-2xs'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/[0.06]',
-                )}
-              >
-                {t('common:commandPalette.glossaries')} ({filteredGlossaries.length})
-              </button>
-            )}
           </div>
         )}
 

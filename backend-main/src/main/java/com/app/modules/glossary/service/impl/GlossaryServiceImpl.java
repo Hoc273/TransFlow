@@ -52,7 +52,7 @@ public class GlossaryServiceImpl implements GlossaryService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<GlossaryTerm> listTerms(UUID workspaceId, UUID userId, UUID projectId) {
         Glossary glossary = getOrCreateGlossary(workspaceId, userId, projectId);
         return glossaryTermRepository.findByGlossaryId(glossary.getId());

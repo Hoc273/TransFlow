@@ -25,6 +25,10 @@ export type QaIssue = {
     reason?: string
     overriddenAt?: string
   }>
+  subtitleSegmentId?: string
+  issueType?: string
+  resolvedAt?: string | null
+  createdAt?: string
 }
 
 export type ResolveIssueBody = {

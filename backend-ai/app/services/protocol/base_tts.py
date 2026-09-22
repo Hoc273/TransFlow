@@ -82,7 +82,7 @@ class BaseTtsAdapter(ProtocolAdapter):
         text: str,
         voice_id: str,
     ) -> SynthesizeResult:
-        self.require_capability(Capability.TTS)
+        self.require_provider_capability(provider, Capability.TTS)
         self.ensure_voice_known(voice_id)
         result = await self._synthesize_engine(provider, text, voice_id)
         return replace(result, metadata=self._with_execution_info(provider, voice_id, result.metadata))
@@ -98,7 +98,7 @@ class BaseTtsAdapter(ProtocolAdapter):
         object for a voice removed from the catalog still raises
         ``PROVIDER_TTS_VOICE_NOT_FOUND``. Pure (static catalog only), no I/O.
         """
-        self.require_capability(Capability.TTS)
+        self.require_provider_capability(provider, Capability.TTS)
         self.ensure_voice_known(voice_id)
         return super().cache_descriptor(provider, voice_id)
 

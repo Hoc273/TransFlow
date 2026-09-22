@@ -454,14 +454,12 @@ function buildRoutes() {
   // ---- Projects ----
   r('/workspaces/:workspaceId/projects', 'GET', (ctx) => {
     const list = d.projects.map((p) => {
-      const docList = d.documents.filter((doc) => doc.projectId === p.id)
       const mediaList = d.mediaJobs.filter((mj) => mj.projectId === p.id)
-      const hasProcessing = docList.some((doc) => doc.status === 'PROCESSING') || mediaList.some((mj) => mj.status === 'PROCESSING')
+      const hasProcessing = mediaList.some((mj) => mj.status === 'PROCESSING')
       return {
         ...p,
-        documentCount: docList.length,
         mediaCount: mediaList.length,
-        progressPercent: docList.length > 0 ? (hasProcessing ? 70 : 100) : 0,
+        progressPercent: mediaList.length > 0 ? (hasProcessing ? 70 : 100) : 0,
       }
     })
     sendJson(ctx.res, 200, list)
@@ -477,49 +475,11 @@ function buildRoutes() {
       name: body.name || 'Untitled',
       sourceLang: body.sourceLang || 'en',
       defaultGlossaryId: body.defaultGlossaryId ?? null,
-      tmEnabled: body.tmEnabled ?? true,
       domain: body.domain ?? null,
       tone: body.tone ?? null,
     }
     d.projects.push(p)
     sendJson(ctx.res, 201, p)
-  })
-
-  // ---- Documents ----
-  r('/workspaces/:workspaceId/projects/:projectId/documents', 'GET', (ctx) =>
-    sendJson(ctx.res, 200, d.documents.filter((doc) => doc.projectId === ctx.params.projectId)),
-  )
-  r('/workspaces/:workspaceId/documents/:documentId', 'GET', (ctx) => {
-    const doc = d.documents.find((x) => x.id === ctx.params.documentId)
-    sendJson(ctx.res, doc ? 200 : 404, doc ?? { errorCode: 'NOT_FOUND', message: 'Document not found' })
-  })
-  r('/workspaces/:workspaceId/projects/:projectId/documents', 'POST', async (ctx) => {
-    const body = await readJson(ctx.req)
-    const doc = {
-      id: d.uuid('d'),
-      projectId: ctx.params.projectId,
-      name: body.name || 'Untitled',
-      sourceLang: body.sourceLang || 'en',
-      status: 'PENDING',
-      origin: 'MANUAL',
-      createdAt: CURRENT_UTC,
-    }
-    d.documents.push(doc)
-    sendJson(ctx.res, 201, doc)
-  })
-  r('/workspaces/:workspaceId/projects/:projectId/documents/upload', 'POST', async (ctx) => {
-    await readBody(ctx.req, 50 * 1024 * 1024)
-    const doc = {
-      id: d.uuid('d'),
-      projectId: ctx.params.projectId,
-      name: 'uploaded-document.txt',
-      sourceLang: 'en',
-      status: 'PENDING',
-      origin: 'UPLOAD',
-      createdAt: CURRENT_UTC,
-    }
-    d.documents.push(doc)
-    sendJson(ctx.res, 201, doc)
   })
 
   // ---- Batches ----
@@ -555,65 +515,38 @@ function buildRoutes() {
     sendJson(ctx.res, 200, { batchId: ctx.params.batchId, documentId: ctx.params.documentId, retriedJobIds: ['mj_1'], message: 'Retried' }),
   )
 
-  // ---- Text jobs ----
-  r('/workspaces/:workspaceId/jobs', 'GET', (ctx) => {
-    sendJson(ctx.res, 200, d.textJobs)
-  })
-  r('/workspaces/:workspaceId/documents/:documentId/jobs', 'GET', (ctx) => {
-    const list = d.textJobs.filter((j) => j.documentId === ctx.params.documentId)
-    sendJson(ctx.res, 200, list.length > 0 ? list : d.textJobs)
-  })
-  r('/workspaces/:workspaceId/jobs/:jobId', 'GET', (ctx) => {
-    const job = d.textJobs.find((j) => j.id === ctx.params.jobId)
-    if (job) return sendJson(ctx.res, 200, job)
-    const list = d.mediaSegmentsByJob[ctx.params.jobId] || d.job1Segments
-    sendJson(ctx.res, 200, {
-      id: ctx.params.jobId,
-      documentId: 'd_1',
-      targetLang: ctx.params.jobId === 'jtxt_2' ? 'ja' : ctx.params.jobId === 'jtxt_3' ? 'vi' : 'en',
-      status: 'COMPLETED',
-      providerUsed: 'OpenAI Compatible',
-      modelUsed: 'gpt-4o-mini',
-      segments: list,
-    })
-  })
-  r('/workspaces/:workspaceId/documents/:documentId/jobs', 'POST', async (ctx) => {
-    const body = await readJson(ctx.req)
-    const newJob = {
-      id: d.uuid('jtxt'),
-      documentId: ctx.params.documentId,
-      targetLang: body.targetLang || 'en',
-      status: 'PROCESSING',
-      providerUsed: 'OpenAI Compatible',
-      modelUsed: 'gpt-4o-mini',
-      createdAt: d.now(),
-      segments: [1, 2, 3, 4, 5].map(buildSegment),
-    }
-    d.textJobs.unshift(newJob)
-    sendJson(ctx.res, 201, newJob)
-  })
-
   // ---- Segments & QA ----
+  const findMockSegment = (segmentId) => {
+    let seg = d.job1Segments.find((s) => s.id === segmentId)
+    if (!seg && d.mediaSegmentsByJob) {
+      for (const list of Object.values(d.mediaSegmentsByJob)) {
+        seg = list.find((s) => s.id === segmentId)
+        if (seg) break
+      }
+    }
+    return seg || buildSegment(1)
+  }
+
+  const getAllMockSegments = () => {
+    const list = [...d.job1Segments]
+    if (d.mediaSegmentsByJob) {
+      for (const segs of Object.values(d.mediaSegmentsByJob)) {
+        list.push(...segs)
+      }
+    }
+    return list
+  }
+
   r('/workspaces/:workspaceId/segments/:segmentId', 'PATCH', async (ctx) => {
     const body = await readJson(ctx.req)
-    let seg = null
-    for (const j of d.textJobs) {
-      seg = (j.segments || []).find((s) => s.id === ctx.params.segmentId)
-      if (seg) break
-    }
-    if (!seg) seg = d.job1Segments.find((s) => s.id === ctx.params.segmentId) ?? buildSegment(1)
+    const seg = findMockSegment(ctx.params.segmentId)
     if (body.targetText !== undefined) seg.targetText = body.targetText
     if (body.startMs !== undefined) seg.startMs = body.startMs
     if (body.endMs !== undefined) seg.endMs = body.endMs
     sendJson(ctx.res, 200, seg)
   })
   r('/workspaces/:workspaceId/segments/:segmentId/approve', 'POST', (ctx) => {
-    let seg = null
-    for (const j of d.textJobs) {
-      seg = (j.segments || []).find((s) => s.id === ctx.params.segmentId)
-      if (seg) break
-    }
-    if (!seg) seg = d.job1Segments.find((s) => s.id === ctx.params.segmentId) ?? buildSegment(1)
+    const seg = findMockSegment(ctx.params.segmentId)
     seg.status = 'APPROVED'
     ;(seg.qaIssues ?? []).forEach((qi) => { qi.resolved = true })
     sendJson(ctx.res, 200, seg)
@@ -627,7 +560,7 @@ function buildRoutes() {
     ])
   })
   r('/workspaces/:workspaceId/qa-issues/:issueId/resolve', 'POST', (ctx) => {
-    const allSegments = [...d.job1Segments, ...(d.textJobs.flatMap((j) => j.segments || []))]
+    const allSegments = getAllMockSegments()
     for (const seg of allSegments) {
       const qi = (seg.qaIssues ?? []).find((i) => i.id === ctx.params.issueId)
       if (qi) {
@@ -639,12 +572,12 @@ function buildRoutes() {
   })
   r('/workspaces/:workspaceId/qa-issues/:issueId/override', 'POST', async (ctx) => {
     const body = await readJson(ctx.req)
-    const allSegments = [...d.job1Segments, ...(d.textJobs.flatMap((j) => j.segments || []))]
+    const allSegments = getAllMockSegments()
     for (const seg of allSegments) {
       const qi = (seg.qaIssues ?? []).find((i) => i.id === ctx.params.issueId)
       if (qi) {
         qi.resolved = true
-        qi.overrides = [{ blockingAction: 'BLOCK_EXPORT', reason: body.reason || 'User manual override' }]
+        qi.overrides = [{ blockingAction: 'BLOCK_PUBLISH', reason: body.reason || 'User manual override' }]
         break
       }
     }
@@ -702,16 +635,6 @@ function buildRoutes() {
   r('/workspaces/:workspaceId/glossaries/:glossaryId/import', 'POST', async (ctx) => {
     await readBody(ctx.req, 5 * 1024 * 1024)
     sendJson(ctx.res, 200, { added: 5, skipped: 1, errors: ['Line 7: invalid'] })
-  })
-
-  // ---- TM ----
-  r('/workspaces/:workspaceId/tm', 'GET', (ctx) =>
-    sendJson(ctx.res, 200, { lookup: null, entries: d.tmEntries, total: d.tmEntries.length }),
-  )
-  r('/workspaces/:workspaceId/tm/:id', 'DELETE', (ctx) => {
-    const i = d.tmEntries.findIndex((e) => e.id === ctx.params.id)
-    if (i >= 0) d.tmEntries.splice(i, 1)
-    sendNoContent(ctx.res)
   })
 
   // ---- Providers (both /workspaces/:id/providers and /users/me/providers) ----
@@ -994,9 +917,29 @@ function buildRoutes() {
   r('/media/stream', 'GET', (ctx) => serveVideo(ctx))
   r('/media/video', 'GET', (ctx) => serveVideo(ctx))
 
+  r('/workspaces/:workspaceId/projects/:projectId/media/jobs/download', 'POST', async (ctx) => {
+    const body = await readJson(ctx.req)
+    const ids = Array.isArray(body.jobIds) ? body.jobIds : []
+    sendJson(ctx.res, 200, {
+      downloadUrl: '/api/media/sample-video',
+      fileName: 'videos_batch.zip',
+      expiresAt: CURRENT_UTC,
+      includedJobIds: ids,
+      skipped: [],
+    })
+  })
+
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/export', '/workspaces/:workspaceId/transformation/jobs/:jobId/export', 'GET', (ctx) => {
     const format = (ctx.query.get('format') || 'SRT').toUpperCase()
     const isVtt = format === 'VTT'
+    if (format === 'VIDEO') {
+      return sendJson(ctx.res, 200, {
+        format: 'VIDEO',
+        fileName: 'video_' + ctx.params.jobId + '.mp4',
+        downloadUrl: '/api/media/sample-video',
+        content: null,
+      })
+    }
     const list = d.mediaSegmentsByJob[ctx.params.jobId] || d.job1Segments
     const content = isVtt
       ? 'WEBVTT - ATTT qua Mật mã học\n\n' +
@@ -1042,6 +985,14 @@ function buildRoutes() {
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/render-config', '/workspaces/:workspaceId/transformation/jobs/:jobId/render-config', 'PUT', async (ctx) => {
     const body = await readJson(ctx.req)
     sendJson(ctx.res, 200, { ...makeRenderConfig(ctx.params.jobId), ...body })
+  })
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/rerun-render', '/workspaces/:workspaceId/transformation/jobs/:jobId/rerun-render', 'POST', async (ctx) => {
+    const body = await readJson(ctx.req)
+    const job = d.mediaJobs.find((j) => j.id === ctx.params.jobId)
+    if (!job) return sendJson(ctx.res, 404, { errorCode: 'NOT_FOUND', message: 'Job not found' })
+    Object.assign(job, body ?? {})
+    job.status = 'PROCESSING'
+    sendJson(ctx.res, 202, job)
   })
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/confirm-render', '/workspaces/:workspaceId/transformation/jobs/:jobId/confirm-render', 'POST', (ctx) => sendNoContent(ctx.res))
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/checkpoints/:checkpoint/confirm', '/workspaces/:workspaceId/transformation/jobs/:jobId/checkpoints/:checkpoint/confirm', 'POST', (ctx) => sendNoContent(ctx.res))
@@ -1180,157 +1131,6 @@ function buildRoutes() {
   // ---- Notifications ----
   r('/workspaces/:workspaceId/notifications', 'GET', json(d.notifications))
 
-  // ---- Creative Studio (production jobs) ----
-  r('/workspaces/:workspaceId/production/jobs', 'GET', (ctx) => {
-    const projectId = ctx.query.get('projectId')
-    const list = projectId
-      ? d.creativeJobs.filter((j) => j.projectId === projectId)
-      : d.creativeJobs
-    sendJson(ctx.res, 200, list)
-  })
-  r('/workspaces/:workspaceId/production/jobs/:jobId', 'GET', (ctx) => {
-    const job = d.creativeJobs.find((j) => j.id === ctx.params.jobId)
-    if (!job) return sendJson(ctx.res, 404, { errorCode: 'NOT_FOUND', message: 'Creative job not found' })
-    sendJson(ctx.res, 200, job)
-  })
-  r('/workspaces/:workspaceId/production/jobs', 'POST', async (ctx) => {
-    const body = await readJson(ctx.req)
-    const pipelineId = body.pipelineId || 'animated_explainer'
-    const defaultStages = pipelineId === 'clip_factory'
-      ? [
-          { id: d.uuid('stg'), stageKey: 'INGEST', stageOrder: 1, unitIndex: 0, status: 'READY_TO_PROCESS', progressPercent: 0, attemptCount: 0 },
-          { id: d.uuid('stg'), stageKey: 'VISION_ANALYZE', stageOrder: 2, unitIndex: 0, status: 'PENDING', progressPercent: 0, attemptCount: 0 },
-          { id: d.uuid('stg'), stageKey: 'HIGHLIGHT_SELECT', stageOrder: 3, unitIndex: 0, status: 'PENDING', progressPercent: 0, attemptCount: 0 },
-          { id: d.uuid('stg'), stageKey: 'RENDER', stageOrder: 4, unitIndex: 0, status: 'PENDING', progressPercent: 0, attemptCount: 0 },
-        ]
-      : [
-          { id: d.uuid('stg'), stageKey: 'RESEARCH', stageOrder: 1, unitIndex: 0, status: 'READY_TO_PROCESS', progressPercent: 0, attemptCount: 0 },
-          { id: d.uuid('stg'), stageKey: 'SCRIPT_GEN', stageOrder: 2, unitIndex: 0, status: 'PENDING', progressPercent: 0, attemptCount: 0 },
-          { id: d.uuid('stg'), stageKey: 'VISUAL_GEN', stageOrder: 3, unitIndex: 0, status: 'PENDING', progressPercent: 0, attemptCount: 0 },
-          { id: d.uuid('stg'), stageKey: 'COMPOSE', stageOrder: 4, unitIndex: 0, status: 'PENDING', progressPercent: 0, attemptCount: 0 },
-        ]
-    const newJob = {
-      id: d.uuid('prod'),
-      workspaceId: ctx.params.workspaceId,
-      projectId: body.projectId || 'p_1',
-      pipelineId,
-      manifestVersion: '1.0.0',
-      manifestContentHash: 'manifest_hash',
-      workflowMode: body.workflowMode || 'GUIDED_TEAM',
-      status: 'PROCESSING',
-      hardBudgetCapUsd: body.hardBudgetCapUsd || 50,
-      spentAmountUsd: 0,
-      title: body.title || 'Untitled Creative Job',
-      briefSummary: body.briefSummary || '',
-      createdByUserId: 'u_admin',
-      createdAt: d.now(),
-      updatedAt: d.now(),
-      outputQuality: 'REAL',
-      stages: defaultStages,
-    }
-    d.creativeJobs.unshift(newJob)
-    sendJson(ctx.res, 201, newJob)
-  })
-  r('/workspaces/:workspaceId/production/jobs/:jobId/cancel', 'POST', (ctx) => {
-    const job = d.creativeJobs.find((j) => j.id === ctx.params.jobId)
-    if (job) {
-      job.status = 'CANCELLED'
-      job.cancelledAt = d.now()
-    }
-    sendJson(ctx.res, 200, job ?? { errorCode: 'NOT_FOUND', message: 'Creative job not found' })
-  })
-  r('/workspaces/:workspaceId/production/jobs/:jobId/stages/:stageId/retry', 'POST', (ctx) => {
-    const job = d.creativeJobs.find((j) => j.id === ctx.params.jobId)
-    const stg = job?.stages?.find((s) => s.id === ctx.params.stageId)
-    if (stg) {
-      stg.status = 'PROCESSING'
-      stg.progressPercent = 10
-      stg.attemptCount = (stg.attemptCount || 0) + 1
-    }
-    sendJson(ctx.res, 200, { success: true, stage: stg })
-  })
-  r('/workspaces/:workspaceId/production/jobs/:jobId/artifacts', 'GET', (ctx) => {
-    const list = d.creativeArtifacts.filter((a) => a.productionJobId === ctx.params.jobId)
-    sendJson(ctx.res, 200, list)
-  })
-  const handleStorageUrl = (ctx) => {
-    const key = ctx.query.get('key') || 'sample'
-    sendJson(ctx.res, 200, {
-      url: key.endsWith('.mp4')
-        ? '/api/media/sample-video'
-        : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
-      expiresInSeconds: 3600,
-    })
-  }
-  r('/workspaces/:workspaceId/production/jobs/:jobId/storage-url', 'GET', handleStorageUrl)
-  r('/workspaces/:workspaceId/production/jobs/:jobId/storage-url', 'POST', handleStorageUrl)
-
-  r('/workspaces/:workspaceId/production/jobs/:jobId/clip-factory/ingest', 'POST', async (ctx) => {
-    await readBody(ctx.req, 100 * 1024 * 1024)
-    sendJson(ctx.res, 200, {
-      jobId: ctx.params.jobId,
-      sourceAssetId: d.uuid('asset'),
-      durationMs: 60000,
-      fileSizeBytes: 24500000,
-    })
-  })
-  r('/workspaces/:workspaceId/production/jobs/:jobId/clip-factory/run', 'POST', async (ctx) => {
-    sendJson(ctx.res, 200, { jobId: ctx.params.jobId, clips: d.creativeClips })
-  })
-  r('/workspaces/:workspaceId/production/jobs/:jobId/clip-factory/clips', 'GET', (ctx) => {
-    const list = d.creativeClips.filter((c) => c.productionJobId === ctx.params.jobId)
-    sendJson(ctx.res, 200, list.length > 0 ? list : d.creativeClips)
-  })
-  r('/workspaces/:workspaceId/production/jobs/:jobId/animated-explainer/run', 'POST', async (ctx) => {
-    const job = d.creativeJobs.find((j) => j.id === ctx.params.jobId)
-    sendJson(ctx.res, 200, { jobId: ctx.params.jobId, status: 'PROCESSING', stages: job?.stages ?? [] })
-  })
-  r('/workspaces/:workspaceId/production/jobs/:jobId/animated-explainer/research', 'POST', async (ctx) => {
-    sendJson(ctx.res, 200, { jobId: ctx.params.jobId, researchSummary: 'Mock automated research completed.' })
-  })
-  r('/workspaces/:workspaceId/production/jobs/:jobId/compose', 'POST', async (ctx) => {
-    sendJson(ctx.res, 200, {
-      jobId: ctx.params.jobId,
-      compositionArtifactId: 'art_1',
-      compositionRef: 'creative/composed_video.mp4',
-      status: 'COMPLETED',
-    })
-  })
-
-  // ---- Platform (global) ----
-  r('/platform/overview', 'GET', json(d.platformOverview))
-  r('/platform/status', 'GET', json(d.platformStatus))
-  r('/platform/users', 'GET', (ctx) => {
-    const q = (ctx.query.get('q') || '').toLowerCase().trim()
-    const isAdmin = ctx.query.get('isPlatformAdmin')
-    let list = d.platformUsers
-    if (q) {
-      list = list.filter((u) => u.fullName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
-    }
-    if (isAdmin === 'true') {
-      list = list.filter((u) => u.isPlatformAdmin)
-    } else if (isAdmin === 'false') {
-      list = list.filter((u) => !u.isPlatformAdmin)
-    }
-    pageJson(ctx, list)
-  })
-  r('/platform/workspaces', 'GET', (ctx) => {
-    const q = (ctx.query.get('q') || '').toLowerCase().trim()
-    let list = d.platformWorkspaces
-    if (q) {
-      list = list.filter((w) => w.name.toLowerCase().includes(q) || w.slug.toLowerCase().includes(q))
-    }
-    pageJson(ctx, list)
-  })
-  r('/platform/audit-logs', 'GET', (ctx) => {
-    const action = ctx.query.get('action')
-    let list = d.platformAuditLogs
-    if (action) {
-      list = list.filter((a) => a.action === action)
-    }
-    pageJson(ctx, list)
-  })
-
   // ---- Dashboard usage ----
   r('/workspaces/:workspaceId/dashboard/usage', 'GET', json({
     totalInputTokens: 1543210,
@@ -1347,6 +1147,43 @@ function buildRoutes() {
     ],
     cost: 'Coming soon',
   }))
+
+  // ---- Platform Super Admin ----
+  r('/platform/overview', 'GET', json(d.platformOverview))
+  r('/platform/status', 'GET', json(d.platformStatus))
+  r('/platform/users', 'GET', (ctx) => {
+    const page = parseInt(ctx.query?.get('page') || '0', 10)
+    const size = parseInt(ctx.query?.get('size') || '20', 10)
+    sendJson(ctx.res, 200, {
+      items: d.platformUsers,
+      page,
+      size,
+      totalItems: d.platformUsers.length,
+      totalPages: 1,
+    })
+  })
+  r('/platform/workspaces', 'GET', (ctx) => {
+    const page = parseInt(ctx.query?.get('page') || '0', 10)
+    const size = parseInt(ctx.query?.get('size') || '20', 10)
+    sendJson(ctx.res, 200, {
+      items: d.platformWorkspaces,
+      page,
+      size,
+      totalItems: d.platformWorkspaces.length,
+      totalPages: 1,
+    })
+  })
+  r('/platform/audit-logs', 'GET', (ctx) => {
+    const page = parseInt(ctx.query?.get('page') || '0', 10)
+    const size = parseInt(ctx.query?.get('size') || '20', 10)
+    sendJson(ctx.res, 200, {
+      items: d.platformAuditLogs,
+      page,
+      size,
+      totalItems: d.platformAuditLogs.length,
+      totalPages: 1,
+    })
+  })
 
   return R
 }

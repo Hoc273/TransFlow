@@ -74,9 +74,7 @@ export type BatchEditMediaSegmentsBody = {
   updates: BatchEditMediaSegmentItem[]
 }
 
-export type BatchEditMediaSegmentsResponse = {
-  segments: import('@/types/job').SegmentItem[]
-}
+export type BatchEditMediaSegmentsResponse = import('@/types/media').SegmentItem[]
 
 // ---------- availability projection (CT10.3A/CT10.3B) ----------
 
@@ -286,12 +284,23 @@ export function batchEditTransformationSegmentsApi(
 
 // ---------- W0 workflow (docs/16 §7.5) ----------
 
+export function normalizeCheckpoint(checkpoint: string): string {
+  const c = (checkpoint || '').trim().toUpperCase()
+  if (c === 'CUT' || c === 'CUT_CONFIRMED') return 'CUT_CONFIRMED'
+  if (c === 'REVIEW' || c === 'REVIEW_CONFIRMED') return 'REVIEW_CONFIRMED'
+  if (c === 'EXPORT' || c === 'PUBLISH' || c === 'PUBLISH_CONFIRMED') return 'PUBLISH_CONFIRMED'
+  return c
+}
+
 export function continueWorkflowApi(workspaceId: string, jobId: string, checkpoint: string) {
+  const normalized = normalizeCheckpoint(checkpoint)
   return apiRequest<import('@/types/media').WorkflowCheckpoint>(
-    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/checkpoints/${checkpoint}/confirm`),
-    { method: 'POST', body: { checkpoint } },
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/checkpoints/${normalized}/confirm`),
+    { method: 'POST', body: { checkpoint: normalized } },
   )
 }
+
+export { listMediaJobSubtitlesApi } from './media'
 
 /**
  * @deprecated Legacy W0 prototype route — unused in Media Studio UI. Backend does not implement this route.
@@ -421,9 +430,12 @@ export function rerunTransformationTtsRenderApi(workspaceId: string, jobId: stri
 export function rerunTransformationRenderApi(
   workspaceId: string,
   jobId: string,
-  _body?: import('@/types/media').UpdateRenderConfigBody,
+  body?: import('@/types/media').UpdateRenderConfigBody,
 ) {
-  return rerunTransformationStageApi(workspaceId, jobId, 'RENDER') as unknown as Promise<import('@/types/media').RenderConfig>
+  return apiRequest<MediaJob>(
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/rerun-render`),
+    body === undefined ? { method: 'POST' } : { method: 'POST', body },
+  )
 }
 
 export function rerunTransformationStageApi(

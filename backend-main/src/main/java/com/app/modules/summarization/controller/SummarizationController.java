@@ -93,7 +93,8 @@ public class SummarizationController {
                                                                  @PathVariable UUID workspaceId,
                                                                  @PathVariable UUID jobId,
                                                                  @Valid @RequestBody SummaryLanguageRequest request) {
-        MediaJob job = summarizationService.createSummaryLanguageJob(workspaceId, user.id(), jobId, request.targetLang(), request.ttsVoiceId());
+        MediaJob job = summarizationService.createSummaryLanguageJob(
+                workspaceId, user.id(), jobId, request.targetLang(), request.ttsProviderId(), request.ttsVoiceId());
         List<MediaJobStageResponse> stages = mediaJobService.getStages(job.getId()).stream()
                 .map(MediaJobStageResponse::from)
                 .toList();

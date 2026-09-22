@@ -17,15 +17,16 @@ import { severityBand } from '@/components/media-studio/MediaQaPanel'
 import {
   useBatchEditMediaSegments,
   useEditMediaSegment,
+  useMediaJobQaIssues,
   useMediaLinkedJob,
+  useMediaSubtitles,
   useRerunTtsRender,
 } from '@/hooks/useMedia'
 import { cn } from '@/lib/cn'
-import { formatDurationMs, resolveWorkflowMode } from '@/lib/media'
+import { formatDurationMs, resolveWorkflowMode, subtitleToSegmentItem } from '@/lib/media'
 import { ApiError } from '@/types/api'
-import type { MediaJob, RenderFailureDiagnostics } from '@/types/media'
+import type { MediaJob, RenderFailureDiagnostics, SegmentItem } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
-import type { SegmentItem } from '@/types/job'
 
 type Props = {
   workspaceId: string
@@ -135,6 +136,8 @@ export function MediaSubtitleEditor({
   const { t } = useTranslation(['media', 'common'])
   const isManual = resolveWorkflowMode(job) === 'MANUAL'
   const { data: linkedJob, isLoading } = useMediaLinkedJob(workspaceId, job.translationJobId)
+  const { data: realSubtitles = [] } = useMediaSubtitles(workspaceId, job.id)
+  const { data: realQaIssues = [] } = useMediaJobQaIssues(workspaceId, job.id)
   const edit = useEditMediaSegment(workspaceId, job.id, job.translationJobId)
   const batch = useBatchEditMediaSegments(workspaceId, job.id, job.translationJobId)
   const rerun = useRerunTtsRender(workspaceId, job.id)
@@ -170,21 +173,23 @@ export function MediaSubtitleEditor({
   const [query, setQuery] = useState('')
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
-  const segments: SegmentItem[] = useMemo(
-    () => linkedJob?.segments ?? [],
-    [linkedJob],
-  )
+  const segments: SegmentItem[] = useMemo(() => {
+    if (linkedJob?.segments && linkedJob.segments.length > 0) {
+      return linkedJob.segments
+    }
+    return realSubtitles.map((sub) => subtitleToSegmentItem(sub, realQaIssues))
+  }, [linkedJob, realSubtitles, realQaIssues])
 
   // QA cross-check marker (docs/19 §1.8.2): open issues per segment, tone from
   // the worst severity band. Same linked-job data as MediaQaPanel — no extra query.
   const segmentQa: Record<string, QaIssue[]> = useMemo(() => {
     const map: Record<string, QaIssue[]> = {}
-    for (const s of linkedJob?.segments ?? []) {
+    for (const s of segments) {
       const open = (s.qaIssues ?? []).filter((i) => !i.resolved)
       if (open.length > 0) map[s.id] = open
     }
     return map
-  }, [linkedJob])
+  }, [segments])
 
   function qaToneClass(issues: QaIssue[]): string {
     const worst = issues.reduce(

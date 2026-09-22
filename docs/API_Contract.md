@@ -3,8 +3,8 @@
 > Phiên bản: **1.1** · Bám sát `SRS.md` 1.4b, `System_Architecture.md` 3.3, `Database_Design.md` 3.3,
 > `api-response-convention.md`. Chỉ mô tả API của `backend-main` (Spring Boot) — nguồn sự thật duy nhất chạm
 > PostgreSQL. FastAPI (`backend-ai`) và `backend-media-worker` không có API public, chỉ được Spring gọi nội bộ.
-> Không có endpoint nào cho Document/Translation Job/Text Editor/Translation Memory/Batch dịch file/
-> Creative Production/Platform Admin — các domain này ngoài phạm vi (xem `CLAUDE.md` §3).
+> Không có endpoint nào cho Document/Translation Job/Text Editor/Translation Memory/Batch dịch file hoặc
+> Creative Production. Platform Admin là bề mặt vận hành nội bộ trong phạm vi, xem §13.1.
 >
 > **Ghi chú cập nhật — 1.1:** đổi response envelope theo `api-response-convention.md` — mọi response (kể cả
 > thành công) bọc trong `ApiResponse<T>{code:int, message, data}`; envelope cũ
@@ -52,8 +52,8 @@
     limit (tạo batch).
 - **Polling, không SSE**: FE polling `GET .../jobs/{jobId}` và `GET .../batches/{batchId}` mỗi ~5s để theo
   dõi tiến trình (Arch §1 mục 5). Không có WebSocket/SSE cho pipeline dài.
-- **Đa tenant**: mọi response chỉ trả dữ liệu thuộc `workspaceId` trên path; không có endpoint xuyên
-  workspace ngoài `GET /api/workspaces` (danh sách workspace của chính user).
+- **Đa tenant**: API nghiệp vụ chỉ trả dữ liệu thuộc `workspaceId` trên path. Ngoại lệ duy nhất là nhóm
+  read-only `/api/platform/*`, chỉ dành cho user có `isPlatformAdmin=true` để quan sát toàn hệ thống.
 
 ---
 
@@ -65,7 +65,7 @@
 | POST | `/api/auth/register/otp` | không | `{email}` → gửi OTP 6 số xác thực email đăng ký (Redis `auth:otp:register:<email>`, TTL 5 phút, lưu plain). Trả `{message}`. Email đã tồn tại → `EMAIL_ALREADY_EXISTS`. |
 | POST | `/api/auth/login` | không | `{email,password}` → cùng response shape như trên. |
 | POST | `/api/auth/refresh` | không (refresh token) | `{refreshToken}` → `{accessToken,refreshToken}`. Refresh token cũ **không** bị thu hồi sau reset mật khẩu (JWT stateless, chưa có cơ chế revocation). |
-| GET | `/api/auth/me` | JWT | Thông tin user hiện tại: `{id,email,fullName,googleLinked}`. |
+| GET | `/api/auth/me` | JWT | Thông tin user hiện tại: `{id,email,fullName,googleLinked,isPlatformAdmin}`. |
 | GET | `/api/auth/google/start` | không | Redirect sang Google OAuth2 consent screen. |
 | GET | `/api/auth/google/callback` | không | Google redirect về; set cookie/state tạm, FE gọi `exchange` tiếp theo. |
 | POST | `/api/auth/google/exchange` | không | `{code}` → cùng response shape `register/login`; nếu `google_sub` chưa gắn user nào thì chạy auto-init như lần đầu (Arch §3). |
@@ -94,7 +94,7 @@
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
 | GET | `/api/workspaces/{workspaceId}/projects` | LEAD/MEMBER/CLIENT | Lead: toàn bộ Project trong Workspace. Member/Client: chỉ Project đã được gán (`project_members`). |
-| POST | `/api/workspaces/{workspaceId}/projects` | LEAD | `{name, sourceLang?}` → tạo Project mới. |
+| POST | `/api/workspaces/{workspaceId}/projects` | LEAD | `{name, sourceLang?, defaultGlossaryId?, tmEnabled?, domain?, tone?}` → tạo Project mới. `tmEnabled` là field tương thích UI cũ và không kích hoạt Translation Memory trong phạm vi v1.4b. |
 | GET | `/api/workspaces/{workspaceId}/projects/{projectId}/members` | LEAD | Danh sách user được gán vào Project. |
 | POST | `/api/workspaces/{workspaceId}/projects/{projectId}/members` | LEAD | `{userId}` → gán 1 `workspace_members` (MEMBER/CLIENT) vào Project. |
 | DELETE | `/api/workspaces/{workspaceId}/projects/{projectId}/members/{userId}` | LEAD | Gỡ assignment. |
@@ -129,7 +129,7 @@
 | POST | `/api/workspaces/{workspaceId}/projects/{projectId}/media/jobs/download` | LEAD/MEMBER/CLIENT (project) | Tải nhiều video đã hoàn thành do user chọn (thay cho "tải theo Batch"; danh sách lấy từ endpoint trên với `status=COMPLETED`). Body `{jobIds:[uuid]}` (không rỗng, loại trùng, tối đa `app.media-job.max-bulk-download`=20 → `DOWNLOAD_SELECTION_TOO_LARGE`). Mỗi job phải thuộc project, `COMPLETED` và qua quality gate như `/export`; job không đạt vào `skipped` với `reason` `NOT_FOUND` (không tồn tại/khác project) `|` `NOT_COMPLETED` `|` `QA_BLOCKED`. Không job nào đạt → `QA_BLOCKED` (có job bị QA chặn) hoặc `STAGE_NOT_READY`. Trả `{downloadUrl, fileName, expiresAt, includedJobIds[], skipped[{jobId, reason}]}`: zip `<tên gốc>_<lang>_<jobId8>.mp4` được nén tạm rồi upload lên MinIO `tmp/downloads/` (tự hết hạn bằng lifecycle rule), `downloadUrl` là presigned URL. Chạy đồng bộ. |
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}` | LEAD/MEMBER/CLIENT | Chi tiết job + `stages[]` (8 stage kỹ thuật, FE tự ẩn stage `SKIPPED`). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/cancel` | LEAD/MEMBER (project) | Huỷ job đang chạy; gửi cancel xuống Worker sau khi transaction commit (Arch §6.2). Trả `200 OK` kèm `MediaJob` và `stages[]`. |
-| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/voice` | LEAD/MEMBER (project) | Body `{ttsProviderId?, ttsVoiceId}` (null = bỏ chọn giọng, chỉ hợp lệ nếu `output_audio_mode=ORIGINAL_ONLY`). Từ chối nếu `tts_voices.language ≠ target_lang`. Trả `200 OK` kèm `MediaJob` và `stages[]`. |
+| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/voice` | LEAD/MEMBER (project) | `{ttsProviderId,ttsVoiceId}` (cả hai null = bỏ chọn giọng, chỉ hợp lệ nếu `output_audio_mode=ORIGINAL_ONLY`). Hai ID phải được gửi theo cặp; provider phải active, có capability `TTS`, khả dụng với user; voice phải active, thuộc đúng provider và khớp `target_lang`. Trả `200 OK` kèm `MediaJob` và `stages[]`. |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/checkpoints/{checkpoint}/confirm` | **job-ownership** (Lead mọi job; Member chỉ job `created_by_user_id = mình`; Client bị chặn) | `{checkpoint}` ∈ `CUT_CONFIRMED\|REVIEW_CONFIRMED\|PUBLISH_CONFIRMED`. Chỉ áp dụng khi `workflow_mode=MANUAL` (Arch §5.6). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/stages/{stageName}/rerun` | LEAD/MEMBER (project) | Rerun-from-stage (Arch §5.7). `409` nếu stage trước chưa `COMPLETED/SKIPPED`. Không tính lại Credit cho stage output tái sử dụng. |
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/subtitles` | LEAD/MEMBER/CLIENT | List `subtitle_segments` theo `seq`. |
@@ -159,6 +159,7 @@
   "subtitleMode": "SOFT_SUB",
   "outputAudioMode": "DUB_MIX",
   "sourceSeparationEnabled": true,
+  "ttsProviderId": "uuid",
   "ttsVoiceId": "uuid",
   "workflowMode": "MANUAL",
   "presetId": "uuid"
@@ -188,7 +189,7 @@
 | PUT | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/proposals/{proposalId}` | LEAD/MEMBER (project) | Sửa Custom Proposal (chỉ áp dụng cho `generated_by=HUMAN`). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/proposals/{proposalId}/select` | LEAD/MEMBER (project) | Đặt `media_jobs.selected_proposal_id`. `409` nếu proposal đã dùng để tạo bản dịch và job yêu cầu đổi phương án trước khi refine tiếp (SRS §5.5). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/refine` | LEAD/MEMBER (project) | `{feedbackText}` → AI viết lại kịch bản (round mới). Tối đa **5 lần/phiên**; phiên lưu Redis TTL, hết hạn không mất proposal đã lưu (Arch §7.4). `429` khi vượt 5 lần. |
-| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/summary-languages` | LEAD/MEMBER (project) | `{targetLang, ttsVoiceId?}` — chỉ khi phương án đã chọn là AI. Tạo 1 `media_jobs` mới với `source_summary_job_id` trỏ về job gốc, giữ nguyên đoạn đã chọn, `SUMMARIZE` = `SKIPPED` (Arch §7.7). |
+| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/summary-languages` | LEAD/MEMBER (project) | `{targetLang, ttsProviderId?, ttsVoiceId?}` — hai ID TTS phải cùng có hoặc cùng vắng; chỉ khi phương án đã chọn là AI. Tạo 1 `media_jobs` mới với `source_summary_job_id` trỏ về job gốc, giữ nguyên đoạn đã chọn, `SUMMARIZE` = `SKIPPED` (Arch §7.7). |
 
 ---
 
@@ -287,6 +288,21 @@ QA issue được pipeline tự sinh sau stage `TRANSLATE`/`SUMMARIZE`, không c
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
 | GET | `/api/workspaces/{workspaceId}/dashboard` | LEAD/MEMBER/CLIENT | Tổng hợp nhanh: số job theo status, batch đang chạy, Credit còn lại (nếu Lead: của Workspace theo cost_mode). |
+
+### 13.1 Platform Super Admin (SRS §5.8; Arch §11.1)
+
+Tất cả endpoint dưới đây yêu cầu JWT và `users.is_platform_admin = true`. Cờ này độc lập với role
+Workspace; tài khoản thường nhận `UNAUTHORIZED` (HTTP 403). Response vẫn bọc `ApiResponse<T>`.
+
+| Method | Path | Mô tả |
+|---|---|---|
+| GET | `/api/platform/overview?from=&to=&topLimit=10` | KPI toàn hệ thống trong khoảng thời gian: user, Workspace, Media Job theo trạng thái, token AI, tỉ lệ lỗi và top Workspace. |
+| GET | `/api/platform/status` | Trạng thái và độ trễ của PostgreSQL, Redis, RabbitMQ, MinIO và AI/Media Worker tại `checkedAt`, kèm trạng thái tổng hợp. |
+| GET | `/api/platform/users?page=0&size=20&q=&isPlatformAdmin=` | Danh bạ user có phân trang; hỗ trợ tìm kiếm và lọc theo cờ Platform Admin. Không trả dữ liệu bí mật. |
+| GET | `/api/platform/workspaces?page=0&size=20&q=` | Danh sách Workspace có phân trang, owner và số thành viên. |
+| GET | `/api/platform/audit-logs?page=0&size=20&action=` | Nhật ký kiểm toán cấp nền tảng có phân trang, lọc theo action. |
+
+Nhóm API này là read-only trong MVP; không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.
 
 ---
 

@@ -1,6 +1,6 @@
 import { apiRequest, buildWorkspacePath } from '@/lib/api/client'
 import type { HistoryEvent } from '@/types/history'
-import type { SegmentItem, UpdateSegmentBody } from '@/types/job'
+import type { SegmentItem, UpdateSegmentBody } from '@/types/media'
 import type { OverrideQaIssueBody, ResolveIssueBody } from '@/types/qa'
 
 export function updateSegmentApi(
@@ -61,15 +61,19 @@ export function overrideQaIssueApi(
   )
 }
 
+import { normalizeQaIssue } from '@/lib/qa'
+import type { QaIssue } from '@/types/qa'
+
 /** GET /api/workspaces/{workspaceId}/media/jobs/{jobId}/qa-issues (QaController) */
-export function listMediaJobQaIssuesApi(
+export async function listMediaJobQaIssuesApi(
   workspaceId: string,
   jobId: string,
   resolved?: boolean,
-) {
+): Promise<QaIssue[]> {
   const query = resolved != null ? `?resolved=${resolved}` : ''
-  return apiRequest<any[]>(
+  const rawList = await apiRequest<any[]>(
     buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/qa-issues${query}`),
   )
+  return (rawList || []).map(normalizeQaIssue)
 }
 

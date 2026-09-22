@@ -1,7 +1,10 @@
 {
-  "title": "Bảng thuật ngữ",
-  "subtitle": "Danh sách thuật ngữ chuẩn hóa · Quản trị viên/PM chỉnh sửa · Thành viên khác chỉ đọc",
-  "sidebar": "Bảng thuật ngữ",
+  "title": "Bảng thuật ngữ dự án",
+  "subtitle": "Mỗi dự án có một bảng thuật ngữ riêng để bản địa hóa nhất quán",
+  "sidebar": "Dự án",
+  "sourceLang": "Nguồn: {{language}}",
+  "noProjectsTitle": "Chưa có dự án",
+  "noProjectsDesc": "Hãy tạo dự án trước khi quản lý bảng thuật ngữ.",
   "emptyTitle": "Chưa có bảng thuật ngữ",
   "emptyDesc": "Tạo bảng thuật ngữ để đảm bảo dịch đồng nhất và chính xác trong toàn dự án.",
   "termCount": "{{count}} thuật ngữ",
@@ -21,7 +24,7 @@
     "addTitle": "Thêm term",
     "adding": "Đang thêm…",
     "required": "Source và target bắt buộc",
-    "duplicate": "Đã có term cùng source + part of speech (Q-G5).",
+    "duplicate": "Đã có thuật ngữ cùng nguồn và ngôn ngữ đích.",
     "skipped": "{{n}} term bị bỏ qua (trùng)",
     "emptyTitle": "Chưa có term",
     "emptyDesc": "Thêm thủ công hoặc import CSV.",
@@ -33,6 +36,7 @@
     "col": {
       "source": "Nguồn",
       "target": "Đích",
+      "targetLang": "Ngôn ngữ đích",
       "pos": "POS",
       "case": "Case",
       "updated": "Cập nhật"
@@ -51,7 +55,7 @@
   "import": {
     "button": "Import CSV",
     "title": "Import term từ CSV",
-    "hint": "Header: source_term,target_term,case_sensitive,part_of_speech,note",
+    "hint": "Header: source_term,target_term,target_lang",
     "drop": "Bấm để chọn file .csv",
     "importing": "Đang import…",
     "result": "Thêm {{added}} · bỏ qua {{skipped}}"

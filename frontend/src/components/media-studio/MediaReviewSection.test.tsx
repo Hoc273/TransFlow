@@ -16,13 +16,12 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/hooks/useMedia', () => ({
   useMediaLinkedJob: () => linkedJobData,
+  useMediaSubtitles: () => ({ data: [], isLoading: false }),
+  useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
   useEditMediaSegment: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useBatchEditMediaSegments: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useRerunTtsRender: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useRenderConfig: () => ({ data: null }),
-}))
-
-vi.mock('@/hooks/useJobs', () => ({
   useResolveQaIssue: () => ({ isPending: false, mutate: vi.fn(), variables: null }),
   useOverrideQaIssue: () => ({ isPending: false, mutate: vi.fn(), variables: null }),
 }))
@@ -32,8 +31,7 @@ vi.mock('@/hooks/usePermission', () => ({
 }))
 
 const { MediaReviewSection } = await import('./MediaReviewSection')
-import type { MediaJob } from '@/types/media'
-import type { JobDetail } from '@/types/job'
+import type { MediaJob, JobDetail } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
 
 function job(translationJobId: string | null): MediaJob {

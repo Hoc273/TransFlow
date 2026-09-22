@@ -22,7 +22,6 @@ from app.services.allocator import AllocationError
 from app.services.narrative_planning_models import AllocatedSection, TranscriptBlock
 from app.services.summary.beat_grounding import (
     VISUAL_GROUNDING_DEGRADED_WARNING,
-    detect_future_event_leakage,
     evaluate_visual_tts_fit,
     narration_target_chars,
     needs_visual_split,
@@ -86,51 +85,30 @@ class TcGroundBeatGroundingTest(unittest.TestCase):
                     f"beat spans distant scenes: {s}->{e}",
                 )
 
-    def test_tc_ground_02_future_event_leakage_rejected(self):
-        """One narration unit mentioning rabbit-signs AND bee-swamp leaks."""
-        leak = (
-            "The three rabbits reached the intersection and hesitated at the road signs. "
-            "The wolf was then attacked by bees and fell into the swamp."
-        )
-        ok_a = "The three rabbits reached the intersection and hesitated as they chose the path."
-        ok_b = "The wolf was attacked by bees and fell into the swamp."
-        self.assertTrue(detect_future_event_leakage(leak))
-        self.assertFalse(detect_future_event_leakage(ok_a))
-        self.assertFalse(detect_future_event_leakage(ok_b))
-        # Gateway validator must reject the merged paragraph (fail-closed).
-        from app.services.narrative_summarize_gateway import _validate_recap_sentence_structure
-        from app.services.allocator import AllocationError
-        from app.services.narrative_planning_models import (
-            AllocationResult,
-            NarrativeDraft,
-            WrittenSection,
-        )
-
-        block = _block("B001", 185280, 245840, "rabbits road signs", 1)
-        allocation = AllocationResult(
-            sections=[
-                AllocatedSection(
-                    section_id="S001", title="T", goal="g", beat_hint="BODY", blocks=[block]
-                )
+    def test_tc_ground_02_rabbit_wolf_evidence_stays_in_separate_beats(self):
+        """The rabbit/wolf regression is guarded by locked source ranges."""
+        sections = split_sections_by_visual_gap(
+            [AllocatedSection(
+                section_id="S003",
+                title="Climax",
+                goal="Present climax",
+                beat_hint="CLIMAX",
+                blocks=[
+                    _block("B003", 185280, 245840, "rabbits road signs", 3),
+                    _block("B004", 309280, 370400, "wolf bees swamp", 4),
+                ],
+            )],
+            [
+                {"start_ms": 185000, "end_ms": 197000, "visual_description": "rabbits"},
+                {"start_ms": 309000, "end_ms": 321000, "visual_description": "wolf"},
             ],
-            selected_blocks=[block],
-            coverage_ms=block.duration_ms,
-            min_duration_ms=0,
-            max_duration_ms=10_000_000,
-            is_fallback=True,
+            531000,
         )
-        draft = NarrativeDraft(
-            sections=[
-                WrittenSection(
-                    section_id="S001",
-                    heading="T",
-                    script_source_lang=leak,
-                    beat_type="BODY",
-                )
-            ]
+        self.assertEqual(len(sections), 2)
+        self.assertEqual(
+            [block.full_text for section in sections for block in section.blocks],
+            ["rabbits road signs", "wolf bees swamp"],
         )
-        with self.assertRaises(AllocationError):
-            _validate_recap_sentence_structure(draft, allocation, language="en")
 
     def test_tc_ground_03_sparse_transcript_visual_path(self):
         """Visual action exists with little/no dialogue -> VLM path grounds it."""
@@ -316,17 +294,26 @@ class TcGroundBeatGroundingTest(unittest.TestCase):
             self.assertEqual(b, c)
 
     def test_degraded_split_keeps_continuous_speech_whole(self):
-        """Back-to-back dialogue (gaps < 2s) is never cut mid-speech."""
+        """Back-to-back dialogue splits at sentence boundaries into small beats."""
         blocks = [_block(f"B{i:03d}", (i - 1) * 10000, i * 10000, f"line {i}", i) for i in range(1, 7)]
         section = AllocatedSection(
             section_id="S001", title="T", goal="g", beat_hint="BODY", blocks=blocks
         )
-        split, refs = split_oversized_sections_at_silence([section], max_sections=12)
-        self.assertEqual(len(split), 1)
-        self.assertEqual(list(refs.values()), [[(0, 60000)]])
+        split, refs = split_oversized_sections_at_silence([section], max_sections=32)
+        # 60s continuous speech with 10s sentences and 6s target -> multiple
+        # coverage-preserving beats (never mid-speech: cuts only at sentence spans).
+        self.assertGreater(len(split), 1)
+        flat = [b.block_id for s in split for b in s.blocks]
+        self.assertEqual(flat, [f"B{i:03d}" for i in range(1, 7)])
+        for s in split:
+            dur = max(b.end_ms for b in s.blocks) - min(b.start_ms for b in s.blocks)
+            self.assertGreaterEqual(dur, 4000)
+        self.assertTrue(
+            selected_blocks_covered_by_refs(blocks, [r for rs in refs.values() for r in rs])
+        )
 
-    def test_degraded_split_respects_max_sections_cap(self):
-        """Many oversized sections never exceed max_sections (target doubles)."""
+    def test_degraded_split_without_cap_preserves_every_boundary_driven_beat(self):
+        """None leaves presentation pacing boundary-driven and coverage-preserving."""
         sections = []
         for idx in range(6):
             blocks = [
@@ -340,8 +327,8 @@ class TcGroundBeatGroundingTest(unittest.TestCase):
                     beat_hint="BODY", blocks=blocks,
                 )
             )
-        split, _refs = split_oversized_sections_at_silence(sections, max_sections=8)
-        self.assertLessEqual(len(split), 8)
+        split, _refs = split_oversized_sections_at_silence(sections)
+        self.assertGreater(len(split), 8)
         total_blocks = sum(len(s.blocks) for s in split)
         self.assertEqual(total_blocks, 18)
 

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -8,10 +8,7 @@ import {
   IconRefresh,
 } from '@tabler/icons-react'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { useDocuments } from '@/hooks/useDocuments'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import { useJobs } from '@/hooks/useJobs'
-import { useProjects } from '@/hooks/useProjects'
 import { useUsage } from '@/hooks/useUsage'
 import { formatCompactNumber, formatNumber } from '@/lib/format'
 import { useAuthStore } from '@/store/authStore'
@@ -24,31 +21,9 @@ export function UsagePage() {
   const { workspaceId = '' } = useParams()
   const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const language = useUiStore((s) => s.language)
-  const [projectId, setProjectId] = useState('')
-  const [documentId, setDocumentId] = useState('')
-  const [jobId, setJobId] = useState('')
-
-  const { data: projects = [], isLoading: projectsLoading } = useProjects(workspaceId)
-  const { data: documents = [], isLoading: documentsLoading } = useDocuments(
-    workspaceId,
-    projectId || undefined,
-  )
-  const { data: jobs = [], isLoading: jobsLoading } = useJobs(
-    workspaceId,
-    documentId || undefined,
-  )
-
-  const query = useMemo(
-    () => ({
-      projectId: projectId || undefined,
-      documentId: documentId || undefined,
-      jobId: jobId || undefined,
-    }),
-    [projectId, documentId, jobId],
-  )
   const { data, isLoading, isFetching, isError, error, refetch } = useUsage(
     workspaceId,
-    query,
+    { groupBy: 'operation' },
   )
 
   useDocumentTitle(t('dashboard:usage.title'))
@@ -101,60 +76,6 @@ export function UsagePage() {
         >
           <IconRefresh size={16} className={isFetching ? 'animate-spin' : undefined} />
           {t('dashboard:updatedAt')}
-        </button>
-      </div>
-
-      <div className="app-card usage-filter-bar">
-        <FilterSelect
-          label={t('dashboard:usage.filter.project')}
-          value={projectId}
-          loading={projectsLoading}
-          allLabel={t('dashboard:usage.filter.allProjects')}
-          options={projects.map((project) => ({ value: project.id, label: project.name }))}
-          onChange={(value) => {
-            setProjectId(value)
-            setDocumentId('')
-            setJobId('')
-          }}
-        />
-        <FilterSelect
-          label={t('dashboard:usage.filter.document')}
-          value={documentId}
-          loading={documentsLoading}
-          disabled={!projectId}
-          allLabel={t('dashboard:usage.filter.allDocuments')}
-          options={documents.map((document) => ({
-            value: document.id,
-            label: document.name,
-          }))}
-          onChange={(value) => {
-            setDocumentId(value)
-            setJobId('')
-          }}
-        />
-        <FilterSelect
-          label={t('dashboard:usage.filter.job')}
-          value={jobId}
-          loading={jobsLoading}
-          disabled={!documentId}
-          allLabel={t('dashboard:usage.filter.allJobs')}
-          options={jobs.map((job) => ({
-            value: job.id,
-            label: `${job.targetLang.toUpperCase()} · ${job.status}`,
-          }))}
-          onChange={setJobId}
-        />
-        <button
-          type="button"
-          className="btn-ghost usage-clear-filter"
-          disabled={!projectId && !documentId && !jobId}
-          onClick={() => {
-            setProjectId('')
-            setDocumentId('')
-            setJobId('')
-          }}
-        >
-          {t('dashboard:usage.filter.clear')}
         </button>
       </div>
 
@@ -247,45 +168,6 @@ export function UsagePage() {
         </>
       )}
     </div>
-  )
-}
-
-type FilterSelectProps = {
-  label: string
-  value: string
-  allLabel: string
-  options: { value: string; label: string }[]
-  loading?: boolean
-  disabled?: boolean
-  onChange: (value: string) => void
-}
-
-function FilterSelect({
-  label,
-  value,
-  allLabel,
-  options,
-  loading,
-  disabled,
-  onChange,
-}: FilterSelectProps) {
-  return (
-    <label className="usage-filter-field">
-      <span className="field-label">{label}</span>
-      <select
-        className="field-input"
-        value={value}
-        disabled={disabled || loading}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="">{loading ? '…' : allLabel}</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
   )
 }
 

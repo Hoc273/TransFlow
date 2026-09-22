@@ -1,4 +1,4 @@
-"""Beat Grounding — generative summary visual/narration synchronization.
+"""Beat Grounding â€” generative summary visual/narration synchronization.
 
 Implements the CORE INVARIANT for ``summary.generative``:
 
@@ -45,31 +45,24 @@ DEFAULT_MAX_VISUAL_GAP_MS = SILENCE_BOUNDARY_MS
 MIN_GROUNDED_RANGE_MS = 2000
 MAX_GROUNDED_RANGE_MS = 15000
 
-# Heuristic keyword groups used ONLY for the fail-closed future-leak detector.
-# The detector is conservative: it fires only when narration for a single beat
-# mentions entities from two distant visual events. It never rewrites text.
-_RABBIT_EVENT_TERMS = frozenset(
-    {"rabbit", "rabbits", "bunny", "road sign", "road signs", "intersection", "crossroad"}
-)
-_WOLF_EVENT_TERMS = frozenset(
-    {"wolf", "bee", "bees", "swamp", "lettuce", "trap", "honeycomb", "hive"}
-)
-
 FitAction = Literal["ALIGNED", "NEEDS_REPLAN"]
 
-# Degraded (STT-only, no VLM evidence) pacing: a 60s transcript block with ~24s
-# of narration leaves ~36s of silence per beat. Splitting oversized sections at
-# transcript silence gaps into ~25s sub-beats lets the per-section sentence
-# floor raise narration density, shrinking silent tails without fabricating
-# visual semantics (blocks stay in source order, never merged across gaps).
-DEGRADED_TARGET_BEAT_MS = 25000
+# Single-plan presentation pacing goal: ~6s per beat (normally 4-9s).
+# Splitting is coverage-preserving and boundary-driven (VLM scenes, then
+# transcript sentence/silence) â€” never mechanical clock slicing, never merging
+# disconnected ranges, never dropping content to satisfy a product count.
+SINGLE_PLAN_TARGET_BEAT_MS = 6000
+SINGLE_PLAN_MIN_SUB_BEAT_MS = 4000
+SINGLE_PLAN_MIN_SPAN_TO_SPLIT_MS = 9000
+# Legacy degraded constants retained as aliases for existing tests/callers.
+DEGRADED_TARGET_BEAT_MS = SINGLE_PLAN_TARGET_BEAT_MS
 DEGRADED_MIN_SILENCE_GAP_MS = SILENCE_BOUNDARY_MS
-DEGRADED_MIN_SPAN_TO_SPLIT_MS = 30000
-DEGRADED_MIN_SUB_BEAT_MS = 8000
+DEGRADED_MIN_SPAN_TO_SPLIT_MS = SINGLE_PLAN_MIN_SPAN_TO_SPLIT_MS
+DEGRADED_MIN_SUB_BEAT_MS = SINGLE_PLAN_MIN_SUB_BEAT_MS
 
 # Measured narration density (vi, Piper TTS): ~14-15 chars/s. Used ONLY as a
 # per-section writer length target so narration roughly fills its footage.
-# Planning guidance only — never overrides measured TTS truth.
+# Planning guidance only â€” never overrides measured TTS truth.
 NARRATION_TARGET_CPS = 14
 
 
@@ -154,7 +147,7 @@ def rewrite_section_refs_from_candidates(
     * Merges windows separated by ``< max_gap_ms``; keeps distant clusters
       separate so callers can split them into distinct beats.
     * Falls back to the section block span when no valid candidate overlaps
-      (caller must mark the plan degraded — never claim grounding).
+      (caller must mark the plan degraded â€” never claim grounding).
     """
     result: dict[str, list[tuple[int, int]]] = {}
     if not sections:
@@ -208,7 +201,7 @@ def find_sections_without_visual_coverage(
 
     Callers must mark the plan ``VISUAL_GROUNDING_DEGRADED:STT_ONLY`` when the
     set is non-empty (STT-only fallback preserved but explicitly reduced
-    quality — never silently claimed as grounded).
+    quality â€” never silently claimed as grounded).
     """
     uncovered: set[str] = set()
     valid: list[tuple[int, int]] = []
@@ -247,19 +240,6 @@ def needs_visual_split(
     return any(b[0] - a[1] >= max_gap_ms for a, b in zip(ordered, ordered[1:]))
 
 
-def detect_future_event_leakage(narration: str) -> bool:
-    """Heuristic future-leak detector (fail-closed, never rewrites).
-
-    Fires only when a SINGLE beat narration mentions both the rabbit/road-sign
-    event and the wolf/bee/swamp event — the exact regression in the task
-    (Scene A 03:05-04:05 vs Scene B 05:09-06:10). Returns False otherwise.
-    """
-    text = (narration or "").lower()
-    has_rabbit = any(t in text for t in _RABBIT_EVENT_TERMS)
-    has_wolf = any(t in text for t in _WOLF_EVENT_TERMS)
-    return bool(has_rabbit and has_wolf)
-
-
 def evaluate_visual_tts_fit(
     visual_duration_ms: int,
     tts_duration_ms: int,
@@ -285,26 +265,46 @@ def _cut_after_indices(
     spans: list[tuple[int, int]],
     target_ms: int,
     min_gap_ms: int,
+    scene_boundaries_ms: list[int] | None = None,
 ) -> list[int]:
-    """Indices after which to cut sorted (start, end) spans at silences.
+    """Indices after which to cut sorted (start, end) spans.
 
-    Cuts only at gaps >= min_gap_ms where both sides keep at least
-    DEGRADED_MIN_SUB_BEAT_MS, accumulating toward target_ms. Deterministic.
+    Boundary preference: VLM scene boundaries first, then transcript
+    silence gaps, then ordinary sentence boundaries. Every inter-span boundary
+    is a sentence-safe cut point (spans are timed sentences/segments, so cuts
+    never land mid-speech); scene cuts are preferred earliest, silence and
+    sentence cuts fire once accumulated duration reaches target. Both sides must
+    keep at least SINGLE_PLAN_MIN_SUB_BEAT_MS. Deterministic; never merges
+    disconnected ranges.
     """
     cuts: list[int] = []
     if len(spans) <= 1:
         return cuts
+    boundaries = sorted({int(b) for b in (scene_boundaries_ms or []) if int(b) > 0})
     durations = [max(0, e - s) for s, e in spans]
     acc = durations[0]
+
+    def _hits_scene_boundary(prev_end: int, next_start: int) -> bool:
+        return any(prev_end <= b <= next_start for b in boundaries)
+
     for i in range(1, len(spans)):
         gap = spans[i][0] - spans[i - 1][1]
         remaining = sum(durations[i:])
-        if (
-            gap >= min_gap_ms
-            and acc >= DEGRADED_MIN_SUB_BEAT_MS
-            and remaining >= DEGRADED_MIN_SUB_BEAT_MS
-            and acc >= target_ms
-        ):
+        if remaining < SINGLE_PLAN_MIN_SUB_BEAT_MS:
+            acc += durations[i]
+            continue
+        if acc < SINGLE_PLAN_MIN_SUB_BEAT_MS:
+            acc += durations[i]
+            continue
+        scene_cut = _hits_scene_boundary(spans[i - 1][1], spans[i][0])
+        # Scene boundaries win earliest (preferred); silence/sentence cuts fire
+        # once the beat reaches target duration. Ordinary sentence boundaries
+        # are always eligible at target â€” "no mechanical clock slicing" means no
+        # mid-speech cuts, not "no sentence cuts".
+        if scene_cut:
+            cuts.append(i - 1)
+            acc = durations[i]
+        elif acc >= target_ms:
             cuts.append(i - 1)
             acc = durations[i]
         else:
@@ -312,7 +312,7 @@ def _cut_after_indices(
     # Drop a trailing cut that would leave a sliver behind.
     while cuts:
         trailing = sum(durations[cuts[-1] + 1:])
-        if trailing < DEGRADED_MIN_SUB_BEAT_MS:
+        if trailing < SINGLE_PLAN_MIN_SUB_BEAT_MS:
             cuts.pop()
         else:
             break
@@ -323,6 +323,7 @@ def _split_block_at_silence(
     block: Any,
     target_ms: int,
     min_gap_ms: int,
+    scene_boundaries_ms: list[int] | None = None,
 ) -> list[Any]:
     """Split one oversized block along its timed segments (tiled, lossless).
 
@@ -340,7 +341,8 @@ def _split_block_at_silence(
     if len(segments) <= 1:
         return [block]
     spans = [(int(s.start_ms), int(s.end_ms)) for s in segments]
-    cuts = _cut_after_indices(spans, target_ms, min_gap_ms)
+    cuts = _cut_after_indices(spans, target_ms, min_gap_ms,
+                              scene_boundaries_ms=scene_boundaries_ms)
     if not cuts:
         return [block]
     groups: list[list[int]] = []
@@ -392,38 +394,37 @@ def _coalesce_contiguous_refs(refs: list[tuple[int, int]]) -> list[tuple[int, in
 
 def split_oversized_sections_at_silence(
     sections: list[Any],
-    max_sections: int = 12,
-    target_ms: int = DEGRADED_TARGET_BEAT_MS,
+    max_sections: int | None = None,
+    target_ms: int = SINGLE_PLAN_TARGET_BEAT_MS,
     min_gap_ms: int = DEGRADED_MIN_SILENCE_GAP_MS,
+    scene_boundaries_ms: list[int] | None = None,
 ) -> tuple[list[Any], dict[str, list[tuple[int, int]]]]:
-    """Presentation pacing: split oversized allocated sections at silences.
+    """Presentation pacing: split allocated sections into final small beats.
 
-    The same coverage-preserving splitter runs with or without VLM evidence.
-    Only sections spanning more than DEGRADED_MIN_SPAN_TO_SPLIT_MS are
-    candidates, and only at real transcript silences — never mid-speech.
-    Total output never exceeds max_sections (target_ms doubles until it fits)
-    and never drops content. Section order and block order are preserved. If
-    the cap cannot be met without merging disconnected ranges, raises
-    ``AllocationError``.
+    Coverage-preserving: every selected block remains represented in at least one
+    final beat; the union/duration of final source refs equals the selected source
+    coverage except legitimate overlap coalescing. Never drops content to satisfy
+    beat count; an explicit compatibility cap raises AllocationError instead
+    of merging disconnected ranges.
 
-    Returns (new_sections, refs_by_section_id) where refs preserve the actual
-    allocated block coverage. Internal single-block splits still use silence
-    midpoints so the block's full duration remains covered, while separate
-    transcript blocks remain separate refs instead of becoming a bounding span.
+    Boundary preference: VLM scene boundaries first, then transcript
+    sentence/silence boundaries. Source order preserved; distant clusters never
+    merged into one narration unit (Beat N cannot describe Beat N+1 visuals).
     """
     from app.services.narrative_planning_models import AllocatedSection
 
     if not sections:
         return [], {}
-    cap = max(1, int(max_sections or 12))
-    if len(sections) > cap:
+    cap = max(1, int(max_sections)) if max_sections is not None else None
+    if cap is not None and len(sections) > cap:
         raise AllocationError(
             f"Cannot honor max_sections={cap}: continuity-preserving sections already total "
             f"{len(sections)}"
         )
-    if len(sections) >= cap:
+    if cap is not None and len(sections) >= cap:
         return list(sections), {}
-    attempt_target = max(1, int(target_ms or DEGRADED_TARGET_BEAT_MS))
+    attempt_target = max(1, int(target_ms or SINGLE_PLAN_TARGET_BEAT_MS))
+    boundaries = sorted({int(b) for b in (scene_boundaries_ms or []) if int(b) > 0})
 
     def _plan(target: int) -> list[list[list[Any]]]:
         per_section: list[list[list[Any]]] = []
@@ -436,15 +437,19 @@ def split_oversized_sections_at_silence(
                 max(int(b.end_ms) for b in blocks) - min(int(b.start_ms) for b in blocks)
                 if blocks else 0
             )
-            if not blocks or span <= DEGRADED_MIN_SPAN_TO_SPLIT_MS:
+            if not blocks or span <= SINGLE_PLAN_MIN_SPAN_TO_SPLIT_MS:
                 per_section.append([blocks] if blocks else [])
                 continue
             if len(blocks) == 1:
-                subs = _split_block_at_silence(blocks[0], target, min_gap_ms)
+                subs = _split_block_at_silence(
+                    blocks[0], target, min_gap_ms,
+                    scene_boundaries_ms=boundaries or None,
+                )
                 per_section.append([[s] for s in subs])
                 continue
             spans = [(int(b.start_ms), int(b.end_ms)) for b in blocks]
-            cuts = _cut_after_indices(spans, target, min_gap_ms)
+            cuts = _cut_after_indices(spans, target, min_gap_ms,
+                                      scene_boundaries_ms=boundaries or None)
             clusters: list[list[Any]] = []
             start = 0
             for c in cuts:
@@ -455,11 +460,8 @@ def split_oversized_sections_at_silence(
         return per_section
 
     per_section = _plan(attempt_target)
-    while sum(len(c) for c in per_section) > cap and attempt_target < 120000:
-        attempt_target *= 2
-        per_section = _plan(attempt_target)
     planned_count = sum(len(c) for c in per_section)
-    if planned_count > cap:
+    if cap is not None and planned_count > cap:
         raise AllocationError(
             f"Cannot honor max_sections={cap} without merging disconnected transcript ranges"
         )

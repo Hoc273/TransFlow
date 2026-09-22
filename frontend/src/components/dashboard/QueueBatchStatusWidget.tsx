@@ -91,7 +91,7 @@ export function QueueBatchStatusWidget() {
         {!isLoading && !isError && active.length > 0 && (
           <div className="space-y-2">
             {active.map((batch) => {
-              const done = batch.completedDocuments + batch.failedDocuments
+              const done = (batch.completedDocuments ?? 0) + (batch.failedDocuments ?? 0)
               const total = batch.totalDocuments || 1
               const pct = Math.round((done / total) * 100)
               const isProcessing = String(batch.status).toUpperCase() === 'PROCESSING'

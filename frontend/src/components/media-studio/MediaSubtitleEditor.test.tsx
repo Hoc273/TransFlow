@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { MediaJob, MediaJobStage } from '@/types/media'
-import type { SegmentItem } from '@/types/job'
+import type { MediaJob, MediaJobStage, SegmentItem } from '@/types/media'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -11,6 +10,8 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/hooks/useMedia', () => ({
   useMediaLinkedJob: () => ({ data: { segments: linkedSegments }, isLoading: false }),
+  useMediaSubtitles: () => ({ data: [], isLoading: false }),
+  useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
   useEditMediaSegment: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useBatchEditMediaSegments: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useRerunTtsRender: () => ({ isPending: false, mutateAsync: vi.fn() }),

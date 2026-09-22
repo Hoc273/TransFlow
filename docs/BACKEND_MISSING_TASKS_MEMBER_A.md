@@ -185,9 +185,8 @@ Mỗi nhánh = 1 PR nhỏ.
 
 - **Nhánh:** `feature/platform-admin-api`
 - **Ưu tiên:** thấp nhất, phạm vi lớn nhất.
-- **Lưu ý phạm vi:** `CLAUDE.md` §3/§4.2 và `SRS.md` §4.3 đang ghi Platform Admin là **ngoài phạm vi**. Vì đã quyết định làm,
-  trong nhánh này phải sửa các file đó (bỏ khỏi mục "ngoài phạm vi", thêm mô tả SRS/kiến trúc/contract) để docs không
-  mâu thuẫn code.
+- **Phạm vi hiện hành:** Platform Admin đã được chốt trong MVP tại `AGENTS.md` §2.1 và `SRS.md` §5.8;
+  đây là cờ quyền cấp hệ thống, không phải role Workspace.
 - **Endpoint (chỉ user có `isPlatformAdmin = true`):**
   1. `GET /api/platform/overview?from=&to=&topLimit=` — 6 KPI: số User, Workspace, phân loại Job, token AI theo tác vụ,
      `failRate`, top workspace tiêu thụ.
@@ -198,13 +197,13 @@ Mỗi nhánh = 1 PR nhỏ.
   5. `GET /api/platform/audit-logs?page=&size=&action=`
 
 **Cần thay đổi:**
-1. Kiểm tra `users` đã có cờ platform admin chưa (`Database_Design.md`); chưa có → migration `V7+` thêm cột
-   (`is_platform_admin BOOLEAN NOT NULL DEFAULT false`) và đưa vào JWT claim/`AuthenticatedUser`.
+1. `users.is_platform_admin BOOLEAN NOT NULL DEFAULT false` nằm trong baseline
+   `V1__init_tables.sql`; đưa cờ vào response auth và luôn kiểm tra lại từ DB cho `/api/platform/*`.
 2. Bảng `audit_logs` chưa có (kiểm tra) → migration + ghi log ở các thao tác admin; cập nhật `Database_Design.md`.
 3. `PlatformController` + `PlatformService`, guard `@PreAuthorize`/kiểm tra ở tầng service (không chỉ ẩn UI).
 4. Truy vấn tổng hợp dùng `ai_usage_logs`, `media_jobs`; **bắt buộc phân trang và có index**, tránh full scan.
 5. Tham khảo `PlatformController` ở `../transflow` (chỉ lấy phần khớp).
-6. Cập nhật `SRS.md`, `System_Architecture.md`, `Database_Design.md`, `API_Contract.md`, `CLAUDE.md` cho nhất quán.
+6. Giữ `SRS.md`, `System_Architecture.md`, `Database_Design.md`, `API_Contract.md`, `AGENTS.md` nhất quán.
 
 **Cách kiểm tra:**
 - Test: user thường gọi → 403; admin gọi → 200; phân trang/`q` hoạt động; `failRate` tính đúng trên dữ liệu mẫu;
