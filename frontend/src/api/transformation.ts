@@ -74,9 +74,7 @@ export type BatchEditMediaSegmentsBody = {
   updates: BatchEditMediaSegmentItem[]
 }
 
-export type BatchEditMediaSegmentsResponse = {
-  segments: import('@/types/job').SegmentItem[]
-}
+export type BatchEditMediaSegmentsResponse = import('@/types/job').SegmentItem[]
 
 // ---------- availability projection (CT10.3A/CT10.3B) ----------
 
@@ -421,9 +419,12 @@ export function rerunTransformationTtsRenderApi(workspaceId: string, jobId: stri
 export function rerunTransformationRenderApi(
   workspaceId: string,
   jobId: string,
-  _body?: import('@/types/media').UpdateRenderConfigBody,
+  body?: import('@/types/media').UpdateRenderConfigBody,
 ) {
-  return rerunTransformationStageApi(workspaceId, jobId, 'RENDER') as unknown as Promise<import('@/types/media').RenderConfig>
+  return apiRequest<MediaJob>(
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/rerun-render`),
+    body === undefined ? { method: 'POST' } : { method: 'POST', body },
+  )
 }
 
 export function rerunTransformationStageApi(

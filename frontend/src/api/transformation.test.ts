@@ -16,7 +16,7 @@ vi.mock('@/config/featureFlags', () => ({
   featureFlags: {},
 }))
 
-const { createTransformationJobApi, getTransformationCapabilitiesApi } = await import(
+const { batchEditTransformationSegmentsApi, createTransformationJobApi, getTransformationCapabilitiesApi, rerunTransformationRenderApi } = await import(
   './transformation'
 )
 
@@ -74,5 +74,39 @@ describe('createTransformationJobApi', () => {
     const body = options.body as Record<string, unknown>
     expect(body.requestedMode).toBeUndefined()
     expect(body).not.toHaveProperty('effectiveMode')
+  })
+})
+
+describe('rerunTransformationRenderApi', () => {
+  it('POSTs the visual update to /rerun-render and returns the updated job', async () => {
+    apiRequest.mockResolvedValue({ id: 'job-1', status: 'PROCESSING' })
+    const body = { outputAspectRatio: '9:16' } as unknown as import('@/types/media').UpdateRenderConfigBody
+    const res = await rerunTransformationRenderApi('ws-1', 'job-1', body)
+    expect(apiRequest).toHaveBeenCalledWith(
+      '/workspaces/ws-1/media/jobs/job-1/rerun-render',
+      { method: 'POST', body },
+    )
+    expect(res).toEqual({ id: 'job-1', status: 'PROCESSING' })
+  })
+  it('sends no body key when called without visual changes', async () => {
+    await rerunTransformationRenderApi('ws-1', 'job-1')
+    const [path, options] = apiRequest.mock.calls[0]
+    expect(path).toBe('/workspaces/ws-1/media/jobs/job-1/rerun-render')
+    expect(options.method).toBe('POST')
+    expect(options.body).toBeUndefined()
+  })
+})
+
+describe('batchEditTransformationSegmentsApi', () => {
+  it('unwraps batch-edit response as a plain segment array', async () => {
+    apiRequest.mockResolvedValue([{ id: 'seg-1', seq: 1 }])
+    const res = await batchEditTransformationSegmentsApi('ws-1', 'job-1', {
+      updates: [{ segmentId: 'seg-1', targetText: 'Chào' }],
+    })
+    expect(apiRequest).toHaveBeenCalledWith(
+      '/workspaces/ws-1/media/jobs/job-1/segments/batch',
+      { method: 'PUT', body: { updates: [{ segmentId: 'seg-1', targetText: 'Chào' }] } },
+    )
+    expect(Array.isArray(res)).toBe(true)
   })
 })
