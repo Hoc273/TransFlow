@@ -2,6 +2,8 @@ export type User = {
   id: string
   email: string
   fullName: string
+  /** Platform Super Admin (docs/34) — independent of workspace RBAC. */
+  isPlatformAdmin?: boolean
 }
 
 export type AuthResponse = {
