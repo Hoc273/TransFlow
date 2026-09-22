@@ -6,10 +6,12 @@ import {
   IconChartBar,
   IconFolder,
   IconLayoutGrid,
+  IconShieldCheck,
   IconUsers,
   IconVideo,
 } from '@tabler/icons-react'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
+import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 import { usePermission } from '@/hooks/usePermission'
 import { cn } from '@/lib/cn'
@@ -95,6 +97,7 @@ export function SidebarNav({ mobileOpen, className }: SidebarNavProps) {
   const { workspaceId = '' } = useParams()
   const collapsed = useUiStore((s) => s.sidebarCollapsed)
   const canUsage = usePermission('dashboard.usage')
+  const isPlatformAdmin = useAuthStore((s) => s.user?.isPlatformAdmin === true)
   const groups = buildGroups(workspaceId)
 
   const allowed = (item: NavItem) => {
@@ -154,6 +157,15 @@ export function SidebarNav({ mobileOpen, className }: SidebarNavProps) {
           </div>
         ))}
       </nav>
+
+      {isPlatformAdmin && (
+        <div className="px-4 pb-2">
+          <NavLink to="/platform" className={({ isActive }) => cn('nav-item', isActive && 'active')}>
+            <IconShieldCheck size={18} stroke={1.75} className="shrink-0" />
+            <span className="nav-label">Platform Admin</span>
+          </NavLink>
+        </div>
+      )}
 
       <div className="mt-auto border-t border-[var(--color-border)] px-4 py-3">
         <div className="sidebar-footer-text mb-1 text-[10px] tracking-wide text-[var(--color-text-tertiary)] uppercase">

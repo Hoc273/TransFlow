@@ -92,11 +92,15 @@ class PlatformControllerTest {
     void testGetStatus_AsAdmin_Success() throws Exception {
         authenticateAs(adminUser);
 
+        // Honest health: redis/rabbit/minio/ai are not running in tests,
+        // so overall is DEGRADED while DB stays UP.
         mockMvc.perform(get("/api/platform/status"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(1000))
-                .andExpect(jsonPath("$.data.overall").value("UP"))
-                .andExpect(jsonPath("$.data.services").isArray());
+                .andExpect(jsonPath("$.data.services").isArray())
+                .andExpect(jsonPath("$.data.services.length()").value(5))
+                .andExpect(jsonPath("$.data.services[0].id").value("db"))
+                .andExpect(jsonPath("$.data.services[0].status").value("UP"));
     }
 
     @Test
@@ -116,5 +120,56 @@ class PlatformControllerTest {
 
         mockMvc.perform(get("/api/platform/overview"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testGetUsers_FilterByQ() throws Exception {
+        authenticateAs(adminUser);
+
+        mockMvc.perform(get("/api/platform/users").param("q", "admin@"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalItems").value(1))
+                .andExpect(jsonPath("$.data.items[0].email").value("admin@transflow.com"));
+
+        mockMvc.perform(get("/api/platform/users").param("q", "no-such-user"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalItems").value(0));
+    }
+
+    @Test
+    void testGetUsers_FilterByIsPlatformAdmin() throws Exception {
+        authenticateAs(adminUser);
+
+        mockMvc.perform(get("/api/platform/users").param("isPlatformAdmin", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalItems").value(1))
+                .andExpect(jsonPath("$.data.items[0].email").value("admin@transflow.com"));
+
+        mockMvc.perform(get("/api/platform/users").param("isPlatformAdmin", "false"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalItems").value(1))
+                .andExpect(jsonPath("$.data.items[0].email").value("user@transflow.com"));
+    }
+
+    @Test
+    void testGetUsers_SizeClampedTo100() throws Exception {
+        authenticateAs(adminUser);
+
+        mockMvc.perform(get("/api/platform/users").param("size", "500"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.size").value(100));
+    }
+
+    @Test
+    void testGetWorkspaces_FilterByQ() throws Exception {
+        authenticateAs(adminUser);
+
+        mockMvc.perform(get("/api/platform/workspaces").param("q", "admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalItems").value(1));
+
+        mockMvc.perform(get("/api/platform/workspaces").param("q", "no-such-ws"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalItems").value(0));
     }
 }

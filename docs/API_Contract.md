@@ -304,6 +304,15 @@ Workspace; tài khoản thường nhận `UNAUTHORIZED` (HTTP 403). Response v�
 
 Nhóm API này là read-only trong MVP; không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.
 
+> Frontend (22/09/2026): route top-level `/platform/*` (Tổng quan/Trạng thái/Người dùng/Workspace/Audit),
+> gate bởi `PlatformGuard` đọc `user.isPlatformAdmin` (lấy từ `GET /api/auth/me`). Link Sidebar chỉ hiện
+> khi `isPlatformAdmin === true`.
+>
+> Ghi chú trung thực: `GET /status` trả `overall: UP|DEGRADED` (không còn hardcode `UP`);
+> `GET /users|/workspaces` clamp `size` tối đa 100; `GET /overview` đếm thật `newInRange`
+> nhưng `jobs/tokens/failRate/topWorkspaces` vẫn là số liệu chờ aggregate (FE gắn badge `Coming soon`).
+> `GET /audit-logs` là stub rỗng có chủ ý trong MVP.
+
 ---
 
 ## 14. Callback nội bộ Worker → Spring (Arch §1 mục 4, §12)

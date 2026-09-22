@@ -1,0 +1,8 @@
+{
+  "pagination": {
+    "page": "Trang {{page}}/{{total}}",
+    "total": "Tổng {{count}}",
+    "prev": "Trước",
+    "next": "Sau"
+  }
+}

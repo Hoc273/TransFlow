@@ -1,0 +1,8 @@
+{
+  "pagination": {
+    "page": "Page {{page}}/{{total}}",
+    "total": "{{count}} total",
+    "prev": "Previous",
+    "next": "Next"
+  }
+}

@@ -10,6 +10,7 @@ import com.app.modules.workspace.entity.Workspace;
 import com.app.modules.workspace.repository.WorkspaceMemberRepository;
 import com.app.modules.workspace.repository.WorkspaceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -17,6 +18,10 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import javax.sql.DataSource;
+import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.URL;
 import java.sql.Connection;
 import java.time.Instant;
 import java.util.*;
@@ -30,6 +35,24 @@ public class PlatformController {
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final DataSource dataSource;
+
+    @Value("${spring.data.redis.host:localhost}")
+    private String redisHost = "localhost";
+
+    @Value("${spring.data.redis.port:6379}")
+    private int redisPort = 6379;
+
+    @Value("${spring.rabbitmq.host:localhost}")
+    private String rabbitHost = "localhost";
+
+    @Value("${spring.rabbitmq.port:5672}")
+    private int rabbitPort = 5672;
+
+    @Value("${app.storage.endpoint:http://localhost:9000}")
+    private String minioEndpoint = "http://localhost:9000";
+
+    @Value("${app.ai.base-url:http://localhost:8000}")
+    private String aiBaseUrl = "http://localhost:8000";
 
     public PlatformController(UserRepository userRepository,
                               WorkspaceRepository workspaceRepository,
@@ -62,19 +85,26 @@ public class PlatformController {
         long totalUsers = userRepository.count();
         long totalWorkspaces = workspaceRepository.count();
 
+        Instant defaultFrom = Instant.now().minusSeconds(86400 * 7);
+        Instant defaultTo = Instant.now();
+        Instant fromI = parseInstantOrDefault(from, defaultFrom);
+        Instant toI = parseInstantOrDefault(to, defaultTo);
+
         Map<String, Object> res = new LinkedHashMap<>();
-        res.put("from", from != null ? from : Instant.now().minusSeconds(86400 * 7).toString());
-        res.put("to", to != null ? to : Instant.now().toString());
+        res.put("from", from != null ? from : defaultFrom.toString());
+        res.put("to", to != null ? to : defaultTo.toString());
 
         Map<String, Object> usersMap = new HashMap<>();
         usersMap.put("total", totalUsers);
-        usersMap.put("newInRange", Math.min(totalUsers, 5));
+        usersMap.put("newInRange", userRepository.countByCreatedAtBetween(fromI, toI));
         res.put("users", usersMap);
 
         Map<String, Object> wsMap = new HashMap<>();
         wsMap.put("total", totalWorkspaces);
-        wsMap.put("newInRange", Math.min(totalWorkspaces, 3));
+        wsMap.put("newInRange", workspaceRepository.countByCreatedAtBetween(fromI, toI));
         res.put("workspaces", wsMap);
+
+        // NOTE Phase P2: aggregate media_jobs/ai_usage_logs for jobs/tokens/failRate below.
 
         Map<String, Object> defaultJobCounts = Map.of(
                 "created", 0, "completed", 0, "failed", 0, "processing", 0, "other", 0
@@ -136,17 +166,58 @@ public class PlatformController {
             }
         }
         services.add(createServiceStatus("db", "PostgreSQL Database", dbStatus, dbLatency, dbMsg));
-        services.add(createServiceStatus("redis", "Redis Cache & Session", "UP", 2L, "Redis 7 instance online"));
-        services.add(createServiceStatus("rabbitmq", "RabbitMQ Broker", "UP", 3L, "RabbitMQ 3.13 cluster healthy"));
-        services.add(createServiceStatus("minio", "MinIO S3 Storage", "UP", 7L, "Object storage bucket transflow-media mounted"));
-        services.add(createServiceStatus("ai_worker", "Python Media Worker", "UP", 15L, "Transformation pipeline ready"));
+        services.add(checkTcp("redis", "Redis Cache & Session", redisHost, redisPort, 2000));
+        services.add(checkTcp("rabbitmq", "RabbitMQ Broker", rabbitHost, rabbitPort, 2000));
+        services.add(checkHttp("minio", "MinIO S3 Storage", minioEndpoint + "/minio/health/live", 2000));
+        services.add(checkHttp("ai_worker", "Python Media Worker", aiBaseUrl + "/health", 2000));
 
+        boolean allUp = services.stream().allMatch(s -> "UP".equals(s.get("status")));
         Map<String, Object> res = new HashMap<>();
         res.put("checkedAt", Instant.now().toString());
-        res.put("overall", "UP");
+        res.put("overall", allUp ? "UP" : "DEGRADED");
         res.put("services", services);
 
         return ApiResponse.<Map<String, Object>>builder().data(res).build();
+    }
+
+    private Map<String, Object> checkTcp(String id, String name, String host, int port, int timeoutMs) {
+        long start = System.currentTimeMillis();
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, port), timeoutMs);
+            long latency = Math.max(1, System.currentTimeMillis() - start);
+            return createServiceStatus(id, name, "UP", latency, host + ":" + port + " reachable");
+        } catch (Exception e) {
+            long latency = Math.max(1, System.currentTimeMillis() - start);
+            return createServiceStatus(id, name, "DOWN", latency, host + ":" + port + " unreachable: " + e.getMessage());
+        }
+    }
+
+    private Map<String, Object> checkHttp(String id, String name, String url, int timeoutMs) {
+        long start = System.currentTimeMillis();
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(timeoutMs);
+            conn.setReadTimeout(timeoutMs);
+            conn.setRequestMethod("GET");
+            int code = conn.getResponseCode();
+            long latency = Math.max(1, System.currentTimeMillis() - start);
+            if (code >= 200 && code < 300) {
+                return createServiceStatus(id, name, "UP", latency, url + " -> HTTP " + code);
+            }
+            return createServiceStatus(id, name, "DOWN", latency, url + " -> HTTP " + code);
+        } catch (Exception e) {
+            long latency = Math.max(1, System.currentTimeMillis() - start);
+            return createServiceStatus(id, name, "DOWN", latency, url + " unreachable: " + e.getMessage());
+        }
+    }
+
+    private Instant parseInstantOrDefault(String value, Instant fallback) {
+        if (value == null || value.isBlank()) return fallback;
+        try {
+            return Instant.parse(value.trim());
+        } catch (Exception e) {
+            return fallback;
+        }
     }
 
     @GetMapping("/users")
@@ -157,7 +228,11 @@ public class PlatformController {
                                                      @RequestParam(value = "isPlatformAdmin", required = false) Boolean isPlatformAdmin) {
         assertPlatformAdmin(user);
 
-        Page<User> userPage = userRepository.findAll(PageRequest.of(Math.max(0, page), size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        String trimmedQ = (q == null || q.isBlank()) ? null : q.trim();
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        Page<User> userPage = userRepository.searchAdmin(
+                trimmedQ, isPlatformAdmin,
+                PageRequest.of(Math.max(0, page), safeSize, Sort.by(Sort.Direction.DESC, "createdAt")));
 
         List<Map<String, Object>> items = userPage.getContent().stream()
                 .map(u -> {
@@ -187,10 +262,14 @@ public class PlatformController {
     public ApiResponse<Map<String, Object>> getWorkspaces(@AuthenticationPrincipal AuthenticatedUser user,
                                                           @RequestParam(value = "q", required = false) String q,
                                                           @RequestParam(value = "page", defaultValue = "0") int page,
-                                                          @RequestParam(value = "size", defaultValue = "20") int size) {
+                                                           @RequestParam(value = "size", defaultValue = "20") int size) {
         assertPlatformAdmin(user);
 
-        Page<Workspace> wsPage = workspaceRepository.findAll(PageRequest.of(Math.max(0, page), size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        String trimmedQ = (q == null || q.isBlank()) ? null : q.trim();
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        Page<Workspace> wsPage = workspaceRepository.searchAdmin(
+                trimmedQ,
+                PageRequest.of(Math.max(0, page), safeSize, Sort.by(Sort.Direction.DESC, "createdAt")));
 
         List<Map<String, Object>> items = wsPage.getContent().stream()
                 .map(w -> {

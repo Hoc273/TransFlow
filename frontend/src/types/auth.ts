@@ -2,6 +2,8 @@ export type User = {
   id: string
   email: string
   fullName: string
+  googleLinked?: boolean
+  isPlatformAdmin?: boolean
 }
 
 export type AuthResponse = {

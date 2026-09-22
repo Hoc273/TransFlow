@@ -2,6 +2,7 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthGuard } from '@/components/auth/AuthGuard'
 import { GuestGuard } from '@/components/auth/GuestGuard'
+import { PlatformGuard } from '@/components/platform/PlatformGuard'
 import { getLastWorkspaceId, useAuthStore } from '@/store/authStore'
 import { MobileWorkspaceAdapter } from '@/mobile/routes/MobileWorkspaceAdapter'
 
@@ -12,6 +13,12 @@ const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage').then(m => ({
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })))
 const GoogleAuthDonePage = lazy(() => import('@/pages/auth/GoogleAuthDonePage').then(m => ({ default: m.GoogleAuthDonePage })))
 const NoWorkspacePage = lazy(() => import('@/pages/workspace/NoWorkspacePage').then(m => ({ default: m.NoWorkspacePage })))
+const PlatformLayout = lazy(() => import('@/pages/platform/PlatformLayout').then(m => ({ default: m.PlatformLayout })))
+const PlatformOverviewPage = lazy(() => import('@/pages/platform/OverviewPage').then(m => ({ default: m.OverviewPage })))
+const PlatformStatusPage = lazy(() => import('@/pages/platform/StatusPage').then(m => ({ default: m.StatusPage })))
+const PlatformUsersPage = lazy(() => import('@/pages/platform/UsersPage').then(m => ({ default: m.UsersPage })))
+const PlatformWorkspacesPage = lazy(() => import('@/pages/platform/WorkspacesPage').then(m => ({ default: m.WorkspacesPage })))
+const PlatformAuditPage = lazy(() => import('@/pages/platform/AuditPage').then(m => ({ default: m.AuditPage })))
 
 function DashboardRedirect() {
   const current = useAuthStore((s) => s.currentWorkspace?.id)
@@ -65,6 +72,15 @@ export function AppRouter() {
         </Route>
 
         <Route path="/dashboard" element={<DashboardRedirect />} />
+
+        {/* Platform Super Admin — top-level, no workspace scope (API_Contract §13.1) */}
+        <Route path="/platform" element={<PlatformGuard><PlatformLayout /></PlatformGuard>}>
+          <Route index element={<PlatformOverviewPage />} />
+          <Route path="status" element={<PlatformStatusPage />} />
+          <Route path="users" element={<PlatformUsersPage />} />
+          <Route path="workspaces" element={<PlatformWorkspacesPage />} />
+          <Route path="audit" element={<PlatformAuditPage />} />
+        </Route>
 
         {/* Legacy top-level redirects */}
         <Route path="/tm/*" element={<Navigate to="/dashboard" replace />} />
