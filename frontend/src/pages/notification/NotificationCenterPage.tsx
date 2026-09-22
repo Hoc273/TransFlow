@@ -73,7 +73,6 @@ export function NotificationCenterPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('notification:title')}</h1>
-          <div className="page-subtitle">{t('notification:subtitle')}</div>
         </div>
       </div>
 
@@ -101,7 +100,6 @@ export function NotificationCenterPage() {
           <EmptyState
             icon={<IconBell size={40} stroke={1.25} />}
             title={t('notification:emptyTitle')}
-            description={t('notification:emptyDesc')}
             className="py-14"
           />
         )}
