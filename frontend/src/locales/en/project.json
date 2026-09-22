@@ -1,0 +1,51 @@
+{
+  "list": {
+    "title": "Projects",
+    "subtitle": "Manage workspace translation and localization projects",
+    "create": "New project",
+    "emptyTitle": "No projects yet",
+    "emptyDesc": "Create your first project to organize your videos.",
+    "searchPlaceholder": "Search projects...",
+    "noMatchTitle": "No projects found",
+    "noMatchDesc": "No projects match your search query.",
+    "clearSearch": "Clear search",
+    "projectCount_one": "{{count}} project",
+    "projectCount_other": "{{count}} projects",
+    "docsCount_one": "{{count}} doc",
+    "docsCount_other": "{{count}} docs",
+    "videoCount_one": "{{count}} video",
+    "videoCount_other": "{{count}} videos",
+    "stats": {
+      "projects": "Projects",
+      "documents": "Documents & Media",
+      "languages": "Source Languages",
+      "tm": "TM Coverage"
+    },
+    "col": {
+      "name": "Name",
+      "sourceLang": "Source",
+      "domain": "Domain",
+      "documents": "Documents",
+      "media": "Videos",
+      "actions": ""
+    },
+    "open": "Open"
+  },
+  "create": {
+    "title": "Create project",
+    "subtitle": "Source language is the default for new videos",
+    "name": "Project name",
+    "namePlaceholder": "Product video · EN→VI",
+    "nameRequired": "Name is required",
+    "sourceLang": "Source language",
+    "glossary": "Default glossary",
+    "glossaryNone": "None",
+    "tmEnabled": "Enable Translation Memory for this project",
+    "domain": "Domain (optional)",
+    "domainPlaceholder": "legal / marketing / tech",
+    "tone": "Tone (optional)",
+    "tonePlaceholder": "formal / casual",
+    "submit": "Create project",
+    "submitting": "Creating…"
+  }
+}

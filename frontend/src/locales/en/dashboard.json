@@ -1,0 +1,129 @@
+{
+  "title": "Dashboard",
+  "subtitle": "Workspace overview · AI resource consumption and active batches",
+  "updatedAt": "Refresh",
+  "loading": "Loading…",
+  "widget": {
+    "usage": {
+      "title": "AI Resource Usage",
+      "subtitle": "Workspace total",
+      "inputTokens": "Input tokens",
+      "outputTokens": "Output tokens",
+      "embedTokens": "Embed tokens",
+      "cost": "Estimated cost",
+      "comingSoon": "Coming soon",
+      "empty": "No usage data yet",
+      "restricted": "AI Resource Usage is visible to PM and Admin only.",
+      "loadError": "Could not load usage"
+    },
+    "queue": {
+      "title": "Active Batches",
+      "subtitle": "Processing in queue",
+      "emptyTitle": "No active batches",
+      "emptyDesc": "Batches in PENDING or PROCESSING will appear here.",
+      "loadError": "Could not load batches"
+    },
+    "notifications": {
+      "title": "Recent Notifications",
+      "subtitle": "Batch terminal events",
+      "emptyTitle": "No notifications",
+      "emptyDesc": "BATCH_* events for your account will show here.",
+      "loadError": "Could not load notifications"
+    },
+    "recentProjects": {
+      "title": "Recent Projects",
+      "emptyTitle": "No projects yet",
+      "emptyDesc": "Create a project to get started.",
+      "loadError": "Could not load projects",
+      "tmOn": "TM on",
+      "tmOff": "TM off"
+    }
+  },
+  "usage": {
+    "title": "AI Resource Usage",
+    "subtitle": "Token consumption by AI operations and model (PM / Admin)",
+    "empty": "No usage data for this scope",
+    "summary": {
+      "input": "Input tokens",
+      "output": "Output tokens",
+      "total": "Total tokens",
+      "operations": "Operations",
+      "currentScope": "Current scope",
+      "cost": "Estimated cost"
+    },
+    "filter": {
+      "project": "Project",
+      "allProjects": "All projects",
+      "document": "Document",
+      "allDocuments": "All documents",
+      "job": "Job",
+      "allJobs": "All jobs",
+      "clear": "Clear filters"
+    },
+    "byOperation": {
+      "title": "Usage by operation",
+      "subtitle": "Token and call counts per AI operation"
+    },
+    "byModel": {
+      "title": "Usage by model",
+      "subtitle": "Token and call counts per provider / model"
+    },
+    "col": {
+      "operation": "Operation",
+      "input": "Input",
+      "output": "Output",
+      "total": "Total",
+      "calls": "Calls",
+      "provider": "Provider",
+      "model": "Model"
+    }
+  },
+  "col": {
+    "name": "Name",
+    "status": "Status",
+    "progress": "Progress",
+    "docs": "Docs",
+    "createdBy": "Created by",
+    "createdAt": "Created",
+    "domain": "Domain",
+    "sourceLang": "Source",
+    "updatedAt": "Updated",
+    "tm": "TM",
+    "tone": "Tone"
+  },
+  "status": {
+    "pending": "Pending",
+    "processing": "Processing",
+    "completed": "Completed",
+    "partiallyFailed": "Partially failed",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "viewAll": "View all",
+  "continue": "Continue",
+  "breadcrumbWorkspace": "Workspace",
+  "live": {
+    "indicator": "Live",
+    "statusOnline": "Realtime Data",
+    "chartTitle": "Realtime AI Resource Analytics",
+    "chartSubtitle": "Live data from token telemetry system",
+    "byOperation": "By Operation",
+    "byModel": "By Model",
+    "operationsTitle": "AI Operations Breakdown",
+    "balanceTitle": "Input vs Output Token Balance",
+    "totalTokens": "Total Tokens",
+    "totalCalls": "Calls",
+    "totalProjects": "Projects",
+    "inputTokens": "Input",
+    "outputTokens": "Output",
+    "share": "Share",
+    "noData": "No AI usage data yet for this workspace",
+    "quickLaunch": "Quick Launch",
+    "quickNewProject": "New Project",
+    "quickNewBatch": "Batch Process",
+    "quickMedia": "Media Studio",
+    "quickGlossary": "Glossary",
+    "successRate": "Success Rate",
+    "pipelineTitle": "Active Queue & Processing Pipeline"
+  }
+}

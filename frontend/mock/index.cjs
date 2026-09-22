@@ -199,8 +199,40 @@ function makeRenderConfig(jobId) {
     sourceVideoUrlExpiresInSeconds: 7200,
     presentation: {
       schemaVersion: 2,
-      subtitle: { schemaVersion: 2, displayMode: 'SENTENCE', maxCharactersPerCue: 42 },
-      audio: { schemaVersion: 1 },
+      outputAspectRatio: job?.aspectRatio || '16:9',
+      keepOriginalAudio: Boolean(job?.keepOriginalAudio),
+      subtitle: {
+        schemaVersion: 2,
+        displayMode: 'SENTENCE',
+        maxCharactersPerCue: 42,
+        position: 'BOTTOM',
+        typography: {
+          fontSize: 44,
+          bold: true,
+          outlineWidth: 2,
+          outlineColor: '#000000',
+        },
+      },
+      audio: {
+        schemaVersion: 1,
+        sourceGainDb: 0,
+        ttsGainDb: 0,
+        ducking: false,
+      },
+      coverLayers: [
+        {
+          id: 'cov_1',
+          anchor: 'TOP_RIGHT',
+          type: 'BLUR',
+          blurRadius: 16,
+          geometry: {
+            xPercent: 82,
+            yPercent: 8,
+            widthPercent: 18,
+            heightPercent: 7,
+          },
+        },
+      ],
     },
     backgroundColor: null,
     textColor: null,
@@ -275,13 +307,38 @@ function getCurrentUser(req) {
 function buildRoutes() {
   const R = []
   const r = (t, m, h) => R.push(route(t, m, h))
+  const rBoth = (t1, t2, m, h) => {
+    R.push(route(t1, m, h))
+    R.push(route(t2, m, h))
+  }
   const json = (body) => (ctx) => sendJson(ctx.res, 200, body)
   const created = (body) => (ctx) => sendJson(ctx.res, 201, body)
 
   // ---- Auth ----
   r('/auth/login', 'POST', async (ctx) => {
     const body = await readJson(ctx.req)
-    const user = d.users.find((u) => u.email === body.email) ?? d.users[0]
+    const inputEmail = (body?.email || '').trim().toLowerCase()
+    let user = d.users.find((u) => u.email.toLowerCase() === inputEmail)
+    if (!user) {
+      // Default to normal user (non-admin) unless email is admin
+      user = {
+        id: d.uuid('u'),
+        email: body?.email || 'user@transflow.io',
+        fullName: body?.email ? body.email.split('@')[0] : 'Standard User',
+        isPlatformAdmin: false,
+        password: body?.password || 'password123',
+      }
+      d.users.push(user)
+      if (d.membersByWs && d.membersByWs['ws_1']) {
+        d.membersByWs['ws_1'].push({
+          memberId: d.uuid('m'),
+          userId: user.id,
+          email: user.email,
+          fullName: user.fullName,
+          role: 'ADMIN',
+        })
+      }
+    }
     sendJson(ctx.res, 200, makeAuthResponse(user))
   })
   r('/auth/register', 'POST', async (ctx) => {
@@ -294,6 +351,15 @@ function buildRoutes() {
       password: body.password,
     }
     d.users.push(user)
+    if (d.membersByWs && d.membersByWs['ws_1']) {
+      d.membersByWs['ws_1'].push({
+        memberId: d.uuid('m'),
+        userId: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: 'ADMIN',
+      })
+    }
     sendJson(ctx.res, 201, makeAuthResponse(user))
   })
   r('/auth/me', 'GET', (ctx) => {
@@ -648,7 +714,47 @@ function buildRoutes() {
     sendNoContent(ctx.res)
   })
 
-  // ---- Providers ----
+  // ---- Providers (both /workspaces/:id/providers and /users/me/providers) ----
+  r('/users/me/providers', 'GET', json(d.providers))
+  r('/users/me/providers', 'POST', async (ctx) => {
+    const body = await readJson(ctx.req)
+    const p = {
+      id: d.uuid('prov'),
+      displayName: body.displayName || 'Provider',
+      protocol: body.protocol || 'openai_compatible',
+      capabilities: body.capabilities ?? [],
+      defaultFor: body.defaultForCapabilities ?? [],
+      baseUrl: body.baseUrl || '',
+      apiKeyHint: body.apiKey ? 'sk-...mock' : null,
+      defaultModel: body.defaultModel || '',
+      enabled: body.enabled ?? true,
+      temperature: body.temperature ?? null,
+    }
+    d.providers.push(p)
+    sendJson(ctx.res, 201, p)
+  })
+  r('/users/me/providers/:providerId', 'GET', (ctx) => {
+    const p = d.providers.find((x) => x.id === ctx.params.providerId)
+    sendJson(ctx.res, p ? 200 : 404, p ?? { errorCode: 'NOT_FOUND', message: 'Provider not found' })
+  })
+  r('/users/me/providers/:providerId', 'PUT', async (ctx) => {
+    const body = await readJson(ctx.req)
+    const p = d.providers.find((x) => x.id === ctx.params.providerId)
+    if (p) {
+      Object.assign(p, body)
+      p.apiKeyHint = body.apiKey ? 'sk-...mock' : p.apiKeyHint
+    }
+    sendJson(ctx.res, 200, p ?? { errorCode: 'NOT_FOUND', message: 'Provider not found' })
+  })
+  r('/users/me/providers/:providerId', 'DELETE', (ctx) => sendNoContent(ctx.res))
+  r('/users/me/providers/:providerId/test', 'POST', json({ ok: true, model: 'gpt-4o-mini', message: 'Connection successful' }))
+  r('/users/me/providers/:providerId/voices', 'GET', (ctx) =>
+    sendJson(ctx.res, 200, d.voices.filter((v) => v.providerId === ctx.params.providerId)),
+  )
+  r('/users/me/providers/:providerId/voices/refresh', 'POST', (ctx) =>
+    sendJson(ctx.res, 200, d.voices.filter((v) => v.providerId === ctx.params.providerId)),
+  )
+
   r('/workspaces/:workspaceId/providers/presets', 'GET', (ctx) =>
     sendJson(ctx.res, 200, ctx.query.get('category') ? d.providerPresets.filter((p) => p.category === ctx.query.get('category')) : d.providerPresets),
   )
@@ -739,7 +845,7 @@ function buildRoutes() {
   }))
 
   // ---- Workflow presets ----
-  r('/workspaces/:workspaceId/workflow-presets', 'GET', (ctx) => {
+  rBoth('/workspaces/:workspaceId/presets', '/workspaces/:workspaceId/workflow-presets', 'GET', (ctx) => {
     const scope = ctx.query.get('scope')
     const projectId = ctx.query.get('projectId')
     let list = d.workflowPresets
@@ -751,7 +857,7 @@ function buildRoutes() {
     }
     sendJson(ctx.res, 200, list)
   })
-  r('/workspaces/:workspaceId/workflow-presets', 'POST', async (ctx) => {
+  rBoth('/workspaces/:workspaceId/presets', '/workspaces/:workspaceId/workflow-presets', 'POST', async (ctx) => {
     const body = await readJson(ctx.req)
     const p = {
       id: d.uuid('wfp'),
@@ -770,13 +876,13 @@ function buildRoutes() {
     d.workflowPresets.push(p)
     sendJson(ctx.res, 201, p)
   })
-  r('/workspaces/:workspaceId/workflow-presets/:presetId', 'PUT', async (ctx) => {
+  rBoth('/workspaces/:workspaceId/presets/:presetId', '/workspaces/:workspaceId/workflow-presets/:presetId', 'PUT', async (ctx) => {
     const body = await readJson(ctx.req)
     const p = d.workflowPresets.find((x) => x.id === ctx.params.presetId)
     if (p) Object.assign(p, body, { updatedAt: CURRENT_UTC })
     sendJson(ctx.res, 200, p ?? { errorCode: 'NOT_FOUND', message: 'Preset not found' })
   })
-  r('/workspaces/:workspaceId/workflow-presets/:presetId', 'DELETE', (ctx) => sendNoContent(ctx.res))
+  rBoth('/workspaces/:workspaceId/presets/:presetId', '/workspaces/:workspaceId/workflow-presets/:presetId', 'DELETE', (ctx) => sendNoContent(ctx.res))
 
   // ---- Transformation / media ----
   r('/transformation/capabilities', 'GET', json({
@@ -791,22 +897,30 @@ function buildRoutes() {
     readiness: { status: 'READY', readyExecutionModes: ['FAST', 'STUDIO'], reasons: [], evaluatedAt: CURRENT_UTC },
   }))
 
-  r('/workspaces/:workspaceId/transformation/jobs', 'POST', async (ctx) => {
+  rBoth('/workspaces/:workspaceId/media/jobs', '/workspaces/:workspaceId/transformation/jobs', 'POST', async (ctx) => {
     const body = await readJson(ctx.req)
+    const keepOriginalAudio = Boolean(body.keepOriginalAudio)
+    const doc = d.documents.find((x) => x.id === body.documentId)
+    const fileName = body.fileName || doc?.name || 'Video_Source.mp4'
+
     const job = {
       id: d.uuid('mj'),
+      fileName,
       documentId: body.documentId ?? null,
       rootAssetId: 'asset_1',
-      projectId: 'p_1',
+      projectId: body.projectId || 'p_1',
       processingMode: body.processingMode ?? 'TRANSLATE_ONLY',
       sourceLanguage: body.sourceLang ?? 'en',
       targetLang: body.targetLang || 'vi',
       status: 'PENDING',
       subtitleMode: body.subtitleMode ?? 'SOFT_SUB',
+      aspectRatio: body.aspectRatio || body.outputAspectRatio || '16:9',
+      keepOriginalAudio,
+      skipPresetResolution: Boolean(body.skipPresetResolution),
       requestedDurationSeconds: body.requestedDurationSeconds ?? null,
       selectedProposalId: null,
-      ttsProviderId: body.ttsProviderId ?? null,
-      ttsVoiceId: body.ttsVoiceId ?? null,
+      ttsProviderId: keepOriginalAudio ? null : (body.ttsProviderId ?? null),
+      ttsVoiceId: keepOriginalAudio ? null : (body.ttsVoiceId ?? null),
       recipeId: body.recipeId ?? 'localization.full',
       goalType: (body.recipeId || '').startsWith('summary') ? 'HIGHLIGHT_EXTRACTIVE' : 'LOCALIZE',
       domainPhase: 'DRAFT',
@@ -819,11 +933,11 @@ function buildRoutes() {
       createdAt: CURRENT_UTC,
       stages: [
         makeStage('EXTRACT_AUDIO', 1, 'PENDING'),
-        makeStage('SOURCE_SEPARATION', 2, 'PENDING'),
+        makeStage('SOURCE_SEPARATION', 2, 'SKIPPED'),
         makeStage('STT', 3, 'PENDING'),
         makeStage('SUMMARIZE', 4, 'PENDING'),
         makeStage('TRANSLATE', 5, 'PENDING'),
-        makeStage('TTS', 6, 'PENDING'),
+        makeStage('TTS', 6, keepOriginalAudio ? 'SKIPPED' : 'PENDING'),
         makeStage('AUDIO_MIX', 7, 'PENDING'),
         makeStage('RENDER', 8, 'PENDING'),
       ],
@@ -831,14 +945,39 @@ function buildRoutes() {
     d.mediaJobs.unshift(job)
     sendJson(ctx.res, 201, job)
   })
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId', 'GET', (ctx) => {
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId', '/workspaces/:workspaceId/transformation/jobs/:jobId', 'GET', (ctx) => {
     const job = d.mediaJobs.find((j) => j.id === ctx.params.jobId)
     sendJson(ctx.res, job ? 200 : 404, job ?? { errorCode: 'NOT_FOUND', message: 'Job not found' })
   })
-  r('/workspaces/:workspaceId/projects/:projectId/transformation/jobs', 'GET', (ctx) =>
+  rBoth('/workspaces/:workspaceId/projects/:projectId/media/jobs', '/workspaces/:workspaceId/projects/:projectId/transformation/jobs', 'GET', (ctx) =>
     sendJson(ctx.res, 200, d.mediaJobs.filter((j) => (ctx.params.projectId ? j.projectId === ctx.params.projectId : true))),
   )
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/cancel', 'POST', (ctx) => {
+  rBoth(
+    '/workspaces/:workspaceId/media/jobs/:jobId/stages/:stageName/rerun',
+    '/workspaces/:workspaceId/transformation/jobs/:jobId/stages/:stageName/rerun',
+    'POST',
+    (ctx) => {
+      const job = d.mediaJobs.find((j) => j.id === ctx.params.jobId)
+      if (!job) return sendJson(ctx.res, 404, { errorCode: 'NOT_FOUND', message: 'Job not found' })
+      job.status = 'PROCESSING'
+      const targetOrder = job.stages.find((s) => s.stageName === ctx.params.stageName)?.stageOrder ?? 1
+      job.stages = job.stages.map((s) => {
+        if (s.stageOrder < targetOrder) return s
+        if (s.stageOrder === targetOrder) {
+          return { ...s, status: 'PROCESSING', progressPercent: 20 }
+        }
+        return { ...s, status: 'PENDING', progressPercent: 0 }
+      })
+      sendJson(ctx.res, 200, job)
+    },
+  )
+  rBoth(
+    '/workspaces/:workspaceId/media/jobs/:jobId/export',
+    '/workspaces/:workspaceId/transformation/jobs/:jobId/export',
+    'POST',
+    (ctx) => sendJson(ctx.res, 200, { downloadUrl: '/api/media/sample-video', primaryVideoDownloadUrl: '/api/media/sample-video' }),
+  )
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/cancel', '/workspaces/:workspaceId/transformation/jobs/:jobId/cancel', 'POST', (ctx) => {
     const job = d.mediaJobs.find((j) => j.id === ctx.params.jobId)
     if (job) {
       job.status = 'CANCELLED'
@@ -855,7 +994,7 @@ function buildRoutes() {
   r('/media/stream', 'GET', (ctx) => serveVideo(ctx))
   r('/media/video', 'GET', (ctx) => serveVideo(ctx))
 
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/export', 'GET', (ctx) => {
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/export', '/workspaces/:workspaceId/transformation/jobs/:jobId/export', 'GET', (ctx) => {
     const format = (ctx.query.get('format') || 'SRT').toUpperCase()
     const isVtt = format === 'VTT'
     const list = d.mediaSegmentsByJob[ctx.params.jobId] || d.job1Segments
@@ -883,12 +1022,12 @@ function buildRoutes() {
       content,
     })
   })
-  r('/workspaces/:workspaceId/transformation/terms-version', 'GET', json({ termsVersion: '2026.1' }))
-  r('/workspaces/:workspaceId/transformation/assets/:assetId/consent', 'POST', (ctx) =>
+  rBoth('/workspaces/:workspaceId/media/terms-version', '/workspaces/:workspaceId/transformation/terms-version', 'GET', json({ termsVersion: '2026.1' }))
+  rBoth('/workspaces/:workspaceId/media/assets/:assetId/consent', '/workspaces/:workspaceId/transformation/assets/:assetId/consent', 'POST', (ctx) =>
     sendJson(ctx.res, 200, { id: d.uuid('c'), rootAssetId: ctx.params.assetId, termsVersion: '2026.1', consentedAt: CURRENT_UTC }),
   )
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/override-source-lang', 'POST', (ctx) => sendNoContent(ctx.res))
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/voice', 'POST', async (ctx) => {
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/override-source-lang', '/workspaces/:workspaceId/transformation/jobs/:jobId/override-source-lang', 'POST', (ctx) => sendNoContent(ctx.res))
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/voice', '/workspaces/:workspaceId/transformation/jobs/:jobId/voice', 'POST', async (ctx) => {
     const body = await readJson(ctx.req)
     const job = d.mediaJobs.find((j) => j.id === ctx.params.jobId)
     if (job) {
@@ -897,18 +1036,19 @@ function buildRoutes() {
     }
     sendNoContent(ctx.res)
   })
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/render-config', 'GET', (ctx) =>
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/render-config', '/workspaces/:workspaceId/transformation/jobs/:jobId/render-config', 'GET', (ctx) =>
     sendJson(ctx.res, 200, makeRenderConfig(ctx.params.jobId)),
   )
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/render-config', 'PUT', async (ctx) => {
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/render-config', '/workspaces/:workspaceId/transformation/jobs/:jobId/render-config', 'PUT', async (ctx) => {
     const body = await readJson(ctx.req)
     sendJson(ctx.res, 200, { ...makeRenderConfig(ctx.params.jobId), ...body })
   })
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/confirm-render', 'POST', (ctx) => sendNoContent(ctx.res))
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/workflow/continue', 'POST', json({ id: 'CUT', state: 'CONFIRMED', canContinue: false }))
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/workflow/resume', 'POST', (ctx) => sendNoContent(ctx.res))
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/proposals', 'GET', json(d.proposals))
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/proposals', 'POST', async (ctx) => {
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/confirm-render', '/workspaces/:workspaceId/transformation/jobs/:jobId/confirm-render', 'POST', (ctx) => sendNoContent(ctx.res))
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/checkpoints/:checkpoint/confirm', '/workspaces/:workspaceId/transformation/jobs/:jobId/checkpoints/:checkpoint/confirm', 'POST', (ctx) => sendNoContent(ctx.res))
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/workflow/continue', '/workspaces/:workspaceId/transformation/jobs/:jobId/workflow/continue', 'POST', json({ id: 'CUT', state: 'CONFIRMED', canContinue: false }))
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/workflow/resume', '/workspaces/:workspaceId/transformation/jobs/:jobId/workflow/resume', 'POST', (ctx) => sendNoContent(ctx.res))
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/proposals', '/workspaces/:workspaceId/transformation/jobs/:jobId/proposals', 'GET', json(d.proposals))
+  const proposalHandler = async (ctx) => {
     const body = await readJson(ctx.req)
     const prop = {
       id: d.uuid('prop'),
@@ -926,8 +1066,10 @@ function buildRoutes() {
     }
     d.proposals.push(prop)
     sendJson(ctx.res, 201, prop)
-  })
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/proposals/:proposalId', 'PUT', async (ctx) => {
+  }
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/proposals', '/workspaces/:workspaceId/transformation/jobs/:jobId/proposals', 'POST', proposalHandler)
+  r('/workspaces/:workspaceId/media/jobs/:jobId/proposals/custom', 'POST', proposalHandler)
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/proposals/:proposalId', '/workspaces/:workspaceId/transformation/jobs/:jobId/proposals/:proposalId', 'PUT', async (ctx) => {
     const body = await readJson(ctx.req)
     const p = d.proposals.find((x) => x.id === ctx.params.proposalId)
     if (p) {
@@ -936,15 +1078,15 @@ function buildRoutes() {
     }
     sendJson(ctx.res, 200, p ?? { errorCode: 'NOT_FOUND', message: 'Proposal not found' })
   })
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/proposals/:proposalId/select', 'POST', (ctx) => {
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/proposals/:proposalId/select', '/workspaces/:workspaceId/transformation/jobs/:jobId/proposals/:proposalId/select', 'POST', (ctx) => {
     const p = d.proposals.find((x) => x.id === ctx.params.proposalId)
     if (p) p.planStatus = 'SELECTED'
     sendJson(ctx.res, 200, p)
   })
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/refine', 'POST', (ctx) => sendNoContent(ctx.res))
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/summarize', 'POST', (ctx) => sendNoContent(ctx.res))
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/rerun-tts-render', 'POST', (ctx) => sendNoContent(ctx.res))
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/output-package', 'GET', (ctx) =>
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/refine', '/workspaces/:workspaceId/transformation/jobs/:jobId/refine', 'POST', (ctx) => sendNoContent(ctx.res))
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/summarize', '/workspaces/:workspaceId/transformation/jobs/:jobId/summarize', 'POST', (ctx) => sendNoContent(ctx.res))
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/rerun-tts-render', '/workspaces/:workspaceId/transformation/jobs/:jobId/rerun-tts-render', 'POST', (ctx) => sendNoContent(ctx.res))
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/output-package', '/workspaces/:workspaceId/transformation/jobs/:jobId/output-package', 'GET', (ctx) =>
     sendJson(ctx.res, 200, {
       jobId: ctx.params.jobId,
       primaryVideoRef: 'videos/ATTT_qua_Mật_mã_học.mp4',
@@ -960,7 +1102,7 @@ function buildRoutes() {
       artifactPins: [],
     }),
   )
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/publish-package', 'GET', (ctx) =>
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/publish-package', '/workspaces/:workspaceId/transformation/jobs/:jobId/publish-package', 'GET', (ctx) =>
     sendJson(ctx.res, 200, {
       profile: 'GENERIC',
       title: 'An toàn thông tin qua Mật mã học (English Dubbed & Subtitled)',
@@ -972,7 +1114,7 @@ function buildRoutes() {
       status: 'READY',
     }),
   )
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/publish-package', 'PUT', async (ctx) => {
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/publish-package', '/workspaces/:workspaceId/transformation/jobs/:jobId/publish-package', 'PUT', async (ctx) => {
     const body = await readJson(ctx.req)
     sendJson(ctx.res, 200, {
       profile: 'GENERIC',
@@ -986,7 +1128,7 @@ function buildRoutes() {
     })
   })
   // ---- Batch edit subtitle segments (Review workbench) ----
-  r('/workspaces/:workspaceId/transformation/jobs/:jobId/segments/batch', 'PUT', async (ctx) => {
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/segments/batch', '/workspaces/:workspaceId/transformation/jobs/:jobId/segments/batch', 'PUT', async (ctx) => {
     const body = await readJson(ctx.req)
     const list = d.mediaSegmentsByJob[ctx.params.jobId] ?? d.job1Segments
     const updates = Array.isArray(body?.updates) ? body.updates : []
@@ -1000,7 +1142,7 @@ function buildRoutes() {
     })
     sendJson(ctx.res, 200, { segments: list })
   })
-  r('/workspaces/:workspaceId/projects/:projectId/transformation/upload', 'POST', async (ctx) => {
+  rBoth('/workspaces/:workspaceId/projects/:projectId/media/assets', '/workspaces/:workspaceId/projects/:projectId/transformation/upload', 'POST', async (ctx) => {
     await readBody(ctx.req, 60 * 1024 * 1024)
     sendJson(ctx.res, 200, {
       documentId: d.uuid('d'),

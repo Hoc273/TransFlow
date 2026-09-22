@@ -46,6 +46,8 @@ public interface AiUsageLogReadOnlyRepository extends JpaRepository<AiUsageLog, 
         Long getOperations();
     }
 
+    // from/to must be non-null: the service defaults open bounds (a null Instant binds as bytea in Postgres).
+
     // ── Workspace-wide aggregates (LEAD) ───────────────────────────────────────
 
     @Query("""
@@ -55,8 +57,8 @@ public interface AiUsageLogReadOnlyRepository extends JpaRepository<AiUsageLog, 
                    count(u) as operations
             from AiUsageLog u
             where u.workspaceId = :workspaceId
-              and (:from is null or u.createdAt >= :from)
-              and (:to is null or u.createdAt <= :to)
+              and u.createdAt >= :from
+              and u.createdAt <= :to
             """)
     UsageTotals aggregateWorkspaceTotals(@Param("workspaceId") UUID workspaceId,
                                         @Param("from") Instant from,
@@ -70,8 +72,8 @@ public interface AiUsageLogReadOnlyRepository extends JpaRepository<AiUsageLog, 
                    count(u) as operations
             from AiUsageLog u
             where u.workspaceId = :workspaceId
-              and (:from is null or u.createdAt >= :from)
-              and (:to is null or u.createdAt <= :to)
+              and u.createdAt >= :from
+              and u.createdAt <= :to
             group by u.projectId
             order by coalesce(sum(u.creditUsed), 0) desc
             """)
@@ -87,8 +89,8 @@ public interface AiUsageLogReadOnlyRepository extends JpaRepository<AiUsageLog, 
                    count(u) as operations
             from AiUsageLog u
             where u.workspaceId = :workspaceId
-              and (:from is null or u.createdAt >= :from)
-              and (:to is null or u.createdAt <= :to)
+              and u.createdAt >= :from
+              and u.createdAt <= :to
             group by u.performedByUserId
             order by coalesce(sum(u.creditUsed), 0) desc
             """)
@@ -104,8 +106,8 @@ public interface AiUsageLogReadOnlyRepository extends JpaRepository<AiUsageLog, 
                    count(u) as operations
             from AiUsageLog u
             where u.workspaceId = :workspaceId
-              and (:from is null or u.createdAt >= :from)
-              and (:to is null or u.createdAt <= :to)
+              and u.createdAt >= :from
+              and u.createdAt <= :to
             group by u.operation
             order by coalesce(sum(u.creditUsed), 0) desc
             """)
@@ -123,8 +125,8 @@ public interface AiUsageLogReadOnlyRepository extends JpaRepository<AiUsageLog, 
             from AiUsageLog u
             where u.workspaceId = :workspaceId
               and u.projectId in :projectIds
-              and (:from is null or u.createdAt >= :from)
-              and (:to is null or u.createdAt <= :to)
+              and u.createdAt >= :from
+              and u.createdAt <= :to
             """)
     UsageTotals aggregateProjectsTotals(@Param("workspaceId") UUID workspaceId,
                                        @Param("projectIds") Collection<UUID> projectIds,
@@ -140,8 +142,8 @@ public interface AiUsageLogReadOnlyRepository extends JpaRepository<AiUsageLog, 
             from AiUsageLog u
             where u.workspaceId = :workspaceId
               and u.projectId in :projectIds
-              and (:from is null or u.createdAt >= :from)
-              and (:to is null or u.createdAt <= :to)
+              and u.createdAt >= :from
+              and u.createdAt <= :to
             group by u.projectId
             order by coalesce(sum(u.creditUsed), 0) desc
             """)
@@ -159,8 +161,8 @@ public interface AiUsageLogReadOnlyRepository extends JpaRepository<AiUsageLog, 
             from AiUsageLog u
             where u.workspaceId = :workspaceId
               and u.projectId in :projectIds
-              and (:from is null or u.createdAt >= :from)
-              and (:to is null or u.createdAt <= :to)
+              and u.createdAt >= :from
+              and u.createdAt <= :to
             group by u.performedByUserId
             order by coalesce(sum(u.creditUsed), 0) desc
             """)
@@ -178,8 +180,8 @@ public interface AiUsageLogReadOnlyRepository extends JpaRepository<AiUsageLog, 
             from AiUsageLog u
             where u.workspaceId = :workspaceId
               and u.projectId in :projectIds
-              and (:from is null or u.createdAt >= :from)
-              and (:to is null or u.createdAt <= :to)
+              and u.createdAt >= :from
+              and u.createdAt <= :to
             group by u.operation
             order by coalesce(sum(u.creditUsed), 0) desc
             """)

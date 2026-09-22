@@ -1,0 +1,429 @@
+{
+  "pageTitle": "TransFlow – Toàn cầu hóa video | Nền tảng dịch thuật & Lồng tiếng AI",
+  "nav": {
+    "pipeline": "Quy trình Pipeline",
+    "productivity": "Năng suất & QA",
+    "customers": "Câu chuyện Creator",
+    "pricing": "Bảng giá Credits",
+    "studio": "Vào Studio",
+    "login": "Đăng nhập",
+    "startFree": "Bắt đầu miễn phí"
+  },
+  "hero": {
+    "flagship": "PIPELINE ĐA PHƯƠNG THỨC TIÊN PHONG",
+    "engine": "Engine Thị giác & MoE Thế hệ Mới",
+    "title": "Nền Tảng Dịch & Tóm Tắt Video Đa Ngôn Ngữ AI",
+    "subtitle": "Nền tảng dịch video và tóm tắt nội dung tự động đa ngôn ngữ với độ chính xác cao và tốc độ xử lý vượt trội.",
+    "translateBtn": "Dịch video",
+    "summarizeBtn": "Tóm tắt"
+  },
+  "pipeline": {
+    "badge": "Kiến trúc Pipeline Bất đồng bộ TransFlow",
+    "title": "Quy trình Dịch & Lồng tiếng Video AI",
+    "subtitle": "Đường ống xử lý tự động hóa khép kín 5 giai đoạn: từ tách âm, nhận diện giọng nói, dịch thuật ngữ cảnh với TM, đến lồng tiếng AI đa giọng và kiểm định chất lượng 3 chiều.",
+    "tabLocalization": "Luồng Dịch & Lồng tiếng (5 bước)",
+    "tabSummarization": "Luồng Tóm tắt Highlight (3 bước)",
+    "ctaStudio": "Trải nghiệm Studio",
+    "ctaDocs": "Tài liệu kiến trúc",
+    "runningStatus": "Đang chạy tuần tự: Bước {{current}}/{{total}} • Rê chuột vào khung để tạm dừng",
+    "bottomCta": "Bắt đầu dịch video với TransFlow Studio",
+    "stepExtract": {
+      "tab": "Tách âm & Cô lập giọng",
+      "headline": "Tách âm thanh & Cô lập giọng nói gốc (Voice Isolation)",
+      "details": "Hệ thống tự động bóc tách audio stream từ video đầu vào. Thuật toán tách nguồn âm thanh (Source Separation) chia tách thành 2 luồng độc lập: Giọng nói (Vocal) và Nhạc nền/SFX (BGM) nhằm bảo toàn 100% âm thanh nền cho bản lồng tiếng sau này.",
+      "metricPrimary": "500MB / 30 phút",
+      "metricPrimaryLabel": "Dung lượng file tối đa",
+      "metricSecondary": "~3-5 giây",
+      "metricSecondaryLabel": "Thời gian bóc tách audio"
+    },
+    "stepStt": {
+      "tab": "Nhận diện lời thoại",
+      "headline": "Chuyển đổi giọng nói thành văn bản & Mốc thời gian chính xác",
+      "details": "Tự động phát hiện ngôn ngữ nguồn, nhận diện lời thoại và gắn mốc thời gian chính xác từng mili-giây (start_ms, end_ms). Hệ thống tự động quét lỗi logic (khoảng lặng bất thường, lệch thời gian) qua cơ chế Sanity Check chuyên sâu.",
+      "metricPrimary": "> 98.6%",
+      "metricPrimaryLabel": "Độ chính xác từ ngữ",
+      "metricSecondary": "50+ ngôn ngữ",
+      "metricSecondaryLabel": "Tự động nhận diện"
+    },
+    "stepTranslate": {
+      "tab": "Dịch thuật",
+      "headline": "Bản địa hóa thông minh với TM & Bảng thuật ngữ độc quyền",
+      "details": "Bản dịch không chỉ qua LLM mà được đối chiếu qua bộ nhớ dịch thuật (vector search pgvector) để tái sử dụng câu tương đồng, kết hợp bảng thuật ngữ độc quyền (Glossary) của dự án để đảm bảo tính đồng nhất thuật ngữ chuyên ngành.",
+      "metricPrimary": "Giảm tới 40%",
+      "metricPrimaryLabel": "Chi phí token nhờ TM Cache",
+      "metricSecondary": "100% Realtime",
+      "metricSecondaryLabel": "Kiểm soát thuật ngữ dự án"
+    },
+    "stepDubbing": {
+      "tab": "Lồng tiếng AI",
+      "headline": "Lồng tiếng AI & Căn chỉnh nhịp đọc tự nhiên",
+      "details": "Tạo giọng đọc AI tự nhiên theo đúng ngôn ngữ đích bằng kho giọng chất lượng cao (CosyVoice, ElevenLabs, Azure Speech) tích hợp sẵn trên nền tảng. Tự động nén/giãn tốc độ đọc để khớp hoàn hảo với khung hình gốc mà không làm méo tiếng.",
+      "metricPrimary": "100+ Giọng đọc",
+      "metricPrimaryLabel": "Kho giọng biểu cảm đa ngữ",
+      "metricSecondary": "Khớp khung hình",
+      "metricSecondaryLabel": "Auto Time-stretch 0.9x-1.2x"
+    },
+    "stepRender": {
+      "tab": "Kiểm định QA & Xuất bản",
+      "headline": "Kiểm tra chất lượng 3 chiều & Xuất video độ phân giải cao",
+      "details": "Hệ thống QA tự động quét lỗi: chồng dòng phụ đề, vượt quá số ký tự mỗi giây (CPS), tràn lề màn hình. Xuất video kèm phụ đề cứng (burn-in) hoặc phụ đề rời (.srt, .vtt) kèm video chất lượng cao.",
+      "metricPrimary": "Rerun-from-stage",
+      "metricPrimaryLabel": "Đổi style không tốn lại token AI",
+      "metricSecondary": "Zero-Collision",
+      "metricSecondaryLabel": "Bảo đảm an toàn hiển thị phụ đề"
+    },
+    "stepSumChunk": {
+      "tab": "Phân cụm ngữ nghĩa",
+      "headline": "Nhận diện lời thoại & Phân cụm ngữ nghĩa",
+      "details": "Trích xuất toàn bộ bản ghi lời thoại, tự động phân nhóm nội dung thành các cụm chủ đề mạch lạc dựa trên khoảng lặng tự nhiên và độ tương đồng ngữ nghĩa vector.",
+      "metricPrimary": "Mili-giây",
+      "metricPrimaryLabel": "Độ chuẩn mốc thời gian",
+      "metricSecondary": "100% ngữ cảnh",
+      "metricSecondaryLabel": "Không cắt ngang câu thoại"
+    },
+    "stepSumCutplan": {
+      "tab": "Lập kế hoạch Cut-Plan",
+      "headline": "Trích xuất luận điểm cốt lõi & Lập kế hoạch cắt gọt",
+      "details": "Mô hình AI phân tích mật độ thông tin và độ hấp dẫn của từng đoạn, xếp hạng các phân cảnh đắt giá nhất và tạo bảng Cut-Plan chính xác theo khung giây để dựng video recap.",
+      "metricPrimary": "Top 20%",
+      "metricPrimaryLabel": "Khoảnh khắc đắt giá nhất",
+      "metricSecondary": "Tự động ghép nối",
+      "metricSecondaryLabel": "Chuyển cảnh mượt mà"
+    },
+    "stepSumExport": {
+      "tab": "Xuất video Recap & Tóm tắt",
+      "headline": "Kết xuất video tóm tắt highlight & Bản tóm lược",
+      "details": "Ghép nối tự động các đoạn highlight thành video tóm tắt ngắn gọn 60s - 180s kèm phụ đề nhấn mạnh từ khóa, đồng thời xuất bản tóm tắt văn bản gạch đầu dòng (Bullet Points).",
+      "metricPrimary": "Nhanh gấp 10x",
+      "metricPrimaryLabel": "Tốc độ nắm bắt nội dung",
+      "metricSecondary": "Đa định dạng",
+      "metricSecondaryLabel": "Video ngắn + Báo cáo tóm tắt"
+    },
+    "pillarBatchTitle": "Xử lý Hàng loạt Đa luồng",
+    "pillarBatchDesc": "Xử lý đồng thời hàng trăm tập video với cơ chế hàng đợi bất đồng bộ (Queue). Tự động cô lập và phục hồi lỗi theo từng giai đoạn độc lập mà không cần chạy lại toàn bộ quy trình.",
+    "pillarBatchCapacityLabel": "Công suất:",
+    "pillarBatchCapacityValue": "100+ tác vụ song song",
+    "pillarBatchDuration": "Độ dài tối đa: 120 phút",
+    "pillarBatchRetry": "Auto Retry: 3 lần",
+    "pillarTmTitle": "Bộ nhớ Dịch thuật & Thuật ngữ",
+    "pillarTmDesc": "Tự động đối chiếu câu tương đồng qua tìm kiếm vector tương đồng, tái sử dụng các phân đoạn đã dịch để giảm chi phí token và áp dụng bảng thuật ngữ dự án độc quyền.",
+    "pillarTmSavingsLabel": "Tiết kiệm token:",
+    "pillarTmSavingsValue": "Giảm tới 40%",
+    "pillarTmSimilarity": "Độ tương đồng: 94%+",
+    "pillarTmTermLock": "Khóa thuật ngữ: 100%",
+    "pillarSecurityTitle": "Bảo mật Doanh nghiệp & Quyền riêng tư",
+    "pillarSecurityDesc": "Hạ tầng bảo vệ dữ liệu cấp doanh nghiệp với mã hóa toàn trình AES-256 và TLS 1.3. Cam kết chính sách Zero Retention — không lưu trữ vĩnh viễn âm thanh và tuyệt đối không sử dụng dữ liệu doanh nghiệp để huấn luyện mô hình AI.",
+    "pillarSecurityEncryptionLabel": "Mã hóa:",
+    "pillarSecurityEncryptionValue": "AES-256 / TLS 1.3",
+    "pillarSecurityRetention": "Chính sách lưu trữ: 0 ngày",
+    "pillarSecurityTraining": "Đào tạo AI: Zero-Train (Không dùng)",
+    "interactivePreview": "Mô phỏng tương tác",
+    "sim": {
+      "extract": {
+        "title": "Tách âm thanh (Neural Demucs v4)",
+        "all": "Tất cả",
+        "vocalOnly": "Chỉ giọng nói",
+        "bgmOnly": "Chỉ nhạc nền",
+        "vocalTrack": "Giọng nói gốc (Vocals)",
+        "vocalClean": "Đã tách sạch",
+        "vocalClarity": "99.4% trong trẻo",
+        "muted": "[Tạm tắt]",
+        "bgmTrack": "Nhạc nền & Hiệu ứng (BGM & SFX)",
+        "bgmClean": "Không lẫn giọng nói",
+        "bgmClarity": "Tách sạch 100%",
+        "timbrePreserved": "Bảo toàn 100% âm sắc gốc"
+      },
+      "stt": {
+        "title": "Nhận diện giọng nói (Whisper Turbo)",
+        "detectedLang": "Tiếng Anh (99.8%) ✓",
+        "wordAlignment": "Khớp chuẩn từng từ",
+        "pending": "Đang chờ",
+        "pause": "Tạm dừng",
+        "play": "Xem tiếp",
+        "syncDelta": "Đồng bộ mốc thời gian: ±2ms"
+      },
+      "trans": {
+        "title": "Dịch thuật ngữ cảnh & Bộ nhớ TM",
+        "tmMatch": "Khớp bộ nhớ dịch: {{rate}}",
+        "toggleTitle": "Nhấp để chuyển đổi thử nghiệm khoá thuật ngữ",
+        "tmLocked": "Đã khoá TM",
+        "tmFree": "Dịch tự do",
+        "shieldTitle": "KHOÁ THUẬT NGỮ CHUYÊN NGÀNH",
+        "accurate100": "Chính xác 100%",
+        "unprotected": "Chưa bảo vệ",
+        "srcTerm": "high-concurrency batch processing",
+        "srcTermSub": "Global Tech Glossary",
+        "targetLockedLabel": "VI (Target Locked)",
+        "targetRawLabel": "VI (Dịch thô)",
+        "exactMatch": "Khớp tuyệt đối",
+        "warnMt": "Cảnh báo dịch máy",
+        "lockedVI": "\"xử lý hàng loạt đồng thời cao\"",
+        "rawVI": "\"xử lý mẻ đồng thời cao\"",
+        "srcSentenceLabel": "Câu gốc (Tiếng Anh)",
+        "tgtSentenceLabel": "Bản dịch (Tiếng Việt)",
+        "translatedLockedPrefix": "Chúng tôi đã tích hợp trực tiếp khả năng ",
+        "translatedLockedHighlight": "xử lý hàng loạt đồng thời cao",
+        "translatedLockedSuffix": " vào quy trình đám mây của mình.",
+        "translatedRawHighlight": "xử lý mẻ đồng thời cao"
+      },
+      "dub": {
+        "title": "Lồng tiếng AI (Neural TTS)",
+        "pacingStatus": "Tốc độ đọc: Chuẩn khung hình",
+        "selectActor": "Chọn diễn viên lồng tiếng AI:",
+        "banMaiName": "Ban Mai",
+        "banMaiAccent": "Nữ miền Bắc",
+        "banMaiDesc": "Truyền cảm, tự nhiên, tin tức & phóng sự.",
+        "minhQuangName": "Minh Quang",
+        "minhQuangAccent": "Nam miền Nam",
+        "minhQuangDesc": "Trầm ấm, đĩnh đạc, tài liệu & thuyết trình.",
+        "videoPaceLabel": "Tốc độ đọc video:",
+        "videoPaceValue": "Chuẩn xác theo khung hình",
+        "duckingLabel": "Tự động né nhạc nền:",
+        "duckingValue": "-14 dB khi có lời thoại",
+        "sampleReady": "Giọng đọc mẫu: Đã sẵn sàng"
+      },
+      "qa": {
+        "title": "Kiểm định chất lượng 3 lớp & Xuất bản",
+        "passedCriteria": "Đạt chuẩn 3/3 tiêu chí ✓",
+        "previewLabel": "Xem trước phụ đề video:",
+        "subtitleSample": "Quy trình dịch thuật và lồng tiếng hoàn tất 100%.",
+        "downloadingMp4": "Đang tải Video 4K...",
+        "downloadMp4": "Tải Video Thành Phẩm 4K (.MP4)"
+      },
+      "sum1": {
+        "title": "Semantic Topic Chunking",
+        "detecting": "Phát hiện {{count}}/3 chủ đề...",
+        "done": "✓ 3 Topics Extracted",
+        "scanning": "Đang quét phân đoạn Topic 0{{id}}...",
+        "topic1Title": "Giới thiệu kiến trúc đám mây AI",
+        "topic2Title": "Tối ưu độ trễ với pgvector cache",
+        "topic3Title": "Đánh giá hiệu năng và kết luận"
+      },
+      "sum2": {
+        "title": "AI Highlight Ranking & Cut-Plan",
+        "cutPlanStatus": "Cut-Plan: {{count}}/3 Moments ({{duration}})",
+        "durationLabel": "Thời lượng:",
+        "extracting": "Đang trích xuất Highlight {{rank}}...",
+        "compressionRatio": "Tỷ lệ cô đọng: 18 phút ➔ 2 phút",
+        "densityStat": "92% Mật độ thông tin",
+        "highlight1Title": "Điểm đột phá về tốc độ suy luận",
+        "highlight2Title": "So sánh chi phí hạ tầng giảm 60%",
+        "highlight3Title": "Demo thực tế quy trình tự động"
+      },
+      "sum3": {
+        "title": "Recap Reel & Executive Summary",
+        "renderComplete": "Hoàn tất Render ✓",
+        "takeawayCaption": "TransFlow tự động cắt ghép 3 phân cảnh đắt giá nhất thành video tóm tắt 120s.",
+        "bullet1": "Giảm 80% thời lượng theo dõi mà không mất ý then chốt",
+        "bullet2": "Tự động tạo phụ đề keyword highlight đồng bộ theo luận điểm",
+        "downloadingRecap": "Đang tải Recap Video...",
+        "downloadRecapBtn": "Tải Recap Video (.MP4)",
+        "downloadReportBtn": "Tải Báo Cáo (.PDF / .MD)"
+      }
+    }
+  },
+  "productivity": {
+    "titlePrefix": "Nâng cao năng suất & ",
+    "titleHighlight": "Chuẩn hóa chất lượng biên tập",
+    "subtitle": "Tăng tốc quy mô sản xuất video với công nghệ xử lý hàng loạt và kiểm soát độ chính xác phụ đề qua hệ thống kiểm duyệt 3 chiều.",
+    "batchBadge": "Quy mô (Batch Localization)",
+    "batchTitle": "Batch Localization & Đa ngôn ngữ hàng loạt",
+    "batchDesc": "Xử lý đồng thời ma trận 20 video × 10 ngôn ngữ đích chỉ với một lượt thiết lập. Tự động tách giọng, bảo toàn nhạc nền gốc và xuất bản trọn bộ phụ đề lồng tiếng.",
+    "batchCta": "Khám phá Batch Workflow",
+    "qaBadge": "Chất lượng (QA & Translation Memory)",
+    "qaTitle": "Translation Memory & Kiểm duyệt QA 3 chiều",
+    "qaDesc": "Tối ưu chi phí và đồng bộ thuật ngữ nhờ Bộ nhớ dịch thuật (TM) & Glossary. Hệ thống QA 3 chiều tự động chặn lỗi lệch timeline và vượt tốc độ đọc CPS.",
+    "qaCta": "Xem tiêu chuẩn kiểm duyệt QA"
+  },
+  "stories": {
+    "badge": "Câu chuyện thực tế",
+    "title": "Đồng hành cùng Freelancer & Creator bứt phá nội dung",
+    "subtitle": "Lắng nghe chia sẻ từ những người làm nội dung độc lập và biên tập viên tự do tối ưu hóa thời gian sản xuất video mỗi ngày.",
+    "prev": "Trang trước",
+    "next": "Trang sau",
+    "goToStory": "Chuyển tới chia sẻ {{index}}",
+    "items": {
+      "freelancer1": {
+        "group": "Freelancer",
+        "category": "Dịch thuật & Phụ đề",
+        "title": "“Không còn thức đêm canh từng mili-giây để gõ timestamp phụ đề”",
+        "content": "Trước đây nhận dịch video 15 phút là mất đứt nửa ngày nghe rồi gõ tay từng câu, canh lệch cả mắt. Từ khi dùng TransFlow, AI tạo sẵn phụ đề chuẩn mốc thời gian kèm cả bản dịch thô. Mình chỉ việc rà lại thuật ngữ, nhận được số lượng job gấp 3 lần mà không bị quá tải.",
+        "author": "Hoàng Nam",
+        "role": "Freelance Subtitle Translator",
+        "metric": "Gấp 3x",
+        "metricLabel": "Số lượng job nhận"
+      },
+      "freelancer2": {
+        "group": "Freelancer",
+        "category": "Video Editor & Feedback",
+        "title": "“Khách đòi đổi giọng lồng tiếng, chỉ mất 1 phút render lại đúng đoạn TTS”",
+        "content": "Cơn ác mộng lớn nhất khi làm freelance là khách chốt video xong lại bảo \"đổi cho anh giọng khác nghe trẻ hơn\". Nhờ tính năng Rerun-from-stage, mình chỉ cần chọn lại giọng mới và render từ bước TTS, toàn bộ phụ đề và nhạc nền đã căn chỉnh trước đó vẫn giữ nguyên vẹn, không tốn công dựng lại từ đầu.",
+        "author": "Minh Trang",
+        "role": "Freelance Video Editor",
+        "metric": "1 Phút",
+        "metricLabel": "Đổi giọng render lại"
+      },
+      "freelancer3": {
+        "group": "Freelancer",
+        "category": "Bản địa hóa Đa ngữ",
+        "title": "“Nhận trọn gói dự án dịch 1 video ra 4 thứ tiếng mà không cần thuê thêm người”",
+        "content": "Khách hàng muốn làm video xuất sang cả Thái Lan, Nhật Bản và Hàn Quốc. Một mình mình vẫn tự tin nhận dự án nhờ công cụ Batch Localization, xuất ra đủ bộ file .srt và video có lồng tiếng chuẩn xác chỉ sau một buổi sáng.",
+        "author": "Tuấn Anh",
+        "role": "Content Localization Specialist",
+        "metric": "4 Ngôn ngữ",
+        "metricLabel": "Xuất bản trong 1 buổi"
+      },
+      "freelancer4": {
+        "group": "Freelancer",
+        "category": "Kiểm duyệt QA 3 chiều",
+        "title": "“Hệ thống kiểm tra QA tự động giúp mình tự tin giao video cho khách khó tính”",
+        "content": "Mới làm nghề mình sợ nhất phụ đề bị đè lên nhau hoặc người xem đọc không kịp vì chữ chạy quá nhanh. Trình kiểm tra QA 3 chiều tự động cảnh báo lỗi CPS (tốc độ đọc) và chống chồng lấn thời gian, giúp thành phẩm giao đi luôn đạt chuẩn chuyên nghiệp.",
+        "author": "Thùy Dung",
+        "role": "Junior Video Subtitler",
+        "metric": "100% Pass",
+        "metricLabel": "Chuẩn tốc độ đọc CPS"
+      },
+      "creator1": {
+        "group": "Creator",
+        "category": "Review & Tóm tắt",
+        "title": "“Cắt video dài 30 phút thành 3 clip ngắn ăn liền chỉ bằng vài câu chat feedback”",
+        "content": "Mới tập làm kênh Shorts/Reels, mình không biết nên chọn đoạn nào hay để cắt. Hệ thống tự động đề xuất phương án cắt trọn câu thoại. Mình chỉ cần gõ yêu cầu \"cắt ngắn hơn đoạn mở đầu\" là AI tự cập nhật lại danh sách đoạn cắt ngay lập tức, cực kỳ dễ dùng.",
+        "author": "Đức Huy",
+        "role": "KOL Đánh Giá Công Nghệ (50k followers)",
+        "metric": "30m ➔ 3 Shorts",
+        "metricLabel": "Cắt highlight tức thì"
+      },
+      "creator2": {
+        "group": "Creator",
+        "category": "Lifestyle & Vlogger",
+        "title": "“Tự động tách nhạc nền giúp video lồng tiếng nghe chuyên nghiệp như phim tài liệu”",
+        "content": "Tập làm video lồng tiếng mình sợ nhất là tiếng AI đè mất hết nhạc nền và âm thanh môi trường của clip gốc. Tính năng tách âm thanh giữ lại trọn vẹn nhạc nền (BGM), tự động hạ âm lượng khi có lời thoại giúp video nghe rất tự nhiên, cuốn hút.",
+        "author": "Bảo Ngọc",
+        "role": "Lifestyle Creator & Vlogger",
+        "metric": "100% BGM",
+        "metricLabel": "Bảo toàn âm thanh gốc"
+      },
+      "creator3": {
+        "group": "Creator",
+        "category": "Solo Content Creator",
+        "title": "“Tiết kiệm chi phí dựng phim đắt đỏ, tự mình xuất bản video đa nền tảng”",
+        "content": "Là người mới bắt đầu, ngân sách không đủ để thuê editor ngoài. TransFlow Media giống như một trợ lý hậu kỳ ảo: tải video lên, chọn ngôn ngữ cần dịch, bấm xuất bản là xong cả phụ đề lẫn lồng tiếng, giúp mình duy trì lịch đăng clip đều đặn mỗi ngày.",
+        "author": "Hải Đăng",
+        "role": "Solo Edu Creator",
+        "metric": "Daily Video",
+        "metricLabel": "Đăng đều mỗi ngày"
+      }
+    }
+  },
+  "pricing": {
+    "title": "Bảng giá nạp Credits — Dùng bao nhiêu, thanh toán bấy nhiêu",
+    "starter": {
+      "name": "Starter",
+      "desc": "Gói Khởi Động cho Creator trải nghiệm & video ngắn",
+      "price": "50.000 ₫",
+      "credits": "/ 50.000 Credits",
+      "cta": "Chọn gói Starter",
+      "featuresTitle": "Quyền lợi bao gồm:",
+      "features": [
+        "~15–20 phút video hoàn thiện (STT + Dịch + TTS)",
+        "Phù hợp cho video ngắn (Shorts, Reels, TikTok)",
+        "AI Tóm tắt: 1 đề xuất Cut-plan & 5 vòng Refine",
+        "Xuất file Hard-sub và Soft-sub rời (.srt, .vtt)"
+      ]
+    },
+    "freelancer": {
+      "bonusBadge": "Tặng +10% Credits",
+      "badge": "Phổ biến",
+      "name": "Freelancer",
+      "desc": "Gói phổ biến nhất cho cá nhân làm dịch thuật & video đều đặn",
+      "price": "200.000 ₫",
+      "credits": "220.000 Credits",
+      "bonus": "+20.000 Credits tặng",
+      "cta": "Nạp 200.000 VNĐ",
+      "featuresTitle": "Bao gồm toàn bộ Starter và:",
+      "features": [
+        "~80–100 phút video hoàn thiện (10–15 clip)",
+        "Xử lý hàng loạt Batch (tối đa 20 video)",
+        "Tách nguồn âm thanh giữ trọn nhạc nền",
+        "Đồng bộ Glossary & Bộ nhớ dịch (TM)",
+        "Kiểm duyệt QA 3 chiều chống đè timeline & lỗi CPS"
+      ]
+    },
+    "proStudio": {
+      "bonusBadge": "Tặng +20% Credits",
+      "name": "Pro Studio",
+      "desc": "Gói tiết kiệm tối đa cho Creator chuyên nghiệp & dự án lớn",
+      "price": "500.000 ₫",
+      "credits": "600.000 Credits",
+      "bonus": "+100.000 Credits tặng",
+      "cta": "Nạp 500.000 VNĐ",
+      "featuresTitle": "Bao gồm toàn bộ Freelancer, thêm:",
+      "features": [
+        "~250–300 phút video hoặc dự án dài",
+        "Giới hạn file tối đa: 500MB & 30 phút/file",
+        "Phân tích ngữ cảnh hình ảnh AI Vision",
+        "Ưu tiên worker khi render & mix audio",
+        "Không giới hạn lưu trữ Preset phụ đề"
+      ]
+    }
+  },
+  "ctaBanner": {
+    "pill": "Đăng ký nhận ngay Credits trải nghiệm miễn phí",
+    "pillCta": "Bắt đầu ngay →",
+    "headline": "Trải nghiệm ngay.",
+    "desc": "Tự động dịch thuật, tinh chỉnh phụ đề và lồng tiếng chuẩn bản địa trong vài phút. Không yêu cầu kinh nghiệm kỹ thuật — bắt đầu trải nghiệm miễn phí ngay.",
+    "btnFree": "Trải nghiệm miễn phí ngay",
+    "btnPricing": "Xem bảng giá nạp"
+  },
+  "footer": {
+    "tagline": "Nền tảng dịch video và biên tập nội dung AI đa ngôn ngữ chuyên nghiệp. Giúp Freelancer và Creator mở rộng khán giả toàn cầu trong tích tắc.",
+    "systemStatus": "Hệ thống hoạt động bình thường",
+    "colProduct": "Sản phẩm",
+    "mediaStudio": "Dịch & Lồng tiếng (Media Studio)",
+    "aiSummary": "Tóm tắt Video AI",
+    "batchMatrix": "Xử lý hàng loạt (Batch)",
+    "projects": "Quản lý Dự án (Projects)",
+    "glossary": "Bảng thuật ngữ (Glossary)",
+    "tm": "Bộ nhớ dịch thuật (TM)",
+    "colFeatures": "Tính năng",
+    "pipelineSteps": "Pipeline 5 bước bất đồng bộ",
+    "voiceSeparation": "Tách âm Vocal & BGM",
+    "qaAudit": "Kiểm duyệt QA 3 chiều & CPS",
+    "pricingTable": "Bảng giá nạp Credits",
+    "colCompany": "TransFlow",
+    "creatorStories": "Câu chuyện Creator",
+    "register": "Đăng ký tài khoản",
+    "login": "Đăng nhập hệ thống",
+    "privacy": "Bảo mật & Quyền riêng tư",
+    "terms": "Điều khoản dịch vụ",
+    "copyright": "© 2026 TransFlow Media. Tất cả các quyền được bảo lưu.",
+    "privacyModal": {
+      "title": "Chính sách Bảo mật & Quyền riêng tư",
+      "desc": "Cam kết bảo vệ dữ liệu và quyền riêng tư tuyệt đối tại TransFlow Media Platform",
+      "badge": "Kiến trúc bảo mật cấp doanh nghiệp",
+      "badgeDesc": "TransFlow được thiết kế theo nguyên tắc tối thiểu hóa dữ liệu và bảo vệ đa lớp từ hạ tầng đến ứng dụng.",
+      "p1Title": "1. Chính sách Zero Retention (Không lưu trữ vĩnh viễn)",
+      "p1Desc": "Các tệp video, âm thanh trích xuất và file tạm thời chỉ lưu trữ trong quá trình xử lý pipeline. Hệ thống tự động xóa sạch file tạm sau khi hoàn tất phiên làm việc.",
+      "p2Title": "2. Cam kết Zero AI Training (Không dùng để huấn luyện AI)",
+      "p2Desc": "Nội dung video, kịch bản, phụ đề và bảng thuật ngữ của bạn tuyệt đối không được sử dụng để huấn luyện bất kỳ mô hình AI công cộng nào.",
+      "p3Title": "3. Bảo mật khóa API (BYOK — Bring Your Own Key)",
+      "p3Desc": "Khóa API cá nhân (OpenAI, Gemini, Claude, ElevenLabs) được mã hóa AES-256 an toàn và không bao giờ hiển thị trên Platform Console.",
+      "p4Title": "4. Phân quyền & Cô lập Workspace (RBAC)",
+      "p4Desc": "Mô hình phân quyền 3 vai trò (Lead, Member, Client) đảm bảo dữ liệu trong Workspace chỉ thành viên được phân công mới có quyền truy cập.",
+      "p5Title": "5. Mã hóa dữ liệu truyền tải",
+      "p5Desc": "100% dữ liệu truyền tải giữa người dùng, hệ thống và worker xử lý đều được mã hóa bằng giao thức TLS 1.3 bảo mật cao."
+    },
+    "termsModal": {
+      "title": "Điều khoản Dịch vụ",
+      "desc": "Quy định sử dụng dịch vụ trên nền tảng TransFlow Media Platform",
+      "t1Title": "1. Quyền sở hữu trí tuệ",
+      "t1Desc": "Bạn giữ trọn vẹn 100% quyền sở hữu đối với video gốc, bản dịch, phụ đề và các video lồng tiếng sau khi render.",
+      "t2Title": "2. Cơ chế Credits minh bạch",
+      "t2Desc": "Credits được trừ chính xác theo thời lượng và công đoạn xử lý thực tế. Hỗ trợ chạy lại (Rerun) từng công đoạn để tiết kiệm tối đa chi phí.",
+      "t3Title": "3. Trách nhiệm tuân thủ nội dung",
+      "t3Desc": "Người dùng chịu trách nhiệm đảm bảo video và dữ liệu tải lên tuân thủ quy định bản quyền và pháp luật hiện hành.",
+      "t4Title": "4. Kiểm định chất lượng (Human-in-the-Loop)",
+      "t4Desc": "Hệ thống cung cấp cảnh báo QA tự động chống đè timeline và kiểm soát tốc độ đọc (CPS). Người dùng giữ quyền phê duyệt cuối cùng trước khi xuất bản."
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "title": "Thông báo",
+  "subtitle": "Sự kiện batch kết thúc trong workspace · chỉ đọc (MVP không mark-as-read)",
+  "emptyTitle": "Chưa có thông báo",
+  "emptyDesc": "Các sự kiện BATCH_COMPLETED, BATCH_PARTIALLY_FAILED và BATCH_FAILED sẽ hiện ở đây.",
+  "loadMore": "Tải thêm",
+  "loadingMore": "Đang tải…"
+}
