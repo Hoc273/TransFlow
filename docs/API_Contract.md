@@ -264,6 +264,7 @@ QA issue được pipeline tự sinh sau stage `TRANSLATE`/`SUMMARIZE`, không c
 | GET | `/api/users/me/providers/{id}/voices?language=` | JWT (owner) | List `tts_voices(provider_source=USER)` đã cache. |
 | POST | `/api/users/me/providers/{id}/voices/refresh` | JWT (owner) | Đồng bộ lại danh sách voice từ provider. |
 | GET | `/api/tts-voices?language=&providerSource=PLATFORM` | JWT | Danh mục voice nền tảng (`platform_ai_providers`) dùng khi user không có BYOK phù hợp — phục vụ UI chọn giọng khi tạo job. |
+| POST | `/api/tts-voices/preview` | JWT | `{voiceId, text (≤50 ký tự)}` → `{audioUrl}`: nghe thử giọng trước khi chọn cho job. Preview **miễn phí** (không trừ credit), giới hạn **20 lần/10 phút/user** (cấu hình qua `TTS_PREVIEW_RATE_LIMIT_MAX` / `TTS_PREVIEW_RATE_LIMIT_WINDOW_SECONDS`) → `429 TTS_PREVIEW_RATE_LIMIT_EXCEEDED`. `audioUrl` là presigned GET URL của mp3 trên media bucket, TTL theo `app.storage.presigned-ttl-seconds`. Voice `PLATFORM` resolve theo `platform_provider_id`; voice `USER` chỉ preview được bởi chủ sở hữu BYOK (`404 PROVIDER_NOT_FOUND` nếu không sở hữu). `502 TTS_PREVIEW_FAILED` khi AI Gateway không tổng hợp được audio. |
 
 ---
 
@@ -334,7 +335,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `workspace` | 2100–2199 | `WORKSPACE_NOT_FOUND` = 2100, `WORKSPACE_MEMBER_NOT_FOUND` = 2101, `LEAD_CANNOT_BE_REMOVED` = 2102, `WORKSPACE_MEMBER_ALREADY_EXISTS` = 2103, `CANNOT_ASSIGN_LEAD_ROLE` = 2104, `WORKSPACE_SLUG_ALREADY_EXISTS` = 2105 |
 | `project` | 2200–2299 | `PROJECT_NOT_FOUND` = 2200, `PROJECT_MEMBER_NOT_FOUND` = 2201, `PROJECT_ACCESS_DENIED` = 2202, `USER_NOT_WORKSPACE_MEMBER` = 2203, `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` = 2204, `PROJECT_MEMBER_ALREADY_EXISTS` = 2205 |
 | `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303 |
-| `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406 |
+| `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406, `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` = 2407, `TTS_PREVIEW_FAILED` = 2408 |
 | `preset` | 2500–2599 | `PRESET_NOT_FOUND` = 2500, `PRESET_INACTIVE` = 2501, `PRESET_SCOPE_INVALID` = 2502, `CANNOT_DELETE_ONLY_DEFAULT_PRESET` = 2503, `SYSTEM_PRESET_READ_ONLY` = 2504, `PRESET_DEFAULT_CONFLICT` = 2505, `REPLACEMENT_PRESET_INVALID` = 2506 |
 | `notification` | 2600–2699 | `NOTIFICATION_NOT_FOUND` = 2600, `NOTIFICATION_TYPE_INVALID` = 2601 |
 | `dashboard` | 2700–2799 | `DASHBOARD_DATE_RANGE_INVALID` = 2700, `DASHBOARD_GROUP_BY_INVALID` = 2701 |
@@ -388,6 +389,8 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `PLATFORM_PROVIDER_NOT_CONFIGURED` | 2404 | 400 | Hệ thống chưa cấu hình nguồn AI nền tảng cho capability này. |
 | `INVALID_PROVIDER_PROTOCOL` | 2405 | 400 | Giao thức provider không hợp lệ hoặc không được hỗ trợ. |
 | `TTS_VOICE_NOT_FOUND` | 2406 | 404 | Giọng đọc TTS không tồn tại. |
+| `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` | 2407 | 429 | Vượt giới hạn nghe thử giọng TTS của user (mặc định 20 lần/10 phút). |
+| `TTS_PREVIEW_FAILED` | 2408 | 502 | AI Gateway không tổng hợp được audio preview (provider lỗi, timeout, hoặc segment FAILED). |
 | `PRESET_NOT_FOUND` | 2500 | 404 | Preset không tồn tại hoặc không thuộc quyền xem của user. |
 | `PRESET_INACTIVE` | 2501 | 400 | Preset đang ở trạng thái ngừng kích hoạt. |
 | `PRESET_SCOPE_INVALID` | 2502 | 400 | Scope hoặc ràng buộc sở hữu workspace/project của preset không hợp lệ. |

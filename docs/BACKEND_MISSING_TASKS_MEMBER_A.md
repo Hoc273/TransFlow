@@ -56,6 +56,19 @@ Mỗi nhánh = 1 PR nhỏ.
 - Test: voiceId không tồn tại → 404; text quá dài → 400; vượt rate limit → 429.
 - Thủ công: gọi preview với 1 giọng platform, mở `audioUrl` nghe được ~2–3 giây; kiểm tra log FastAPI nhận đúng request.
 
+**Ghi chú thực hiện (xong trên `feature/tts-voice-preview`):**
+- Quyết định phí: **miễn phí + rate limit 20 lần/10 phút/user** — env `TTS_PREVIEW_RATE_LIMIT_MAX` /
+  `TTS_PREVIEW_RATE_LIMIT_WINDOW_SECONDS` (đã khai báo trong `.env.example`, mặc định 20/600).
+- Route FastAPI thật là **`POST /media/tts`** (không phải `/media/tts/synthesize` như ghi ở trên);
+  `media_job_id` gửi placeholder `"tts-preview"` vì request không gắn job thật.
+- Thêm `ProviderResolverService.resolveForTtsVoice` (resolve provider đúng theo `provider_source` của voice;
+  `resolveForCapability` không đủ vì không biết voice thuộc provider nào). Record mới `TtsVoiceResolution`
+  mang thêm `defaultModel` (bắt buộc trong `provider` payload của FastAPI).
+- `ErrorCode` mới: `TTS_PREVIEW_RATE_LIMIT_EXCEEDED`=2407 (429), `TTS_PREVIEW_FAILED`=2408 (502);
+  `API_Contract.md` §11 + §15.2/§15.3 đã cập nhật trong cùng nhánh.
+- Preview mp3 lưu tại `previews/tts/<userId>/<uuid>.mp3` trên media bucket; dọn file cũ nằm ngoài scope
+  (bucket lifecycle policy).
+
 ---
 
 ---
@@ -198,7 +211,7 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 
 | # | Nhánh | Code | Test tự động | Kiểm tra thủ công | Cập nhật `API_Contract.md` | Commit / PR |
 |---|---|:-:|:-:|:-:|:-:|:-----------:|
-| 7 | `feature/tts-voice-preview` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 7 | `feature/tts-voice-preview` | [x] | [x] | [x] | [x] |     [x]     |
 | 8 | `feature/auth-forgot-password-otp` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 9 | `feature/platform-admin-api` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 10 | `feature/transformation-capabilities` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
