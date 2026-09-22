@@ -3,8 +3,8 @@
 > Phiên bản: **1.1** · Bám sát `SRS.md` 1.4b, `System_Architecture.md` 3.3, `Database_Design.md` 3.3,
 > `api-response-convention.md`. Chỉ mô tả API của `backend-main` (Spring Boot) — nguồn sự thật duy nhất chạm
 > PostgreSQL. FastAPI (`backend-ai`) và `backend-media-worker` không có API public, chỉ được Spring gọi nội bộ.
-> Không có endpoint nào cho Document/Translation Job/Text Editor/Translation Memory/Batch dịch file/
-> Creative Production/Platform Admin — các domain này ngoài phạm vi (xem `CLAUDE.md` §3).
+> Không có endpoint nào cho Document/Translation Job/Text Editor/Translation Memory/Batch dịch file hoặc
+> Creative Production. Platform Admin là bề mặt vận hành nội bộ trong phạm vi, xem §13.1.
 >
 > **Ghi chú cập nhật — 1.1:** đổi response envelope theo `api-response-convention.md` — mọi response (kể cả
 > thành công) bọc trong `ApiResponse<T>{code:int, message, data}`; envelope cũ
@@ -52,8 +52,8 @@
     limit (tạo batch).
 - **Polling, không SSE**: FE polling `GET .../jobs/{jobId}` và `GET .../batches/{batchId}` mỗi ~5s để theo
   dõi tiến trình (Arch §1 mục 5). Không có WebSocket/SSE cho pipeline dài.
-- **Đa tenant**: mọi response chỉ trả dữ liệu thuộc `workspaceId` trên path; không có endpoint xuyên
-  workspace ngoài `GET /api/workspaces` (danh sách workspace của chính user).
+- **Đa tenant**: API nghiệp vụ chỉ trả dữ liệu thuộc `workspaceId` trên path. Ngoại lệ duy nhất là nhóm
+  read-only `/api/platform/*`, chỉ dành cho user có `isPlatformAdmin=true` để quan sát toàn hệ thống.
 
 ---
 
@@ -64,7 +64,7 @@
 | POST | `/api/auth/register` | không | `{email,password,fullName}` → tạo user; **lần đầu đăng nhập** trigger auto-init Workspace+Project+Credit (Arch §3). Trả `{accessToken,refreshToken,user,workspaceId,projectId}`. |
 | POST | `/api/auth/login` | không | `{email,password}` → cùng response shape như trên. |
 | POST | `/api/auth/refresh` | không (refresh token) | `{refreshToken}` → `{accessToken,refreshToken}`. |
-| GET | `/api/auth/me` | JWT | Thông tin user hiện tại: `{id,email,fullName,googleLinked}`. |
+| GET | `/api/auth/me` | JWT | Thông tin user hiện tại: `{id,email,fullName,googleLinked,isPlatformAdmin}`. |
 | GET | `/api/auth/google/start` | không | Redirect sang Google OAuth2 consent screen. |
 | GET | `/api/auth/google/callback` | không | Google redirect về; set cookie/state tạm, FE gọi `exchange` tiếp theo. |
 | POST | `/api/auth/google/exchange` | không | `{code}` → cùng response shape `register/login`; nếu `google_sub` chưa gắn user nào thì chạy auto-init như lần đầu (Arch §3). |
@@ -90,7 +90,7 @@
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
 | GET | `/api/workspaces/{workspaceId}/projects` | LEAD/MEMBER/CLIENT | Lead: toàn bộ Project trong Workspace. Member/Client: chỉ Project đã được gán (`project_members`). |
-| POST | `/api/workspaces/{workspaceId}/projects` | LEAD | `{name, sourceLang?}` → tạo Project mới. |
+| POST | `/api/workspaces/{workspaceId}/projects` | LEAD | `{name, sourceLang?, defaultGlossaryId?, tmEnabled?, domain?, tone?}` → tạo Project mới. `tmEnabled` là field tương thích UI cũ và không kích hoạt Translation Memory trong phạm vi v1.4b. |
 | GET | `/api/workspaces/{workspaceId}/projects/{projectId}/members` | LEAD | Danh sách user được gán vào Project. |
 | POST | `/api/workspaces/{workspaceId}/projects/{projectId}/members` | LEAD | `{userId}` → gán 1 `workspace_members` (MEMBER/CLIENT) vào Project. |
 | DELETE | `/api/workspaces/{workspaceId}/projects/{projectId}/members/{userId}` | LEAD | Gỡ assignment. |
@@ -283,6 +283,21 @@ QA issue được pipeline tự sinh sau stage `TRANSLATE`/`SUMMARIZE`, không c
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
 | GET | `/api/workspaces/{workspaceId}/dashboard` | LEAD/MEMBER/CLIENT | Tổng hợp nhanh: số job theo status, batch đang chạy, Credit còn lại (nếu Lead: của Workspace theo cost_mode). |
+
+### 13.1 Platform Super Admin (SRS §5.8; Arch §11.1)
+
+Tất cả endpoint dưới đây yêu cầu JWT và `users.is_platform_admin = true`. Cờ này độc lập với role
+Workspace; tài khoản thường nhận `UNAUTHORIZED` (HTTP 403). Response vẫn bọc `ApiResponse<T>`.
+
+| Method | Path | Mô tả |
+|---|---|---|
+| GET | `/api/platform/overview?from=&to=&topLimit=10` | KPI toàn hệ thống trong khoảng thời gian: user, Workspace, Media Job theo trạng thái, token AI, tỉ lệ lỗi và top Workspace. |
+| GET | `/api/platform/status` | Trạng thái và độ trễ của PostgreSQL, Redis, RabbitMQ, MinIO và AI/Media Worker tại `checkedAt`, kèm trạng thái tổng hợp. |
+| GET | `/api/platform/users?page=0&size=20&q=&isPlatformAdmin=` | Danh bạ user có phân trang; hỗ trợ tìm kiếm và lọc theo cờ Platform Admin. Không trả dữ liệu bí mật. |
+| GET | `/api/platform/workspaces?page=0&size=20&q=` | Danh sách Workspace có phân trang, owner và số thành viên. |
+| GET | `/api/platform/audit-logs?page=0&size=20&action=` | Nhật ký kiểm toán cấp nền tảng có phân trang, lọc theo action. |
+
+Nhóm API này là read-only trong MVP; không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.
 
 ---
 

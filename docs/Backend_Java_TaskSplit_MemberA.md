@@ -81,14 +81,14 @@ dải của module đang code, cập nhật đồng thời bảng §15.3: `auth`
 - [x] Triển khai `ProviderResolverService.resolveForCapability(userId, capability)` → ưu tiên provider cá nhân active (BYOK), fallback sang `platform_ai_providers`, cung cấp flag `isPersonalApiKey` để B ghi `ai_usage_logs`.
 - [x] Triển khai `ProviderResolverService.resolveVoiceLanguage(ttsVoiceId)` → trả về ngôn ngữ giọng đọc cho Member B (`MediaJobService`).
 - [x] Tích hợp `AiGatewayClient` gọi FastAPI (`/ai/validate/auth` để test connection probe, `/media/tts/voices` để discover/refresh cache TTS voices).
-- [x] Flyway migration `V5__seed_platform_ai_providers_and_voices.sql` seed platform provider và danh mục giọng TTS mặc định.
+- [x] Baseline `V2__init_indexes.sql` seed platform provider và danh mục giọng TTS mặc định.
 
 ### 2.5 Preset [COMPLETED]
 - [x] Triển khai `PresetController` (`/api/workspaces/{workspaceId}/presets/**`) và `PresetTemplateController` (`/api/media/presets/templates`).
 - [x] Entity `MediaPreset` theo `Database_Design.md` §9 (scope `SYSTEM/WORKSPACE/PROJECT`, đúng 1 default/scope — partial unique index).
 - [x] Triển khai `PresetResolverService.resolveForJobCreation(explicitPresetId, projectId, workspaceId)` — giải quyết preset theo thứ tự ưu tiên 4 cấp (`explicit -> project default -> workspace default -> system default -> null`) để Member B snapshot vào `media_jobs.preset_snapshot` khi tạo job.
 - [x] Triển khai quản lý default preset tự động chuyển giao và kiểm soát xóa default preset (`CANNOT_DELETE_ONLY_DEFAULT_PRESET`, `replacementPresetId`).
-- [x] Migration `V6__seed_system_presets.sql` seed platform default preset và danh mục template công khai.
+- [x] Baseline `V2__init_indexes.sql` seed platform default preset và danh mục template công khai.
 
 ### 2.6 Notification & Dashboard [COMPLETED]
 - [x] Triển khai `NotificationController` (`/api/workspaces/{workspaceId}/notifications/**`) và `DashboardController` (`/api/workspaces/{workspaceId}/dashboard`, `/api/workspaces/{workspaceId}/usage`).
@@ -125,12 +125,14 @@ dải của module đang code, cập nhật đồng thời bảng §15.3: `auth`
 **Khuyến nghị**: dựng 4 interface Java (không cần implementation đầy đủ ngay) trong tuần đầu, để B mock/gọi
 thẳng mà không chờ A xong toàn bộ module.
 
-## 5. Không làm (ngoài phạm vi — xem CLAUDE.md §3, §4.7)
+## 5. Không làm (ngoài phạm vi — xem AGENTS.md §2.2)
 - Không đụng vào `MediaController`, `MediaWorkflowController`, `BatchController` gốc (B phụ trách, và bản
   gốc các controller này gắn Document/CT-legacy nặng, không copy nguyên).
-- Không tạo `DocumentController`, `TranslateController`, `TmController`, `PlatformController`,
-  `ClipFactoryController`, `AnimatedExplainerController`, `ProductionJobController` hay entity liên quan —
+- Không tạo `DocumentController`, `TranslateController`, `TmController`, `ClipFactoryController`,
+  `AnimatedExplainerController`, `ProductionJobController` hay entity liên quan —
   loại bỏ hoàn toàn theo SRS §4.3.
+- `PlatformController` thuộc phạm vi Thành viên A: chỉ cung cấp API read-only `/api/platform/*`, bắt buộc
+  kiểm tra `users.is_platform_admin` ở backend và không thay thế RBAC Workspace.
 - Không tái tạo role cấp Project hoặc 5 giá trị role cũ (`ADMIN/PM/TRANSLATOR/PROOFREADER/CLIENT`).
 
 ## 6. Checklist hoàn thành
@@ -141,6 +143,8 @@ thẳng mà không chờ A xong toàn bộ module.
 - [x] BYOK CRUD + test connection; platform provider fallback; TTS voices cache theo provider.
 - [x] Preset 3 cấp, đúng 1 default/scope, resolver theo thứ tự ưu tiên, SYSTEM template public catalog.
 - [x] Notification list/read; Dashboard usage aggregation.
+- [x] Platform Super Admin: cờ `is_platform_admin`, guard backend và các endpoint overview/status/users/
+      workspaces/audit-logs.
 - [ ] Mọi controller trả `ApiResponse<T>`, mọi lỗi nghiệp vụ ném qua `AppException(ErrorCode.XXX)` với code
       trong đúng dải của module (CLAUDE.md §4.10), không tự tạo response/exception riêng.
 - [ ] 4 interface ở §4 đã có signature ổn định, đã thông báo cho B.

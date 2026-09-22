@@ -1,7 +1,8 @@
 -- V1__init_tables.sql
--- transflow_mini — toàn bộ bảng nghiệp vụ, tổng hợp từ docs/Database_Design.md (v3.3).
--- Không có documents/translation_jobs/translation_memory/production*/clip_factory*/platform admin
--- (đã loại bỏ theo SRS §4.3, xem Database_Design.md §11).
+-- Baseline schema for a fresh TransFlow database, consolidated from the former V1-V12 migrations.
+-- IMPORTANT: this squashed baseline requires a fresh schema; do not apply it over an existing
+-- flyway_schema_history that already contains the former migration chain.
+-- Không có documents/translation_jobs/translation_memory/production*/clip_factory*.
 -- Thứ tự tạo bảng bám theo Database_Design.md §13 (để tránh vi phạm FK chéo).
 -- Index (kể cả UNIQUE INDEX) được tách sang V2__init_indexes.sql, PK/FK/CHECK giữ tại đây.
 
@@ -16,6 +17,7 @@ CREATE TABLE users (
     full_name       VARCHAR(200) NOT NULL,
     google_sub      VARCHAR,
     google_linked   BOOLEAN NOT NULL DEFAULT false,
+    is_platform_admin BOOLEAN NOT NULL DEFAULT false,
     status          VARCHAR NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','DISABLED')),
     created_at      TIMESTAMPTZ DEFAULT now(),
     updated_at      TIMESTAMPTZ DEFAULT now(),
@@ -47,6 +49,10 @@ CREATE TABLE projects (
     workspace_id    UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     name            VARCHAR(200) NOT NULL,
     source_lang     VARCHAR(20),
+    default_glossary_id UUID,
+    tm_enabled      BOOLEAN NOT NULL DEFAULT true,
+    domain          VARCHAR(80),
+    tone            VARCHAR(80),
     created_at      TIMESTAMPTZ DEFAULT now(),
     updated_at      TIMESTAMPTZ DEFAULT now()
 );
@@ -273,12 +279,16 @@ CREATE TABLE media_jobs (
     )),
     source_separation_enabled       BOOLEAN NOT NULL DEFAULT false,
 
-    tts_voice_id                    UUID REFERENCES tts_voices(id),
+    tts_provider_id                 UUID,
+    tts_voice_id                    UUID,
 
     visual_context_enabled          BOOLEAN NOT NULL DEFAULT false,
 
     preset_id                       UUID REFERENCES media_presets(id),
     preset_snapshot                 JSONB NOT NULL DEFAULT '{}',
+    render_config                   JSONB NOT NULL DEFAULT '{}',
+    subtitle_style                  JSONB,
+    publish_package                 JSONB,
 
     workflow_mode                   VARCHAR NOT NULL DEFAULT 'MANUAL' CHECK (workflow_mode IN ('MANUAL','AUTO')),
 
@@ -293,6 +303,8 @@ CREATE TABLE media_jobs (
     ),
     CONSTRAINT ck_audio_mode_sep CHECK (output_audio_mode <> 'DUB_MIX' OR source_separation_enabled = true),
     CONSTRAINT ck_audio_mode_voice CHECK ((output_audio_mode = 'ORIGINAL_ONLY') = (tts_voice_id IS NULL)),
+    CONSTRAINT fk_media_jobs_tts_voice FOREIGN KEY (tts_voice_id) REFERENCES tts_voices(id) ON DELETE SET NULL,
+    CONSTRAINT ck_media_jobs_tts_binding CHECK ((tts_provider_id IS NULL) = (tts_voice_id IS NULL)),
     CONSTRAINT ck_source_summary_job CHECK (
         source_summary_job_id IS NULL OR recipe_id = 'summary.script_match'
     )

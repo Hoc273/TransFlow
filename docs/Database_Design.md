@@ -84,6 +84,7 @@ users(
   full_name VARCHAR(200) NOT NULL,
   google_sub VARCHAR,
   google_linked BOOLEAN NOT NULL DEFAULT false,
+  is_platform_admin BOOLEAN NOT NULL DEFAULT false, -- quyền vận hành cấp hệ thống, không phải role Workspace
   status VARCHAR CHECK (status IN ('ACTIVE','DISABLED')) NOT NULL DEFAULT 'ACTIVE',
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
@@ -121,6 +122,10 @@ projects(
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   name VARCHAR(200) NOT NULL,
   source_lang VARCHAR(20),
+  default_glossary_id UUID,
+  tm_enabled BOOLEAN NOT NULL DEFAULT true, -- legacy UI compatibility; không kích hoạt TM trong v1.4b
+  domain VARCHAR(80),
+  tone VARCHAR(80),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 )
@@ -146,6 +151,8 @@ CREATE INDEX ix_project_members_project ON project_members(project_id);
 - `MEMBER`/`CLIENT` phải có row `project_members` mới được đọc Project;
 - quyền ghi lấy từ `workspace_members.role`: `LEAD|MEMBER` được thao tác, `CLIENT` read-only;
 - Project assignment không thay đổi role và không tạo thêm một lớp role thứ hai.
+- `is_platform_admin` độc lập với membership/role Workspace; mọi API `/api/platform/*` kiểm tra cờ này từ
+  bản ghi `users`, nhưng cờ không tự cấp quyền mutation vào dữ liệu của Workspace.
 
 ## 4. Credit & Thanh toán (không đổi so với thiết kế trước)
 
@@ -681,6 +688,9 @@ CREATE INDEX ix_ai_usage_logs_user ON ai_usage_logs(performed_by_user_id, create
 
 ## 13. Ghi chú migration
 - Schema **mới hoàn toàn** — không migrate dữ liệu từ base gốc.
+- Flyway được squash còn đúng 2 baseline: `V1__init_tables.sql` tạo schema/constraint và
+  `V2__init_indexes.sql` tạo index + seed dữ liệu nền. Database đã chạy chuỗi V1–V12 cũ phải reset schema
+  và `flyway_schema_history` trước khi dùng baseline này; không chồng baseline mới lên history cũ.
 - **Thứ tự tạo bảng chính (do FK chéo):**
   1. `users` → `workspaces` → `workspace_members` → `projects` → `project_members`.
   2. `terms_versions`, `credit_packages`, `platform_ai_providers` (độc lập).
