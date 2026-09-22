@@ -71,6 +71,8 @@ public enum ErrorCode {
     PLATFORM_PROVIDER_NOT_CONFIGURED(2404, "No platform AI provider configured for this capability", HttpStatus.BAD_REQUEST),
     INVALID_PROVIDER_PROTOCOL(2405, "Unsupported AI provider protocol", HttpStatus.BAD_REQUEST),
     TTS_VOICE_NOT_FOUND(2406, "TTS voice not found", HttpStatus.NOT_FOUND),
+    TTS_PREVIEW_RATE_LIMIT_EXCEEDED(2407, "Too many voice preview requests; please try again later", HttpStatus.TOO_MANY_REQUESTS),
+    TTS_PREVIEW_FAILED(2408, "TTS provider did not return preview audio", HttpStatus.BAD_GATEWAY),
 
     // 25xx - preset (Member A)
     PRESET_NOT_FOUND(2500, "Media preset not found", HttpStatus.NOT_FOUND),

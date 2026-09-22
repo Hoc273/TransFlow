@@ -56,6 +56,15 @@ Mỗi nhánh = 1 PR nhỏ.
 - Test: voiceId không tồn tại → 404; text quá dài → 400; vượt rate limit → 429.
 - Thủ công: gọi preview với 1 giọng platform, mở `audioUrl` nghe được ~2–3 giây; kiểm tra log FastAPI nhận đúng request.
 
+**Ghi chú đã làm (nhánh `feature/backend-java/tts-voices/preview` — giữ tên theo convention `feature/backend-java/*` của A, lệch tên `feature/tts-voice-preview` trong plan):**
+- Route FastAPI thật là `POST /media/tts` (không phải `/media/tts/synthesize` như plan ghi).
+- **Đã chốt: preview miễn phí** — chỉ rate limit, không trừ Credit (đã ghi vào `API_Contract.md` §11).
+- Resolve provider **theo provider sở hữu voice** (`tts_voices.user_provider_id`/`platform_provider_id` → repo cùng module, kèm `default_model`), không dùng `resolveForCapability` (tránh chọn sai BYOK provider). Voice `USER` chỉ owner mới preview được (người khác → `404 TTS_VOICE_NOT_FOUND`).
+- Rate limit: `TtsVoicePreviewRateLimiter` — Redis INCR fixed-window theo mẫu `BatchCreateRateLimiterImpl`, mặc định **5 req/60s** per user, fail-open khi Redis lỗi; cấu hình qua `VOICE_PREVIEW_RATE_LIMIT_MAX_REQUESTS`/`_WINDOW_SECONDS` (đã thêm `.env.example` + `application.yaml`).
+- `audioUrl` dùng `MediaStorageService.presignedGetUrl` hiện có → TTL = `MEDIA_STORAGE_PRESIGNED_TTL_SECONDS` (3600s), không thêm overload; response `{audioUrl, expiresInSeconds}`; object key `temp/voice-preview/<userId>/<uuid>.<ext>` (sniff mp3/wav/ogg/flac qua `AudioContentDetector` port từ `../transflow`).
+- `ErrorCode` mới: `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` = 2407 (429), `TTS_PREVIEW_FAILED` = 2408 (502); đã cập nhật §15.2/§15.3.
+- Kiểm tra thủ công với `backend-ai` + MinIO thật: **chưa làm** (cần bật docker compose).
+
 ---
 
 ---
@@ -198,7 +207,7 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 
 | # | Nhánh | Code | Test tự động | Kiểm tra thủ công | Cập nhật `API_Contract.md` | Commit / PR |
 |---|---|:-:|:-:|:-:|:-:|:-----------:|
-| 7 | `feature/tts-voice-preview` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 7 | `feature/tts-voice-preview` | [x] | [x] | [ ] | [x] |     [ ]     |
 | 8 | `feature/auth-forgot-password-otp` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 9 | `feature/platform-admin-api` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 10 | `feature/transformation-capabilities` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
