@@ -21,6 +21,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.app.modules.auth.service.ForgotPasswordOtpRateLimiter;
 import com.app.modules.auth.service.ForgotPasswordOtpStore;
 import com.app.modules.auth.service.RegisterOtpStore;
 import com.app.modules.auth.service.email.EmailService;
@@ -46,6 +47,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtService jwtService;
     private final AppProperties appProperties;
     private final ForgotPasswordOtpStore otpStore;
+    private final ForgotPasswordOtpRateLimiter otpRateLimiter;
     private final RegisterOtpStore registerOtpStore;
     private final EmailService emailService;
 
@@ -57,6 +59,7 @@ public class AuthServiceImpl implements AuthService {
                            JwtService jwtService,
                            AppProperties appProperties,
                            ForgotPasswordOtpStore otpStore,
+                           ForgotPasswordOtpRateLimiter otpRateLimiter,
                            RegisterOtpStore registerOtpStore,
                            EmailService emailService) {
         this.userRepository = userRepository;
@@ -67,6 +70,7 @@ public class AuthServiceImpl implements AuthService {
         this.jwtService = jwtService;
         this.appProperties = appProperties;
         this.otpStore = otpStore;
+        this.otpRateLimiter = otpRateLimiter;
         this.registerOtpStore = registerOtpStore;
         this.emailService = emailService;
     }
@@ -115,7 +119,7 @@ public class AuthServiceImpl implements AuthService {
 
         String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
         registerOtpStore.saveOtp(email, otp);
-        log.info("Generated register verification OTP for email [{}]: {}", email, otp);
+        log.info("Generated register verification OTP for email [{}]", email);
         emailService.sendOtpEmail(email, otp, OtpType.REGISTER);
 
         return new OtpMessageResponse("Mã xác thực OTP 6 chữ số đã được gửi đến email " + email);
@@ -248,19 +252,20 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public OtpMessageResponse sendForgotPasswordOtp(ForgotPasswordOtpRequest req) {
         String email = req.email().trim().toLowerCase(Locale.ROOT);
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        otpRateLimiter.check(email);
 
-        if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new AppException(ErrorCode.ACCOUNT_DISABLED);
+        // Anti-enumeration: response is always 200 with the same message whether the
+        // email exists, is disabled, or not. Unknown/disabled accounts simply get no email.
+        // Google-only accounts (passwordHash == null) may set a password via this flow.
+        Optional<User> user = userRepository.findByEmailIgnoreCase(email);
+        if (user.isPresent() && user.get().getStatus() == UserStatus.ACTIVE) {
+            String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
+            otpStore.saveOtp(email, otp);
+            log.info("Generated forgot password OTP for email [{}]", email);
+            emailService.sendOtpEmail(email, otp, OtpType.FORGOT_PASSWORD);
         }
 
-        String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
-        otpStore.saveOtp(email, otp);
-        log.info("Generated forgot password OTP for email [{}]: {}", email, otp);
-        emailService.sendOtpEmail(email, otp, OtpType.FORGOT_PASSWORD);
-
-        return new OtpMessageResponse("Mã xác thực OTP 6 chữ số đã được gửi đến email " + email);
+        return new OtpMessageResponse("Nếu email đã đăng ký, mã xác thực OTP 6 chữ số đã được gửi.");
     }
 
     @Override
@@ -268,7 +273,7 @@ public class AuthServiceImpl implements AuthService {
         String email = req.email().trim().toLowerCase(Locale.ROOT);
         boolean valid = otpStore.verifyOtp(email, req.otp().trim());
         if (!valid) {
-            throw new AppException(ErrorCode.INVALID_CREDENTIALS);
+            throw new AppException(ErrorCode.INVALID_OTP);
         }
         return new OtpVerifyResponse(true, req.otp().trim());
     }
@@ -277,9 +282,9 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public OtpMessageResponse resetPasswordWithOtp(ResetPasswordOtpRequest req) {
         String email = req.email().trim().toLowerCase(Locale.ROOT);
-        boolean valid = otpStore.consumeOtpOrVerified(email, req.otp().trim());
+        boolean valid = otpStore.consumeOtp(email, req.otp().trim());
         if (!valid) {
-            throw new AppException(ErrorCode.INVALID_CREDENTIALS);
+            throw new AppException(ErrorCode.INVALID_OTP);
         }
 
         User user = userRepository.findByEmailIgnoreCase(email)

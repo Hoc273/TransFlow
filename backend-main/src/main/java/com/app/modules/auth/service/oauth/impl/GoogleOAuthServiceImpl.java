@@ -150,7 +150,7 @@ public class GoogleOAuthServiceImpl implements GoogleOAuthService {
     @Transactional
     public AuthResponse exchange(String code) {
         UUID userId = sessionStore.consumeExchangeCode(code)
-                .orElseThrow(() -> new AppException(ErrorCode.INVALID_REFRESH_TOKEN));
+                .orElseThrow(() -> new AppException(ErrorCode.GOOGLE_OAUTH_FAILED));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         if (user.getStatus() != UserStatus.ACTIVE) {

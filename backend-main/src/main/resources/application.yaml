@@ -26,6 +26,7 @@ spring:
     port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
+    from: ${MAIL_FROM:}
     properties:
       mail:
         smtp:
@@ -123,3 +124,6 @@ app:
     voice-preview:
       max-requests: ${VOICE_PREVIEW_RATE_LIMIT_MAX_REQUESTS:5}
       window-seconds: ${VOICE_PREVIEW_RATE_LIMIT_WINDOW_SECONDS:60}
+    forgot-password-otp:
+      max-requests: ${FORGOT_OTP_RATE_LIMIT_MAX_REQUESTS:5}
+      window-seconds: ${FORGOT_OTP_RATE_LIMIT_WINDOW_SECONDS:600}

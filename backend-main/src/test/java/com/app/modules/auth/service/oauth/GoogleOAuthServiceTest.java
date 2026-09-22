@@ -1,6 +1,8 @@
 package com.app.modules.auth.service.oauth;
 
 import com.app.common.config.AppProperties;
+import com.app.common.exception.AppException;
+import com.app.common.exception.ErrorCode;
 import com.app.common.security.JwtService;
 import com.app.modules.auth.dto.AuthResponse;
 import com.app.modules.auth.entity.User;
@@ -130,5 +132,14 @@ class GoogleOAuthServiceTest {
         var creditOpt = creditAccountRepository.findByUserId(user.getId());
         assertTrue(creditOpt.isPresent());
         assertEquals(0, new BigDecimal("100.0000").compareTo(creditOpt.get().getBalance()));
+    }
+
+    @Test
+    void testExchange_InvalidCode_ThrowsGoogleOAuthFailed() {
+        // One-time exchange code is not a refresh token — API_Contract §15.3 maps this
+        // failure to GOOGLE_OAUTH_FAILED (2006), not INVALID_REFRESH_TOKEN (2004).
+        AppException ex = assertThrows(AppException.class,
+                () -> googleOAuthService.exchange("bad-or-expired-code"));
+        assertEquals(ErrorCode.GOOGLE_OAUTH_FAILED, ex.getErrorCode());
     }
 }
