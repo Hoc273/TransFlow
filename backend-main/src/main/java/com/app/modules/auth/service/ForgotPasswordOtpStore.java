@@ -13,6 +13,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Redis-backed OTP storage for Forgot Password with in-memory fallback resilience.
+ *
+ * <p>OTP is stored in plain text under a short TTL (5 minutes) — accepted trade-off,
+ * see BACKEND_MISSING_TASKS §8 notes. Failed verify/reset attempts are counted;
+ * after {@link #MAX_ATTEMPTS} wrong tries the OTP is deleted.
  */
 @Component
 public class ForgotPasswordOtpStore {
@@ -20,15 +24,15 @@ public class ForgotPasswordOtpStore {
     private static final Logger log = LoggerFactory.getLogger(ForgotPasswordOtpStore.class);
 
     private static final String OTP_KEY_PREFIX = "auth:otp:forgot:";
-    private static final String VERIFIED_KEY_PREFIX = "auth:otp:verified:";
+    private static final String ATTEMPTS_KEY_PREFIX = "auth:otp:forgot:att:";
 
     private static final Duration OTP_TTL = Duration.ofMinutes(5);
-    private static final Duration VERIFIED_TTL = Duration.ofMinutes(10);
+    private static final int MAX_ATTEMPTS = 5;
 
     private final StringRedisTemplate redis;
 
     private final Map<String, OtpEntry> fallbackOtps = new ConcurrentHashMap<>();
-    private final Map<String, Instant> fallbackVerified = new ConcurrentHashMap<>();
+    private final Map<String, AttemptEntry> fallbackAttempts = new ConcurrentHashMap<>();
 
     public ForgotPasswordOtpStore(StringRedisTemplate redis) {
         this.redis = redis;
@@ -42,14 +46,32 @@ public class ForgotPasswordOtpStore {
         String cleanEmail = normalize(email);
         try {
             redis.opsForValue().set(OTP_KEY_PREFIX + cleanEmail, otp, OTP_TTL);
+            redis.delete(ATTEMPTS_KEY_PREFIX + cleanEmail);
             return;
         } catch (Exception ex) {
             log.debug("Redis not available for saveOtp, using fallback: {}", ex.getMessage());
         }
         fallbackOtps.put(cleanEmail, new OtpEntry(otp, Instant.now().plus(OTP_TTL)));
+        fallbackAttempts.remove(cleanEmail);
     }
 
+    /**
+     * Checks the OTP without consuming it (used by /verify). Wrong attempts are counted;
+     * the OTP is deleted after {@link #MAX_ATTEMPTS} failures.
+     */
     public boolean verifyOtp(String email, String otp) {
+        return checkOtp(email, otp, false);
+    }
+
+    /**
+     * Checks the OTP and deletes it on match (used by /reset). Wrong attempts are counted
+     * the same way as {@link #verifyOtp}.
+     */
+    public boolean consumeOtp(String email, String otp) {
+        return checkOtp(email, otp, true);
+    }
+
+    private boolean checkOtp(String email, String otp, boolean consume) {
         String cleanEmail = normalize(email);
         if (cleanEmail.isBlank() || otp == null || otp.isBlank()) {
             return false;
@@ -69,56 +91,57 @@ public class ForgotPasswordOtpStore {
             }
         }
 
-        if (stored != null && stored.trim().equals(otp.trim())) {
-            // Mark as verified
-            try {
-                redis.opsForValue().set(VERIFIED_KEY_PREFIX + cleanEmail, "1", VERIFIED_TTL);
-            } catch (Exception ex) {
-                log.debug("Redis set verified failed, checking fallback: {}", ex.getMessage());
-            }
-            fallbackVerified.put(cleanEmail, Instant.now().plus(VERIFIED_TTL));
-            return true;
+        if (stored == null) {
+            return false;
         }
 
-        return false;
-    }
-
-    public boolean consumeOtpOrVerified(String email, String otp) {
-        String cleanEmail = normalize(email);
-        boolean isValid = verifyOtp(cleanEmail, otp);
-        if (!isValid) {
-            // Check if already verified
-            try {
-                String v = redis.opsForValue().get(VERIFIED_KEY_PREFIX + cleanEmail);
-                if ("1".equals(v)) {
-                    isValid = true;
-                }
-            } catch (Exception ex) {
-                log.debug("Redis check verified failed: {}", ex.getMessage());
-            }
-            if (!isValid) {
-                Instant exp = fallbackVerified.get(cleanEmail);
-                if (exp != null && exp.isAfter(Instant.now())) {
-                    isValid = true;
-                }
-            }
+        if (!stored.trim().equals(otp.trim())) {
+            registerFailedAttempt(cleanEmail);
+            return false;
         }
 
-        if (isValid) {
-            // Clean up
+        if (consume) {
             try {
                 redis.delete(OTP_KEY_PREFIX + cleanEmail);
-                redis.delete(VERIFIED_KEY_PREFIX + cleanEmail);
+                redis.delete(ATTEMPTS_KEY_PREFIX + cleanEmail);
             } catch (Exception ex) {
                 log.debug("Redis delete failed: {}", ex.getMessage());
             }
             fallbackOtps.remove(cleanEmail);
-            fallbackVerified.remove(cleanEmail);
-            return true;
+            fallbackAttempts.remove(cleanEmail);
+        }
+        return true;
+    }
+
+    private void registerFailedAttempt(String cleanEmail) {
+        try {
+            String key = ATTEMPTS_KEY_PREFIX + cleanEmail;
+            Long count = redis.opsForValue().increment(key);
+            // Re-apply TTL if the key was left without one (crash between INCR and EXPIRE).
+            Long ttl = redis.getExpire(key);
+            if (count != null && (count == 1L || ttl == null || ttl < 0)) {
+                redis.expire(key, OTP_TTL);
+            }
+            if (count != null && count >= MAX_ATTEMPTS) {
+                redis.delete(OTP_KEY_PREFIX + cleanEmail);
+                redis.delete(key);
+            }
+            return;
+        } catch (Exception ex) {
+            log.debug("Redis attempts counter failed, using fallback: {}", ex.getMessage());
         }
 
-        return false;
+        AttemptEntry entry = fallbackAttempts.compute(cleanEmail,
+                (k, cur) -> cur == null || cur.expiresAt().isBefore(Instant.now())
+                        ? new AttemptEntry(1, Instant.now().plus(OTP_TTL))
+                        : new AttemptEntry(cur.count() + 1, cur.expiresAt()));
+        if (entry.count() >= MAX_ATTEMPTS) {
+            fallbackOtps.remove(cleanEmail);
+            fallbackAttempts.remove(cleanEmail);
+        }
     }
 
     private record OtpEntry(String otp, Instant expiresAt) {}
+
+    private record AttemptEntry(int count, Instant expiresAt) {}
 }

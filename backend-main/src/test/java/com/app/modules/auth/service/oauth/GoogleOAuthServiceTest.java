@@ -135,6 +135,15 @@ class GoogleOAuthServiceTest {
 
         AppException reusedCode = assertThrows(AppException.class,
                 () -> googleOAuthService.exchange(exchangeCode));
-        assertEquals(ErrorCode.GOOGLE_STATE_INVALID, reusedCode.getErrorCode());
+        assertEquals(ErrorCode.GOOGLE_OAUTH_FAILED, reusedCode.getErrorCode());
+    }
+
+    @Test
+    void testExchange_InvalidCode_ThrowsGoogleOAuthFailed() {
+        // One-time exchange code is not a refresh token — API_Contract §15.3 maps this
+        // failure to GOOGLE_OAUTH_FAILED (2006), not INVALID_REFRESH_TOKEN (2004).
+        AppException ex = assertThrows(AppException.class,
+                () -> googleOAuthService.exchange("bad-or-expired-code"));
+        assertEquals(ErrorCode.GOOGLE_OAUTH_FAILED, ex.getErrorCode());
     }
 }

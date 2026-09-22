@@ -19,7 +19,7 @@
 - **Base path**: mọi API người dùng nằm dưới `/api/...`; callback nội bộ từ Worker nằm dưới `/internal/...`
   (không đi qua JWT, xác thực bằng HMAC — xem §14).
 - **Auth**: Bearer JWT (`Authorization: Bearer <accessToken>`) cho toàn bộ `/api/...`, trừ
-  `/api/auth/register|login|refresh|google/*`.
+  `/api/auth/register/**|login|refresh|forgot-password/**|google/*`.
 - **Định dạng**: JSON, field JSON dùng `camelCase`. UUID dạng string chuẩn. Thời gian ISO-8601 UTC
   (`instant`, ví dụ `2026-09-15T08:00:00Z`).
 - **Phân trang**: query `page` (0-based, mặc định 0), `size` (mặc định 20, tối đa 100) cho mọi endpoint
@@ -61,13 +61,17 @@
 
 | Method | Path | Auth | Mô tả |
 |---|---|---|---|
-| POST | `/api/auth/register` | không | `{email,password,fullName}` → tạo user; **lần đầu đăng nhập** trigger auto-init Workspace+Project+Credit (Arch §3). Trả `{accessToken,refreshToken,user,workspaceId,projectId}`. |
+| POST | `/api/auth/register` | không | `{email,password,fullName,otp?}` → tạo user; **lần đầu đăng nhập** trigger auto-init Workspace+Project+Credit (Arch §3). Trả `{accessToken,refreshToken,user,workspaceId,projectId}`. Nếu đã gọi `register/otp` cho email này thì `otp` bắt buộc (`OTP_REQUIRED`). |
+| POST | `/api/auth/register/otp` | không | `{email}` → gửi OTP 6 số xác thực email đăng ký (Redis `auth:otp:register:<email>`, TTL 5 phút, lưu plain). Trả `{message}`. Email đã tồn tại → `EMAIL_ALREADY_EXISTS`. |
 | POST | `/api/auth/login` | không | `{email,password}` → cùng response shape như trên. |
-| POST | `/api/auth/refresh` | không (refresh token) | `{refreshToken}` → `{accessToken,refreshToken}`. |
+| POST | `/api/auth/refresh` | không (refresh token) | `{refreshToken}` → `{accessToken,refreshToken}`. Refresh token cũ **không** bị thu hồi sau reset mật khẩu (JWT stateless, chưa có cơ chế revocation). |
 | GET | `/api/auth/me` | JWT | Thông tin user hiện tại: `{id,email,fullName,googleLinked,isPlatformAdmin}`. |
 | GET | `/api/auth/google/start` | không | Redirect sang Google OAuth2 consent screen. |
 | GET | `/api/auth/google/callback` | không | Google redirect về; set cookie/state tạm, FE gọi `exchange` tiếp theo. |
 | POST | `/api/auth/google/exchange` | không | `{code}` → cùng response shape `register/login`; nếu `google_sub` chưa gắn user nào thì chạy auto-init như lần đầu (Arch §3). |
+| POST | `/api/auth/forgot-password/otp` | không | `{email}` → sinh OTP 6 số, lưu Redis `auth:otp:forgot:<email>` TTL 5 phút (plain text), gửi email (dev fallback: log console). **Luôn trả 200 `{message}` dù email không tồn tại/bị khoá** (chống dò tài khoản); tài khoản Google-only vẫn được gửi OTP để đặt mật khẩu. Rate limit theo email (mặc định 5 lần/10 phút) → `OTP_RATE_LIMIT_EXCEEDED`. |
+| POST | `/api/auth/forgot-password/verify` | không | `{email,otp}` → kiểm tra khớp (không consume OTP), trả `{valid:true, token}` (`token` echo lại otp). OTP sai/hết hạn → `INVALID_OTP`. Sai ≥5 lần → OTP bị xoá (OTP đúng cũng `INVALID_OTP`). |
+| POST | `/api/auth/forgot-password/reset` | không | `{email,otp,newPassword}` → verify lại OTP rồi xoá atomic, BCrypt cập nhật `users.password_hash`. OTP sai/hết hạn → `INVALID_OTP`. Trả `{message}`. |
 
 ---
 
@@ -347,7 +351,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 
 | Module | Dải `code` | Đã dùng |
 |---|---|---|
-| `auth` | 2000–2099 | — |
+| `auth` | 2000–2099 | `EMAIL_ALREADY_EXISTS` = 2000, `INVALID_CREDENTIALS` = 2001, `ACCOUNT_DISABLED` = 2002, `OAUTH_ONLY_ACCOUNT` = 2003, `INVALID_REFRESH_TOKEN` = 2004, `USER_NOT_FOUND` = 2005, `GOOGLE_OAUTH_FAILED` = 2006, `GOOGLE_EMAIL_UNVERIFIED` = 2007, `GOOGLE_ACCOUNT_CONFLICT` = 2008, `GOOGLE_NOT_CONFIGURED` = 2009, `GOOGLE_STATE_INVALID` = 2010, `INVALID_OTP` = 2011, `OTP_REQUIRED` = 2012, `OTP_RATE_LIMIT_EXCEEDED` = 2013 |
 | `workspace` | 2100–2199 | `WORKSPACE_NOT_FOUND` = 2100, `WORKSPACE_MEMBER_NOT_FOUND` = 2101, `LEAD_CANNOT_BE_REMOVED` = 2102, `WORKSPACE_MEMBER_ALREADY_EXISTS` = 2103, `CANNOT_ASSIGN_LEAD_ROLE` = 2104, `WORKSPACE_SLUG_ALREADY_EXISTS` = 2105 |
 | `project` | 2200–2299 | `PROJECT_NOT_FOUND` = 2200, `PROJECT_MEMBER_NOT_FOUND` = 2201, `PROJECT_ACCESS_DENIED` = 2202, `USER_NOT_WORKSPACE_MEMBER` = 2203, `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` = 2204, `PROJECT_MEMBER_ALREADY_EXISTS` = 2205 |
 | `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303 |
@@ -366,6 +370,20 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 
 | `ErrorCode` | `code` | HTTP | Khi nào |
 |---|---|---|---|
+| `EMAIL_ALREADY_EXISTS` | 2000 | 409 | Đăng ký hoặc gửi OTP đăng ký với email đã tồn tại. |
+| `INVALID_CREDENTIALS` | 2001 | 401 | Đăng nhập sai email/mật khẩu. |
+| `ACCOUNT_DISABLED` | 2002 | 403 | Tài khoản không ở trạng thái ACTIVE. |
+| `OAUTH_ONLY_ACCOUNT` | 2003 | 401 | Đăng nhập password cho tài khoản Google-only (chưa có `password_hash`). |
+| `INVALID_REFRESH_TOKEN` | 2004 | 401 | Refresh token sai/hết hạn/không đúng loại. |
+| `USER_NOT_FOUND` | 2005 | 401 | User không còn tồn tại (JWT/refresh hợp lệ nhưng user đã bị xoá). |
+| `GOOGLE_OAUTH_FAILED` | 2006 | 401 | Đăng nhập Google thất bại (exchange code, lỗi provider...). |
+| `GOOGLE_EMAIL_UNVERIFIED` | 2007 | 400 | Email Google chưa được xác minh. |
+| `GOOGLE_ACCOUNT_CONFLICT` | 2008 | 409 | `google_sub` xung đột với tài khoản khác. |
+| `GOOGLE_NOT_CONFIGURED` | 2009 | 400 | Môi trường chưa cấu hình Google OAuth. |
+| `GOOGLE_STATE_INVALID` | 2010 | 400 | State OAuth Google không hợp lệ/hết hạn. |
+| `INVALID_OTP` | 2011 | 400 | OTP sai, hết hạn, hoặc đã bị xoá do verify sai quá 5 lần (đăng ký & quên mật khẩu). |
+| `OTP_REQUIRED` | 2012 | 400 | Đăng ký với email đã gửi OTP nhưng request không kèm `otp`. |
+| `OTP_RATE_LIMIT_EXCEEDED` | 2013 | 429 | Vượt giới hạn gửi OTP quên mật khẩu theo email (mặc định 5 lần/10 phút, cấu hình `app.rate-limit.forgot-password-otp.*`). |
 | `WORKSPACE_NOT_FOUND` | 2100 | 404 | Workspace không tồn tại hoặc user không có quyền xem. |
 | `WORKSPACE_MEMBER_NOT_FOUND` | 2101 | 404 | Thành viên không tồn tại trong Workspace. |
 | `LEAD_CANNOT_BE_REMOVED` | 2102 | 400 | Cố xoá hoặc hạ role của Workspace Lead. |

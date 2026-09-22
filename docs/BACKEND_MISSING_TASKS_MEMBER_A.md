@@ -93,6 +93,41 @@ Mỗi nhánh = 1 PR nhỏ.
   đúng mã; verify sai quá số lần → OTP bị xoá; email lạ vẫn trả 200 ở bước 1.
 - Thủ công: chạy với Redis thật, xem `TTL otp:pwd_reset:<email>` ≈ 300s; OTP không xuất hiện trong response.
 
+**Ghi chú đã làm (nhánh `feature/auth-forgot-password-otp`):**
+- 3 endpoint + `ForgotPasswordOtpStore` + `EmailService` (SMTP qua `MAIL_*`, dev fallback log) đã có sẵn từ
+  `feature/backend-java/main`; nhánh này **hardening theo đúng yêu cầu mục 8** chứ không viết mới.
+- Redis key thật là `auth:otp:forgot:<email>` (không phải `otp:pwd_reset:` như plan ghi); OTP lưu **plain** trong Redis
+  TTL 5 phút (chấp nhận theo plan, đã ghi contract §1).
+- Anti-enumeration: `/otp` **luôn 200** cho email lạ lẫn tài khoản bị khoá (không gửi mail). Trước đó code ném
+  `USER_NOT_FOUND`/`ACCOUNT_DISABLED` — đã sửa.
+- Giới hạn sai: đếm `auth:otp:forgot:att:<email>`, **≥5 lần sai → xoá OTP** (áp cho cả `/verify` lẫn `/reset`).
+- Rate limit: **chỉ theo email** (không theo IP — đã chốt), `ForgotPasswordOtpRateLimiter` Redis fixed-window
+  fail-open, mặc định 5 lần/10 phút; env `FORGOT_OTP_RATE_LIMIT_MAX_REQUESTS`/`_WINDOW_SECONDS`.
+- **Đã vá lỗ hổng**: bỏ cờ `verified` — trước đó sau `/verify`, `/reset` chấp nhận OTP 6 số bất kỳ trong 10 phút.
+  Giờ `/reset` tự verify lại OTP thật rồi xoá (check-then-act, không phải Redis-atomic — chấp nhận vì biết OTP
+  tức đã có quyền reset); `/verify` chỉ là pre-check, không consume.
+- Google-only (`password_hash = null`): **cho phép đặt mật khẩu** qua flow này (đã chốt, ghi contract §1).
+- Refresh token cũ **không bị thu hồi** sau reset — `JwtService` stateless không có cơ chế revocation (đã chốt bỏ qua,
+  ghi contract §1).
+- `ErrorCode`: dùng `INVALID_OTP` (2011) cho OTP sai/hết hạn/quá số lần (trước đó ném nhầm `INVALID_CREDENTIALS`);
+  thêm `OTP_RATE_LIMIT_EXCEEDED` = 2013 (429). Đã cập nhật §15.2/§15.3 — bổ sung luôn các mã auth còn thiếu trong bảng.
+- Fix nhỏ: `MAIL_FROM` trong `.env.example` giờ được map vào `spring.mail.from` (trước đó khai báo env nhưng yaml không đọc).
+- Contract §1 đã bổ sung cả `/register/otp` (endpoint đã merge từ nhánh khác nhưng chưa ai ghi contract).
+- Kiểm tra thủ công với Redis + SMTP thật: **chưa làm** (cần bật docker compose).
+
+**Hardening round 2 (review `problems.md`, cùng nhánh):**
+- `sendOtpEmail` giờ `@Async` (`@EnableAsync` trên `BackendMainApplication`) — trước đó gửi SMTP đồng bộ trong
+  request thread → đo latency dò được email tồn tại, vô hiệu anti-enumeration (chỉ phát sinh khi SMTP được cấu hình).
+- `MAIL_FROM` thực sự được dùng: ưu tiên `mailFrom` khi non-blank, default đổi thành rỗng (`${MAIL_FROM:}`) để không
+  break Gmail dev (From phải khớp tài khoản auth). `.env.example` đổi sang bare email.
+- Guard TTL cho mọi key rate-limit/attempts (`count==1 || getExpire<0` → `expire`): `ForgotPasswordOtpRateLimiter`,
+  `ForgotPasswordOtpStore` (attempts), và `TtsVoicePreviewRateLimiter` (provider — cùng của A, đã duyệt vá luôn).
+  **`BatchCreateRateLimiterImpl` (module `batch` của B) có cùng pattern INCR→EXPIRE → báo B, không tự sửa.**
+- Fix ngoài phạm vi mục 8 (đã duyệt): `google/exchange` ném `INVALID_REFRESH_TOKEN` → đổi `GOOGLE_OAUTH_FAILED`
+  (đúng §15.3; bug có sẵn từ develop).
+- Log: bỏ giá trị OTP khỏi `log.info` trong `AuthServiceImpl` (cả register); `EmailServiceImpl` giữ OTP plain chỉ ở
+  nhánh mail-disabled (dev fallback theo plan), mask `xx****` ở nhánh send-error.
+
 ---
 
 ---
@@ -207,6 +242,6 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 | # | Nhánh | Code | Test tự động | Kiểm tra thủ công | Cập nhật `API_Contract.md` | Commit / PR |
 |---|---|:-:|:-:|:-:|:-:|:-----------:|
 | 7 | `feature/tts-voice-preview` | [x] | [x] | [ ] | [x] |     [ ]     |
-| 8 | `feature/auth-forgot-password-otp` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 8 | `feature/auth-forgot-password-otp` | [x] | [x] | [ ] | [x] |     [ ]     |
 | 9 | `feature/platform-admin-api` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 10 | `feature/transformation-capabilities` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
