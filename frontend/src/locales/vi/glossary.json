@@ -1,6 +1,5 @@
 {
   "title": "Bảng thuật ngữ dự án",
-  "subtitle": "Mỗi dự án có một bảng thuật ngữ riêng để bản địa hóa nhất quán",
   "sidebar": "Dự án",
   "sourceLang": "Nguồn: {{language}}",
   "noProjectsTitle": "Chưa có dự án",

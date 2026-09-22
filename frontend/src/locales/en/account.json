@@ -1,7 +1,6 @@
 {
   "page": {
-    "title": "Account Settings",
-    "subtitle": "Manage your personal profile, security and preferences"
+    "title": "Account Settings"
   },
   "nav": {
     "settings": "Settings",
@@ -78,13 +77,15 @@
     "tip": "Tip:",
     "tipText": "Avoid reusing passwords from other apps or easily guessable personal info.",
     "oauthTitle": "Connected accounts",
-    "oauthDesc": "Sign in faster with social accounts. Disconnect anytime.",
+    "oauthDesc": "Sign in faster and securely with your linked social account.",
     "googleConnected": "Connected",
     "googleNotConnected": "Sign in with Google for faster access",
+    "googleLinkedEmail": "Linked via Google account",
     "googlePending": "Google link/unlink ships with Auth-OAuth (docs/07).",
+    "disconnect": "Disconnect",
     "disconnectTitle": "Disconnect Google account?",
     "disconnectDesc": "You will no longer be able to sign in with Google. You can reconnect later.",
-    "disconnectSuccess": "Google disconnect API is not available yet."
+    "disconnectSuccess": "Google disconnect feature is coming soon."
   },
   "prefs": {
     "title": "Preferences",
@@ -101,22 +102,19 @@
     "themeLightSub": "Bright theme",
     "themeDark": "Dark",
     "themeDarkSub": "Easy on eyes",
-    "densityTitle": "Table density",
-    "densityDesc": "How compact data tables appear (Data-Dense track not affected)",
-    "densityComfortable": "Comfortable",
-    "densityComfortableSub": "More whitespace, easier to scan",
-    "densityDense": "Dense",
-    "densityDenseSub": "More rows visible at once",
     "saveSuccess": "Preferences saved",
     "syncNote": "Language and theme are stored in localStorage (tf-ui / tf-lang) and apply immediately. Phase 2 will sync to user profile via UserProfileApiProvider (09b §A.0)."
   },
   "ws": {
     "title": "My Workspaces",
-    "desc": "Workspaces you belong to. Switch between them using the switcher in the top navigation or the buttons below.",
+    "desc": "Workspaces you belong to. Click a workspace to switch or drag and drop to reorder.",
     "current": "Current",
+    "currentWorkspace": "Current workspace",
     "members": "members",
     "projects": "projects",
     "switch": "Switch",
+    "dragToReorder": "Drag to reorder",
+    "clickToSwitch": "Click to switch workspace",
     "leave": "Leave workspace",
     "create": "Create new workspace",
     "leaveTitle": "Leave workspace?",

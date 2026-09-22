@@ -52,8 +52,7 @@ export function AccountSettingsPage() {
           <IconChevronRight size={10} />
           <span>{t('account:nav.settings')}</span>
         </div>
-        <h1 className="page-title mb-1">{t('account:page.title')}</h1>
-        <p className="page-subtitle mb-6">{t('account:page.subtitle')}</p>
+        <h1 className="page-title mb-6">{t('account:page.title')}</h1>
 
         <div className="account-nav-section">
           <div className="account-nav-section-title">{t('account:nav.account')}</div>

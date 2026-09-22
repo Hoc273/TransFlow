@@ -1,7 +1,6 @@
 {
   "page": {
-    "title": "Cài đặt tài khoản",
-    "subtitle": "Quản lý hồ sơ, bảo mật và tùy chọn cá nhân"
+    "title": "Cài đặt tài khoản"
   },
   "nav": {
     "settings": "Cài đặt",
@@ -78,13 +77,15 @@
     "tip": "Mẹo:",
     "tipText": "Không sử dụng lại mật khẩu từ các ứng dụng khác hoặc thông tin cá nhân dễ đoán.",
     "oauthTitle": "Tài khoản liên kết",
-    "oauthDesc": "Đăng nhập nhanh bằng tài khoản mạng xã hội. Ngắt kết nối bất cứ lúc nào.",
+    "oauthDesc": "Đăng nhập nhanh và an toàn bằng tài khoản mạng xã hội liên kết.",
     "googleConnected": "Đã kết nối",
     "googleNotConnected": "Đăng nhập bằng Google để truy cập nhanh hơn",
+    "googleLinkedEmail": "Đã liên kết qua tài khoản Google",
     "googlePending": "Liên kết/ngắt Google ship cùng Auth-OAuth (docs/07).",
+    "disconnect": "Ngắt kết nối",
     "disconnectTitle": "Ngắt kết nối tài khoản Google?",
     "disconnectDesc": "Bạn sẽ không thể đăng nhập bằng Google nữa. Có thể kết nối lại sau.",
-    "disconnectSuccess": "API ngắt kết nối Google chưa có."
+    "disconnectSuccess": "Tính năng ngắt kết nối tài khoản Google đang được cập nhật."
   },
   "prefs": {
     "title": "Tùy chọn",
@@ -101,22 +102,19 @@
     "themeLightSub": "Chủ đề sáng",
     "themeDark": "Tối",
     "themeDarkSub": "Dễ chịu cho mắt",
-    "densityTitle": "Mật độ bảng",
-    "densityDesc": "Độ gọn của bảng dữ liệu (track Data-Dense không bị ảnh hưởng)",
-    "densityComfortable": "Thoải mái",
-    "densityComfortableSub": "Nhiều khoảng trắng, dễ đọc",
-    "densityDense": "Dày đặc",
-    "densityDenseSub": "Hiển thị nhiều hàng hơn",
     "saveSuccess": "Đã lưu tùy chọn",
     "syncNote": "Ngôn ngữ và theme lưu trong localStorage (tf-ui / tf-lang) và áp dụng ngay. Phase 2 sẽ đồng bộ hồ sơ qua UserProfileApiProvider (09b §A.0)."
   },
   "ws": {
     "title": "Workspace của tôi",
-    "desc": "Các workspace bạn thuộc về. Chuyển đổi bằng workspace switcher ở thanh trên hoặc các nút bên dưới.",
+    "desc": "Các workspace bạn thuộc về. Nhấp vào workspace để chuyển đổi hoặc kéo thả để sắp xếp lại thứ tự.",
     "current": "Hiện tại",
+    "currentWorkspace": "Workspace hiện tại",
     "members": "thành viên",
     "projects": "dự án",
     "switch": "Chuyển",
+    "dragToReorder": "Kéo thả để sắp xếp thứ tự",
+    "clickToSwitch": "Nhấp để chuyển workspace",
     "leave": "Rời workspace",
     "create": "Tạo workspace mới",
     "leaveTitle": "Rời workspace?",

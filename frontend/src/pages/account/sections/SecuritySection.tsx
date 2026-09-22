@@ -12,9 +12,10 @@ import {
   IconShieldLock,
 } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
-import { featureFlags } from '@/config/featureFlags'
+import { featureFlags, apiBaseUrl } from '@/config/featureFlags'
 import { scorePassword } from '@/lib/validation'
-import { useChangePassword } from '@/hooks/useAuth'
+import { useChangePassword, useMe } from '@/hooks/useAuth'
+import { useAuthStore } from '@/store/authStore'
 import { ApiError } from '@/types/api'
 import { cn } from '@/lib/cn'
 
@@ -115,6 +116,10 @@ function PwField({
 export function SecuritySection() {
   const { t } = useTranslation(['account', 'common', 'auth'])
   const changePassword = useChangePassword()
+  useMe()
+
+  const user = useAuthStore((s) => s.user)
+  const isGoogleLinked = Boolean(user?.googleLinked)
 
   const [currentPw, setCurrentPw] = useState('')
   const [newPw, setNewPw] = useState('')
@@ -181,9 +186,13 @@ export function SecuritySection() {
     }
   }
 
-  const onGoogleAction = () => {
-    setOauthNote(t('account:security.googlePending'))
-    window.setTimeout(() => setOauthNote(null), 3500)
+  const onGoogleConnect = () => {
+    if (featureFlags.googleAuth) {
+      window.location.assign(`${apiBaseUrl}/auth/google/start?mode=login`)
+    } else {
+      setOauthNote(t('account:security.googlePending'))
+      window.setTimeout(() => setOauthNote(null), 3500)
+    }
   }
 
   return (
@@ -312,25 +321,36 @@ export function SecuritySection() {
           {/* Google */}
           <div className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface-2)]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] shadow-2xs">
                 <GoogleMark />
               </div>
-              <div>
+              <div className="space-y-0.5">
                 <div className="text-xs font-semibold text-[var(--color-text-primary)]">Google</div>
                 <div className="text-[11px] text-[var(--color-text-tertiary)]">
-                  {featureFlags.googleAuth
-                    ? t('account:security.googleNotConnected')
-                    : t('account:security.googlePending')}
+                  {isGoogleLinked
+                    ? user?.email
+                      ? `${t('account:security.googleLinkedEmail')}: ${user.email}`
+                      : t('account:security.googleConnected')
+                    : featureFlags.googleAuth
+                      ? t('account:security.googleNotConnected')
+                      : t('account:security.googlePending')}
                 </div>
               </div>
             </div>
-            <button
-              type="button"
-              className="btn-secondary btn-sm text-xs"
-              onClick={onGoogleAction}
-            >
-              {t('account:common.connect')}
-            </button>
+            {isGoogleLinked ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 select-none">
+                <IconCheck size={13} stroke={2.5} />
+                <span>{t('account:security.googleConnected')}</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="btn-secondary btn-sm text-xs cursor-pointer"
+                onClick={onGoogleConnect}
+              >
+                {t('account:common.connect')}
+              </button>
+            )}
           </div>
         </div>
       </div>

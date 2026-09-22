@@ -235,7 +235,6 @@ export function GlossaryPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('glossary:title')}</h1>
-          <div className="page-subtitle">{t('glossary:subtitle')}</div>
         </div>
       </div>
 

@@ -1111,7 +1111,6 @@ export function PresetSettingsPage() {
             <IconVideo size={26} className="text-[var(--color-media)]" />
             {t('media:title')}
           </h1>
-          <div className="page-subtitle">{t('media:subtitle')}</div>
         </div>
         {canManage && (
           <button

@@ -44,7 +44,6 @@ export function DashboardPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('dashboard:title')}</h1>
-          <div className="page-subtitle">{t('dashboard:subtitle')}</div>
         </div>
         <button
           type="button"

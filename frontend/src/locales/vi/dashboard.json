@@ -1,6 +1,5 @@
 {
   "title": "Bảng điều khiển",
-  "subtitle": "Tổng quan workspace · Tài nguyên AI và batch đang xử lý",
   "updatedAt": "Làm mới",
   "loading": "Đang tải…",
   "widget": {
@@ -106,7 +105,6 @@
     "indicator": "Live",
     "statusOnline": "Dữ liệu thời gian thực",
     "chartTitle": "Phân tích tài nguyên AI thời gian thực",
-    "chartSubtitle": "Dữ liệu live từ hệ thống theo dõi token",
     "byOperation": "Theo thao tác",
     "byModel": "Theo mô hình",
     "operationsTitle": "Phân bổ tác vụ AI",
