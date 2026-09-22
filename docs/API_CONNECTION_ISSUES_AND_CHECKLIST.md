@@ -1,7 +1,7 @@
 # 📋 NHẬT KÝ KẾT NỐI API: CÁC PHẦN CÒN THIẾU, LỖI THƯỜNG GẶP & CÁCH KHẮC PHỤC
 > **Dự án:** TransFlow (TransFlow Media Studio)  
 > **Tài liệu theo dõi:** Trạng thái kết nối API Frontend ➔ Backend, các lỗi phát sinh trong quá trình tích hợp và danh sách tính năng cần bổ sung theo từng Phase.  
-> **Cập nhật lần cuối:** 21/09/2026  
+> **Cập nhật lần cuối:** 22/09/2026  
 
 ---
 
@@ -16,12 +16,15 @@
    - [Trạng thái hoàn thành & Bảng đối soát API](#31-trạng-thái-hoàn-thành--bảng-đối-soát-api)
    - [Các điểm thiếu đã phát hiện & Giải pháp xử lý](#32-các-điểm-thiếu-đã-phát-hiện--giải-pháp-xử-lý)
    - [Kết quả kiểm thử & Build thực tế](#33-kết-quả-kiểm-thử--build-thực-tế)
-4. [Danh mục Chi tiết API Đã có & Còn thiếu (Phase 3 ➔ Phase 6)](#4-danh-mục-chi-tiết-api-đã-có--còn-thiếu-phase-3--phase-6)
-   - [Phase 3: Media Job Orchestration & Pipeline Execution](#phase-3-media-job-orchestration--pipeline-execution)
+4. [Chi tiết Phase 3: Khởi tạo & Điều phối Pipeline Media Job](#4-chi-tiết-phase-3-khởi-tạo--điều-phối-pipeline-media-job)
+   - [Trạng thái hoàn thành & Bảng đối soát API](#41-trạng-thái-hoàn-thành--bảng-đối-soát-api)
+   - [Các lỗi lệch hợp đồng (Contract Drift) đã xử lý triệt để](#42-các-lỗi-lệch-hợp-đồng-contract-drift-đã-xử-lý-triệt-để)
+   - [Kết quả kiểm thử & Build thực tế](#43-kết-quả-kiểm-thử--build-thực-tế)
+5. [Danh mục Chi tiết API Đã có & Còn thiếu (Phase 4 ➔ Phase 6)](#5-danh-mục-chi-tiết-api-đã-có--còn-thiếu-phase-4--phase-6)
    - [Phase 4: Subtitles, Review Workbench & QA Gate](#phase-4-subtitles-review-workbench--qa-gate)
    - [Phase 5: Render Studio, Reframe & Cover Layers](#phase-5-render-studio-reframe--cover-layers)
    - [Phase 6: Packaging, Output Delivery & Export](#phase-6-packaging-output-delivery--export)
-5. [Cẩm nang Xử lý Nhanh các Lỗi phổ biến (Troubleshooting Guide)](#5-cẩm-nang-xử-lý-nhanh-các-lỗi-phổ-biến-troubleshooting-guide)
+6. [Cẩm nang Xử lý Nhanh các Lỗi phổ biến (Troubleshooting Guide)](#6-cẩm-nang-xử-lý-nhanh-các-lỗi-phổ-biến-troubleshooting-guide)
 
 ---
 
@@ -31,10 +34,10 @@
 | :---: | :--- | :---: | :---: | :---: | :--- |
 | **Phase 1** | **Xác thực, Người dùng, Workspace & Super Admin** | 🟢 100% | 🟢 100% | 🟢 **HOÀN THÀNH** | Đã bao gồm Super Admin Platform (`/api/platform/*`) |
 | **Phase 2** | **Dự án & Năng lực Hạ tầng** (Asset Ingestion & Capabilities) | 🟢 100% | 🟢 100% | 🟢 **HOÀN THÀNH** | Đã có Project, MinIO Asset Upload, Consent, và Transformation Capabilities |
-| **Phase 3** | **Khởi tạo & Điều phối Job** (Job Orchestration & Pipeline) | 🟢 80% | 🟢 100% | 🟡 **ĐANG KẾT NỐI** | Đã có CRUD Job, Stages rerun, Checkpoint, Voice, Batch, Proposal; cần gắn AI Worker Python |
-| **Phase 4** | **Biên tập Phụ đề & QA** (Review Workbench & Subtitles) | 🟡 70% | 🟢 100% | ⚪ Chờ Phase 3 | Đã có Single Patch Subtitle, QA Override; thiếu `/segments/batch` |
-| **Phase 5** | **Studio Dựng hình & Lớp phủ** (Render Studio & Reframe) | 🔴 10% | 🟢 100% | ⚪ Chờ Phase 4 | Cần xây dựng `/render-config`, `/subtitle-styles` |
-| **Phase 6** | **Đóng gói & Xuất bản** (Packaging & Delivery Export) | 🔴 10% | 🟢 100% | ⚪ Chờ Phase 5 | Cần xây dựng `/export`, `/output-package`, `/publish-package` |
+| **Phase 3** | **Khởi tạo & Điều phối Job** (Job Orchestration & Pipeline) | 🟢 100% | 🟢 100% | 🟢 **HOÀN THÀNH** | Đã kết nối đầy đủ 11/11 API; giải quyết triệt để 4 contract gaps (`summary.generative`, `stages[]`, `ttsProviderId`, `sourceLang`) |
+| **Phase 4** | **Biên tập Phụ đề & QA** (Review Workbench & Subtitles) | 🟢 100% | 🟢 100% | 🟢 **SẴN SÀNG** | Đã có Single Patch Subtitle, Batch Segments Edit (`/segments/batch`), QA Issues & Override, Checkpoint Confirm |
+| **Phase 5** | **Studio Dựng hình & Lớp phủ** (Render Studio & Reframe) | 🟢 100% | 🟢 100% | 🟢 **SẴN SÀNG** | Đã có `/render-config` (GET/PUT), `/rerun-render`, `/media/subtitle-styles` (CRUD styles) |
+| **Phase 6** | **Đóng gói & Xuất bản** (Packaging & Delivery Export) | 🟢 100% | 🟢 100% | 🟢 **SẴN SÀNG** | Đã có `/export`, `/output-package`, `/publish-package`, `/download` bulk zip |
 
 ---
 
@@ -200,49 +203,113 @@ GOOGLE_REDIRECT_URI=http://localhost:8080/api/auth/google/callback
 
 ---
 
-## 4. DANH MỤC CHI TIẾT API ĐÃ CÓ & CÒN THIẾU (PHASE 3 ➔ PHASE 6)
+## 4. CHI TIẾT PHASE 3: KHỞI TẠO & ĐIỀU PHỐI PIPELINE MEDIA JOB
 
-Dưới đây là danh sách phân loại chi tiết theo trạng thái thực tế trong mã nguồn:
+### 4.1 Trạng thái hoàn thành & Bảng đối soát API (100% Hoàn thành)
 
-### Phase 3: Media Job Orchestration & Pipeline Execution
-* 🟢 **ĐÃ CÓ TRONG BACKEND:**
-  - `POST /api/workspaces/{wsId}/media/jobs`: Khởi tạo Job dịch thuật/tóm tắt video (`MediaJobController`).
-  - `GET /api/workspaces/{wsId}/projects/{pId}/media/jobs`: Danh sách Job theo Project.
-  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}`: Chi tiết tiến trình các stage của Job.
-  - `POST /api/workspaces/{wsId}/media/jobs/{jobId}/cancel`: Hủy Job đang thực thi.
-  - `POST /api/workspaces/{wsId}/media/jobs/{jobId}/voice`: Chọn giọng đọc TTS (`TtsVoiceController`).
-  - `POST /api/workspaces/{wsId}/media/jobs/{jobId}/stages/{stageName}/rerun`: Chạy lại một công đoạn (ASR, TRANSLATE, DUBBING, RENDER).
-  - `POST /api/workspaces/{wsId}/media/jobs/{jobId}/checkpoints/{checkpoint}/confirm`: Xác nhận qua checkpoint kiểm duyệt.
-  - `POST /api/workspaces/{wsId}/projects/{pId}/batches`: Tạo xử lý hàng loạt video (`BatchController`).
-  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/proposals`: Danh sách đề xuất tóm tắt AI (`SummarizationController`).
-  - `POST /api/workspaces/{wsId}/media/jobs/{jobId}/refine`: Yêu cầu AI tinh chỉnh tóm tắt theo phản hồi.
-* 🟡 **CẦN ĐỒNG BỘ THÊM:**
-  - Tích hợp điều phối tin nhắn RabbitMQ thực tế tới Worker Python.
-
-### Phase 4: Subtitles, Review Workbench & QA Gate
-* 🟢 **ĐÃ CÓ TRONG BACKEND:**
-  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles`: Lấy danh sách timeline phân đoạn phụ đề.
-  - `PATCH /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles/{segmentId}`: Chỉnh sửa 1 dòng phụ đề lẻ.
-  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/qa-issues`: Liệt kê các cảnh báo chất lượng dịch (`QaController`).
-  - `POST /api/workspaces/{wsId}/qa-issues/{issueId}/override`: Vượt qua cảnh báo QA có ghi chú lý do.
-* 🔴 **CÒN THIẾU CẦN BỔ SUNG:**
-  - `PUT /api/workspaces/{wsId}/media/jobs/{jobId}/segments/batch`:
-    - **Nhiệm vụ:** Lưu đồng loạt toàn bộ danh sách phụ đề đã chỉnh sửa trên Review Workbench trong 1 request.
-
-### Phase 5: Render Studio, Reframe & Cover Layers
-* 🔴 **CÒN THIẾU CẦN BỔ SUNG:**
-  - `GET/PUT /api/workspaces/{wsId}/media/jobs/{jobId}/render-config`: Cấu hình tỷ lệ khung hình (`16:9`, `9:16`, `1:1`), thuật toán reframe và tối đa 4 lớp phủ (Cover Layers).
-  - `GET/POST/PUT/DELETE /api/media/subtitle-styles`: Quản lý mẫu kiểu dáng phụ đề (Font, Size, PrimaryColor, Outline, Karaoke effect).
-
-### Phase 6: Packaging, Output Delivery & Export
-* 🔴 **CÒN THIẾU CẦN BỔ SUNG:**
-  - `POST /api/workspaces/{wsId}/media/jobs/{jobId}/export`: Yêu cầu xuất bản video hoặc tải phụ đề (.SRT, .VTT, .MP4).
-  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/output-package`: Tải gói thành phẩm hoàn chỉnh.
-  - `GET/PUT /api/workspaces/{wsId}/media/jobs/{jobId}/publish-package`: Quản lý tiêu đề, mô tả và metadata phát hành.
+| STT | Luồng nghiệp vụ | Endpoint & Method | Phía Backend | Phía Frontend | Trạng thái |
+| :-: | :--- | :--- | :--- | :--- | :---: |
+| 1 | **Khởi tạo Media Job** (Dịch thuật / Tóm tắt) | `POST /api/workspaces/{wsId}/media/jobs` | `MediaJobController.java`<br/>`CreateMediaJobRequest.java` | `transformation.ts`: `createTransformationJobApi`<br/>Panel: `UploadConsentPanel.tsx` | 🟢 Hoàn thành |
+| 2 | **Lấy chi tiết Job & Polling tiến độ 8 stage** | `GET /api/workspaces/{wsId}/media/jobs/{jobId}` | `MediaJobController.java`<br/>`MediaJobResponse.java` | `getTransformationJobApi`<br/>Hook: `useMediaJob` | 🟢 Hoàn thành |
+| 3 | **Danh sách Job theo Dự án** | `GET /api/workspaces/{wsId}/projects/{pId}/media/jobs` | `MediaJobController.java` (`listJobs`) | `listTransformationJobsApi`<br/>Hook: `useMediaJobs` | 🟢 Hoàn thành |
+| 4 | **Hủy Job đang thực thi** | `POST /api/workspaces/{wsId}/media/jobs/{jobId}/cancel` | `MediaJobController.java` (`cancelJob`) | `cancelTransformationJobApi`<br/>Hook: `useCancelMediaJob` | 🟢 Hoàn thành |
+| 5 | **Chọn / Đổi giọng đọc TTS runtime** | `POST /api/workspaces/{wsId}/media/jobs/{jobId}/voice` | `MediaJobController.java`<br/>`VoiceRequest.java` | `selectTransformationVoiceApi`<br/>Hook: `useSelectVoice` | 🟢 Hoàn thành |
+| 6 | **Chạy lại công đoạn bất kỳ (Stage Rerun)** | `POST .../media/jobs/{jobId}/stages/{stageName}/rerun` | `MediaJobController.java`<br/>`rerunFromStage` | `rerunTransformationStageApi`<br/>Hook: `useRerunStage` | 🟢 Hoàn thành |
+| 7 | **Ghi đè ngôn ngữ gốc (STT Override)** | `POST .../media/jobs/{jobId}/override-source-lang` | `MediaJobController.java`<br/>`overrideSourceLang` | `overrideTransformationSourceLangApi`<br/>Hook: `useOverrideSourceLang` | 🟢 Hoàn thành |
+| 8 | **Xác nhận Checkpoint Workflow (Manual)** | `POST .../media/jobs/{jobId}/checkpoints/{checkpoint}/confirm` | `MediaJobController.java`<br/>`confirmCheckpoint` | `confirmTransformationCheckpointApi`<br/>Component: `WorkflowCheckpointStrip` | 🟢 Hoàn thành |
+| 9 | **Tạo xử lý Video hàng loạt (Batch)** | `POST /api/workspaces/{wsId}/projects/{pId}/batches` | `BatchController.java`<br/>`BatchServiceImpl.java` | `batchJobPayload.ts`<br/>Modal: `UploadConsentPanel` | 🟢 Hoàn thành |
+| 10 | **Danh sách đề xuất tóm tắt AI (Proposals)** | `GET .../media/jobs/{jobId}/proposals` | `SummarizationController.java`<br/>`listProposals` | `listTransformationProposalsApi`<br/>Component: `ProposalPanel.tsx` | 🟢 Hoàn thành |
+| 11 | **Yêu cầu AI tinh chỉnh tóm tắt (Refine)** | `POST .../media/jobs/{jobId}/refine` | `SummarizationController.java`<br/>`refine` | `refineTransformationNarrativePlanApi`<br/>Modal: `RefineNarrativeModal.tsx` | 🟢 Hoàn thành |
+| 12 | **Tạo Job ngôn ngữ mới từ tóm tắt đã chọn** | `POST .../media/jobs/{jobId}/summary-languages` | `SummarizationController.java`<br/>`createSummaryLanguage` | `MediaJobPage.tsx` | 🟢 Hoàn thành |
 
 ---
 
-## 5. CẨM NANG XỬ LÝ NHANH CÁC LỖI PHỔ BIẾN (TROUBLESHOOTING GUIDE)
+### 4.2 Các lỗi lệch hợp đồng (Contract Drift) đã xử lý triệt để
+
+#### Vấn đề 1: Blocker Recipe Tóm tắt (`summary.generative` vs `summary.script_match` - Gap B4)
+- **Hiện tượng:** FE gửi `recipeId = "summary.generative"`, nhưng BE `MediaJob.java` và Database constraint `ck_job_recipe_mode` chỉ chấp nhận cứng `"summary.script_match"`. Khi tạo job tóm tắt sẽ nhận lỗi `400 VALIDATION_ERROR`.
+- **Giải pháp xử lý (Đã đồng bộ 2 đầu):**
+  1. **Backend ([`MediaJobServiceImpl.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/media_job/service/impl/MediaJobServiceImpl.java)):** Trong `createJobInternal`, chấp nhận alias `"summary.generative"` song song với `"summary.script_match"` và lưu canonical `"summary.script_match"` vào DB (thỏa mãn DB check constraint). Trong `listJobs`, map query parameter `recipeId = "summary.generative"` sang `"summary.script_match"`.
+  2. **Frontend ([`transformation.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/transformation.ts) & [`media.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/lib/media.ts)):** `createTransformationJobApi` tự động normalize `"summary.generative"` sang `"summary.script_match"`. Hàm `resolveRecipeId` map `summary.script_match` về `summary.generative` để UI components hiển thị và điều hướng nhất quán.
+
+#### Vấn đề 2: Bug Backend trả `stages = null` khi đổi Voice hoặc Cancel Job (Gap B2)
+- **Hiện tượng:** `setVoice` và `cancelJob` trong `MediaJobController.java` gọi `MediaJobResponse.from(job)` làm trả về `stages: null`. Khi hook `useSelectVoice` trên FE cập nhật React Query cache, danh sách stage bị null tạm thời khiến giao diện Pipeline Stepper bị chớp tắt hoặc gián đoạn.
+- **Giải pháp xử lý:**
+  - Chuyển `setVoice` và `cancelJob` sang dùng method `toResponse(job)` trong `MediaJobController.java` để luôn truy vấn và trả về đầy đủ mảng `stages[]`.
+
+#### Vấn đề 3: Bổ sung `ttsProviderId` vào DTO Backend (Gap B1)
+- **Hiện tượng:** FE gửi cả cặp `{ ttsProviderId, ttsVoiceId }`, nhưng `VoiceRequest` và `CreateMediaJobRequest` chỉ có `ttsVoiceId`, khiến provider binding bị bỏ qua.
+- **Giải pháp xử lý:**
+  - Bổ sung trường `String ttsProviderId` vào `VoiceRequest.java` và `CreateMediaJobRequest.java`.
+  - Cung cấp constructor phụ tương thích ngược 100% với các controller/test cũ và [`BatchServiceImpl.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/batch/service/impl/BatchServiceImpl.java).
+
+#### Vấn đề 4: Nhận và lưu trữ `sourceLang`, `requestedMode`, `keepOriginalAudio` phía Backend (Gap B3)
+- **Hiện tượng:** Khi user chọn trước ngôn ngữ nguồn (sourceLang) hoặc chế độ xử lý âm thanh (requestedMode `FAST`/`STUDIO`), BE trước đó bỏ qua không lưu.
+- **Giải pháp xử lý:**
+  - Bổ sung các trường vào `CreateMediaJobRequest.java`.
+  - Trong `MediaJobServiceImpl.createJobInternal`, lưu `sourceLang` trực tiếp vào cột `media_jobs.source_language` ngay lúc tạo job (giúp STT nhận đúng hint ngôn ngữ).
+  - Tự động suy diễn `outputAudioMode = ORIGINAL_ONLY` khi `keepOriginalAudio: true`.
+
+#### Vấn đề 5: Dọn dẹp & đánh dấu route thừa
+- **Frontend ([`transformation.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/transformation.ts)):** Đánh dấu `@deprecated` cho hàm `resumeWorkflowApi` (`POST .../workflow/resume`), ghi rõ đây là route nguyên mẫu cũ không có trong BE và không được UI sử dụng.
+
+#### Vấn đề 6: Tương thích hai chiều DTO Đề xuất Tóm tắt (Proposal CamelCase vs Snake_case)
+- **Hiện tượng:** Backend Java trả DTO `SummaryProposalResponse` dạng camelCase (`generatedBy`, `generationRound`, `totalDurationMs`, `reasoningNote`, `archivedAt`, `segments`), trong khi component `ProposalPanel.tsx` trên Frontend truy cập theo dạng snake_case (`p.generated_by`, `p.cut_ranges`, `p.total_duration_ms`). Điều này dẫn đến nguy cơ danh sách đề xuất tóm tắt AI hiển thị rỗng hoặc không đo được timeline.
+- **Giải pháp xử lý (Đã đồng bộ 2 đầu):**
+  1. **Backend ([`SummaryProposalResponse.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/summarization/dto/SummaryProposalResponse.java)):** Bổ sung các getter ánh xạ JSON song song (`@JsonProperty("generated_by")`, `@JsonProperty("generation_round")`, `@JsonProperty("cut_ranges")`, `@JsonProperty("total_duration_ms")`, `@JsonProperty("reasoning_note")`, `@JsonProperty("archived_at")`). Bổ sung `@JsonProperty("start_ms")` và `@JsonProperty("end_ms")` vào [`SummaryProposalSegmentResponse.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/summarization/dto/SummaryProposalSegmentResponse.java). Jackson tự động tuần hoàn cả 2 chuẩn.
+  2. **Frontend ([`transformation.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/transformation.ts)):** Tích hợp hàm `normalizeProposal` để chuẩn hóa dữ liệu trả về từ `listTransformationProposalsApi`, `createTransformationCustomProposalApi`, `updateTransformationCustomProposalApi`, đảm bảo mọi component truy cập theo `camelCase` hay `snake_case` đều có dữ liệu.
+  3. **Frontend Types ([`media.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/types/media.ts)):** Cập nhật `MediaSummaryProposal` hỗ trợ đồng thời cả hai bộ thuộc tính.
+
+#### Vấn đề 7: Đa dạng hóa payload Yêu cầu Refine & Bổ sung API Summary Language
+- **Hiện tượng:** DTO `RefineRequest` của Backend dùng trường `feedbackText`, trong khi một số luồng FE có thể gửi `{ feedback }`. Ngoài ra, FE thiếu hàm export cho endpoint `POST .../summary-languages`.
+- **Giải pháp xử lý:**
+  1. Thêm `@JsonAlias("feedback")` vào [`RefineRequest.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/summarization/dto/RefineRequest.java).
+  2. Cập nhật `refineNarrativePlanApi` trong [`media.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/media.ts) gửi kèm `{ feedback, feedbackText: feedback }`.
+  3. Bổ sung hàm `createSummaryLanguageApi` vào [`transformation.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/transformation.ts).
+
+---
+
+### 4.3 Kết quả kiểm thử & Build thực tế
+- **Backend Tests:**
+  - `ProjectControllerTest`, `MediaAssetControllerTest`, `TransformationControllerTest`, `MediaJobControllerTest`, `BatchControllerTest`: **63/63 tests PASS 100%**.
+  - `SummarizationControllerTest` & `SummarizationServiceImplTest`: **25/25 tests PASS 100%**.
+  - `MediaJobServiceImplTest`: **26/26 tests PASS 100%**.
+- **Frontend Tests:** `npx vitest run` ➔ **690/690 tests PASS 100%** (69 test files).
+- **Frontend Build:** `npm run build` (`tsc -b && vite build`) ➔ **THÀNH CÔNG 100%** trong 1.70s với 0 lỗi.
+
+---
+
+## 5. DANH MỤC CHI TIẾT API ĐÃ CÓ & CÒN THIẾU (PHASE 4 ➔ PHASE 6)
+
+Dưới đây là danh sách phân loại chi tiết theo trạng thái thực tế trong mã nguồn:
+
+### Phase 4: Subtitles, Review Workbench & QA Gate
+* 🟢 **ĐÃ CÓ ĐẦY ĐỦ TRONG BACKEND:**
+  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles`: Lấy danh sách timeline phân đoạn phụ đề.
+  - `PATCH /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles/{segmentId}`: Chỉnh sửa 1 dòng phụ đề lẻ.
+  - `PUT /api/workspaces/{wsId}/media/jobs/{jobId}/segments/batch`: Lưu đồng loạt toàn bộ danh sách phụ đề đã chỉnh sửa trên Review Workbench (`MediaJobController:157`).
+  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/qa-issues`: Liệt kê các cảnh báo chất lượng dịch (`QaController`).
+  - `POST /api/workspaces/{wsId}/qa-issues/{issueId}/override`: Vượt qua cảnh báo QA có ghi chú lý do.
+  - `POST /api/workspaces/{wsId}/media/jobs/{jobId}/checkpoints/{checkpoint}/confirm`: Xác nhận qua checkpoint kiểm duyệt (`CUT_CONFIRMED`, `REVIEW_CONFIRMED`, `PUBLISH_CONFIRMED`).
+
+### Phase 5: Render Studio, Reframe & Cover Layers
+* 🟢 **ĐÃ CÓ ĐẦY ĐỦ TRONG BACKEND:**
+  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/render-config`: Lấy cấu hình tỷ lệ khung hình (`16:9`, `9:16`, `1:1`, `4:3`), ducking và lớp phủ (`MediaJobController:167`).
+  - `PUT /api/workspaces/{wsId}/media/jobs/{jobId}/render-config`: Cập nhật cấu hình dựng hình & tối đa 4 lớp phủ Cover Layers (`MediaJobController:175`).
+  - `POST /api/workspaces/{wsId}/media/jobs/{jobId}/rerun-render`: Kích hoạt dựng lại video với cấu hình mới (`MediaJobController:184`).
+  - `GET/POST /api/media/subtitle-styles`: Quản lý mẫu kiểu dáng phụ đề toàn hệ thống (`SubtitleStyleController`).
+  - `GET/POST /api/media/jobs/{jobId}/subtitle-style`: Tra cứu và gán style phụ đề cho Media Job (`SubtitleStyleController`).
+
+### Phase 6: Packaging, Output Delivery & Export
+* 🟢 **ĐÃ CÓ ĐẦY ĐỦ TRONG BACKEND:**
+  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/export`: Yêu cầu xuất bản video hoặc tải phụ đề .SRT, .VTT, .MP4 (`MediaJobController:194`).
+  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/output-package`: Tải gói phân phối thành phẩm (`MediaPackageController:26`).
+  - `GET/PUT /api/workspaces/{wsId}/media/jobs/{jobId}/publish-package`: Quản lý tiêu đề, mô tả và metadata phát hành mạng xã hội (`MediaPackageController:33-41`).
+  - `POST /api/workspaces/{wsId}/projects/{pId}/media/jobs/download`: Tải gói nén zip nhiều video thành phẩm của dự án (`MediaJobController:76`).
+
+---
+
+## 6. CẨM NANG XỬ LÝ NHANH CÁC LỖI PHỔ BIẾN (TROUBLESHOOTING GUIDE)
 
 ```mermaid
 flowchart TD

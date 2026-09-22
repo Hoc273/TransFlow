@@ -95,7 +95,7 @@ public class MediaJobController {
                                                     @PathVariable UUID workspaceId,
                                                     @PathVariable UUID jobId) {
         MediaJob job = jobService.cancelJob(workspaceId, user.id(), jobId);
-        return ApiResponse.<MediaJobResponse>builder().data(MediaJobResponse.from(job)).build();
+        return ApiResponse.<MediaJobResponse>builder().data(toResponse(job)).build();
     }
 
     @PostMapping("/media/jobs/{jobId}/voice")
@@ -104,7 +104,7 @@ public class MediaJobController {
                                                    @PathVariable UUID jobId,
                                                    @RequestBody VoiceRequest request) {
         MediaJob job = jobService.setVoice(workspaceId, user.id(), jobId, request.ttsVoiceId());
-        return ApiResponse.<MediaJobResponse>builder().data(MediaJobResponse.from(job)).build();
+        return ApiResponse.<MediaJobResponse>builder().data(toResponse(job)).build();
     }
 
     @PostMapping("/media/jobs/{jobId}/checkpoints/{checkpoint}/confirm")

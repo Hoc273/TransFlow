@@ -15,14 +15,28 @@ public record CreateMediaJobRequest(
         @NotNull UUID rootAssetId,
         @NotBlank String recipeId,
         String processingMode,
+        String sourceLang,
         @NotBlank String targetLang,
         Integer requestedDurationSeconds,
         String subtitleMode,
         String outputAudioMode,
         Boolean sourceSeparationEnabled,
+        String ttsProviderId,
         UUID ttsVoiceId,
         Boolean visualContextEnabled,
         String workflowMode,
-        UUID presetId
+        UUID presetId,
+        String requestedMode,
+        Boolean keepOriginalAudio
 ) {
+    public CreateMediaJobRequest(
+            UUID projectId, UUID rootAssetId, String recipeId, String processingMode,
+            String targetLang, Integer requestedDurationSeconds, String subtitleMode,
+            String outputAudioMode, Boolean sourceSeparationEnabled, UUID ttsVoiceId,
+            Boolean visualContextEnabled, String workflowMode, UUID presetId
+    ) {
+        this(projectId, rootAssetId, recipeId, processingMode, null, targetLang,
+                requestedDurationSeconds, subtitleMode, outputAudioMode, sourceSeparationEnabled,
+                null, ttsVoiceId, visualContextEnabled, workflowMode, presetId, null, null);
+    }
 }

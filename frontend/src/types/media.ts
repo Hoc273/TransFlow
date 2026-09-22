@@ -566,13 +566,20 @@ export type NarrativePlan = {
 
 export type MediaSummaryProposal = {
   id: string
-  proposal_index: number | null
+  proposal_index?: number | null
+  proposalIndex?: number | null
   generated_by: 'AI' | 'HUMAN' | string
+  generatedBy?: 'AI' | 'HUMAN' | string
   generation_round: number
+  generationRound?: number
   archived_at: string | null
+  archivedAt?: string | null
   cut_ranges: CutRange[] | unknown
+  segments?: Array<{ segmentIndex?: number; startMs: number; endMs: number }>
   reasoning_note: string | null
+  reasoningNote?: string | null
   total_duration_ms: number
+  totalDurationMs?: number
   confidence: number | null
   warnings: ProposalWarning[] | unknown
   /** CT2 additive — TransformationPlan status */

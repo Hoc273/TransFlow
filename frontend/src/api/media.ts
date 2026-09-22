@@ -80,7 +80,7 @@ export function editMediaSegmentApi(
 export function refineNarrativePlanApi(workspaceId: string, jobId: string, feedback: string) {
   return apiRequest<void>(buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/refine`), {
     method: 'POST',
-    body: { feedback },
+    body: { feedback, feedbackText: feedback },
   })
 }
 
