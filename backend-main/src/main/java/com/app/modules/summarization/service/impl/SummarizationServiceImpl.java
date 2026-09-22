@@ -172,7 +172,8 @@ public class SummarizationServiceImpl implements SummarizationService {
 
     @Override
     @Transactional
-    public MediaJob createSummaryLanguageJob(UUID workspaceId, UUID userId, UUID jobId, String targetLang, UUID ttsVoiceId) {
+    public MediaJob createSummaryLanguageJob(UUID workspaceId, UUID userId, UUID jobId, String targetLang,
+                                             UUID ttsProviderId, UUID ttsVoiceId) {
         MediaJob source = mediaJobService.getJob(workspaceId, userId, jobId);
         access.requireProjectWriteAccess(workspaceId, userId, source.getProjectId());
 
@@ -185,7 +186,8 @@ public class SummarizationServiceImpl implements SummarizationService {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
 
-        return mediaJobService.createDerivedSummaryJob(workspaceId, userId, jobId, targetLang, ttsVoiceId);
+        return mediaJobService.createDerivedSummaryJob(
+                workspaceId, userId, jobId, targetLang, ttsProviderId, ttsVoiceId);
     }
 
     // ---- helpers ----

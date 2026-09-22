@@ -50,7 +50,7 @@ public class BatchController {
                                                                        @PathVariable UUID workspaceId,
                                                                        @PathVariable UUID projectId) {
         List<LocalizationBatchResponse> batches = batchService.listBatches(workspaceId, user.id(), projectId).stream()
-                .map(b -> LocalizationBatchResponse.from(b, null))
+                .map(this::toResponse)
                 .toList();
         return ApiResponse.<List<LocalizationBatchResponse>>builder().data(batches).build();
     }

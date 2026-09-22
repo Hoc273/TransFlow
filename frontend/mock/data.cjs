@@ -1362,6 +1362,35 @@ const notifications = [
   },
 ]
 
+// ---------------------------------------------------------------------------
+// Credit account, transaction history, and purchasable packages
+// ---------------------------------------------------------------------------
+const creditAccount = { balance: 18450 }
+
+const creditTransactions = [
+  {
+    id: 'ctx_1', userId: 'u_admin', amount: -125.5, balanceAfter: 18450,
+    type: 'AI_USAGE', performedByUserId: 'u_admin', refType: 'MEDIA_JOB',
+    refId: 'mj_1', createdAt: pastMinutes(35),
+  },
+  {
+    id: 'ctx_2', userId: 'u_admin', amount: 10000, balanceAfter: 18575.5,
+    type: 'PACKAGE_PURCHASE', performedByUserId: 'u_admin', refType: 'CREDIT_PACKAGE',
+    refId: 'cp_2', createdAt: pastDays(3),
+  },
+  {
+    id: 'ctx_3', userId: 'u_admin', amount: 5000, balanceAfter: 8575.5,
+    type: 'INITIAL_GRANT', performedByUserId: null, refType: null,
+    refId: null, createdAt: pastDays(30),
+  },
+]
+
+const creditPackages = [
+  { id: 'cp_1', name: 'Starter', creditAmount: 2500, priceAmount: 99000, priceCurrency: 'VND', isActive: true, createdAt: pastDays(90) },
+  { id: 'cp_2', name: 'Growth', creditAmount: 10000, priceAmount: 349000, priceCurrency: 'VND', isActive: true, createdAt: pastDays(90) },
+  { id: 'cp_3', name: 'Studio', creditAmount: 30000, priceAmount: 899000, priceCurrency: 'VND', isActive: true, createdAt: pastDays(90) },
+]
+
 module.exports = {
   uuid,
   now,
@@ -1395,4 +1424,7 @@ module.exports = {
   creativeJobs,
   creativeClips,
   creativeArtifacts,
+  creditAccount,
+  creditTransactions,
+  creditPackages,
 }

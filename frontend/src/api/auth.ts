@@ -29,7 +29,7 @@ export function sendRegisterOtpApi(email: string) {
   })
 }
 
-/** Fresh profile from DB — includes isPlatformAdmin (docs/34 Q-SA-08). */
+/** Fresh profile from DB. */
 export function getMeApi() {
   return apiRequest<User>('/auth/me')
 }

@@ -23,9 +23,8 @@ import {
 import { cn } from '@/lib/cn'
 import { formatDurationMs, resolveWorkflowMode } from '@/lib/media'
 import { ApiError } from '@/types/api'
-import type { MediaJob, RenderFailureDiagnostics } from '@/types/media'
+import type { MediaJob, RenderFailureDiagnostics, SegmentItem } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
-import type { SegmentItem } from '@/types/job'
 
 type Props = {
   workspaceId: string

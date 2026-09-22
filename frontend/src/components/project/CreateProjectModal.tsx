@@ -61,7 +61,6 @@ export function CreateProjectModal({
         name: trimmed,
         sourceLang,
         defaultGlossaryId: defaultGlossaryId || null,
-        tmEnabled: false,
         domain: domain.trim() || null,
         tone: tone.trim() || null,
       },

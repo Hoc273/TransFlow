@@ -125,7 +125,7 @@
 | POST | `/api/workspaces/{workspaceId}/projects/{projectId}/media/jobs/download` | LEAD/MEMBER/CLIENT (project) | Tải nhiều video đã hoàn thành do user chọn (thay cho "tải theo Batch"; danh sách lấy từ endpoint trên với `status=COMPLETED`). Body `{jobIds:[uuid]}` (không rỗng, loại trùng, tối đa `app.media-job.max-bulk-download`=20 → `DOWNLOAD_SELECTION_TOO_LARGE`). Mỗi job phải thuộc project, `COMPLETED` và qua quality gate như `/export`; job không đạt vào `skipped` với `reason` `NOT_FOUND` (không tồn tại/khác project) `|` `NOT_COMPLETED` `|` `QA_BLOCKED`. Không job nào đạt → `QA_BLOCKED` (có job bị QA chặn) hoặc `STAGE_NOT_READY`. Trả `{downloadUrl, fileName, expiresAt, includedJobIds[], skipped[{jobId, reason}]}`: zip `<tên gốc>_<lang>_<jobId8>.mp4` được nén tạm rồi upload lên MinIO `tmp/downloads/` (tự hết hạn bằng lifecycle rule), `downloadUrl` là presigned URL. Chạy đồng bộ. |
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}` | LEAD/MEMBER/CLIENT | Chi tiết job + `stages[]` (8 stage kỹ thuật, FE tự ẩn stage `SKIPPED`). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/cancel` | LEAD/MEMBER (project) | Huỷ job đang chạy; gửi cancel xuống Worker sau khi transaction commit (Arch §6.2). |
-| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/voice` | LEAD/MEMBER (project) | `{ttsVoiceId}` (null = bỏ chọn giọng, chỉ hợp lệ nếu `output_audio_mode=ORIGINAL_ONLY`). Từ chối nếu `tts_voices.language ≠ target_lang`. |
+| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/voice` | LEAD/MEMBER (project) | `{ttsProviderId,ttsVoiceId}` (cả hai null = bỏ chọn giọng, chỉ hợp lệ nếu `output_audio_mode=ORIGINAL_ONLY`). Hai ID phải được gửi theo cặp; provider phải active, có capability `TTS`, khả dụng với user; voice phải active, thuộc đúng provider và khớp `target_lang`. |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/checkpoints/{checkpoint}/confirm` | **job-ownership** (Lead mọi job; Member chỉ job `created_by_user_id = mình`; Client bị chặn) | `{checkpoint}` ∈ `CUT_CONFIRMED\|REVIEW_CONFIRMED\|PUBLISH_CONFIRMED`. Chỉ áp dụng khi `workflow_mode=MANUAL` (Arch §5.6). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/stages/{stageName}/rerun` | LEAD/MEMBER (project) | Rerun-from-stage (Arch §5.7). `409` nếu stage trước chưa `COMPLETED/SKIPPED`. Không tính lại Credit cho stage output tái sử dụng. |
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/subtitles` | LEAD/MEMBER/CLIENT | List `subtitle_segments` theo `seq`. |
@@ -155,6 +155,7 @@
   "subtitleMode": "SOFT_SUB",
   "outputAudioMode": "DUB_MIX",
   "sourceSeparationEnabled": true,
+  "ttsProviderId": "uuid",
   "ttsVoiceId": "uuid",
   "workflowMode": "MANUAL",
   "presetId": "uuid"
@@ -184,7 +185,7 @@
 | PUT | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/proposals/{proposalId}` | LEAD/MEMBER (project) | Sửa Custom Proposal (chỉ áp dụng cho `generated_by=HUMAN`). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/proposals/{proposalId}/select` | LEAD/MEMBER (project) | Đặt `media_jobs.selected_proposal_id`. `409` nếu proposal đã dùng để tạo bản dịch và job yêu cầu đổi phương án trước khi refine tiếp (SRS §5.5). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/refine` | LEAD/MEMBER (project) | `{feedbackText}` → AI viết lại kịch bản (round mới). Tối đa **5 lần/phiên**; phiên lưu Redis TTL, hết hạn không mất proposal đã lưu (Arch §7.4). `429` khi vượt 5 lần. |
-| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/summary-languages` | LEAD/MEMBER (project) | `{targetLang, ttsVoiceId?}` — chỉ khi phương án đã chọn là AI. Tạo 1 `media_jobs` mới với `source_summary_job_id` trỏ về job gốc, giữ nguyên đoạn đã chọn, `SUMMARIZE` = `SKIPPED` (Arch §7.7). |
+| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/summary-languages` | LEAD/MEMBER (project) | `{targetLang, ttsProviderId?, ttsVoiceId?}` — hai ID TTS phải cùng có hoặc cùng vắng; chỉ khi phương án đã chọn là AI. Tạo 1 `media_jobs` mới với `source_summary_job_id` trỏ về job gốc, giữ nguyên đoạn đã chọn, `SUMMARIZE` = `SKIPPED` (Arch §7.7). |
 
 ---
 

@@ -115,15 +115,42 @@ class ProviderResolverServiceTest {
 
     @Test
     void testResolveVoiceLanguage() {
+        UUID providerId = UUID.randomUUID();
         UUID voiceId = UUID.randomUUID();
         TtsVoice voice = new TtsVoice();
         voice.setId(voiceId);
+        voice.setProviderSource("USER");
+        voice.setUserProviderId(providerId);
         voice.setLanguage("vi");
+        voice.setActive(true);
+        UserAiProvider provider = new UserAiProvider();
+        provider.setId(providerId);
+        provider.setUserId(userId);
+        provider.setCapabilities(List.of("TTS"));
+        provider.setActive(true);
 
         when(ttsVoiceRepository.findById(voiceId)).thenReturn(Optional.of(voice));
+        when(userAiProviderRepository.findByIdAndUserId(providerId, userId)).thenReturn(Optional.of(provider));
 
-        Optional<String> lang = service.resolveVoiceLanguage(voiceId);
+        Optional<String> lang = service.resolveVoiceLanguage(userId, providerId, voiceId);
         assertTrue(lang.isPresent());
         assertEquals("vi", lang.get());
+    }
+
+    @Test
+    void testResolveVoiceLanguageRejectsMismatchedProvider() {
+        UUID ownerProviderId = UUID.randomUUID();
+        UUID requestedProviderId = UUID.randomUUID();
+        UUID voiceId = UUID.randomUUID();
+        TtsVoice voice = new TtsVoice();
+        voice.setId(voiceId);
+        voice.setProviderSource("USER");
+        voice.setUserProviderId(ownerProviderId);
+        voice.setLanguage("vi");
+        voice.setActive(true);
+        when(ttsVoiceRepository.findById(voiceId)).thenReturn(Optional.of(voice));
+
+        assertTrue(service.resolveVoiceLanguage(userId, requestedProviderId, voiceId).isEmpty());
+        verifyNoInteractions(userAiProviderRepository, platformAiProviderRepository);
     }
 }

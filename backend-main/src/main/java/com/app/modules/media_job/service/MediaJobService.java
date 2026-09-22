@@ -3,6 +3,7 @@ package com.app.modules.media_job.service;
 import com.app.modules.media_job.dto.BatchEditSegmentsRequest;
 import com.app.modules.media_job.dto.CreateMediaJobRequest;
 import com.app.modules.media_job.dto.PatchSubtitleRequest;
+import com.app.modules.media_job.dto.VoiceRequest;
 import com.app.modules.media_job.entity.Checkpoint;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
@@ -33,7 +34,9 @@ public interface MediaJobService {
 
     MediaJob cancelJob(UUID workspaceId, UUID userId, UUID jobId);
 
-    MediaJob setVoice(UUID workspaceId, UUID userId, UUID jobId, UUID ttsVoiceId);
+    MediaJob setVoice(UUID workspaceId, UUID userId, UUID jobId, UUID ttsProviderId, UUID ttsVoiceId);
+
+    MediaJob setVoice(UUID workspaceId, UUID userId, UUID jobId, VoiceRequest request);
 
     void confirmCheckpoint(UUID workspaceId, UUID userId, UUID jobId, Checkpoint checkpoint);
 
@@ -67,7 +70,8 @@ public interface MediaJobService {
      * TRANSLATE -> TTS(optional) -> RENDER. Callers (summarization module) validate the source job's
      * selected proposal is AI-generated before calling this.
      */
-    MediaJob createDerivedSummaryJob(UUID workspaceId, UUID userId, UUID sourceJobId, String targetLang, UUID ttsVoiceId);
+    MediaJob createDerivedSummaryJob(UUID workspaceId, UUID userId, UUID sourceJobId, String targetLang,
+                                     UUID ttsProviderId, UUID ttsVoiceId);
 
     /**
      * Shared job-ownership rule (System_Architecture.md §4.2): CLIENT always denied, LEAD always

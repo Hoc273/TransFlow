@@ -166,7 +166,7 @@ export function BatchListPage() {
               </thead>
               <tbody>
                 {batches.map((batch) => {
-                  const done = batch.completedDocuments + batch.failedDocuments
+                  const done = (batch.completedDocuments ?? 0) + (batch.failedDocuments ?? 0)
                   const total = batch.totalDocuments || 1
                   const status = asJobStatus(String(batch.status))
                   const targetPath = `/w/${workspaceId}/batches/${batch.id}`

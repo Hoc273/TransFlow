@@ -20,6 +20,7 @@ public record CreateMediaJobRequest(
         String subtitleMode,
         String outputAudioMode,
         Boolean sourceSeparationEnabled,
+        UUID ttsProviderId,
         UUID ttsVoiceId,
         Boolean visualContextEnabled,
         String workflowMode,

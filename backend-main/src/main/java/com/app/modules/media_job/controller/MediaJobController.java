@@ -103,7 +103,7 @@ public class MediaJobController {
                                                    @PathVariable UUID workspaceId,
                                                    @PathVariable UUID jobId,
                                                    @RequestBody VoiceRequest request) {
-        MediaJob job = jobService.setVoice(workspaceId, user.id(), jobId, request.ttsVoiceId());
+        MediaJob job = jobService.setVoice(workspaceId, user.id(), jobId, request);
         return ApiResponse.<MediaJobResponse>builder().data(MediaJobResponse.from(job)).build();
     }
 

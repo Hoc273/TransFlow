@@ -1,57 +1,60 @@
 import type { JobStatus } from '@/components/shared/StatusBadge'
+import type { MediaJob } from '@/types/media'
 
-export type BatchSummary = {
-  id: string
-  projectId: string
-  name: string
-  status: JobStatus | string
-  totalDocuments: number
-  completedDocuments: number
-  failedDocuments: number
-  totalSizeBytes: number
-  createdAt: string
-  updatedAt: string
-}
-
-export type BatchJob = {
-  jobId: string
-  targetLang: string
-  status: JobStatus | string
-}
+export type BatchJob = MediaJob
 
 export type BatchDocument = {
   documentId: string
   name: string
   sourceLang: string
-  origin: string
+  origin?: string
   status: JobStatus | string
   jobs: BatchJob[]
 }
 
+export type BatchSummary = {
+  id: string
+  workspaceId: string
+  projectId: string
+  name: string | null
+  sourceAssetIds: string[]
+  targetLang: string
+  sharedConfig: Record<string, unknown>
+  status: JobStatus | string
+  createdBy: string
+  createdAt: string
+  jobs?: MediaJob[]
+  totalDocuments?: number
+  completedDocuments?: number
+  failedDocuments?: number
+  documents?: BatchDocument[]
+}
+
 export type BatchDetail = BatchSummary & {
-  documents: BatchDocument[]
+  jobs?: MediaJob[]
+  documents?: BatchDocument[]
 }
 
-export type BatchCreateResponse = {
-  batchId: string
-  documents: Array<{
-    documentId: string
-    fileName: string
-    jobIds: string[]
-  }>
-}
-
-export type RetryResponse = {
-  batchId: string
-  documentId: string
-  retriedJobIds: string[]
-  message: string
+export type BatchCreateResponse = BatchDetail & {
+  batchId?: string
 }
 
 export type CreateBatchParams = {
   projectId: string
-  sourceLang: string
-  targetLangs: string[]
+  sourceAssetIds?: string[]
+  targetLang?: string
   name?: string
-  files: File[]
+  sourceLang?: string
+  targetLangs?: string[]
+  files?: File[]
+  sharedConfig?: {
+    processingMode?: 'TRANSLATE_ONLY' | 'HYBRID'
+    subtitleMode?: 'HARD_SUB' | 'SOFT_SUB'
+    outputAudioMode?: 'ORIGINAL_ONLY' | 'DUB_REPLACE' | 'DUB_MIX'
+    sourceSeparationEnabled?: boolean
+    ttsProviderId?: string | null
+    ttsVoiceId?: string | null
+    workflowMode?: 'MANUAL' | 'AUTO'
+    presetId?: string | null
+  }
 }

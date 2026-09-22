@@ -12,6 +12,7 @@ public record SharedJobConfig(
         String subtitleMode,
         String outputAudioMode,
         Boolean sourceSeparationEnabled,
+        UUID ttsProviderId,
         UUID ttsVoiceId,
         String workflowMode,
         UUID presetId

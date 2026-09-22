@@ -2,7 +2,7 @@ import { useMemo, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPlayerPlay } from '@tabler/icons-react'
 import { cn } from '@/lib/cn'
-import type { SegmentItem } from '@/types/job'
+import type { SegmentItem } from '@/types/media'
 import type { QaBadgeSummary } from '@/components/media-studio/MediaQaPanel'
 
 type Props = {

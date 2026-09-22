@@ -80,6 +80,9 @@ public class MediaJob extends BaseEntity {
     @Column(name = "tts_voice_id")
     private UUID ttsVoiceId;
 
+    @Column(name = "tts_provider_id")
+    private UUID ttsProviderId;
+
     @Column(name = "visual_context_enabled", nullable = false)
     private boolean visualContextEnabled = false;
 

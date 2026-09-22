@@ -2,9 +2,6 @@ import { apiRequest, buildWorkspacePath } from '@/lib/api/client'
 import type { UsageSummary, WorkspaceDashboardResponse } from '@/types/dashboard'
 
 export type UsageQuery = {
-  projectId?: string
-  documentId?: string
-  jobId?: string
   groupBy?: 'project' | 'user' | 'operation' | string
   from?: string
   to?: string
@@ -12,9 +9,6 @@ export type UsageQuery = {
 
 export function getUsageApi(workspaceId: string, query: UsageQuery = {}): Promise<UsageSummary> {
   const search = new URLSearchParams()
-  if (query.projectId) search.set('projectId', query.projectId)
-  if (query.documentId) search.set('documentId', query.documentId)
-  if (query.jobId) search.set('jobId', query.jobId)
   if (query.groupBy) search.set('groupBy', query.groupBy)
   if (query.from) search.set('from', query.from)
   if (query.to) search.set('to', query.to)

@@ -183,14 +183,14 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
     return batches
       .filter(
         (b) =>
-          b.name.toLowerCase().includes(q) ||
+          (b.name || '').toLowerCase().includes(q) ||
           String(b.status).toLowerCase().includes(q),
       )
       .map((b) => ({
         id: `batch-${b.id}`,
         category: 'batches' as const,
         categoryLabel: t('common:commandPalette.batches', { defaultValue: 'Xử lý hàng loạt' }),
-        title: b.name,
+        title: b.name || b.id.slice(0, 8),
         badge: asJobStatus(String(b.status)),
         badgeColor: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-mono text-[10px]',
         icon: IconStack2,

@@ -29,7 +29,7 @@ export function BatchDetailPage() {
 
   useDocumentTitle(data?.name || t('batch:detail.title'))
 
-  const done = data ? data.completedDocuments + data.failedDocuments : 0
+  const done = data ? (data.completedDocuments ?? 0) + (data.failedDocuments ?? 0) : 0
   const total = data?.totalDocuments || 1
   const status = asJobStatus(data?.status)
   const isPartial = status === 'PARTIALLY_FAILED'
@@ -149,7 +149,7 @@ export function BatchDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.documents.map((doc) => {
+                  {(data.documents ?? []).map((doc) => {
                     const docStatus = asJobStatus(String(doc.status))
                     const hasFailedJob = doc.jobs.some(
                       (j) => String(j.status).toUpperCase() === 'FAILED',
@@ -167,7 +167,7 @@ export function BatchDetailPage() {
                           <div className="flex flex-wrap gap-1">
                             {doc.jobs.map((job) => (
                               <span
-                                key={job.jobId}
+                                key={job.id || (job as any).jobId}
                                 className="inline-flex items-center gap-1 rounded bg-[var(--color-bg-surface-2)] px-1.5 py-0.5 text-[11px]"
                               >
                                 <span className="font-medium uppercase">{job.targetLang}</span>
@@ -198,7 +198,7 @@ export function BatchDetailPage() {
                   })}
                 </tbody>
               </table>
-              {data.documents.length === 0 && (
+              {(data.documents ?? []).length === 0 && (
                 <EmptyState
                   title={t('batch:detail.noDocuments')}
                   className="py-10"

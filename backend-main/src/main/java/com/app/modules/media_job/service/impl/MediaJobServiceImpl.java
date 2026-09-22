@@ -8,6 +8,7 @@ import com.app.modules.media_asset.service.MediaAssetService;
 import com.app.modules.media_job.dto.BatchEditSegmentsRequest;
 import com.app.modules.media_job.dto.CreateMediaJobRequest;
 import com.app.modules.media_job.dto.PatchSubtitleRequest;
+import com.app.modules.media_job.dto.VoiceRequest;
 import com.app.modules.media_job.entity.Checkpoint;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
@@ -110,8 +111,9 @@ public class MediaJobServiceImpl implements MediaJobService {
             throw new AppException(ErrorCode.TERMS_NOT_ACCEPTED);
         }
 
-        boolean isLocalization = MediaJob.RECIPE_LOCALIZATION_FULL.equals(req.recipeId());
-        boolean isSummary = MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(req.recipeId());
+        String canonicalRecipeId = canonicalizeRecipe(req.recipeId());
+        boolean isLocalization = MediaJob.RECIPE_LOCALIZATION_FULL.equals(canonicalRecipeId);
+        boolean isSummary = MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(canonicalRecipeId);
         if (!isLocalization && !isSummary) {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
@@ -147,8 +149,11 @@ public class MediaJobServiceImpl implements MediaJobService {
         if (voiceRequired != (req.ttsVoiceId() != null)) {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
+        if ((req.ttsProviderId() == null) != (req.ttsVoiceId() == null)) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
         if (req.ttsVoiceId() != null) {
-            requireVoiceLanguageMatches(req.ttsVoiceId(), req.targetLang());
+            requireVoiceLanguageMatches(userId, req.ttsProviderId(), req.ttsVoiceId(), req.targetLang());
         }
 
         if (!credit.hasSufficientBalance(userId)) {
@@ -162,13 +167,14 @@ public class MediaJobServiceImpl implements MediaJobService {
         job.setProjectId(req.projectId());
         job.setRootAssetId(req.rootAssetId());
         job.setBatchId(batchId);
-        job.setRecipeId(req.recipeId());
+        job.setRecipeId(canonicalRecipeId);
         job.setProcessingMode(processingMode);
         job.setTargetLang(req.targetLang());
         job.setRequestedDurationSeconds(req.requestedDurationSeconds());
         job.setSubtitleMode(subtitleMode);
         job.setOutputAudioMode(outputAudioMode);
         job.setSourceSeparationEnabled(sourceSeparationEnabled);
+        job.setTtsProviderId(req.ttsProviderId());
         job.setTtsVoiceId(req.ttsVoiceId());
         job.setVisualContextEnabled(visualContextEnabled);
         job.setPresetId(resolvedPresetId);
@@ -221,12 +227,19 @@ public class MediaJobServiceImpl implements MediaJobService {
         };
     }
 
-    private void requireVoiceLanguageMatches(UUID ttsVoiceId, String targetLang) {
-        String voiceLang = providerResolver.resolveVoiceLanguage(ttsVoiceId)
+    private void requireVoiceLanguageMatches(UUID userId, UUID ttsProviderId, UUID ttsVoiceId, String targetLang) {
+        String voiceLang = providerResolver.resolveVoiceLanguage(userId, ttsProviderId, ttsVoiceId)
                 .orElseThrow(() -> new AppException(ErrorCode.VALIDATION_ERROR));
         if (!voiceLang.equalsIgnoreCase(targetLang)) {
             throw new AppException(ErrorCode.VOICE_LANGUAGE_MISMATCH);
         }
+    }
+
+    private String canonicalizeRecipe(String recipeId) {
+        if ("summary.generative".equals(recipeId)) {
+            return MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH;
+        }
+        return recipeId;
     }
 
     private static <E extends Enum<E>> E parseEnum(Class<E> type, String value) {
@@ -304,18 +317,43 @@ public class MediaJobServiceImpl implements MediaJobService {
 
     @Override
     @Transactional
-    public MediaJob setVoice(UUID workspaceId, UUID userId, UUID jobId, UUID ttsVoiceId) {
+    public MediaJob setVoice(UUID workspaceId, UUID userId, UUID jobId, UUID ttsProviderId, UUID ttsVoiceId) {
+        return setVoice(workspaceId, userId, jobId, new VoiceRequest(ttsProviderId, ttsVoiceId));
+    }
+
+    @Override
+    @Transactional
+    public MediaJob setVoice(UUID workspaceId, UUID userId, UUID jobId, VoiceRequest request) {
         MediaJob job = requireJobInWorkspace(workspaceId, jobId);
         access.requireProjectWriteAccess(workspaceId, userId, job.getProjectId());
+        job = mediaJobRepository.findWithLockById(jobId)
+                .filter(locked -> workspaceId.equals(locked.getWorkspaceId()))
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
 
-        if (ttsVoiceId == null) {
-            if (job.getOutputAudioMode() != MediaJob.OutputAudioMode.ORIGINAL_ONLY) {
-                throw new AppException(ErrorCode.VALIDATION_ERROR);
-            }
+        if (request == null || request.isDeselect()) {
+            job.setOutputAudioMode(MediaJob.OutputAudioMode.ORIGINAL_ONLY);
+            job.setTtsProviderId(null);
             job.setTtsVoiceId(null);
         } else {
-            requireVoiceLanguageMatches(ttsVoiceId, job.getTargetLang());
-            job.setTtsVoiceId(ttsVoiceId);
+            UUID resolvedProviderId;
+            UUID resolvedVoiceId;
+            if (request.isExplicitBinding()) {
+                resolvedProviderId = request.ttsProviderId();
+                resolvedVoiceId = request.ttsVoiceId();
+                requireVoiceLanguageMatches(userId, resolvedProviderId, resolvedVoiceId, job.getTargetLang());
+            } else if (request.hasLegacyVoiceId()) {
+                ProviderResolverService.ResolvedVoice resolved = providerResolver
+                        .resolveLegacyVoice(userId, request.voiceId(), job.getTargetLang());
+                resolvedProviderId = resolved.providerId();
+                resolvedVoiceId = resolved.voiceId();
+            } else {
+                throw new AppException(ErrorCode.VALIDATION_ERROR);
+            }
+            if (job.getOutputAudioMode() == MediaJob.OutputAudioMode.ORIGINAL_ONLY) {
+                job.setOutputAudioMode(MediaJob.OutputAudioMode.DUB_REPLACE);
+            }
+            job.setTtsProviderId(resolvedProviderId);
+            job.setTtsVoiceId(resolvedVoiceId);
         }
         return mediaJobRepository.save(job);
     }
@@ -561,14 +599,18 @@ public class MediaJobServiceImpl implements MediaJobService {
 
     @Override
     @Transactional
-    public MediaJob createDerivedSummaryJob(UUID workspaceId, UUID userId, UUID sourceJobId, String targetLang, UUID ttsVoiceId) {
+    public MediaJob createDerivedSummaryJob(UUID workspaceId, UUID userId, UUID sourceJobId, String targetLang,
+                                            UUID ttsProviderId, UUID ttsVoiceId) {
         MediaJob source = requireJobInWorkspace(workspaceId, sourceJobId);
         access.requireProjectWriteAccess(workspaceId, userId, source.getProjectId());
 
+        if ((ttsProviderId == null) != (ttsVoiceId == null)) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
         MediaJob.OutputAudioMode outputAudioMode = ttsVoiceId != null
                 ? MediaJob.OutputAudioMode.DUB_REPLACE : MediaJob.OutputAudioMode.ORIGINAL_ONLY;
         if (ttsVoiceId != null) {
-            requireVoiceLanguageMatches(ttsVoiceId, targetLang);
+            requireVoiceLanguageMatches(userId, ttsProviderId, ttsVoiceId, targetLang);
         }
         if (!credit.hasSufficientBalance(userId)) {
             throw new AppException(ErrorCode.INSUFFICIENT_CREDIT);
@@ -585,6 +627,7 @@ public class MediaJobServiceImpl implements MediaJobService {
         job.setSelectedProposalId(source.getSelectedProposalId());
         job.setSubtitleMode(source.getSubtitleMode());
         job.setOutputAudioMode(outputAudioMode);
+        job.setTtsProviderId(ttsProviderId);
         job.setTtsVoiceId(ttsVoiceId);
         job.setVisualContextEnabled(false);
         job.setPresetId(source.getPresetId());

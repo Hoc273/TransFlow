@@ -50,6 +50,7 @@ class MediaJobServiceImplTest {
     private final UUID projectId = UUID.randomUUID();
     private final UUID userId = UUID.randomUUID();
     private final UUID rootAssetId = UUID.randomUUID();
+    private final UUID providerId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
@@ -67,7 +68,8 @@ class MediaJobServiceImplTest {
 
     private CreateMediaJobRequest localizationRequest(String outputAudioMode, boolean sourceSeparation, UUID voiceId) {
         return new CreateMediaJobRequest(projectId, rootAssetId, MediaJob.RECIPE_LOCALIZATION_FULL,
-                "TRANSLATE_ONLY", "en", null, null, outputAudioMode, sourceSeparation, voiceId, null, null, null);
+                "TRANSLATE_ONLY", "en", null, null, outputAudioMode, sourceSeparation,
+                voiceId != null ? providerId : null, voiceId, null, null, null);
     }
 
     private void stubHappyPathUpToCreditCheck() {
@@ -116,7 +118,7 @@ class MediaJobServiceImplTest {
     void createJob_hybridProcessingMode_activatesSummarizeStage() {
         stubHappyPathUpToCreditCheck();
         CreateMediaJobRequest req = new CreateMediaJobRequest(projectId, rootAssetId, MediaJob.RECIPE_LOCALIZATION_FULL,
-                "HYBRID", "en", null, null, "ORIGINAL_ONLY", false, null, null, null, null);
+                "HYBRID", "en", null, null, "ORIGINAL_ONLY", false, null, null, null, null, null);
 
         service.createJob(workspaceId, userId, req);
 
@@ -131,7 +133,7 @@ class MediaJobServiceImplTest {
     void createJob_dubMixWithSourceSeparation_activatesTtsAndAudioMix() {
         stubHappyPathUpToCreditCheck();
         UUID voiceId = UUID.randomUUID();
-        when(providerResolver.resolveVoiceLanguage(voiceId)).thenReturn(Optional.of("en"));
+        when(providerResolver.resolveVoiceLanguage(userId, providerId, voiceId)).thenReturn(Optional.of("en"));
 
         service.createJob(workspaceId, userId, localizationRequest("DUB_MIX", true, voiceId));
 
@@ -192,7 +194,7 @@ class MediaJobServiceImplTest {
         when(mediaAssetService.getAsset(workspaceId, userId, rootAssetId)).thenReturn(rootVideoAsset());
         when(mediaAssetService.hasCurrentConsent(rootAssetId)).thenReturn(true);
         UUID voiceId = UUID.randomUUID();
-        when(providerResolver.resolveVoiceLanguage(voiceId)).thenReturn(Optional.of("fr"));
+        when(providerResolver.resolveVoiceLanguage(userId, providerId, voiceId)).thenReturn(Optional.of("fr"));
 
         AppException ex = assertThrows(AppException.class, () ->
                 service.createJob(workspaceId, userId, localizationRequest("DUB_REPLACE", false, voiceId)));
@@ -216,10 +218,21 @@ class MediaJobServiceImplTest {
         when(mediaAssetService.getAsset(workspaceId, userId, rootAssetId)).thenReturn(rootVideoAsset());
         when(mediaAssetService.hasCurrentConsent(rootAssetId)).thenReturn(true);
         CreateMediaJobRequest req = new CreateMediaJobRequest(projectId, rootAssetId, MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH,
-                null, "vi", null, null, "ORIGINAL_ONLY", false, null, null, null, null);
+                null, "vi", null, null, "ORIGINAL_ONLY", false, null, null, null, null, null);
 
         AppException ex = assertThrows(AppException.class, () -> service.createJob(workspaceId, userId, req));
         assertEquals(ErrorCode.VALIDATION_ERROR, ex.getErrorCode());
+    }
+
+    @Test
+    void createJob_summaryGenerativeAlias_persistsCanonicalRecipe() {
+        stubHappyPathUpToCreditCheck();
+        CreateMediaJobRequest req = new CreateMediaJobRequest(projectId, rootAssetId, "summary.generative",
+                null, "vi", 60, null, "ORIGINAL_ONLY", false, null, null, false, "MANUAL", null);
+
+        MediaJob created = service.createJob(workspaceId, userId, req);
+
+        assertEquals(MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH, created.getRecipeId());
     }
 
     // ---- requireJobOwnership ----
@@ -418,7 +431,7 @@ class MediaJobServiceImplTest {
             return j;
         });
 
-        MediaJob derived = service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", null);
+        MediaJob derived = service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", null, null);
 
         assertEquals(MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH, derived.getRecipeId());
         assertEquals("vi", derived.getTargetLang());
@@ -449,7 +462,7 @@ class MediaJobServiceImplTest {
         source.setRequestedDurationSeconds(60);
         when(mediaJobRepository.findByIdAndWorkspaceId(sourceJobId, workspaceId)).thenReturn(Optional.of(source));
         UUID voiceId = UUID.randomUUID();
-        when(providerResolver.resolveVoiceLanguage(voiceId)).thenReturn(Optional.of("vi"));
+        when(providerResolver.resolveVoiceLanguage(userId, providerId, voiceId)).thenReturn(Optional.of("vi"));
         when(credit.hasSufficientBalance(userId)).thenReturn(true);
         when(mediaJobRepository.save(any(MediaJob.class))).thenAnswer(inv -> {
             MediaJob j = inv.getArgument(0);
@@ -457,9 +470,12 @@ class MediaJobServiceImplTest {
             return j;
         });
 
-        MediaJob derived = service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", voiceId);
+        MediaJob derived = service.createDerivedSummaryJob(
+                workspaceId, userId, sourceJobId, "vi", providerId, voiceId);
 
         assertEquals(MediaJob.OutputAudioMode.DUB_REPLACE, derived.getOutputAudioMode());
+        assertEquals(providerId, derived.getTtsProviderId());
+        assertEquals(voiceId, derived.getTtsVoiceId());
         var captor = org.mockito.ArgumentCaptor.forClass(MediaJobStage.class);
         verify(mediaJobStageRepository, times(8)).save(captor.capture());
         var tts = captor.getAllValues().stream().filter(s -> s.getStageName() == MediaJobStage.StageName.TTS).findFirst().orElseThrow();
@@ -473,10 +489,10 @@ class MediaJobServiceImplTest {
         source.setRequestedDurationSeconds(60);
         when(mediaJobRepository.findByIdAndWorkspaceId(sourceJobId, workspaceId)).thenReturn(Optional.of(source));
         UUID voiceId = UUID.randomUUID();
-        when(providerResolver.resolveVoiceLanguage(voiceId)).thenReturn(Optional.of("fr"));
+        when(providerResolver.resolveVoiceLanguage(userId, providerId, voiceId)).thenReturn(Optional.of("fr"));
 
         AppException ex = assertThrows(AppException.class, () ->
-                service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", voiceId));
+                service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", providerId, voiceId));
         assertEquals(ErrorCode.VOICE_LANGUAGE_MISMATCH, ex.getErrorCode());
     }
 
@@ -489,7 +505,7 @@ class MediaJobServiceImplTest {
         when(credit.hasSufficientBalance(userId)).thenReturn(false);
 
         AppException ex = assertThrows(AppException.class, () ->
-                service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", null));
+                service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", null, null));
         assertEquals(ErrorCode.INSUFFICIENT_CREDIT, ex.getErrorCode());
         verify(mediaJobRepository, never()).save(any());
     }

@@ -19,6 +19,8 @@ public interface TtsVoiceRepository extends JpaRepository<TtsVoice, UUID> {
 
     List<TtsVoice> findByProviderSourceAndIsActiveTrueAndLanguageIgnoreCase(String providerSource, String language);
 
+    List<TtsVoice> findByVoiceIdAndIsActiveTrue(String voiceId);
+
     @Modifying
     void deleteByUserProviderId(UUID userProviderId);
 }

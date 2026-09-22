@@ -24,8 +24,7 @@ vi.mock('@/hooks/useMedia', () => ({
 }))
 
 const { ExportPanel } = await import('./ExportPanel')
-import type { MediaJob } from '@/types/media'
-import type { JobDetail } from '@/types/job'
+import type { MediaJob, JobDetail } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
 
 function job(partial: Partial<MediaJob>): MediaJob {

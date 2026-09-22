@@ -2,8 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import type { MediaJob } from '@/types/media'
-import type { DocumentItem } from '@/types/document'
+import type { MediaAsset, MediaJob } from '@/types/media'
 import { exportTransformationJobApi, rerunTransformationStageApi } from '@/api/transformation'
 import { JobsTable, MediaListPage } from './MediaListPage'
 
@@ -27,10 +26,7 @@ vi.mock('@/hooks/useMedia', () => ({
     dataUpdatedAt: 0,
     refetch: vi.fn(),
   }),
-}))
-
-vi.mock('@/hooks/useDocuments', () => ({
-  useDocuments: () => ({ data: [mockDoc] }),
+  useProjectMediaAssets: () => ({ data: [mockAsset] }),
 }))
 
 vi.mock('@/components/media-studio/UploadConsentPanel', () => ({
@@ -61,13 +57,16 @@ const mockJob: MediaJob = {
   stages: [],
 }
 
-const mockDoc: DocumentItem = {
-  id: 'doc-1',
+const mockAsset: MediaAsset = {
+  id: 'asset-1',
   projectId: 'prj-1',
-  name: 'my_awesome_video_presentation_2026.mp4',
-  sourceLang: 'en',
-  status: 'READY',
-  origin: 'VIDEO',
+  parentAssetId: null,
+  assetType: 'SOURCE_VIDEO',
+  fileName: 'my_awesome_video_presentation_2026.mp4',
+  mimeType: 'video/mp4',
+  fileSizeBytes: 1024,
+  durationMs: 60_000,
+  processingStatus: 'READY',
   createdAt: new Date().toISOString(),
 }
 
@@ -79,7 +78,7 @@ describe('JobsTable — video title display', () => {
           workspaceId="ws"
           projectId="prj-1"
           jobs={[mockJob]}
-          documents={[mockDoc]}
+          assets={[mockAsset]}
           isLoading={false}
           language="vi"
           page={0}
@@ -108,7 +107,7 @@ describe('JobsTable — video title display', () => {
           workspaceId="ws"
           projectId="prj-1"
           jobs={[mockJob]}
-          documents={[]}
+          assets={[]}
           isLoading={false}
           language="vi"
           page={0}
@@ -152,7 +151,7 @@ describe('JobsTable — Stage and Status column styling', () => {
           workspaceId="ws"
           projectId="prj-1"
           jobs={[jobWithStage]}
-          documents={[mockDoc]}
+          assets={[mockAsset]}
           isLoading={false}
           language="vi"
           page={0}
@@ -181,7 +180,7 @@ describe('JobsTable — Stage and Status column styling', () => {
           workspaceId="ws"
           projectId="prj-1"
           jobs={[jobWithCompletedPhase]}
-          documents={[mockDoc]}
+          assets={[mockAsset]}
           isLoading={false}
           language="vi"
           page={0}
@@ -233,7 +232,7 @@ describe('JobsTable — Action column buttons', () => {
           workspaceId="ws"
           projectId="prj-1"
           jobs={[mockJob]}
-          documents={[mockDoc]}
+          assets={[mockAsset]}
           isLoading={false}
           language="vi"
           page={0}
@@ -258,7 +257,7 @@ describe('JobsTable — Action column buttons', () => {
           workspaceId="ws"
           projectId="prj-1"
           jobs={[failedJob]}
-          documents={[mockDoc]}
+          assets={[mockAsset]}
           isLoading={false}
           language="vi"
           page={0}
@@ -281,7 +280,7 @@ describe('JobsTable — Action column buttons', () => {
           workspaceId="ws"
           projectId="prj-1"
           jobs={[mockJob]}
-          documents={[mockDoc]}
+          assets={[mockAsset]}
           isLoading={false}
           language="vi"
           page={0}
@@ -308,7 +307,7 @@ describe('JobsTable — Action column buttons', () => {
           workspaceId="ws"
           projectId="prj-1"
           jobs={[failedJob]}
-          documents={[mockDoc]}
+          assets={[mockAsset]}
           isLoading={false}
           language="vi"
           page={0}

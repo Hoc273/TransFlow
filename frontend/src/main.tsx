@@ -5,10 +5,8 @@ import { applyThemeToDocument, useUiStore } from '@/store/uiStore'
 import './index.css'
 import '@/styles/app-shell.css'
 import '@/styles/forms.css'
-import '@/styles/platform.css'
 import '@/pages/settings/settings.css'
 import '@/pages/media/media-studio.css'
-import '@/pages/editor/editor.css'
 import App from './App.tsx'
 
 // Apply theme as early as possible to avoid flash

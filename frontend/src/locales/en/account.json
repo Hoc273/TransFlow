@@ -9,6 +9,7 @@
     "profile": "Profile",
     "security": "Security",
     "preferences": "Preferences",
+    "credit": "Credit & billing",
     "memberships": "Memberships",
     "myWorkspaces": "My Workspaces",
     "notificationsSessions": "Notifications & Sessions",
@@ -117,6 +118,44 @@
     "cannotLeaveLastAdmin": "You cannot leave — you are the last Admin. Transfer ownership first.",
     "empty": "You are not a member of any workspace yet.",
     "wsSettingsNote": "Workspace-level settings (Members, AI Providers) are separate. Use the sidebar under System when you have Admin access — /w/:id/settings/members and /w/:id/settings/provider."
+  },
+  "credit": {
+    "available": "Available balance",
+    "unit": "credits",
+    "balanceHelp": "Credits are charged when AI and media processing stages run. Personal purchases are available to every workspace role.",
+    "addTitle": "Add credits",
+    "addDesc": "Choose a package and record its payment reference. Online payment is not connected in this MVP.",
+    "buy": "Buy a credit package",
+    "history": "Credit ledger",
+    "historyDesc": "Every grant, purchase, usage charge and adjustment to your account.",
+    "filterLabel": "Transaction type",
+    "allTypes": "All transaction types",
+    "columns": {
+      "transaction": "Transaction",
+      "date": "Date",
+      "amount": "Change",
+      "balance": "Balance after"
+    },
+    "types": {
+      "INITIAL_GRANT": "Initial grant",
+      "PACKAGE_PURCHASE": "Package purchase",
+      "AI_USAGE": "AI usage",
+      "ADJUSTMENT": "Adjustment"
+    },
+    "noReference": "Account transaction",
+    "empty": "No credit transactions match this filter.",
+    "page": "Page {{current}} of {{total}}",
+    "purchaseSuccess": "Package purchased. Your new balance is {{balance}} credits.",
+    "modal": {
+      "title": "Choose a credit package",
+      "desc": "The selected amount is credited immediately after confirmation.",
+      "confirm": "Confirm purchase",
+      "noPackages": "No credit packages are currently available.",
+      "reference": "Payment reference",
+      "referencePlaceholder": "e.g. BANK-2026-00125",
+      "referenceHelp": "Use the bank transfer or internal payment reference. A real payment gateway is not connected yet.",
+      "error": "The package could not be purchased. Check the reference and try again."
+    }
   },
   "danger": {
     "title": "Delete account",
