@@ -66,6 +66,13 @@ public class AuthController {
                 .build();
     }
 
+    @DeleteMapping("/avatar")
+    public ApiResponse<UserResponse> deleteAvatar(@AuthenticationPrincipal AuthenticatedUser user) {
+        return ApiResponse.<UserResponse>builder()
+                .data(authService.deleteAvatar(user.id()))
+                .build();
+    }
+
     @PutMapping("/password")
     public ApiResponse<Void> changePassword(@AuthenticationPrincipal AuthenticatedUser user,
                                             @Valid @RequestBody ChangePasswordRequest req) {

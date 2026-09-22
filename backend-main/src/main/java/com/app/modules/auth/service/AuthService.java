@@ -25,6 +25,8 @@ public interface AuthService {
 
     UserResponse updateProfile(UUID userId, UpdateProfileRequest req);
 
+    UserResponse deleteAvatar(UUID userId);
+
     void changePassword(UUID userId, ChangePasswordRequest req);
 
     Optional<UserResponse> findUserById(UUID userId);

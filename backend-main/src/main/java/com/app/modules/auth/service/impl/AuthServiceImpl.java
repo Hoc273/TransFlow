@@ -183,6 +183,19 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         user.setFullName(req.fullName().trim());
+        if (req.avatarUrl() != null) {
+            user.setAvatarUrl(req.avatarUrl().trim().isEmpty() ? null : req.avatarUrl().trim());
+        }
+        userRepository.save(user);
+        return UserResponse.from(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse deleteAvatar(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        user.setAvatarUrl(null);
         userRepository.save(user);
         return UserResponse.from(user);
     }

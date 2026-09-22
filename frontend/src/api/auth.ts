@@ -36,10 +36,16 @@ export function getMeApi() {
   return apiRequest<User>('/auth/me')
 }
 
-export function updateProfileApi(body: { fullName: string }) {
+export function updateProfileApi(body: { fullName: string; avatarUrl?: string | null }) {
   return apiRequest<User>('/auth/me', {
     method: 'PUT',
     body,
+  })
+}
+
+export function deleteAvatarApi() {
+  return apiRequest<User>('/auth/avatar', {
+    method: 'DELETE',
   })
 }
 

@@ -406,4 +406,32 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(1000));
     }
+
+    @Test
+    void testAvatar_UpdateAndDelete() throws Exception {
+        RegisterRequest reg = new RegisterRequest("avatar_test@transflow.com", "Password123!", "Avatar User");
+        MvcResult regRes = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reg)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        JsonNode json = objectMapper.readTree(regRes.getResponse().getContentAsString()).path("data");
+        String accessToken = json.path("accessToken").asText();
+
+        // 1. Update avatar
+        var updateReq = new com.app.modules.auth.dto.UpdateProfileRequest("Avatar User", "data:image/jpeg;base64,samplebase64");
+        mockMvc.perform(put("/api/auth/me")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.avatarUrl").value("data:image/jpeg;base64,samplebase64"));
+
+        // 2. Delete avatar
+        mockMvc.perform(delete("/api/auth/avatar")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.avatarUrl").isEmpty());
+    }
 }

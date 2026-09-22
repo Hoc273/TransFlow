@@ -37,13 +37,17 @@ export function AvatarMenu() {
     <div className="app-dropdown" ref={ref}>
       <button
         type="button"
-        className="app-avatar"
+        className="app-avatar overflow-hidden"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
         title={name}
       >
-        {initials}
+        {user?.avatarUrl ? (
+          <img src={user.avatarUrl} alt={name} className="h-full w-full object-cover" />
+        ) : (
+          initials
+        )}
       </button>
       {open && (
         <div className="app-dropdown-menu" role="menu">
