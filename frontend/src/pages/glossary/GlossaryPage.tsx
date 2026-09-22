@@ -6,6 +6,7 @@ import {
   IconCheck,
   IconChevronRight,
   IconDownload,
+  IconFileSpreadsheet,
   IconPlus,
   IconSearch,
   IconTrash,
@@ -189,6 +190,29 @@ export function GlossaryPage() {
     URL.revokeObjectURL(url)
   }
 
+  const onDownloadTemplate = () => {
+    const headers = ['source_term', 'target_term', 'target_lang']
+    const sampleRows = [
+      ['Artificial Intelligence', 'Trí tuệ nhân tạo', 'vi'],
+      ['Machine Learning', 'Học máy', 'vi'],
+      ['Deep Learning', 'Học sâu', 'all'],
+      ['Database', 'Cơ sở dữ liệu', 'vi'],
+    ]
+    const csv =
+      '\uFEFF' +
+      [
+        headers.join(','),
+        ...sampleRows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')),
+      ].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'glossary_template.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   const filteredTerms = useMemo(() => {
     const q = termSearchQuery.trim().toLowerCase()
     if (!q) return terms
@@ -351,6 +375,19 @@ export function GlossaryPage() {
                   </button>
                 )}
 
+                {/* Download CSV Template */}
+                {canEdit && activeProjectId && (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={onDownloadTemplate}
+                    title={t('glossary:template.button')}
+                  >
+                    <IconFileSpreadsheet size={14} />
+                    <span className="col-hide-mobile">{t('glossary:template.button')}</span>
+                  </button>
+                )}
+
                 {/* Import CSV */}
                 {canEdit && activeProjectId && (
                   <button
@@ -455,18 +492,7 @@ export function GlossaryPage() {
                 title={t('glossary:term.emptyTitle')}
                 description={t('glossary:term.emptyDesc')}
                 className="py-12"
-              >
-                {canEdit && (
-                  <button
-                    type="button"
-                    className="btn-primary mt-4"
-                    onClick={() => setAddTermOpen(true)}
-                  >
-                    <IconPlus size={16} />
-                    {t('glossary:term.add')}
-                  </button>
-                )}
-              </EmptyState>
+              />
             )}
 
             {!termsLoading && !termsError && terms.length > 0 && filteredTerms.length === 0 && (
@@ -640,6 +666,17 @@ export function GlossaryPage() {
               onChange={(e) => onImport(e.target.files?.[0] ?? null)}
             />
           </label>
+          <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)] px-1">
+            <span>{t('glossary:import.hint')}</span>
+            <button
+              type="button"
+              onClick={onDownloadTemplate}
+              className="inline-flex items-center gap-1 font-medium text-[var(--color-accent)] hover:underline cursor-pointer bg-transparent border-none p-0"
+            >
+              <IconFileSpreadsheet size={14} />
+              <span>{t('glossary:template.download')}</span>
+            </button>
+          </div>
           {importCsv.isPending && (
             <div className="text-center text-sm text-[var(--color-text-tertiary)]">
               {t('glossary:import.importing')}
