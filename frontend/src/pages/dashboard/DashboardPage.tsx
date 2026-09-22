@@ -3,7 +3,6 @@ import {
   IconChevronRight,
   IconFolder,
   IconRefresh,
-  IconStack2,
   IconVideo,
 } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
@@ -63,13 +62,6 @@ export function DashboardPage() {
         >
           <IconFolder size={15} className="text-[var(--color-accent)]" />
           <span>{t('dashboard:live.quickNewProject')}</span>
-        </Link>
-        <Link
-          to={`/w/${workspaceId}/batches`}
-          className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface)] px-3.5 py-2 text-xs font-medium text-[var(--color-text-primary)] shadow-xs transition hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)] no-underline"
-        >
-          <IconStack2 size={15} className="text-[#38bdf8]" />
-          <span>{t('dashboard:live.quickNewBatch')}</span>
         </Link>
         <Link
           to={`/w/${workspaceId}/media`}
