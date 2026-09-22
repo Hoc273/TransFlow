@@ -100,3 +100,7 @@ app:
     connect-timeout-ms: 5000
     read-timeout-ms: 30000
     max-retries: 3
+  rate-limit:
+    voice-preview:
+      max-requests: ${VOICE_PREVIEW_RATE_LIMIT_MAX_REQUESTS:5}
+      window-seconds: ${VOICE_PREVIEW_RATE_LIMIT_WINDOW_SECONDS:60}

@@ -18,6 +18,14 @@ public interface AiGatewayClient {
      */
     List<DiscoveredVoice> fetchTtsVoices(String protocol, String baseUrl, String apiKey, String defaultModel);
 
+    /**
+     * Synthesizes a short TTS preview clip via {@code POST /media/tts} (single "preview" segment).
+     * Returns the base64-encoded audio, or {@code null} when the provider returned none.
+     * Throws {@code AppException(TTS_PREVIEW_FAILED)} on transport-level failure.
+     */
+    String synthesizeTtsPreview(String protocol, String baseUrl, String apiKey, String model,
+                                String voiceId, String text);
+
     record DiscoveredVoice(
             String voiceId,
             String language,

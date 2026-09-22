@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Component
 public class AiGatewayClientImpl implements AiGatewayClient {
@@ -106,6 +107,85 @@ public class AiGatewayClientImpl implements AiGatewayClient {
             log.error("Failed to fetch TTS voices from AI service: {}", ex.getMessage());
             throw new AppException(ErrorCode.PROVIDER_VOICES_FETCH_FAILED);
         }
+    }
+
+    @Override
+    public String synthesizeTtsPreview(String protocol, String baseUrl, String apiKey, String model,
+                                       String voiceId, String text) {
+        Map<String, Object> body = Map.of(
+                "correlation_id", UUID.randomUUID().toString(),
+                "media_job_id", "voice-preview",
+                "voice_id", voiceId,
+                "segments", List.of(Map.of("segment_id", "preview", "target_text", text)),
+                "provider", Map.of(
+                        "protocol", protocol != null ? protocol : "openai_compatible",
+                        "base_url", baseUrl,
+                        "api_key", apiKey != null ? apiKey : "",
+                        "model", model != null ? model : "",
+                        "capabilities", List.of("TTS")
+                )
+        );
+
+        FastApiTtsResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/media/tts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(FastApiTtsResponse.class);
+        } catch (Exception ex) {
+            log.error("TTS preview synthesize call failed: {}", ex.getMessage());
+            throw new AppException(ErrorCode.TTS_PREVIEW_FAILED);
+        }
+
+        if (response == null || response.results == null) {
+            log.warn("TTS preview returned no results (status={})", response != null ? response.status : null);
+            return null;
+        }
+        for (FastApiTtsResult r : response.results) {
+            if (!"preview".equals(r.segmentId)) {
+                continue;
+            }
+            boolean ok = "SUCCESS".equalsIgnoreCase(r.status) || "COMPLETED".equalsIgnoreCase(r.status);
+            if (ok && r.audioBase64 != null && !r.audioBase64.isBlank()) {
+                return r.audioBase64;
+            }
+            log.warn("TTS preview segment failed: status={} error={} errorCode={}", r.status, r.error, r.errorCode);
+            return null;
+        }
+        return null;
+    }
+
+    public static class FastApiTtsResponse {
+        @JsonProperty("correlation_id")
+        public String correlationId;
+
+        @JsonProperty("status")
+        public String status;
+
+        @JsonProperty("results")
+        public List<FastApiTtsResult> results;
+
+        @JsonProperty("error")
+        public String error;
+    }
+
+    public static class FastApiTtsResult {
+        @JsonProperty("segment_id")
+        public String segmentId;
+
+        @JsonProperty("status")
+        public String status;
+
+        @JsonProperty("audio_base64")
+        public String audioBase64;
+
+        @JsonProperty("error")
+        public String error;
+
+        @JsonProperty("errorCode")
+        public String errorCode;
     }
 
     public static class FastApiTtsVoicesResponse {
