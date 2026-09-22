@@ -366,6 +366,58 @@ def build_qa_prompt(
     return system, "\n".join(parts)
 
 
+SCRIPT_SUMMARIZE_SYSTEM = (
+    "You are a professional script-first video summarizer. Write one coherent summary script "
+    "in the requested target language, then map each script passage to a matching source-video "
+    "time range from the timestamped transcript. Do not invent facts that are absent from the "
+    "transcript or visual context. Return only the JSON object described in <output_format>."
+)
+
+
+def build_script_summarize_prompt(
+    transcript: list[dict],
+    requested_duration_seconds: int,
+    target_lang: str,
+    visual_context: object = None,
+    *,
+    previous_script: str | None = None,
+    feedback_text: str | None = None,
+) -> tuple[str, str]:
+    """Build the compact script-first contract used by ``/media/summarize/script``."""
+    lines = [
+        f"<target_lang>{target_lang}</target_lang>",
+        f"<requested_duration_seconds>{requested_duration_seconds}</requested_duration_seconds>",
+        "<transcript>",
+    ]
+    for index, item in enumerate(transcript):
+        lines.append(
+            f'<sentence ref="{index}" start_ms="{item.get("start_ms", 0)}" '
+            f'end_ms="{item.get("end_ms", 0)}">{item.get("text", "")}</sentence>'
+        )
+    lines.append("</transcript>")
+    if visual_context is not None:
+        lines.append(f"<visual_context>{visual_context}</visual_context>")
+    if previous_script is not None:
+        lines.append(f"<previous_script>{previous_script}</previous_script>")
+    if feedback_text is not None:
+        lines.append(f"<feedback>{feedback_text}</feedback>")
+    lines.extend(
+        [
+            "<output_format>{",
+            '  "script_content": "<complete target-language script>",',
+            '  "script_language": "<language code>",',
+            '  "segments": [{"start_ms": 0, "end_ms": 1000, "script_excerpt": "<verbatim substring>", "source_sentence_refs": ["0"], "reasoning_note": "<why this footage matches>"}],',
+            '  "reasoning_note": "<overall reasoning>",',
+            '  "confidence": 0.0,',
+            '  "warnings": []',
+            "}</output_format>",
+            "Every script_excerpt MUST be an exact substring of script_content. "
+            "The sum of segment durations must be within 20 percent of the requested duration.",
+        ]
+    )
+    return SCRIPT_SUMMARIZE_SYSTEM, "\n".join(lines)
+
+
 SUMMARIZE_SYSTEM = (
     "You are a video summarization assistant. Given a transcript with timestamps, "
     "propose exactly 3 ways to trim the video to a target duration. "

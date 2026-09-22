@@ -46,10 +46,12 @@ class Settings(BaseSettings):
     max_retries: int = 3
     backoff_base_ms: int = 250
 
-    # Source separation (CT7.1). Runtime is local Demucs; no fallback engine.
+    # Source separation (CT7.1). GPU Demucs is preferred; CPU fallback keeps
+    # local/CI pipelines executable when CUDA and model weights are absent.
     separation_engine_id: str = "local_demucs"
     separation_model_id: str = "htdemucs"
     separation_demucs_executable: str = "python"
+    separation_cpu_fallback: bool = True
     separation_max_input_bytes: int = 500 * 1024 * 1024
     separation_max_input_duration_ms: int = 30 * 60 * 1000
     separation_max_output_size_multiplier: int = 3
