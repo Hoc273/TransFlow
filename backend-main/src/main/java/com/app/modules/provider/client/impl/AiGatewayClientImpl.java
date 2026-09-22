@@ -15,6 +15,8 @@ import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -106,6 +108,81 @@ public class AiGatewayClientImpl implements AiGatewayClient {
             log.error("Failed to fetch TTS voices from AI service: {}", ex.getMessage());
             throw new AppException(ErrorCode.PROVIDER_VOICES_FETCH_FAILED);
         }
+    }
+
+    @Override
+    public byte[] synthesizeTts(String protocol, String baseUrl, String apiKey, String model,
+                                String voiceId, String text, String correlationId) {
+        try {
+            Map<String, Object> provider = new HashMap<>();
+            provider.put("protocol", protocol != null ? protocol : "openai_compatible");
+            provider.put("base_url", baseUrl);
+            provider.put("api_key", apiKey != null ? apiKey : "");
+            provider.put("model", model != null ? model : "");
+            provider.put("capabilities", List.of("TTS"));
+
+            Map<String, Object> body = Map.of(
+                    "correlation_id", correlationId != null ? correlationId : "tts-preview",
+                    "media_job_id", "tts-preview",
+                    "voice_id", voiceId,
+                    "segments", List.of(Map.of(
+                            "segment_id", "preview",
+                            "target_text", text
+                    )),
+                    "provider", provider
+            );
+
+            FastApiTtsResponse response = restClient.post()
+                    .uri("/media/tts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(FastApiTtsResponse.class);
+
+            if (response == null || response.results == null || response.results.isEmpty()) {
+                log.warn("TTS preview: empty response from AI service (correlationId={})", correlationId);
+                throw new AppException(ErrorCode.TTS_PREVIEW_FAILED);
+            }
+
+            FastApiTtsResult result = response.results.get(0);
+            if (!"SUCCESS".equals(result.status) || result.audioBase64 == null || result.audioBase64.isBlank()) {
+                log.warn("TTS preview failed: status={} errorCode={} error={} (correlationId={})",
+                        result.status, result.errorCode, result.error, correlationId);
+                throw new AppException(ErrorCode.TTS_PREVIEW_FAILED);
+            }
+
+            return Base64.getDecoder().decode(result.audioBase64);
+        } catch (AppException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.error("TTS preview call to AI service failed (correlationId={}): {}", correlationId, ex.getMessage());
+            throw new AppException(ErrorCode.TTS_PREVIEW_FAILED);
+        }
+    }
+
+    public static class FastApiTtsResponse {
+        @JsonProperty("status")
+        public String status;
+
+        @JsonProperty("results")
+        public List<FastApiTtsResult> results;
+    }
+
+    public static class FastApiTtsResult {
+        @JsonProperty("segment_id")
+        public String segmentId;
+
+        @JsonProperty("status")
+        public String status;
+
+        @JsonProperty("audio_base64")
+        public String audioBase64;
+
+        @JsonProperty("error")
+        public String error;
+
+        @JsonProperty("errorCode")
+        public String errorCode;
     }
 
     public static class FastApiTtsVoicesResponse {

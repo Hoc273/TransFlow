@@ -3,12 +3,16 @@ package com.app.modules.provider.service;
 import com.app.common.crypto.CryptoService;
 import com.app.common.exception.AppException;
 import com.app.common.exception.ErrorCode;
+import com.app.modules.media_asset.service.MediaStorageService;
 import com.app.modules.provider.client.AiGatewayClient;
+import com.app.modules.provider.dto.TtsVoicePreviewRequest;
+import com.app.modules.provider.dto.TtsVoicePreviewResponse;
 import com.app.modules.provider.dto.TtsVoiceResponse;
 import com.app.modules.provider.entity.TtsVoice;
 import com.app.modules.provider.entity.UserAiProvider;
 import com.app.modules.provider.repository.TtsVoiceRepository;
 import com.app.modules.provider.repository.UserAiProviderRepository;
+import com.app.modules.provider.service.ProviderResolverService;
 import com.app.modules.provider.service.impl.TtsVoiceServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +43,15 @@ class TtsVoiceServiceTest {
     @Mock
     private AiGatewayClient aiGatewayClient;
 
+    @Mock
+    private ProviderResolverService providerResolverService;
+
+    @Mock
+    private TtsPreviewRateLimiter ttsPreviewRateLimiter;
+
+    @Mock
+    private MediaStorageService mediaStorageService;
+
     private TtsVoiceService service;
 
     private final UUID userId = UUID.randomUUID();
@@ -50,7 +63,10 @@ class TtsVoiceServiceTest {
                 ttsVoiceRepository,
                 userAiProviderRepository,
                 cryptoService,
-                aiGatewayClient
+                aiGatewayClient,
+                providerResolverService,
+                ttsPreviewRateLimiter,
+                mediaStorageService
         );
     }
 
@@ -151,6 +167,56 @@ class TtsVoiceServiceTest {
         assertEquals("alloy", refreshed.get(0).voiceId());
         assertEquals("en", refreshed.get(0).language());
         assertEquals("USER", refreshed.get(0).providerSource());
+    }
+
+    @Test
+    void testPreviewVoiceSuccess() {
+        UUID voiceId = UUID.randomUUID();
+        ProviderResolverService.TtsVoiceResolution resolution =
+                new ProviderResolverService.TtsVoiceResolution(
+                        "alloy", "openai_compatible", "https://api.openai.com/v1",
+                        "sk-test-key", "tts-1", false);
+        when(providerResolverService.resolveForTtsVoice(userId, voiceId)).thenReturn(resolution);
+        when(aiGatewayClient.synthesizeTts(
+                eq("openai_compatible"), eq("https://api.openai.com/v1"), eq("sk-test-key"),
+                eq("tts-1"), eq("alloy"), eq("Xin chào"), anyString()))
+                .thenReturn(new byte[]{1, 2, 3});
+        when(mediaStorageService.mediaBucket()).thenReturn("transflow-media");
+        when(mediaStorageService.presignedGetUrl(startsWith("transflow-media/previews/tts/")))
+                .thenReturn("http://minio:9000/transflow-media/previews/tts/x.mp3?sig=1");
+
+        TtsVoicePreviewResponse res = service.previewVoice(userId,
+                new TtsVoicePreviewRequest(voiceId, "Xin chào"));
+
+        assertEquals("http://minio:9000/transflow-media/previews/tts/x.mp3?sig=1", res.audioUrl());
+        verify(mediaStorageService).putMediaObject(
+                startsWith("previews/tts/" + userId + "/"), any(), eq(3L), eq("audio/mpeg"));
+    }
+
+    @Test
+    void testPreviewVoiceRateLimited() {
+        when(ttsPreviewRateLimiter.isRateLimited(userId)).thenReturn(true);
+
+        AppException ex = assertThrows(AppException.class,
+                () -> service.previewVoice(userId, new TtsVoicePreviewRequest(UUID.randomUUID(), "hi")));
+        assertEquals(ErrorCode.TTS_PREVIEW_RATE_LIMIT_EXCEEDED, ex.getErrorCode());
+        verifyNoInteractions(providerResolverService, aiGatewayClient, mediaStorageService);
+    }
+
+    @Test
+    void testPreviewVoiceSynthesisFailurePropagates() {
+        UUID voiceId = UUID.randomUUID();
+        when(providerResolverService.resolveForTtsVoice(userId, voiceId))
+                .thenReturn(new ProviderResolverService.TtsVoiceResolution(
+                        "alloy", "openai_compatible", "https://api.openai.com/v1",
+                        "sk-test-key", "tts-1", false));
+        when(aiGatewayClient.synthesizeTts(any(), any(), any(), any(), any(), any(), anyString()))
+                .thenThrow(new AppException(ErrorCode.TTS_PREVIEW_FAILED));
+
+        AppException ex = assertThrows(AppException.class,
+                () -> service.previewVoice(userId, new TtsVoicePreviewRequest(voiceId, "hi")));
+        assertEquals(ErrorCode.TTS_PREVIEW_FAILED, ex.getErrorCode());
+        verifyNoInteractions(mediaStorageService);
     }
 
     @Test

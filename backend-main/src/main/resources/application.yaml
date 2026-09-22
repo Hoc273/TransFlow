@@ -119,3 +119,6 @@ app:
     connect-timeout-ms: 5000
     read-timeout-ms: 30000
     max-retries: 3
+  tts-preview:
+    rate-limit-max: ${TTS_PREVIEW_RATE_LIMIT_MAX:20}
+    rate-limit-window-seconds: ${TTS_PREVIEW_RATE_LIMIT_WINDOW_SECONDS:600}

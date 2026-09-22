@@ -95,4 +95,54 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
     public Optional<String> resolveVoiceLanguage(UUID ttsVoiceId) {
         return ttsVoiceRepository.findById(ttsVoiceId).map(TtsVoice::getLanguage);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TtsVoiceResolution resolveForTtsVoice(UUID userId, UUID ttsVoiceId) {
+        TtsVoice voice = ttsVoiceRepository.findById(ttsVoiceId)
+                .filter(TtsVoice::isActive)
+                .orElseThrow(() -> new AppException(ErrorCode.TTS_VOICE_NOT_FOUND));
+
+        if ("USER".equals(voice.getProviderSource())) {
+            if (voice.getUserProviderId() == null) {
+                throw new AppException(ErrorCode.PROVIDER_NOT_FOUND);
+            }
+            UserAiProvider p = userAiProviderRepository.findByIdAndUserId(voice.getUserProviderId(), userId)
+                    .filter(UserAiProvider::isActive)
+                    .orElseThrow(() -> new AppException(ErrorCode.PROVIDER_NOT_FOUND));
+            if (!p.hasCapability("TTS")) {
+                throw new AppException(ErrorCode.PROVIDER_CAPABILITY_NOT_SUPPORTED);
+            }
+            return new TtsVoiceResolution(
+                    voice.getVoiceId(),
+                    p.getProtocol(),
+                    p.getBaseUrl(),
+                    cryptoService.decrypt(p.getApiKeyEnc()),
+                    p.getDefaultModel(),
+                    true
+            );
+        }
+
+        if ("PLATFORM".equals(voice.getProviderSource())) {
+            if (voice.getPlatformProviderId() == null) {
+                throw new AppException(ErrorCode.PLATFORM_PROVIDER_NOT_CONFIGURED);
+            }
+            PlatformAiProvider p = platformAiProviderRepository.findById(voice.getPlatformProviderId())
+                    .filter(PlatformAiProvider::isActive)
+                    .orElseThrow(() -> new AppException(ErrorCode.PLATFORM_PROVIDER_NOT_CONFIGURED));
+            if (!p.hasCapability("TTS")) {
+                throw new AppException(ErrorCode.PROVIDER_CAPABILITY_NOT_SUPPORTED);
+            }
+            return new TtsVoiceResolution(
+                    voice.getVoiceId(),
+                    p.getProtocol(),
+                    p.getBaseUrl(),
+                    cryptoService.decrypt(p.getApiKeyEnc()),
+                    p.getDefaultModel(),
+                    false
+            );
+        }
+
+        throw new AppException(ErrorCode.TTS_VOICE_NOT_FOUND);
+    }
 }

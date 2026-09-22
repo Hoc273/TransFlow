@@ -1,11 +1,15 @@
 package com.app.modules.provider.controller;
 
+import com.app.common.crypto.CryptoService;
 import com.app.common.exception.ErrorCode;
 import com.app.modules.auth.dto.RegisterRequest;
+import com.app.modules.media_asset.service.MediaStorageService;
+import com.app.modules.provider.client.AiGatewayClient;
 import com.app.modules.provider.entity.PlatformAiProvider;
 import com.app.modules.provider.entity.TtsVoice;
 import com.app.modules.provider.repository.PlatformAiProviderRepository;
 import com.app.modules.provider.repository.TtsVoiceRepository;
+import com.app.modules.provider.service.TtsPreviewRateLimiter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -20,6 +25,10 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,6 +49,20 @@ class TtsVoiceControllerTest {
 
     @Autowired
     private TtsVoiceRepository ttsVoiceRepository;
+
+    // External collaborators are mocked: FastAPI gateway, MinIO storage, Redis limiter,
+    // and AES decrypt (seeded apiKeyEnc bytes are not real ciphertexts).
+    @MockBean
+    private AiGatewayClient aiGatewayClient;
+
+    @MockBean
+    private MediaStorageService mediaStorageService;
+
+    @MockBean
+    private TtsPreviewRateLimiter ttsPreviewRateLimiter;
+
+    @MockBean
+    private CryptoService cryptoService;
 
     private String registerAndGetToken(String email, String name) throws Exception {
         RegisterRequest reg = new RegisterRequest(email, "Password123!", name);
@@ -115,5 +138,77 @@ class TtsVoiceControllerTest {
         mockMvc.perform(get("/api/tts-voices"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHENTICATED.getCode()));
+    }
+
+    private UUID platformVoiceId() {
+        return ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM")
+                .get(0).getId();
+    }
+
+    @Test
+    void testPreviewVoiceSuccess() throws Exception {
+        String token = registerAndGetToken("preview_ok_" + System.currentTimeMillis() + "@test.com", "Preview OK");
+        when(ttsPreviewRateLimiter.isRateLimited(any())).thenReturn(false);
+        when(cryptoService.decrypt(any())).thenReturn("sk-platform-test-key");
+        when(aiGatewayClient.synthesizeTts(any(), any(), any(), any(), any(), any(), anyString()))
+                .thenReturn(new byte[]{1, 2, 3});
+        when(mediaStorageService.mediaBucket()).thenReturn("transflow-media");
+        when(mediaStorageService.presignedGetUrl(startsWith("transflow-media/previews/tts/")))
+                .thenReturn("http://minio:9000/transflow-media/previews/tts/x.mp3?sig=1");
+
+        mockMvc.perform(post("/api/tts-voices/preview")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"voiceId\": \"" + platformVoiceId() + "\", \"text\": \"Xin chào\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.data.audioUrl")
+                        .value("http://minio:9000/transflow-media/previews/tts/x.mp3?sig=1"));
+    }
+
+    @Test
+    void testPreviewVoiceNotFoundReturns404() throws Exception {
+        String token = registerAndGetToken("preview_404_" + System.currentTimeMillis() + "@test.com", "Preview 404");
+        when(ttsPreviewRateLimiter.isRateLimited(any())).thenReturn(false);
+
+        mockMvc.perform(post("/api/tts-voices/preview")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"voiceId\": \"" + UUID.randomUUID() + "\", \"text\": \"Xin chào\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(ErrorCode.TTS_VOICE_NOT_FOUND.getCode()));
+    }
+
+    @Test
+    void testPreviewVoiceTextTooLongReturns400() throws Exception {
+        String token = registerAndGetToken("preview_400_" + System.currentTimeMillis() + "@test.com", "Preview 400");
+        String longText = "a".repeat(51);
+
+        mockMvc.perform(post("/api/tts-voices/preview")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"voiceId\": \"" + platformVoiceId() + "\", \"text\": \"" + longText + "\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void testPreviewVoiceRateLimitedReturns429() throws Exception {
+        String token = registerAndGetToken("preview_429_" + System.currentTimeMillis() + "@test.com", "Preview 429");
+        when(ttsPreviewRateLimiter.isRateLimited(any())).thenReturn(true);
+
+        mockMvc.perform(post("/api/tts-voices/preview")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"voiceId\": \"" + platformVoiceId() + "\", \"text\": \"Xin chào\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value(ErrorCode.TTS_PREVIEW_RATE_LIMIT_EXCEEDED.getCode()));
+    }
+
+    @Test
+    void testPreviewVoiceUnauthenticatedReturns401() throws Exception {
+        mockMvc.perform(post("/api/tts-voices/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"voiceId\": \"" + UUID.randomUUID() + "\", \"text\": \"hi\"}"))
+                .andExpect(status().isUnauthorized());
     }
 }

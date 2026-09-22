@@ -126,4 +126,105 @@ class ProviderResolverServiceTest {
         assertTrue(lang.isPresent());
         assertEquals("vi", lang.get());
     }
+
+    @Test
+    void testResolveForTtsVoicePlatform() {
+        UUID voiceId = UUID.randomUUID();
+        UUID platformProviderId = UUID.randomUUID();
+
+        TtsVoice voice = new TtsVoice();
+        voice.setId(voiceId);
+        voice.setProviderSource("PLATFORM");
+        voice.setPlatformProviderId(platformProviderId);
+        voice.setVoiceId("alloy");
+        voice.setActive(true);
+
+        PlatformAiProvider platformProvider = new PlatformAiProvider();
+        platformProvider.setId(platformProviderId);
+        platformProvider.setProtocol("openai_compatible");
+        platformProvider.setCapabilities(List.of("TTS"));
+        platformProvider.setBaseUrl("https://api.openai.com/v1");
+        platformProvider.setApiKeyEnc(new byte[]{7, 8, 9});
+        platformProvider.setDefaultModel("tts-1");
+        platformProvider.setActive(true);
+
+        when(ttsVoiceRepository.findById(voiceId)).thenReturn(Optional.of(voice));
+        when(platformAiProviderRepository.findById(platformProviderId))
+                .thenReturn(Optional.of(platformProvider));
+        when(cryptoService.decrypt(platformProvider.getApiKeyEnc())).thenReturn("sk-platform-key");
+
+        ProviderResolverService.TtsVoiceResolution res = service.resolveForTtsVoice(userId, voiceId);
+
+        assertEquals("alloy", res.voiceId());
+        assertEquals("openai_compatible", res.protocol());
+        assertEquals("https://api.openai.com/v1", res.baseUrl());
+        assertEquals("sk-platform-key", res.apiKey());
+        assertEquals("tts-1", res.defaultModel());
+        assertFalse(res.isPersonalApiKey());
+    }
+
+    @Test
+    void testResolveForTtsVoiceUserOwnedByok() {
+        UUID voiceId = UUID.randomUUID();
+        UUID userProviderId = UUID.randomUUID();
+
+        TtsVoice voice = new TtsVoice();
+        voice.setId(voiceId);
+        voice.setProviderSource("USER");
+        voice.setUserProviderId(userProviderId);
+        voice.setVoiceId("my-voice");
+        voice.setActive(true);
+
+        UserAiProvider userProvider = new UserAiProvider();
+        userProvider.setId(userProviderId);
+        userProvider.setUserId(userId);
+        userProvider.setProtocol("openai_compatible");
+        userProvider.setCapabilities(List.of("TTS"));
+        userProvider.setBaseUrl("https://api.openai.com/v1");
+        userProvider.setApiKeyEnc(new byte[]{1, 2, 3});
+        userProvider.setDefaultModel("tts-1-hd");
+        userProvider.setActive(true);
+
+        when(ttsVoiceRepository.findById(voiceId)).thenReturn(Optional.of(voice));
+        when(userAiProviderRepository.findByIdAndUserId(userProviderId, userId))
+                .thenReturn(Optional.of(userProvider));
+        when(cryptoService.decrypt(userProvider.getApiKeyEnc())).thenReturn("sk-user-key");
+
+        ProviderResolverService.TtsVoiceResolution res = service.resolveForTtsVoice(userId, voiceId);
+
+        assertEquals("my-voice", res.voiceId());
+        assertEquals("sk-user-key", res.apiKey());
+        assertTrue(res.isPersonalApiKey());
+    }
+
+    @Test
+    void testResolveForTtsVoiceUserVoiceNotOwnedThrows404() {
+        UUID voiceId = UUID.randomUUID();
+        UUID userProviderId = UUID.randomUUID();
+
+        TtsVoice voice = new TtsVoice();
+        voice.setId(voiceId);
+        voice.setProviderSource("USER");
+        voice.setUserProviderId(userProviderId);
+        voice.setVoiceId("other-users-voice");
+        voice.setActive(true);
+
+        when(ttsVoiceRepository.findById(voiceId)).thenReturn(Optional.of(voice));
+        when(userAiProviderRepository.findByIdAndUserId(userProviderId, userId))
+                .thenReturn(Optional.empty());
+
+        AppException ex = assertThrows(AppException.class,
+                () -> service.resolveForTtsVoice(userId, voiceId));
+        assertEquals(ErrorCode.PROVIDER_NOT_FOUND, ex.getErrorCode());
+    }
+
+    @Test
+    void testResolveForTtsVoiceNotFoundThrows404() {
+        UUID voiceId = UUID.randomUUID();
+        when(ttsVoiceRepository.findById(voiceId)).thenReturn(Optional.empty());
+
+        AppException ex = assertThrows(AppException.class,
+                () -> service.resolveForTtsVoice(userId, voiceId));
+        assertEquals(ErrorCode.TTS_VOICE_NOT_FOUND, ex.getErrorCode());
+    }
 }

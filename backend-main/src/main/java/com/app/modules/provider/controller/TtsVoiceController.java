@@ -1,9 +1,16 @@
 package com.app.modules.provider.controller;
 
 import com.app.common.dto.ApiResponse;
+import com.app.common.security.AuthenticatedUser;
+import com.app.modules.provider.dto.TtsVoicePreviewRequest;
+import com.app.modules.provider.dto.TtsVoicePreviewResponse;
 import com.app.modules.provider.dto.TtsVoiceResponse;
 import com.app.modules.provider.service.TtsVoiceService;
+import jakarta.validation.Valid;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,6 +36,15 @@ public class TtsVoiceController {
             @RequestParam(defaultValue = "PLATFORM") String providerSource) {
         return ApiResponse.<List<TtsVoiceResponse>>builder()
                 .data(ttsVoiceService.listPlatformVoices(language, providerSource))
+                .build();
+    }
+
+    @PostMapping("/preview")
+    public ApiResponse<TtsVoicePreviewResponse> previewVoice(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody TtsVoicePreviewRequest request) {
+        return ApiResponse.<TtsVoicePreviewResponse>builder()
+                .data(ttsVoiceService.previewVoice(user.id(), request))
                 .build();
     }
 }
