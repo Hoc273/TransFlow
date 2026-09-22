@@ -40,6 +40,7 @@ public enum ErrorCode {
     GOOGLE_STATE_INVALID(2010, "Google OAuth state invalid", HttpStatus.BAD_REQUEST),
     INVALID_OTP(2011, "Invalid or expired verification OTP", HttpStatus.BAD_REQUEST),
     OTP_REQUIRED(2012, "Email verification OTP is required", HttpStatus.BAD_REQUEST),
+    OTP_RATE_LIMIT_EXCEEDED(2013, "Too many OTP requests; please try again later", HttpStatus.TOO_MANY_REQUESTS),
 
     // 21xx - workspace (Member A)
     WORKSPACE_NOT_FOUND(2100, "Workspace not found", HttpStatus.NOT_FOUND),

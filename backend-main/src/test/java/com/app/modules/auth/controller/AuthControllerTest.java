@@ -300,11 +300,113 @@ class AuthControllerTest {
 
     @Test
     void testForgotPasswordUserNotFound() throws Exception {
+        // Anti-enumeration: unknown email still returns 200 (BACKEND_MISSING_TASKS §8).
         mockMvc.perform(post("/api/auth/forgot-password/otp")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.ForgotPasswordOtpRequest("unknown@transflow.com"))))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(ErrorCode.USER_NOT_FOUND.getCode()));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.data.message").isNotEmpty());
+    }
+
+    @Test
+    void testForgotPasswordVerify_InvalidOtp() throws Exception {
+        RegisterRequest reg = new RegisterRequest("wrongotp@transflow.com", "Password123!", "Wrong Otp");
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reg)))
+                .andExpect(status().isCreated());
+
+        forgotPasswordOtpStore.saveOtp("wrongotp@transflow.com", "123456");
+
+        mockMvc.perform(post("/api/auth/forgot-password/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.VerifyPasswordOtpRequest("wrongotp@transflow.com", "000000"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_OTP.getCode()));
+    }
+
+    @Test
+    void testForgotPasswordVerify_MaxAttemptsDeletesOtp() throws Exception {
+        RegisterRequest reg = new RegisterRequest("attempts@transflow.com", "Password123!", "Attempts User");
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reg)))
+                .andExpect(status().isCreated());
+
+        forgotPasswordOtpStore.saveOtp("attempts@transflow.com", "123456");
+
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/api/auth/forgot-password/verify")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.VerifyPasswordOtpRequest("attempts@transflow.com", "000000"))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_OTP.getCode()));
+        }
+
+        // OTP deleted after 5 wrong attempts — even the correct OTP now fails.
+        mockMvc.perform(post("/api/auth/forgot-password/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.VerifyPasswordOtpRequest("attempts@transflow.com", "123456"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_OTP.getCode()));
+    }
+
+    @Test
+    void testForgotPasswordReset_WrongOtpAfterVerify() throws Exception {
+        // Regression: /reset must re-check the real OTP — a prior /verify must NOT
+        // let any arbitrary 6-digit code reset the password.
+        RegisterRequest reg = new RegisterRequest("bypass@transflow.com", "Password123!", "Bypass User");
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reg)))
+                .andExpect(status().isCreated());
+
+        forgotPasswordOtpStore.saveOtp("bypass@transflow.com", "123456");
+
+        mockMvc.perform(post("/api/auth/forgot-password/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.VerifyPasswordOtpRequest("bypass@transflow.com", "123456"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/auth/forgot-password/reset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.ResetPasswordOtpRequest("bypass@transflow.com", "999999", "NewPassword123!"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_OTP.getCode()));
+    }
+
+    @Test
+    void testForgotPassword_GoogleOnlyAccountCanSetPassword() throws Exception {
+        // Google-only account (no password_hash): forgot-password lets them set one.
+        User user = new User();
+        user.setEmail("googleonly@transflow.com");
+        user.setPasswordHash(null);
+        user.setFullName("Google Only");
+        user.setGoogleSub("google-sub-123");
+        user.setGoogleLinked(true);
+        user.setStatus(UserStatus.ACTIVE);
+        userRepository.save(user);
+
+        mockMvc.perform(post("/api/auth/forgot-password/otp")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.ForgotPasswordOtpRequest("googleonly@transflow.com"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000));
+
+        forgotPasswordOtpStore.saveOtp("googleonly@transflow.com", "123456");
+
+        mockMvc.perform(post("/api/auth/forgot-password/reset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.ResetPasswordOtpRequest("googleonly@transflow.com", "123456", "NewPassword123!"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest("googleonly@transflow.com", "NewPassword123!"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000));
     }
 
     @Test

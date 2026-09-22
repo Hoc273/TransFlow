@@ -21,13 +21,14 @@ public class EmailServiceImpl implements EmailService {
     @Value("${spring.mail.username:}")
     private String mailUsername;
 
-    @Value("${spring.mail.from:no-reply@transflow.vn}")
+    @Value("${spring.mail.from:}")
     private String mailFrom;
 
     public EmailServiceImpl(@Autowired(required = false) JavaMailSender mailSender) {
         this.mailSender = mailSender;
     }
 
+    @Async
     @Override
     public void sendOtpEmail(String toEmail, String otp, OtpType type) {
         if (isMailDisabled()) {
@@ -40,7 +41,7 @@ public class EmailServiceImpl implements EmailService {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED, StandardCharsets.UTF_8.name());
 
-            String senderAddress = (mailUsername != null && !mailUsername.isBlank()) ? mailUsername : mailFrom;
+            String senderAddress = (mailFrom != null && !mailFrom.isBlank()) ? mailFrom : mailUsername;
             helper.setFrom(new InternetAddress(senderAddress, "TransFlow Media", "UTF-8"));
             helper.setTo(toEmail);
             helper.setSubject("[TransFlow] Mã xác thực OTP: " + otp + " (" + type.getDescription() + ")");
@@ -51,8 +52,8 @@ public class EmailServiceImpl implements EmailService {
             mailSender.send(message);
             log.info("[EMAIL SENT] Successfully sent OTP email to {} for {}", toEmail, type.name());
         } catch (Exception e) {
-            log.error("[EMAIL ERROR] Failed to send OTP email to {}: {}. OTP fallback: [{}]",
-                    toEmail, e.getMessage(), otp, e);
+            log.error("[EMAIL ERROR] Failed to send OTP email to {}: {}. OTP fallback: [{}****]",
+                    toEmail, e.getMessage(), otp.substring(0, 2), e);
         }
     }
 
