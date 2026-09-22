@@ -253,15 +253,29 @@ GOOGLE_REDIRECT_URI=http://localhost:8080/api/auth/google/callback
 #### Vấn đề 5: Dọn dẹp & đánh dấu route thừa
 - **Frontend ([`transformation.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/transformation.ts)):** Đánh dấu `@deprecated` cho hàm `resumeWorkflowApi` (`POST .../workflow/resume`), ghi rõ đây là route nguyên mẫu cũ không có trong BE và không được UI sử dụng.
 
+#### Vấn đề 6: Tương thích hai chiều DTO Đề xuất Tóm tắt (Proposal CamelCase vs Snake_case)
+- **Hiện tượng:** Backend Java trả DTO `SummaryProposalResponse` dạng camelCase (`generatedBy`, `generationRound`, `totalDurationMs`, `reasoningNote`, `archivedAt`, `segments`), trong khi component `ProposalPanel.tsx` trên Frontend truy cập theo dạng snake_case (`p.generated_by`, `p.cut_ranges`, `p.total_duration_ms`). Điều này dẫn đến nguy cơ danh sách đề xuất tóm tắt AI hiển thị rỗng hoặc không đo được timeline.
+- **Giải pháp xử lý (Đã đồng bộ 2 đầu):**
+  1. **Backend ([`SummaryProposalResponse.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/summarization/dto/SummaryProposalResponse.java)):** Bổ sung các getter ánh xạ JSON song song (`@JsonProperty("generated_by")`, `@JsonProperty("generation_round")`, `@JsonProperty("cut_ranges")`, `@JsonProperty("total_duration_ms")`, `@JsonProperty("reasoning_note")`, `@JsonProperty("archived_at")`). Bổ sung `@JsonProperty("start_ms")` và `@JsonProperty("end_ms")` vào [`SummaryProposalSegmentResponse.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/summarization/dto/SummaryProposalSegmentResponse.java). Jackson tự động tuần hoàn cả 2 chuẩn.
+  2. **Frontend ([`transformation.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/transformation.ts)):** Tích hợp hàm `normalizeProposal` để chuẩn hóa dữ liệu trả về từ `listTransformationProposalsApi`, `createTransformationCustomProposalApi`, `updateTransformationCustomProposalApi`, đảm bảo mọi component truy cập theo `camelCase` hay `snake_case` đều có dữ liệu.
+  3. **Frontend Types ([`media.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/types/media.ts)):** Cập nhật `MediaSummaryProposal` hỗ trợ đồng thời cả hai bộ thuộc tính.
+
+#### Vấn đề 7: Đa dạng hóa payload Yêu cầu Refine & Bổ sung API Summary Language
+- **Hiện tượng:** DTO `RefineRequest` của Backend dùng trường `feedbackText`, trong khi một số luồng FE có thể gửi `{ feedback }`. Ngoài ra, FE thiếu hàm export cho endpoint `POST .../summary-languages`.
+- **Giải pháp xử lý:**
+  1. Thêm `@JsonAlias("feedback")` vào [`RefineRequest.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/summarization/dto/RefineRequest.java).
+  2. Cập nhật `refineNarrativePlanApi` trong [`media.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/media.ts) gửi kèm `{ feedback, feedbackText: feedback }`.
+  3. Bổ sung hàm `createSummaryLanguageApi` vào [`transformation.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/transformation.ts).
+
 ---
 
 ### 4.3 Kết quả kiểm thử & Build thực tế
 - **Backend Tests:**
-  - `MediaJobControllerTest`: **40/40 tests PASS 100%** (bao gồm các test case mới kiểm tra `summary.generative`, `sourceLang`, `stages[]` trong `setVoice` & `cancelJob`).
+  - `ProjectControllerTest`, `MediaAssetControllerTest`, `TransformationControllerTest`, `MediaJobControllerTest`, `BatchControllerTest`: **63/63 tests PASS 100%**.
+  - `SummarizationControllerTest` & `SummarizationServiceImplTest`: **25/25 tests PASS 100%**.
   - `MediaJobServiceImplTest`: **26/26 tests PASS 100%**.
-  - `BatchControllerTest` & `BatchServiceImplTest`: **16/16 tests PASS 100%**.
 - **Frontend Tests:** `npx vitest run` ➔ **690/690 tests PASS 100%** (69 test files).
-- **Frontend Build:** `npm run build` (`tsc -b && vite build`) ➔ **THÀNH CÔNG 100%** trong 2.42s với 0 lỗi.
+- **Frontend Build:** `npm run build` (`tsc -b && vite build`) ➔ **THÀNH CÔNG 100%** trong 1.70s với 0 lỗi.
 
 ---
 

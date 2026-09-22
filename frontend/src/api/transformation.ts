@@ -305,10 +305,36 @@ export function resumeWorkflowApi(workspaceId: string, jobId: string) {
 
 // ---------- proposals (extractive summary) ----------
 
+function normalizeProposal(raw: unknown): MediaSummaryProposal {
+  if (!raw || typeof raw !== 'object') return raw as MediaSummaryProposal
+  const r = raw as Record<string, unknown>
+  const cutRanges = (r.cut_ranges ?? r.segments ?? []) as any
+  return {
+    ...r,
+    id: String(r.id || ''),
+    proposal_index: (r.proposal_index ?? r.proposalIndex ?? null) as number | null,
+    proposalIndex: (r.proposalIndex ?? r.proposal_index ?? null) as number | null,
+    generated_by: String(r.generated_by ?? r.generatedBy ?? 'AI'),
+    generatedBy: String(r.generatedBy ?? r.generated_by ?? 'AI'),
+    generation_round: Number(r.generation_round ?? r.generationRound ?? 1),
+    generationRound: Number(r.generationRound ?? r.generation_round ?? 1),
+    archived_at: (r.archived_at ?? r.archivedAt ?? null) as string | null,
+    archivedAt: (r.archivedAt ?? r.archived_at ?? null) as string | null,
+    cut_ranges: cutRanges,
+    segments: cutRanges,
+    reasoning_note: (r.reasoning_note ?? r.reasoningNote ?? null) as string | null,
+    reasoningNote: (r.reasoningNote ?? r.reasoning_note ?? null) as string | null,
+    total_duration_ms: Number(r.total_duration_ms ?? r.totalDurationMs ?? 0),
+    totalDurationMs: Number(r.totalDurationMs ?? r.total_duration_ms ?? 0),
+    confidence: (r.confidence ?? null) as number | null,
+    warnings: (r.warnings ?? []) as any,
+  }
+}
+
 export function listTransformationProposalsApi(workspaceId: string, jobId: string) {
   return apiRequest<MediaSummaryProposal[]>(
     buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals`),
-  )
+  ).then((items) => (items || []).map(normalizeProposal))
 }
 
 function toProposalPayload(body: CreateCustomProposalBody | UpdateCustomProposalBody) {
@@ -336,7 +362,7 @@ export function createTransformationCustomProposalApi(
   return apiRequest<MediaSummaryProposal>(
     buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals/custom`),
     { method: 'POST', body: toProposalPayload(body) },
-  )
+  ).then(normalizeProposal)
 }
 
 export function updateTransformationCustomProposalApi(
@@ -348,6 +374,17 @@ export function updateTransformationCustomProposalApi(
   return apiRequest<MediaSummaryProposal>(
     buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/proposals/${proposalId}`),
     { method: 'PUT', body: toProposalPayload(body) },
+  ).then(normalizeProposal)
+}
+
+export function createSummaryLanguageApi(
+  workspaceId: string,
+  jobId: string,
+  body: { targetLang: string; ttsVoiceId?: string | null },
+) {
+  return apiRequest<MediaJob>(
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/summary-languages`),
+    { method: 'POST', body },
   )
 }
 
