@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createBatchApi,
+  downloadBulkJobsApi,
   getBatchApi,
   listBatchesApi,
   retryBatchDocumentApi,
@@ -84,5 +85,11 @@ export function useRetryBatchDocument(workspaceId: string | undefined, batchId: 
         void qc.invalidateQueries({ queryKey: queryKeys.batches(workspaceId) })
       }
     },
+  })
+}
+
+export function useDownloadBulkJobs(workspaceId: string | undefined, projectId: string | undefined) {
+  return useMutation({
+    mutationFn: (jobIds: string[]) => downloadBulkJobsApi(workspaceId!, projectId!, jobIds),
   })
 }

@@ -19,6 +19,7 @@ export type PermissionAction =
   | 'document.upload'
   | 'batch.create'
   | 'batch.retry'
+  | 'batch.download'
   | 'job.start'
   | 'segment.edit'
   | 'segment.approve'
@@ -44,6 +45,7 @@ const MATRIX: Record<PermissionAction, Role[]> = {
   'document.upload': ADMIN_PM_TRANSLATOR,
   'batch.create': ADMIN_PM_TRANSLATOR,
   'batch.retry': ADMIN_PM_TRANSLATOR,
+  'batch.download': ADMIN_PM_TRANSLATOR,
   'job.start': ADMIN_PM_TRANSLATOR,
   'segment.edit': ['ADMIN', 'PM', 'TRANSLATOR', 'PROOFREADER', 'LEAD', 'MEMBER'],
   'segment.approve': ADMIN_PM_PROOFREADER,

@@ -55,3 +55,11 @@ export type CreateBatchParams = {
   name?: string
   files: File[]
 }
+
+export type BulkDownloadResult = {
+  downloadUrl: string
+  fileName: string
+  expiresAt: string
+  includedJobIds: string[]
+  skipped: Array<{ jobId: string; reason: string }>
+}

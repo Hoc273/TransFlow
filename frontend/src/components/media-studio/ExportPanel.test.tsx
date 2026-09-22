@@ -178,6 +178,20 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
     await waitFor(() => expect(exportMutate).toHaveBeenCalledWith('VIDEO'))
   })
 
+  it('opens the presigned video URL in a new tab after VIDEO export', async () => {
+    linkedJobData.data = linkedJob([])
+    render(<ExportPanel workspaceId="ws" job={job({})} />)
+
+    fireEvent.click(screen.getByTestId('export-quick-download-video'))
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://dl.test/video.mp4',
+        '_blank',
+        'noopener,noreferrer',
+      ),
+    )
+  })
+
   it('subtitle download buttons in right column run SRT and VTT export', async () => {
     linkedJobData.data = linkedJob([])
     render(<ExportPanel workspaceId="ws" job={job({})} />)
