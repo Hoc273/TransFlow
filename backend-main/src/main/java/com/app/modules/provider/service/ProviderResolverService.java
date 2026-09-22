@@ -19,6 +19,8 @@ public interface ProviderResolverService {
      */
     Optional<String> resolveVoiceLanguage(UUID userId, UUID ttsProviderId, UUID ttsVoiceId);
 
+    Optional<String> resolveVoiceIdentifier(UUID userId, UUID ttsProviderId, UUID ttsVoiceId);
+
     /**
      * Legacy voiceId string resolution (ADR-CEP B7 parity).
      * Finds active voice by voice_id string matching targetLang and accessible to user.

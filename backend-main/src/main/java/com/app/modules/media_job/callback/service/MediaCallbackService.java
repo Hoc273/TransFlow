@@ -14,6 +14,19 @@ public interface MediaCallbackService {
 
     void updateProgress(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage, short progressPercent);
 
+    /** Callback-aware overload; implementations may reject a stale attempt. */
+    default void updateProgress(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage,
+                                short progressPercent, String dedupeKey) {
+        updateProgress(jobId, stageId, expectedStage, progressPercent);
+    }
+
     void completeStage(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage,
                         boolean success, JsonNode outputRef, String errorMessage);
+
+    /** Callback-aware overload; implementations may reject a stale attempt. */
+    default void completeStage(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage,
+                               boolean success, JsonNode outputRef, String errorMessage,
+                               String dedupeKey) {
+        completeStage(jobId, stageId, expectedStage, success, outputRef, errorMessage);
+    }
 }

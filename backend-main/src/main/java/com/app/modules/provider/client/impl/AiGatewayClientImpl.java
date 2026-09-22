@@ -59,10 +59,10 @@ public class AiGatewayClientImpl implements AiGatewayClient {
                     .retrieve()
                     .body(Map.class);
 
-            if (response != null && "PASS".equalsIgnoreCase(String.valueOf(response.get("status")))) {
+            if (response != null && Boolean.TRUE.equals(response.get("ok"))) {
                 return true;
             }
-            log.warn("Auth probe returned non-PASS status: {}", response);
+            log.warn("Auth probe returned ok=false: {}", response);
             return false;
         } catch (Exception ex) {
             log.warn("Failed to test AI provider connection via FastAPI: {}", ex.getMessage());
@@ -78,7 +78,7 @@ public class AiGatewayClientImpl implements AiGatewayClient {
                     "base_url", baseUrl,
                     "api_key", apiKey != null ? apiKey : "",
                     "capabilities", List.of("TTS"),
-                    "default_model", defaultModel != null ? defaultModel : ""
+                    "model", defaultModel != null ? defaultModel : ""
             );
 
             FastApiTtsVoicesResponse response = restClient.post()
