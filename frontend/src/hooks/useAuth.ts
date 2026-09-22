@@ -1,10 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
+  changePasswordApi,
   loginApi,
   registerApi,
   resetPasswordWithOtpApi,
   sendPasswordResetOtpApi,
+  updateProfileApi,
   verifyPasswordResetOtpApi,
 } from '@/api/auth'
 import { listWorkspacesApi } from '@/api/workspaces'
@@ -148,5 +150,24 @@ export function useResetPasswordWithOtp() {
         throw err
       }
     },
+  })
+}
+
+export function useUpdateProfile() {
+  const setUser = useAuthStore((s) => s.setUser)
+  const user = useAuthStore((s) => s.user)
+  return useMutation({
+    mutationFn: (body: { fullName: string }) => updateProfileApi(body),
+    onSuccess: (updatedUser) => {
+      if (user) {
+        setUser({ ...user, fullName: updatedUser.fullName })
+      }
+    },
+  })
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (body: { currentPassword?: string; newPassword: string }) => changePasswordApi(body),
   })
 }

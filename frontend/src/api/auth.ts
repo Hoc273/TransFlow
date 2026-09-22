@@ -36,6 +36,20 @@ export function getMeApi() {
   return apiRequest<User>('/auth/me')
 }
 
+export function updateProfileApi(body: { fullName: string }) {
+  return apiRequest<User>('/auth/me', {
+    method: 'PUT',
+    body,
+  })
+}
+
+export function changePasswordApi(body: { currentPassword?: string; newPassword: string }) {
+  return apiRequest<void>('/auth/password', {
+    method: 'PUT',
+    body,
+  })
+}
+
 /** One-time code from BE after Google callback (09b B.1b). */
 export function googleExchangeApi(code: string) {
   const inFlight = googleExchangeRequests.get(code)

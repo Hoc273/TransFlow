@@ -14,6 +14,8 @@ import { useTranslation } from 'react-i18next'
 import { PasswordStrength } from '@/components/auth/PasswordStrength'
 import { featureFlags } from '@/config/featureFlags'
 import { scorePassword } from '@/lib/validation'
+import { useChangePassword } from '@/hooks/useAuth'
+import { ApiError } from '@/types/api'
 
 function GoogleMark() {
   return (
@@ -93,6 +95,7 @@ function PwField({
  */
 export function SecuritySection() {
   const { t } = useTranslation(['account', 'common', 'auth'])
+  const changePassword = useChangePassword()
 
   const [currentPw, setCurrentPw] = useState('')
   const [newPw, setNewPw] = useState('')
@@ -101,7 +104,7 @@ export function SecuritySection() {
   const [info, setInfo] = useState<string | null>(null)
   const [oauthNote, setOauthNote] = useState<string | null>(null)
 
-  const onPasswordSubmit = (e: FormEvent) => {
+  const onPasswordSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setInfo(null)
     const next: Record<string, string> = {}
@@ -117,11 +120,24 @@ export function SecuritySection() {
     setErrors(next)
     if (Object.keys(next).length > 0) return
 
-    setInfo(t('account:security.success'))
-    setCurrentPw('')
-    setNewPw('')
-    setConfirmPw('')
-    window.setTimeout(() => setInfo(null), 4000)
+    try {
+      await changePassword.mutateAsync({
+        currentPassword: currentPw,
+        newPassword: newPw,
+      })
+      setInfo(t('account:security.success'))
+      setCurrentPw('')
+      setNewPw('')
+      setConfirmPw('')
+      window.setTimeout(() => setInfo(null), 4000)
+    } catch (err: unknown) {
+      if (err instanceof ApiError && (err.status === 401 || err.code === 'INVALID_CREDENTIALS' || String(err.code) === '2001')) {
+        setErrors({ current: t('auth:errors.invalidCredentials', { defaultValue: 'Mật khẩu hiện tại không chính xác' }) })
+      } else {
+        const msg = err instanceof Error ? err.message : t('account:security.failed', { defaultValue: 'Đổi mật khẩu thất bại' })
+        setErrors({ current: msg })
+      }
+    }
   }
 
   const onGoogleAction = () => {
@@ -189,10 +205,11 @@ export function SecuritySection() {
         <div className="mt-8 flex items-center justify-start border-t border-[var(--color-border)] pt-5">
           <button
             type="submit"
+            disabled={changePassword.isPending}
             className="btn-primary btn-sm flex items-center gap-1.5 text-xs shadow-xs"
           >
             <IconShieldLock size={14} />
-            <span>{t('account:security.change')}</span>
+            <span>{changePassword.isPending ? t('common:saving', { defaultValue: 'Đang lưu...' }) : t('account:security.change')}</span>
           </button>
         </div>
       </form>

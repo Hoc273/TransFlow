@@ -345,4 +345,65 @@ class AuthControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_OTP.getCode()));
     }
+
+    @Test
+    void testUpdateProfile_Success() throws Exception {
+        RegisterRequest reg = new RegisterRequest("profile_test@transflow.com", "Password123!", "Old Name");
+        MvcResult regRes = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reg)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        JsonNode json = objectMapper.readTree(regRes.getResponse().getContentAsString()).path("data");
+        String accessToken = json.path("accessToken").asText();
+
+        var updateReq = new com.app.modules.auth.dto.UpdateProfileRequest("New Updated Name");
+        mockMvc.perform(put("/api/auth/me")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.data.fullName").value("New Updated Name"));
+    }
+
+    @Test
+    void testChangePassword_SuccessAndInvalidCurrent() throws Exception {
+        RegisterRequest reg = new RegisterRequest("pw_test@transflow.com", "Password123!", "Pw User");
+        MvcResult regRes = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reg)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        JsonNode json = objectMapper.readTree(regRes.getResponse().getContentAsString()).path("data");
+        String accessToken = json.path("accessToken").asText();
+
+        // 1. Wrong current password -> 401 INVALID_CREDENTIALS
+        var wrongReq = new com.app.modules.auth.dto.ChangePasswordRequest("WrongPass!", "NewPassword123!");
+        mockMvc.perform(put("/api/auth/password")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(wrongReq)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_CREDENTIALS.getCode()));
+
+        // 2. Correct current password -> 200 OK
+        var okReq = new com.app.modules.auth.dto.ChangePasswordRequest("Password123!", "NewPassword123!");
+        mockMvc.perform(put("/api/auth/password")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(okReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000));
+
+        // 3. Login with new password succeeds
+        var newLogin = new LoginRequest("pw_test@transflow.com", "NewPassword123!");
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(newLogin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000));
+    }
 }

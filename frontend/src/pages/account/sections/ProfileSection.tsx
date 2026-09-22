@@ -11,6 +11,7 @@ import {
 } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/store/authStore'
+import { useUpdateProfile } from '@/hooks/useAuth'
 import { initialsFromName } from '@/lib/format'
 
 const TIMEZONES = [
@@ -37,7 +38,7 @@ function readLocal(key: string): string {
 export function ProfileSection() {
   const { t } = useTranslation(['account', 'common'])
   const user = useAuthStore((s) => s.user)
-  const setUser = useAuthStore((s) => s.setUser)
+  const updateProfile = useUpdateProfile()
 
   const [fullName, setFullName] = useState(user?.fullName ?? '')
   const [displayName, setDisplayName] = useState(() => readLocal(DISPLAY_NAME_KEY))
@@ -63,7 +64,7 @@ export function ProfileSection() {
     setBanner(null)
   }
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
     setBanner(null)
@@ -73,17 +74,20 @@ export function ProfileSection() {
       return
     }
 
-    if (user) {
-      setUser({ ...user, fullName: trimmed })
-    }
     try {
-      localStorage.setItem(DISPLAY_NAME_KEY, displayName.trim())
-      localStorage.setItem(TIMEZONE_KEY, timezone)
-    } catch {
-      /* ignore quota */
+      await updateProfile.mutateAsync({ fullName: trimmed })
+      try {
+        localStorage.setItem(DISPLAY_NAME_KEY, displayName.trim())
+        localStorage.setItem(TIMEZONE_KEY, timezone)
+      } catch {
+        /* ignore quota */
+      }
+      setBanner('success')
+      window.setTimeout(() => setBanner(null), 4000)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t('account:profile.updateFailed', { defaultValue: 'Cập nhật hồ sơ thất bại' })
+      setError(msg)
     }
-    setBanner('success')
-    window.setTimeout(() => setBanner(null), 4000)
   }
 
   return (
@@ -259,10 +263,11 @@ export function ProfileSection() {
           </button>
           <button
             type="submit"
+            disabled={updateProfile.isPending}
             className="btn-primary btn-sm flex items-center gap-1.5 text-xs shadow-xs"
           >
             <IconDeviceFloppy size={14} />
-            <span>{t('account:common.save')}</span>
+            <span>{updateProfile.isPending ? t('account:common.saving', { defaultValue: 'Đang lưu...' }) : t('account:common.save')}</span>
           </button>
         </div>
       </form>

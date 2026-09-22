@@ -58,6 +58,21 @@ public class AuthController {
                 .build();
     }
 
+    @PutMapping("/me")
+    public ApiResponse<UserResponse> updateProfile(@AuthenticationPrincipal AuthenticatedUser user,
+                                                   @Valid @RequestBody UpdateProfileRequest req) {
+        return ApiResponse.<UserResponse>builder()
+                .data(authService.updateProfile(user.id(), req))
+                .build();
+    }
+
+    @PutMapping("/password")
+    public ApiResponse<Void> changePassword(@AuthenticationPrincipal AuthenticatedUser user,
+                                            @Valid @RequestBody ChangePasswordRequest req) {
+        authService.changePassword(user.id(), req);
+        return ApiResponse.<Void>builder().build();
+    }
+
     @PostMapping("/forgot-password/otp")
     public ApiResponse<OtpMessageResponse> sendForgotPasswordOtp(@Valid @RequestBody ForgotPasswordOtpRequest req) {
         return ApiResponse.<OtpMessageResponse>builder()
