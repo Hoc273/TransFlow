@@ -100,3 +100,20 @@ export function retryBatchJobApi(
 }
 
 export const retryBatchDocumentApi = retryBatchJobApi
+
+export function downloadBulkJobsApi(workspaceId: string, projectId: string, jobIds: string[]) {
+  return apiRequest<import('@/types/batch').BulkDownloadResult>(
+    buildWorkspacePath(workspaceId, `/projects/${projectId}/media/jobs/download`),
+    { method: 'POST', body: { jobIds } },
+  )
+}
+
+/**
+ * @deprecated The backend has no `GET .../batches/{batchId}/download` route
+ * (BatchController documents it as not implemented). Use `downloadBulkJobsApi`.
+ */
+export function downloadBatchZipApi(workspaceId: string, batchId: string) {
+  return apiRequest<{ downloadUrl: string; fileName: string }>(
+    buildWorkspacePath(workspaceId, `/batches/${batchId}/download`),
+  )
+}
