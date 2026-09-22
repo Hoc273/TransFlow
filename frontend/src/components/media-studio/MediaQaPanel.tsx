@@ -9,10 +9,18 @@ import {
 import { EmptyState } from '@/components/shared/EmptyState'
 import { QaOverrideModal } from '@/components/qa/QaOverrideModal'
 import { SeverityBadge } from '@/components/qa/SeverityBadge'
-import { useMediaLinkedJob } from '@/hooks/useMedia'
+import {
+  useMediaJobQaIssues,
+  useMediaLinkedJob,
+  useMediaSubtitles,
+} from '@/hooks/useMedia'
 import { useOverrideQaIssue, useResolveQaIssue } from '@/hooks/useJobs'
 import { asSeverity, issueBlockingActions } from '@/lib/qa'
-import { hasEffectiveBlockExport, hasEffectiveBlockRender } from '@/lib/media'
+import {
+  hasEffectiveBlockExport,
+  hasEffectiveBlockRender,
+  subtitleToSegmentItem,
+} from '@/lib/media'
 import { featureFlags } from '@/config/featureFlags'
 import { usePermission } from '@/hooks/usePermission'
 import { cn } from '@/lib/cn'
@@ -109,23 +117,45 @@ type IssuePair = { seg: SegmentItem; issue: QaIssue }
  */
 export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
   const { t } = useTranslation(['media', 'job', 'common'])
-  const { data: linkedJob, isLoading } = useMediaLinkedJob(workspaceId, job.translationJobId)
+  const { data: linkedJob, isLoading: isLoadingLinkedJob } = useMediaLinkedJob(workspaceId, job.translationJobId)
+  const { data: realSubtitles = [], isLoading: isLoadingSubtitles } = useMediaSubtitles(workspaceId, job.id)
+  const { data: realQaIssues = [], isLoading: isLoadingQaIssues } = useMediaJobQaIssues(workspaceId, job.id)
   const [expanded, setExpanded] = useState(false)
   const [overrideIssue, setOverrideIssue] = useState<QaIssue | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const resolve = useResolveQaIssue(workspaceId, job.translationJobId ?? undefined)
-  const override = useOverrideQaIssue(workspaceId, job.translationJobId ?? undefined)
+  const targetJobId = job.translationJobId ?? job.id
+  const resolve = useResolveQaIssue(workspaceId, targetJobId, job.id)
+  const override = useOverrideQaIssue(workspaceId, targetJobId, job.id)
   const canResolve = usePermission('qa.resolve')
   const canOverride = usePermission('qa.override') && featureFlags.qaOverride
 
-  const pairs: IssuePair[] = useMemo(
-    () =>
-      (linkedJob?.segments ?? []).flatMap((seg) =>
+  const pairs: IssuePair[] = useMemo(() => {
+    if (linkedJob?.segments && linkedJob.segments.length > 0) {
+      return linkedJob.segments.flatMap((seg) =>
         (seg.qaIssues ?? []).map((issue) => ({ seg, issue })),
-      ),
-    [linkedJob],
-  )
+      )
+    }
+
+    const segMap = new Map<string, SegmentItem>()
+    for (const sub of realSubtitles) {
+      segMap.set(sub.id, subtitleToSegmentItem(sub, realQaIssues))
+    }
+
+    return realQaIssues.map((issue) => {
+      const seg = issue.subtitleSegmentId ? segMap.get(issue.subtitleSegmentId) : undefined
+      const effectiveSeg: SegmentItem = seg ?? {
+        id: issue.subtitleSegmentId ?? issue.id,
+        seq: 0,
+        sourceText: '',
+        targetText: '',
+        status: 'APPROVED',
+        tmScore: null,
+        qaIssues: [issue],
+      }
+      return { seg: effectiveSeg, issue }
+    })
+  }, [linkedJob, realSubtitles, realQaIssues])
 
   const issues = useMemo(() => pairs.map((p) => p.issue), [pairs])
   const sortedPairs = useMemo(() => [...pairs].sort((a, b) => compareIssuesForDisplay(a.issue, b.issue)), [pairs])
@@ -171,7 +201,17 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
     )
   }
 
-  if (!job.translationJobId) {
+  const isTranslateReady =
+    Boolean(job.translationJobId) ||
+    realSubtitles.length > 0 ||
+    realQaIssues.length > 0 ||
+    job.stages.some(
+      (s) =>
+        (s.stageName === 'TRANSLATE' || s.stageName === 'SUMMARIZE') &&
+        (s.status === 'COMPLETED' || s.status === 'PROCESSING'),
+    )
+
+  if (!isTranslateReady) {
     return (
       <EmptyState
         icon={<IconShieldLock size={36} stroke={1.25} />}
@@ -182,6 +222,7 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
     )
   }
 
+  const isLoading = isLoadingLinkedJob || isLoadingSubtitles || isLoadingQaIssues
   if (isLoading) {
     return (
       <div className="py-8 text-center text-sm text-[var(--color-text-tertiary)]">

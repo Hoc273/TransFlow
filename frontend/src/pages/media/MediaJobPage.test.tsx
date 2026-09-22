@@ -34,6 +34,7 @@ const voicesMap = new Map<string, unknown[]>()
 vi.mock('@/hooks/useMedia', () => ({
   useMediaJob: () => jobQuery,
   useMediaLinkedJob: () => linkedJobQuery,
+  useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
   useCancelMediaJob: () => cancelQuery,
   useOverrideSourceLang: () => overrideQuery,
   useSelectVoice: () => selectVoiceQuery,

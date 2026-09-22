@@ -22,4 +22,14 @@ public record QaIssueResponse(
                 issue.getSeverity().name(), issue.getBlockingActions(), issue.getDetail(),
                 issue.getResolvedAt(), issue.getCreatedAt());
     }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("type")
+    public String getType() {
+        return issueType;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("resolved")
+    public boolean getResolved() {
+        return resolvedAt != null;
+    }
 }

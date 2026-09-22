@@ -3,7 +3,13 @@ import { MediaQaPanel } from '@/components/media-studio/MediaQaPanel'
 import { MediaSubtitleEditor } from '@/components/media-studio/MediaSubtitleEditor'
 import { ReviewVideoPane } from '@/components/media-studio/ReviewVideoPane'
 import { countIssuesByBand } from '@/components/media-studio/MediaQaPanel'
-import { useMediaLinkedJob, useRenderConfig } from '@/hooks/useMedia'
+import {
+  useMediaJobQaIssues,
+  useMediaLinkedJob,
+  useMediaSubtitles,
+  useRenderConfig,
+} from '@/hooks/useMedia'
+import { subtitleToSegmentItem } from '@/lib/media'
 import type { MediaJob } from '@/types/media'
 import type { SegmentItem } from '@/types/job'
 
@@ -25,16 +31,26 @@ export function MediaReviewSection({ workspaceId, job, onProceedToNextStep }: Pr
   const [playingTimeMs, setPlayingTimeMs] = useState(0)
 
   const { data: linkedJob } = useMediaLinkedJob(workspaceId, job.translationJobId)
+  const { data: realSubtitles = [] } = useMediaSubtitles(workspaceId, job.id)
+  const { data: realQaIssues = [] } = useMediaJobQaIssues(workspaceId, job.id)
   const translateReady = job.stages.some(
     (stage) => stage.stageName === 'TRANSLATE' && stage.status === 'COMPLETED',
   )
   const configQuery = useRenderConfig(workspaceId, job.id, translateReady)
 
-  const segments: SegmentItem[] = useMemo(() => linkedJob?.segments ?? [], [linkedJob])
-  const qaCounts = useMemo(
-    () => countIssuesByBand(segments.flatMap((s) => s.qaIssues ?? [])),
-    [segments],
-  )
+  const segments: SegmentItem[] = useMemo(() => {
+    if (linkedJob?.segments && linkedJob.segments.length > 0) {
+      return linkedJob.segments
+    }
+    return realSubtitles.map((sub) => subtitleToSegmentItem(sub, realQaIssues))
+  }, [linkedJob, realSubtitles, realQaIssues])
+
+  const qaCounts = useMemo(() => {
+    if (linkedJob?.segments && linkedJob.segments.length > 0) {
+      return countIssuesByBand(linkedJob.segments.flatMap((s) => s.qaIssues ?? []))
+    }
+    return countIssuesByBand(realQaIssues)
+  }, [linkedJob, realQaIssues])
 
   const seekToCue = (seg: SegmentItem) => {
     setSelectedCueId(seg.id)
