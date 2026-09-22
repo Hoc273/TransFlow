@@ -44,6 +44,14 @@ describe('recipe-aware helpers', () => {
     expect(recipeModeBadgeClass(generative)).toBe('GENERATIVE')
   })
 
+  it('maps backend canonical summary.script_match to summary.generative UI recipe', () => {
+    const scriptMatch = job({
+      recipeId: 'summary.script_match',
+    })
+    expect(resolveRecipeId(scriptMatch)).toBe('summary.generative')
+    expect(isGenerativeRecipe(scriptMatch)).toBe(true)
+  })
+
   it('falls back processingMode only when recipeId missing', () => {
     expect(resolveRecipeId(job({ recipeId: null, processingMode: 'TRANSLATE_ONLY' }))).toBe(
       'localization.full',

@@ -116,16 +116,16 @@
 | `recipeId` | Field bắt buộc thêm |
 |---|---|
 | `localization.full` | `processingMode` (`TRANSLATE_ONLY`\|`HYBRID`) |
-| `summary.script_match` | `requestedDurationSeconds` (giây, > 0) |
+| `summary.script_match` (alias `summary.generative`) | `requestedDurationSeconds` (giây, > 0) |
 
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
-| POST | `/api/workspaces/{workspaceId}/media/jobs` | LEAD/MEMBER (project của asset) | Tạo job — xem body mẫu dưới. Yêu cầu asset đã có consent. |
+| POST | `/api/workspaces/{workspaceId}/media/jobs` | LEAD/MEMBER (project của asset) | Tạo job — xem body mẫu dưới. Hỗ trợ recipe `localization.full`, `summary.script_match` (và alias `summary.generative`), `sourceLang`, `ttsProviderId`, `keepOriginalAudio`. Yêu cầu asset đã có consent. |
 | GET | `/api/workspaces/{workspaceId}/projects/{projectId}/media/jobs?status=&recipeId=` | LEAD/MEMBER/CLIENT | List job trong Project (không lọc theo `created_by`). |
 | POST | `/api/workspaces/{workspaceId}/projects/{projectId}/media/jobs/download` | LEAD/MEMBER/CLIENT (project) | Tải nhiều video đã hoàn thành do user chọn (thay cho "tải theo Batch"; danh sách lấy từ endpoint trên với `status=COMPLETED`). Body `{jobIds:[uuid]}` (không rỗng, loại trùng, tối đa `app.media-job.max-bulk-download`=20 → `DOWNLOAD_SELECTION_TOO_LARGE`). Mỗi job phải thuộc project, `COMPLETED` và qua quality gate như `/export`; job không đạt vào `skipped` với `reason` `NOT_FOUND` (không tồn tại/khác project) `|` `NOT_COMPLETED` `|` `QA_BLOCKED`. Không job nào đạt → `QA_BLOCKED` (có job bị QA chặn) hoặc `STAGE_NOT_READY`. Trả `{downloadUrl, fileName, expiresAt, includedJobIds[], skipped[{jobId, reason}]}`: zip `<tên gốc>_<lang>_<jobId8>.mp4` được nén tạm rồi upload lên MinIO `tmp/downloads/` (tự hết hạn bằng lifecycle rule), `downloadUrl` là presigned URL. Chạy đồng bộ. |
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}` | LEAD/MEMBER/CLIENT | Chi tiết job + `stages[]` (8 stage kỹ thuật, FE tự ẩn stage `SKIPPED`). |
-| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/cancel` | LEAD/MEMBER (project) | Huỷ job đang chạy; gửi cancel xuống Worker sau khi transaction commit (Arch §6.2). |
-| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/voice` | LEAD/MEMBER (project) | `{ttsVoiceId}` (null = bỏ chọn giọng, chỉ hợp lệ nếu `output_audio_mode=ORIGINAL_ONLY`). Từ chối nếu `tts_voices.language ≠ target_lang`. |
+| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/cancel` | LEAD/MEMBER (project) | Huỷ job đang chạy; gửi cancel xuống Worker sau khi transaction commit (Arch §6.2). Trả `200 OK` kèm `MediaJob` và `stages[]`. |
+| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/voice` | LEAD/MEMBER (project) | Body `{ttsProviderId?, ttsVoiceId}` (null = bỏ chọn giọng, chỉ hợp lệ nếu `output_audio_mode=ORIGINAL_ONLY`). Từ chối nếu `tts_voices.language ≠ target_lang`. Trả `200 OK` kèm `MediaJob` và `stages[]`. |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/checkpoints/{checkpoint}/confirm` | **job-ownership** (Lead mọi job; Member chỉ job `created_by_user_id = mình`; Client bị chặn) | `{checkpoint}` ∈ `CUT_CONFIRMED\|REVIEW_CONFIRMED\|PUBLISH_CONFIRMED`. Chỉ áp dụng khi `workflow_mode=MANUAL` (Arch §5.6). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/stages/{stageName}/rerun` | LEAD/MEMBER (project) | Rerun-from-stage (Arch §5.7). `409` nếu stage trước chưa `COMPLETED/SKIPPED`. Không tính lại Credit cho stage output tái sử dụng. |
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/subtitles` | LEAD/MEMBER/CLIENT | List `subtitle_segments` theo `seq`. |

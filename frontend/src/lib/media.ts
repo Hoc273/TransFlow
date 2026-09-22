@@ -141,6 +141,7 @@ export function resolveRecipeId(
   job: Pick<MediaJob, 'recipeId' | 'processingMode'> | null | undefined,
 ): string | null {
   if (!job) return null
+  if (job.recipeId === 'summary.script_match') return 'summary.generative'
   if (job.recipeId) return job.recipeId
   if (job.processingMode === 'HYBRID') return 'summary.extractive'
   if (job.processingMode === 'TRANSLATE_ONLY') return 'localization.full'

@@ -75,8 +75,13 @@ FE `CreateMediaJobBody` (`types/media.ts:464-526`, `batchJobPayload.ts:67-83`, `
 
 ## 7. Checklist chuyển mock → BE thật (Phase 3)
 
-1. [ ] BE thêm `ttsProviderId` vào `CreateMediaJobRequest` + `VoiceRequest`
-2. [ ] Thống nhất recipe summary (`summary.generative` alias)
-3. [ ] Cập nhật `API_Contract.md §5`: voice `200 + MediaJob`, create liệt kê FE-only fields là ignored
-4. [ ] Cập nhật mock `voice → 200 + job` (đã làm phía FE handle cả 204/200)
-5. [ ] FE đã fix: `selectTransformationVoiceApi → MediaJob | void`, header comment canonical `/media/jobs`, giữ fallback `processingMode/outputAudioMode` với comment đúng
+1. [x] BE thêm `ttsProviderId` vào `CreateMediaJobRequest` + `VoiceRequest` (đã hoàn thành: `VoiceRequest` có `String ttsProviderId`, `CreateMediaJobRequest` có `ttsProviderId`, giữ backward-compatible constructors).
+2. [x] Thống nhất recipe summary (`summary.generative` alias): Đã hoàn thành cả 2 phía:
+   - BE `MediaJobServiceImpl.createJobInternal`: chấp nhận alias `summary.generative` và lưu canonical `summary.script_match` vào DB (thỏa mãn DB check constraint).
+   - BE `MediaJobServiceImpl.listJobs`: map `recipeId=summary.generative` sang `summary.script_match`.
+   - FE `transformation.ts:createTransformationJobApi`: normalize `summary.generative` sang `summary.script_match`.
+   - FE `media.ts:resolveRecipeId`: map `summary.script_match` sang `summary.generative` để hiển thị đồng bộ trên UI.
+3. [x] BE fix bug response `setVoice` & `cancelJob` trả `stages = null`: Đã sửa `MediaJobController.java` chuyển từ `MediaJobResponse.from(job)` sang `toResponse(job)` để luôn đính kèm `stages[]`.
+4. [x] Cập nhật `API_Contract.md §5`: voice `200 + MediaJob`, create chấp nhận `summary.generative` alias, `sourceLang`, `ttsProviderId`.
+5. [x] Cập nhật mock `voice → 200 + job` (`mock/index.cjs:1036-1037`).
+6. [x] FE đã fix: `selectTransformationVoiceApi → MediaJob | void`, header comment canonical `/media/jobs`, giữ fallback `processingMode/outputAudioMode`, deprecate `resumeWorkflowApi`.
