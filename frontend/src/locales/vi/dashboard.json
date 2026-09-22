@@ -26,7 +26,6 @@
       "title": "Thông báo gần đây",
       "subtitle": "Sự kiện batch cuối",
       "emptyTitle": "Không có thông báo",
-      "emptyDesc": "Sự kiện BATCH_* của bạn sẽ hiện ở đây.",
       "loadError": "Không tải được thông báo"
     },
     "recentProjects": {

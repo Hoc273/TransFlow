@@ -26,7 +26,6 @@
       "title": "Recent Notifications",
       "subtitle": "Batch terminal events",
       "emptyTitle": "No notifications",
-      "emptyDesc": "BATCH_* events for your account will show here.",
       "loadError": "Could not load notifications"
     },
     "recentProjects": {
