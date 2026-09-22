@@ -917,9 +917,29 @@ function buildRoutes() {
   r('/media/stream', 'GET', (ctx) => serveVideo(ctx))
   r('/media/video', 'GET', (ctx) => serveVideo(ctx))
 
+  r('/workspaces/:workspaceId/projects/:projectId/media/jobs/download', 'POST', async (ctx) => {
+    const body = await readJson(ctx.req)
+    const ids = Array.isArray(body.jobIds) ? body.jobIds : []
+    sendJson(ctx.res, 200, {
+      downloadUrl: '/api/media/sample-video',
+      fileName: 'videos_batch.zip',
+      expiresAt: CURRENT_UTC,
+      includedJobIds: ids,
+      skipped: [],
+    })
+  })
+
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/export', '/workspaces/:workspaceId/transformation/jobs/:jobId/export', 'GET', (ctx) => {
     const format = (ctx.query.get('format') || 'SRT').toUpperCase()
     const isVtt = format === 'VTT'
+    if (format === 'VIDEO') {
+      return sendJson(ctx.res, 200, {
+        format: 'VIDEO',
+        fileName: 'video_' + ctx.params.jobId + '.mp4',
+        downloadUrl: '/api/media/sample-video',
+        content: null,
+      })
+    }
     const list = d.mediaSegmentsByJob[ctx.params.jobId] || d.job1Segments
     const content = isVtt
       ? 'WEBVTT - ATTT qua Mật mã học\n\n' +
@@ -965,6 +985,14 @@ function buildRoutes() {
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/render-config', '/workspaces/:workspaceId/transformation/jobs/:jobId/render-config', 'PUT', async (ctx) => {
     const body = await readJson(ctx.req)
     sendJson(ctx.res, 200, { ...makeRenderConfig(ctx.params.jobId), ...body })
+  })
+  rBoth('/workspaces/:workspaceId/media/jobs/:jobId/rerun-render', '/workspaces/:workspaceId/transformation/jobs/:jobId/rerun-render', 'POST', async (ctx) => {
+    const body = await readJson(ctx.req)
+    const job = d.mediaJobs.find((j) => j.id === ctx.params.jobId)
+    if (!job) return sendJson(ctx.res, 404, { errorCode: 'NOT_FOUND', message: 'Job not found' })
+    Object.assign(job, body ?? {})
+    job.status = 'PROCESSING'
+    sendJson(ctx.res, 202, job)
   })
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/confirm-render', '/workspaces/:workspaceId/transformation/jobs/:jobId/confirm-render', 'POST', (ctx) => sendNoContent(ctx.res))
   rBoth('/workspaces/:workspaceId/media/jobs/:jobId/checkpoints/:checkpoint/confirm', '/workspaces/:workspaceId/transformation/jobs/:jobId/checkpoints/:checkpoint/confirm', 'POST', (ctx) => sendNoContent(ctx.res))

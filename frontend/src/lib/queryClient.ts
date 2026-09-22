@@ -66,6 +66,9 @@ export const queryKeys = {
     ['workflowPresets', wsId, projectId] as const,
   mediaTermsVersion: (wsId: string) => ['mediaTermsVersion', wsId] as const,
   mediaProposals: (wsId: string, jobId: string) => ['mediaProposals', wsId, jobId] as const,
+  mediaSubtitles: (wsId: string, jobId: string) => ['mediaSubtitles', wsId, jobId] as const,
+  mediaQaIssues: (wsId: string, jobId: string, resolved?: boolean) =>
+    ['mediaQaIssues', wsId, jobId, resolved] as const,
   /** B1.2 SYSTEM subtitle style presets — deployment-wide, never workspace-scoped. */
   subtitleStylePresets: ['subtitleStyles', 'presets'] as const,
   jobSubtitleStyle: (jobId: string) => ['subtitleStyles', 'job', jobId] as const,

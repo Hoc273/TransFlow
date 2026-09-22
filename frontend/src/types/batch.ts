@@ -58,3 +58,11 @@ export type CreateBatchParams = {
     presetId?: string | null
   }
 }
+
+export type BulkDownloadResult = {
+  downloadUrl: string
+  fileName: string
+  expiresAt: string
+  includedJobIds: string[]
+  skipped: Array<{ jobId: string; reason: string }>
+}

@@ -527,6 +527,17 @@ class MediaJobControllerTest {
     }
 
     @Test
+    void confirmCheckpoint_shortAlias_succeeds() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-checkpoint-short@transflow.com");
+        UUID jobId = createLocalizationJob(lead, "en");
+
+        mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId
+                        + "/checkpoints/CUT/confirm")
+                        .header("Authorization", "Bearer " + lead.accessToken()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void confirmCheckpoint_invalidCheckpointValue_returnsValidationError() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-checkpoint-badval@transflow.com");
         UUID jobId = createLocalizationJob(lead, "en");

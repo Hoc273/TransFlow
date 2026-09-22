@@ -257,6 +257,18 @@ export type WorkflowCheckpoint = {
   canContinue: boolean
 }
 
+/** Subtitle cue returned by GET /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles */
+export type MediaSubtitleCue = {
+  id: string
+  seq: number
+  contentSource?: string
+  sourceText: string
+  targetText: string
+  startMs: number
+  endMs: number
+  ttsAudioRef?: string | null
+}
+
 export type SubtitlePosition = 'TOP' | 'CENTER' | 'BOTTOM'
 
 // ─── Phase 2/6 presentation envelope (docs/16 §7.4) ─────────────────────────

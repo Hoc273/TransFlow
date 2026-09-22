@@ -9,8 +9,10 @@ import type {
   TransformationJobPhase,
   TransformationPlanKind,
   TransformationPlanStatus,
+  MediaSubtitleCue,
   WorkflowCheckpoint,
 } from '@/types/media'
+import type { SegmentItem } from '@/types/job'
 import type { QaIssue } from '@/types/qa'
 import { issueBlockingActions } from '@/lib/qa'
 import { ApiError } from '@/types/api'
@@ -225,23 +227,107 @@ export function isRenderConfirmationRecipe(
   return resolveWorkflowMode(job) === 'MANUAL'
 }
 
+/** Convert a raw backend subtitle cue to a SegmentItem with attached QA issues */
+export function subtitleToSegmentItem(sub: MediaSubtitleCue, qaIssues: QaIssue[] = []): SegmentItem {
+  return {
+    id: sub.id,
+    seq: sub.seq,
+    sourceText: sub.sourceText ?? '',
+    targetText: sub.targetText ?? '',
+    status: 'APPROVED',
+    tmScore: null,
+    startMs: sub.startMs,
+    endMs: sub.endMs,
+    qaIssues: qaIssues.filter((q) => q.subtitleSegmentId === sub.id),
+  }
+}
+
 export function checkpointOf(
-  job: Pick<MediaJob, 'workflowCheckpoints'> | null | undefined,
+  job:
+    | (Pick<MediaJob, 'workflowCheckpoints'> &
+        Partial<Pick<MediaJob, 'stages' | 'workflowMode' | 'recipeId' | 'processingMode'>>)
+    | null
+    | undefined,
   id: string,
 ): WorkflowCheckpoint | null {
-  return job?.workflowCheckpoints?.find((c) => c.id === id) ?? null
+  const existing = job?.workflowCheckpoints?.find((c) => c.id === id)
+  if (existing) return existing
+
+  // When BE does not explicitly project workflowCheckpoints, derive from job.stages:
+  const mode =
+    job?.workflowMode === 'MANUAL' || job?.workflowMode === 'AUTO'
+      ? job.workflowMode
+      : job?.recipeId?.startsWith('summary.')
+        ? 'MANUAL'
+        : 'AUTO'
+  const stages = job?.stages ?? []
+  if (stages.length === 0) return null
+
+  const stageMap = new Map(stages.map((s) => [s.stageName, s]))
+
+  if (id === 'CUT') {
+    if (mode === 'AUTO') {
+      return { id: 'CUT', state: 'SKIPPED', canContinue: false }
+    }
+    const summarize = stageMap.get('SUMMARIZE')
+    const translate = stageMap.get('TRANSLATE')
+    const isConfirmed = translate?.status === 'COMPLETED' || translate?.status === 'PROCESSING'
+    if (isConfirmed) {
+      return { id: 'CUT', state: 'CONFIRMED', canContinue: false }
+    }
+    const canCont = summarize?.status === 'COMPLETED' && translate?.status === 'PENDING'
+    return { id: 'CUT', state: canCont ? 'PENDING' : 'SKIPPED', canContinue: canCont }
+  }
+
+  if (id === 'REVIEW') {
+    if (mode === 'AUTO') {
+      return { id: 'REVIEW', state: 'SKIPPED', canContinue: false }
+    }
+    const translate = stageMap.get('TRANSLATE')
+    const tts = stageMap.get('TTS')
+    const isConfirmed = tts?.status === 'COMPLETED' || tts?.status === 'PROCESSING'
+    if (isConfirmed) {
+      return { id: 'REVIEW', state: 'CONFIRMED', canContinue: false }
+    }
+    const isTranslateDone = translate?.status === 'COMPLETED'
+    return {
+      id: 'REVIEW',
+      state: isTranslateDone ? 'PENDING' : 'SKIPPED',
+      canContinue: isTranslateDone && tts?.status === 'PENDING',
+    }
+  }
+
+  if (id === 'EXPORT') {
+    const render = stageMap.get('RENDER')
+    const isRenderDone = render?.status === 'COMPLETED'
+    return {
+      id: 'EXPORT',
+      state: isRenderDone ? 'CONFIRMED' : 'PENDING',
+      canContinue: isRenderDone,
+    }
+  }
+
+  return null
 }
 
 /** W0 — true when the CUT checkpoint can be continued by the user right now. */
 export function canContinueCut(
-  job: Pick<MediaJob, 'workflowCheckpoints'> | null | undefined,
+  job:
+    | (Pick<MediaJob, 'workflowCheckpoints'> &
+        Partial<Pick<MediaJob, 'stages' | 'workflowMode' | 'recipeId' | 'processingMode'>>)
+    | null
+    | undefined,
 ): boolean {
   return checkpointOf(job, 'CUT')?.canContinue === true
 }
 
 /** W0 — true when the REVIEW checkpoint is gate-blocked (QA resume available). */
 export function isReviewBlocked(
-  job: Pick<MediaJob, 'workflowCheckpoints'> | null | undefined,
+  job:
+    | (Pick<MediaJob, 'workflowCheckpoints'> &
+        Partial<Pick<MediaJob, 'stages' | 'workflowMode' | 'recipeId' | 'processingMode'>>)
+    | null
+    | undefined,
 ): boolean {
   return checkpointOf(job, 'REVIEW')?.state === 'BLOCKED'
 }

@@ -29,6 +29,7 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import {
   useCancelMediaJob,
   useMediaJob,
+  useMediaJobQaIssues,
   useMediaLinkedJob,
   useOverrideSourceLang,
   useRerunStage,
@@ -87,13 +88,15 @@ export function MediaJobPage() {
 
   // QA summary for the review accordion trigger (count + worst tone).
   const { data: linkedJobForQa } = useMediaLinkedJob(workspaceId, job?.translationJobId)
-  const qaBadge = useMemo(
-    () =>
-      qaBadgeSummary(
-        linkedJobForQa?.segments?.flatMap((s) => s.qaIssues ?? []) ?? [],
-      ),
-    [linkedJobForQa],
-  )
+  const { data: realQaIssues = [] } = useMediaJobQaIssues(workspaceId, jobId)
+  const qaBadge = useMemo(() => {
+    if (linkedJobForQa?.segments && linkedJobForQa.segments.length > 0) {
+      return qaBadgeSummary(
+        linkedJobForQa.segments.flatMap((s) => s.qaIssues ?? []),
+      )
+    }
+    return qaBadgeSummary(realQaIssues)
+  }, [linkedJobForQa, realQaIssues])
 
   const cancel = useCancelMediaJob(workspaceId, jobId)
   const overrideLang = useOverrideSourceLang(workspaceId, jobId)
