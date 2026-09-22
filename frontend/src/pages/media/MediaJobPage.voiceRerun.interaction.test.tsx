@@ -41,6 +41,7 @@ const { jobQuery, providersQuery, selectVoicePending, selectVoiceMutate } = voic
 vi.mock('@/hooks/useMedia', () => ({
   useMediaJob: () => jobQuery,
   useMediaLinkedJob: () => ({ data: undefined as unknown, isLoading: false }),
+  useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
   useRenderConfig: () => ({ data: undefined, isLoading: false }),
   useCancelMediaJob: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useOverrideSourceLang: () => ({ isPending: false, mutateAsync: vi.fn() }),

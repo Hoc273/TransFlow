@@ -38,3 +38,52 @@ export function asSeverity(value: string | undefined | null): QaSeverity {
 export function openIssues(issues: QaIssue[] | undefined | null): QaIssue[] {
   return (issues ?? []).filter((i) => !i.resolved)
 }
+
+/** Normalize raw backend QaIssueResponse (or partial UI issue) to canonical QaIssue. */
+export function normalizeQaIssue(raw: any): QaIssue {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      id: '',
+      type: '',
+      severity: 'LOW',
+      message: '',
+      sourceSpan: null,
+      targetSpan: null,
+      suggestion: null,
+      resolved: false,
+    }
+  }
+
+  let detailObj: Record<string, unknown> = {}
+  if (typeof raw.detail === 'string') {
+    try {
+      detailObj = JSON.parse(raw.detail)
+    } catch {
+      detailObj = { message: raw.detail }
+    }
+  } else if (raw.detail && typeof raw.detail === 'object') {
+    detailObj = raw.detail
+  }
+
+  const issueType = String(raw.issueType || raw.type || '')
+  const message = String(raw.message || detailObj.message || detailObj.reason || issueType || 'QA Issue')
+  const suggestion = (raw.suggestion ?? detailObj.suggestion ?? null) as string | null
+  const resolved = Boolean(raw.resolved ?? (raw.resolvedAt != null))
+
+  return {
+    ...raw,
+    id: String(raw.id || ''),
+    type: issueType,
+    issueType,
+    severity: asSeverity(raw.severity),
+    message,
+    sourceSpan: (raw.sourceSpan ?? detailObj.sourceSpan ?? null) as string | null,
+    targetSpan: (raw.targetSpan ?? detailObj.targetSpan ?? null) as string | null,
+    suggestion,
+    resolved,
+    blockingActions: (raw.blockingActions ?? []) as BlockingAction[],
+    subtitleSegmentId: raw.subtitleSegmentId ? String(raw.subtitleSegmentId) : undefined,
+    resolvedAt: raw.resolvedAt ?? null,
+    createdAt: raw.createdAt,
+  }
+}

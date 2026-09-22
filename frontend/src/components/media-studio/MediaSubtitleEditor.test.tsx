@@ -11,6 +11,8 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/hooks/useMedia', () => ({
   useMediaLinkedJob: () => ({ data: { segments: linkedSegments }, isLoading: false }),
+  useMediaSubtitles: () => ({ data: [], isLoading: false }),
+  useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
   useEditMediaSegment: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useBatchEditMediaSegments: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useRerunTtsRender: () => ({ isPending: false, mutateAsync: vi.fn() }),

@@ -279,18 +279,68 @@ GOOGLE_REDIRECT_URI=http://localhost:8080/api/auth/google/callback
 
 ---
 
-## 5. DANH MỤC CHI TIẾT API ĐÃ CÓ & CÒN THIẾU (PHASE 4 ➔ PHASE 6)
+## 5. CHI TIẾT PHASE 4: SUBTITLES, REVIEW WORKBENCH & QA GATE
+
+### 5.1 Trạng thái hoàn thành & Bảng đối soát API (100% Hoàn thành)
+
+| STT | Luồng nghiệp vụ | Endpoint & Method | Phía Backend | Phía Frontend | Trạng thái |
+| :-: | :--- | :--- | :--- | :--- | :---: |
+| 1 | **Lấy danh sách phụ đề (Cues)** | `GET /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles` | `MediaJobController.java` (`listSubtitles`) | `media.ts`: `listMediaJobSubtitlesApi`<br/>Hook: `useMediaSubtitles` | 🟢 Hoàn thành |
+| 2 | **Chỉnh sửa 1 dòng phụ đề lẻ** | `PATCH /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles/{segmentId}` | `MediaJobController.java` (`updateSubtitle`) | `media.ts`: `editMediaSegmentApi`<br/>Hook: `useEditMediaSegment` | 🟢 Hoàn thành |
+| 3 | **Lưu đồng loạt danh sách phụ đề (Save all)** | `PUT /api/workspaces/{wsId}/media/jobs/{jobId}/segments/batch` | `MediaJobController.java` (`batchUpdateSegments`) | `transformation.ts`: `batchEditTransformationSegmentsApi`<br/>Hook: `useBatchEditMediaSegments` | 🟢 Hoàn thành |
+| 4 | **Liệt kê cảnh báo chất lượng dịch (QA Issues)** | `GET /api/workspaces/{wsId}/media/jobs/{jobId}/qa-issues` | `QaController.java` (`listMediaJobQaIssues`) | `segments.ts`: `listMediaJobQaIssuesApi`<br/>Hook: `useMediaJobQaIssues`<br/>Normalize: `normalizeQaIssue` | 🟢 Hoàn thành |
+| 5 | **Giải quyết cảnh báo QA (Resolve Issue)** | `POST /api/workspaces/{wsId}/qa-issues/{issueId}/resolve` | `QaController.java` (`resolveQaIssue`) | `segments.ts`: `resolveQaIssueApi`<br/>Hook: `useResolveQaIssue` (tự động invalidate cache) | 🟢 Hoàn thành |
+| 6 | **Ghi đè cảnh báo QA (Override Issue - Admin/PM)** | `POST /api/workspaces/{wsId}/qa-issues/{issueId}/override` | `QaController.java` (`overrideQaIssue`) | `segments.ts`: `overrideQaIssueApi`<br/>Hook: `useOverrideQaIssue` (tự động invalidate cache) | 🟢 Hoàn thành |
+| 7 | **Xác nhận qua Checkpoint kiểm duyệt** | `POST /api/workspaces/{wsId}/media/jobs/{jobId}/checkpoints/{checkpoint}/confirm` | `MediaJobController.java` (`confirmCheckpoint`) | `transformation.ts`: `continueWorkflowApi`<br/>Hook: `useWorkflowContinue` | 🟢 Hoàn thành |
+
+---
+
+### 5.2 Các vấn đề & Sai lệch hợp đồng đã phát hiện & Giải pháp xử lý
+
+#### Vấn đề 1: Frontend phụ thuộc vào `translationJobId` nguyên mẫu cũ thay vì gọi API Subtitles thực tế
+- **Hiện tượng:** Bản prototype ban đầu giả định Media Job liên kết sang một Text Translation Job độc lập thông qua `job.translationJobId` (`useMediaLinkedJob`). Trong kiến trúc Spring Boot thực tế, `MediaJob` trực tiếp sở hữu các `subtitle_segments` trong DB và phục vụ qua endpoint riêng biệt `GET .../media/jobs/{jobId}/subtitles`.
+- **Giải pháp xử lý:**
+  1. Thêm `listMediaJobSubtitlesApi(workspaceId, jobId)` vào [`frontend/src/api/media.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/media.ts).
+  2. Bổ sung query key `mediaSubtitles` trong [`frontend/src/lib/queryClient.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/lib/queryClient.ts).
+  3. Tạo hook `useMediaSubtitles(workspaceId, jobId)` trong [`frontend/src/hooks/useMedia.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/hooks/useMedia.ts).
+  4. Đấu nối hook mới vào `MediaReviewSection`, `MediaSubtitleEditor`, `MediaQaPanel`. Đồng thời duy trì fallback sang `linkedJob` để bảo đảm 100% tương thích ngược với các test fixture hiện hữu.
+
+#### Vấn đề 2: Lệch cấu trúc dữ liệu cảnh báo chất lượng `QaIssue`
+- **Hiện tượng:** Backend `QaIssueResponse` trả về `issueType`, `resolvedAt` (timestamp kiểu Long), `detail` (chuỗi JSON), `ruleCode`. Trong khi Frontend type `QaIssue` yêu cầu `type`, `resolved` (boolean), `message`, `suggestion`, `blockingActions`.
+- **Giải pháp xử lý (Đồng bộ hai đầu):**
+  1. **Backend ([`QaIssueResponse.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/qa/dto/QaIssueResponse.java)):** Bổ sung getter `@JsonProperty("type")` trả về `issueType` và `@JsonProperty("resolved")` trả về `resolvedAt != null`.
+  2. **Frontend ([`qa.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/lib/qa.ts)):** Xây dựng hàm chuẩn hóa `normalizeQaIssue(raw)` gán mặc định an toàn cho `type`, `resolved`, `message`, `blockingActions`, `subtitleSegmentId`, trích xuất `suggestion` từ `detail`.
+  3. **Frontend API & Hook:** Cập nhật `listMediaJobQaIssuesApi` tự động chạy qua `normalizeQaIssue`, đồng thời tạo hook `useMediaJobQaIssues` trong [`useMedia.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/hooks/useMedia.ts).
+
+#### Vấn đề 3: Lệch giá trị Enum Checkpoint (`CUT` vs `CUT_CONFIRMED`)
+- **Hiện tượng:** Backend `Checkpoint.java` quy định các giá trị enum là `CUT_CONFIRMED`, `REVIEW_CONFIRMED`, `PUBLISH_CONFIRMED`. Tuy nhiên Frontend gửi short name `'CUT'`, `'REVIEW'`, `'EXPORT'`/`'PUBLISH'`, dẫn tới lỗi `400 Bad Request` khi gọi confirm checkpoint.
+- **Giải pháp xử lý (Tương thích mềm mại 2 chiều):**
+  1. **Frontend ([`transformation.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/api/transformation.ts)):** Thêm hàm `normalizeCheckpoint` tự động chuyển `'CUT' ➔ 'CUT_CONFIRMED'`, `'REVIEW' ➔ 'REVIEW_CONFIRMED'`, `'EXPORT'/'PUBLISH' ➔ 'PUBLISH_CONFIRMED'`.
+  2. **Backend Converter ([`StringToCheckpointConverter.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/media_job/controller/StringToCheckpointConverter.java)):** Đăng ký Spring Converter bean tự động nhận diện cả tên ngắn (`CUT`, `REVIEW`, `EXPORT`, `PUBLISH`) lẫn tên đầy đủ (`CUT_CONFIRMED`, ...).
+  3. **Backend Enum ([`Checkpoint.java`](file:///D:/Project/Project_Kada/TransFlow/backend-main/src/main/java/com/app/modules/media_job/entity/Checkpoint.java)):** Thêm `@JsonCreator fromString(String)` hỗ trợ cả 2 dạng định danh.
+
+#### Vấn đề 4: Suy diễn Checkpoint (`checkpointOf`) khi Backend không trả mảng `workflowCheckpoints`
+- **Hiện tượng:** Backend lưu trữ trạng thái xác nhận checkpoint trong stage `inputRef` (`CONFIRMED_AT=...`) và không chiếu mảng `workflowCheckpoints` trong `MediaJobResponse`. Khi đó `checkpointOf` trên Frontend trả về `null`, khiến nút xác nhận chuyển bước không kích hoạt.
+- **Giải pháp xử lý:** Cập nhật `checkpointOf` trong [`frontend/src/lib/media.ts`](file:///D:/Project/Project_Kada/TransFlow/frontend/src/lib/media.ts): nếu không có mảng `workflowCheckpoints`, hàm tự động suy luận trạng thái từng checkpoint (`CUT`, `REVIEW`, `EXPORT`) dựa trên trạng thái của các stage (`SUMMARIZE`, `TRANSLATE`, `TTS`, `RENDER`) và chế độ `workflowMode`.
+
+#### Vấn đề 5: Tự động Invalidate Cache liên quan khi chỉnh sửa phụ đề và QA
+- **Giải pháp xử lý:**
+  - `useEditMediaSegment` và `useBatchEditMediaSegments` tự động invalidate đồng thời: `mediaSubtitles`, `mediaQaIssues`, `mediaJob`, và `job` (nếu có translationJobId).
+  - `useResolveQaIssue` và `useOverrideQaIssue` hỗ trợ tham số `mediaJobId` và tự động làm mới `mediaQaIssues` và `mediaSubtitles`.
+
+---
+
+### 5.3 Kết quả kiểm thử & Build thực tế
+- **Backend Tests:**
+  - `MediaJobControllerTest`, `QaControllerTest`, `QaServiceImplTest`, `MediaJobServiceImplTest`: **86/86 tests PASS 100%**.
+- **Frontend Tests:** `npm test` ➔ **690/690 tests PASS 100%** (69 test files).
+- **Frontend Build:** `npm run build` (`tsc -b && vite build`) ➔ **THÀNH CÔNG 100%** với 0 lỗi TypeScript và bundle tối ưu.
+
+---
+
+## 6. DANH MỤC CHI TIẾT API ĐÃ CÓ & CÒN THIẾU (PHASE 5 ➔ PHASE 6)
 
 Dưới đây là danh sách phân loại chi tiết theo trạng thái thực tế trong mã nguồn:
-
-### Phase 4: Subtitles, Review Workbench & QA Gate
-* 🟢 **ĐÃ CÓ ĐẦY ĐỦ TRONG BACKEND:**
-  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles`: Lấy danh sách timeline phân đoạn phụ đề.
-  - `PATCH /api/workspaces/{wsId}/media/jobs/{jobId}/subtitles/{segmentId}`: Chỉnh sửa 1 dòng phụ đề lẻ.
-  - `PUT /api/workspaces/{wsId}/media/jobs/{jobId}/segments/batch`: Lưu đồng loạt toàn bộ danh sách phụ đề đã chỉnh sửa trên Review Workbench (`MediaJobController:157`).
-  - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/qa-issues`: Liệt kê các cảnh báo chất lượng dịch (`QaController`).
-  - `POST /api/workspaces/{wsId}/qa-issues/{issueId}/override`: Vượt qua cảnh báo QA có ghi chú lý do.
-  - `POST /api/workspaces/{wsId}/media/jobs/{jobId}/checkpoints/{checkpoint}/confirm`: Xác nhận qua checkpoint kiểm duyệt (`CUT_CONFIRMED`, `REVIEW_CONFIRMED`, `PUBLISH_CONFIRMED`).
 
 ### Phase 5: Render Studio, Reframe & Cover Layers
 * 🟢 **ĐÃ CÓ ĐẦY ĐỦ TRONG BACKEND:**
@@ -305,8 +355,6 @@ Dưới đây là danh sách phân loại chi tiết theo trạng thái thực t
   - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/export`: Yêu cầu xuất bản video hoặc tải phụ đề .SRT, .VTT, .MP4 (`MediaJobController:194`).
   - `GET /api/workspaces/{wsId}/media/jobs/{jobId}/output-package`: Tải gói phân phối thành phẩm (`MediaPackageController:26`).
   - `GET/PUT /api/workspaces/{wsId}/media/jobs/{jobId}/publish-package`: Quản lý tiêu đề, mô tả và metadata phát hành mạng xã hội (`MediaPackageController:33-41`).
-  - `POST /api/workspaces/{wsId}/projects/{pId}/media/jobs/download`: Tải gói nén zip nhiều video thành phẩm của dự án (`MediaJobController:76`).
-
 ---
 
 ## 6. CẨM NANG XỬ LÝ NHANH CÁC LỖI PHỔ BIẾN (TROUBLESHOOTING GUIDE)

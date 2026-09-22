@@ -286,12 +286,23 @@ export function batchEditTransformationSegmentsApi(
 
 // ---------- W0 workflow (docs/16 §7.5) ----------
 
+export function normalizeCheckpoint(checkpoint: string): string {
+  const c = (checkpoint || '').trim().toUpperCase()
+  if (c === 'CUT' || c === 'CUT_CONFIRMED') return 'CUT_CONFIRMED'
+  if (c === 'REVIEW' || c === 'REVIEW_CONFIRMED') return 'REVIEW_CONFIRMED'
+  if (c === 'EXPORT' || c === 'PUBLISH' || c === 'PUBLISH_CONFIRMED') return 'PUBLISH_CONFIRMED'
+  return c
+}
+
 export function continueWorkflowApi(workspaceId: string, jobId: string, checkpoint: string) {
+  const normalized = normalizeCheckpoint(checkpoint)
   return apiRequest<import('@/types/media').WorkflowCheckpoint>(
-    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/checkpoints/${checkpoint}/confirm`),
-    { method: 'POST', body: { checkpoint } },
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/checkpoints/${normalized}/confirm`),
+    { method: 'POST', body: { checkpoint: normalized } },
   )
 }
+
+export { listMediaJobSubtitlesApi } from './media'
 
 /**
  * @deprecated Legacy W0 prototype route — unused in Media Studio UI. Backend does not implement this route.

@@ -72,7 +72,11 @@ export function useApproveSegment(workspaceId: string | undefined, jobId: string
   })
 }
 
-export function useResolveQaIssue(workspaceId: string | undefined, jobId: string | undefined) {
+export function useResolveQaIssue(
+  workspaceId: string | undefined,
+  jobId: string | undefined,
+  mediaJobId?: string,
+) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({
@@ -85,12 +89,23 @@ export function useResolveQaIssue(workspaceId: string | undefined, jobId: string
     onSuccess: () => {
       if (workspaceId && jobId) {
         void qc.invalidateQueries({ queryKey: queryKeys.job(workspaceId, jobId) })
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaQaIssues(workspaceId, jobId) })
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaSubtitles(workspaceId, jobId) })
+      }
+      if (workspaceId && mediaJobId && mediaJobId !== jobId) {
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, mediaJobId) })
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaQaIssues(workspaceId, mediaJobId) })
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaSubtitles(workspaceId, mediaJobId) })
       }
     },
   })
 }
 
-export function useOverrideQaIssue(workspaceId: string | undefined, jobId: string | undefined) {
+export function useOverrideQaIssue(
+  workspaceId: string | undefined,
+  jobId: string | undefined,
+  mediaJobId?: string,
+) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({
@@ -103,6 +118,13 @@ export function useOverrideQaIssue(workspaceId: string | undefined, jobId: strin
     onSuccess: () => {
       if (workspaceId && jobId) {
         void qc.invalidateQueries({ queryKey: queryKeys.job(workspaceId, jobId) })
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaQaIssues(workspaceId, jobId) })
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaSubtitles(workspaceId, jobId) })
+      }
+      if (workspaceId && mediaJobId && mediaJobId !== jobId) {
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, mediaJobId) })
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaQaIssues(workspaceId, mediaJobId) })
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaSubtitles(workspaceId, mediaJobId) })
       }
     },
   })

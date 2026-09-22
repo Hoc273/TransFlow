@@ -108,3 +108,10 @@ export function getMediaAssetApi(workspaceId: string, assetId: string) {
     buildWorkspacePath(workspaceId, `/media/assets/${assetId}`),
   )
 }
+
+/** List subtitle cues for a media job (API Contract §5, MediaJobController:128). */
+export function listMediaJobSubtitlesApi(workspaceId: string, jobId: string) {
+  return apiRequest<import('@/types/media').MediaSubtitleCue[]>(
+    buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/subtitles`),
+  )
+}
