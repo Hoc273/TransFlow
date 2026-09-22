@@ -172,6 +172,7 @@ class GenerativeBeatRequest(BaseModel):
 class RenderRequest(BaseModel):
     correlation_id: str
     media_job_id: str
+    stage_id: str | None = None
     source_video_ref: str
     cut_ranges: List[CutRangeRequest]
     audio_input_version: str
@@ -242,7 +243,7 @@ async def _process_render(req: RenderRequest) -> None:
     try:
         _check_cancelled(req.correlation_id)
         storage = get_storage()
-        await send_progress(req.media_job_id, req.correlation_id, 10)
+        await send_progress(req.media_job_id, req.correlation_id, 10, req.stage_id)
 
         source_path = os.path.join(temp_dir, "source_video")
         await _blocking(storage.download, req.source_video_ref, source_path)
@@ -292,7 +293,7 @@ async def _process_render(req: RenderRequest) -> None:
                 for sa in req.segment_audios:
                     audio_ref_by_id[sa.segment_id] = sa.audio_ref
 
-            await send_progress(req.media_job_id, req.correlation_id, 30)
+            await send_progress(req.media_job_id, req.correlation_id, 30, req.stage_id)
             try:
                 source_duration_probe = await _blocking(probe_source_duration, source_path)
             except FFmpegError as exc:
@@ -337,7 +338,7 @@ async def _process_render(req: RenderRequest) -> None:
                     # authority. Do not pad it to the source visual duration.
                     tts_audio_paths.append(raw_audio_path)
 
-            await send_progress(req.media_job_id, req.correlation_id, 50)
+            await send_progress(req.media_job_id, req.correlation_id, 50, req.stage_id)
             _check_cancelled(req.correlation_id)
 
             concat_list = os.path.join(temp_dir, "generative_concat_list.txt")
@@ -365,12 +366,12 @@ async def _process_render(req: RenderRequest) -> None:
             else:
                 raise FFmpegError("Generative render requires beat audio_refs or resolved_audio_ref", "INVALID_INPUT", retryable=False)
         else:
-            await send_progress(req.media_job_id, req.correlation_id, 30)
+            await send_progress(req.media_job_id, req.correlation_id, 30, req.stage_id)
             _check_cancelled(req.correlation_id)
 
             concat_path = os.path.join(temp_dir, "concat.mp4")
             await _blocking(cut_and_concat_video, source_path, cut_ranges, concat_path, temp_dir)
-            await send_progress(req.media_job_id, req.correlation_id, 50)
+            await send_progress(req.media_job_id, req.correlation_id, 50, req.stage_id)
             _check_cancelled(req.correlation_id)
 
             # CT9: the resolver owns source selection. Worker validates the
@@ -414,7 +415,7 @@ async def _process_render(req: RenderRequest) -> None:
             else:
                 raise FFmpegError("Unsupported audio_source", "INVALID_INPUT", retryable=False)
 
-        await send_progress(req.media_job_id, req.correlation_id, 70)
+        await send_progress(req.media_job_id, req.correlation_id, 70, req.stage_id)
         _check_cancelled(req.correlation_id)
 
         audio_replaced = os.path.join(temp_dir, "with_audio.mp4")
@@ -549,10 +550,11 @@ async def _process_render(req: RenderRequest) -> None:
                 warnings=warnings,
                 validation=validation_report.to_payload(),
                 media_probe=media_probe.to_payload(),
+                stage_id=req.stage_id,
             )
             return
 
-        await send_progress(req.media_job_id, req.correlation_id, 90)
+        await send_progress(req.media_job_id, req.correlation_id, 90, req.stage_id)
         _check_cancelled(req.correlation_id)
 
         # Upload video; text sidecars only for SRT/VTT input — ASS sidecars are
@@ -581,6 +583,7 @@ async def _process_render(req: RenderRequest) -> None:
                 vtt_ref=vtt_ref,
                 validation=validation_report.to_payload(),
                 media_probe=media_probe.to_payload(),
+                stage_id=req.stage_id,
             )
             return
 
@@ -595,6 +598,7 @@ async def _process_render(req: RenderRequest) -> None:
             vtt_ref=vtt_ref,
             validation=validation_report.to_payload(),
             media_probe=media_probe.to_payload(),
+            stage_id=req.stage_id,
         )
     except RenderCancelled:
         logger.info("Render cancelled for correlation=%s", req.correlation_id)
@@ -607,6 +611,7 @@ async def _process_render(req: RenderRequest) -> None:
             output_ref=None,
             error={"code": "CANCELLED", "message": "Render cancelled by user", "retryable": False},
             warnings=warnings,
+            stage_id=req.stage_id,
         )
     except FFmpegError as exc:
         logger.exception("Render failed (ffmpeg)")
@@ -620,6 +625,7 @@ async def _process_render(req: RenderRequest) -> None:
             output_ref=None,
             error=error,
             warnings=warnings,
+            stage_id=req.stage_id,
         )
     except Exception as exc:
         logger.exception("Render failed")
@@ -635,6 +641,7 @@ async def _process_render(req: RenderRequest) -> None:
             output_ref=None,
             error={"code": code, "message": message},
             warnings=warnings,
+            stage_id=req.stage_id,
         )
     finally:
         cancel_registry.unregister(req.correlation_id)
