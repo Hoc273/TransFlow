@@ -1,7 +1,10 @@
 {
-  "title": "Glossaries",
-  "subtitle": "Terminology lists · Admin/PM can edit · others read-only",
-  "sidebar": "Glossaries",
+  "title": "Project glossaries",
+  "subtitle": "Each project has one terminology list for consistent localization",
+  "sidebar": "Projects",
+  "sourceLang": "Source: {{language}}",
+  "noProjectsTitle": "No project yet",
+  "noProjectsDesc": "Create a project before managing its glossary.",
   "emptyTitle": "No glossary yet",
   "emptyDesc": "Create a glossary to enforce consistent terminology in translations.",
   "termCount": "{{count}} terms",
@@ -21,7 +24,7 @@
     "addTitle": "Add term",
     "adding": "Adding…",
     "required": "Source and target terms are required",
-    "duplicate": "A term with the same source + part of speech already exists (Q-G5).",
+    "duplicate": "A term with the same source and target language already exists.",
     "skipped": "{{n}} term(s) skipped (duplicate)",
     "emptyTitle": "No terms",
     "emptyDesc": "Add terms manually or import a CSV.",
@@ -33,6 +36,7 @@
     "col": {
       "source": "Source",
       "target": "Target",
+      "targetLang": "Target language",
       "pos": "POS",
       "case": "Case",
       "updated": "Updated"
@@ -51,7 +55,7 @@
   "import": {
     "button": "Import CSV",
     "title": "Import terms from CSV",
-    "hint": "Header: source_term,target_term,case_sensitive,part_of_speech,note",
+    "hint": "Header: source_term,target_term,target_lang",
     "drop": "Click to select a .csv file",
     "importing": "Importing…",
     "result": "Added {{added}} · skipped {{skipped}}"

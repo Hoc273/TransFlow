@@ -139,6 +139,18 @@ class GlossaryControllerTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void listTerms_firstAccess_autoCreatesEmptyGlossary() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-glossary-terms-first@transflow.com");
+
+        mockMvc.perform(get("/api/workspaces/" + lead.workspaceId() + "/projects/" + lead.projectId() + "/glossary/terms")
+                        .header("Authorization", "Bearer " + lead.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, glossaryRepository.count());
+    }
+
     // ---- term CRUD ----
 
     @Test
@@ -211,6 +223,16 @@ class GlossaryControllerTest {
                         .header("Authorization", "Bearer " + lead.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"sourceTerm\":\"a\",\"targetTerm\":\"b\",\"targetLang\":\"en\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(ErrorCode.RESOURCE_NOT_FOUND.getCode()));
+    }
+
+    @Test
+    void legacyWorkspaceGlossariesRoute_returnsStandardized404() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-glossary-route-404@transflow.com");
+
+        mockMvc.perform(get("/api/workspaces/" + lead.workspaceId() + "/glossaries")
+                        .header("Authorization", "Bearer " + lead.accessToken()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(ErrorCode.RESOURCE_NOT_FOUND.getCode()));
     }

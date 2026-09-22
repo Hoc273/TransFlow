@@ -2,7 +2,6 @@ import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal } from '@/components/shared/Modal'
 import { useCreateProject } from '@/hooks/useProjects'
-import { useGlossaries } from '@/hooks/useGlossary'
 import { formatLanguageOption, LANG_OPTIONS } from '@/lib/languages'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
@@ -24,11 +23,9 @@ export function CreateProjectModal({
   const { t } = useTranslation(['project', 'common'])
   const language = useUiStore((state) => state.language)
   const create = useCreateProject(workspaceId)
-  const { data: glossaries = [] } = useGlossaries(workspaceId)
 
   const [name, setName] = useState('')
   const [sourceLang, setSourceLang] = useState('en')
-  const [defaultGlossaryId, setDefaultGlossaryId] = useState('')
   const [domain, setDomain] = useState('')
   const [tone, setTone] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -36,7 +33,6 @@ export function CreateProjectModal({
   const reset = () => {
     setName('')
     setSourceLang('en')
-    setDefaultGlossaryId('')
     setDomain('')
     setTone('')
     setError(null)
@@ -60,7 +56,6 @@ export function CreateProjectModal({
       {
         name: trimmed,
         sourceLang,
-        defaultGlossaryId: defaultGlossaryId || null,
         domain: domain.trim() || null,
         tone: tone.trim() || null,
       },
@@ -121,38 +116,20 @@ export function CreateProjectModal({
           />
         </label>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="field-label">
-            <span>{t('project:create.sourceLang')}</span>
-            <select
-              className="field-select"
-              value={sourceLang}
-              onChange={(e) => setSourceLang(e.target.value)}
-            >
-              {LANG_OPTIONS.map((l) => (
-                <option key={l} value={l}>
-                  {formatLanguageOption(l, language)}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field-label">
-            <span>{t('project:create.glossary')}</span>
-            <select
-              className="field-select"
-              value={defaultGlossaryId}
-              onChange={(e) => setDefaultGlossaryId(e.target.value)}
-            >
-              <option value="">{t('project:create.glossaryNone')}</option>
-              {glossaries.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <label className="field-label">
+          <span>{t('project:create.sourceLang')}</span>
+          <select
+            className="field-select"
+            value={sourceLang}
+            onChange={(e) => setSourceLang(e.target.value)}
+          >
+            {LANG_OPTIONS.map((l) => (
+              <option key={l} value={l}>
+                {formatLanguageOption(l, language)}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="field-label">

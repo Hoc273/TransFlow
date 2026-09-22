@@ -115,7 +115,7 @@ public class AuthServiceImpl implements AuthService {
 
         String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
         registerOtpStore.saveOtp(email, otp);
-        log.info("Generated register verification OTP for email [{}]: {}", email, otp);
+        log.debug("Generated register verification OTP for email [{}]", email);
         emailService.sendOtpEmail(email, otp, OtpType.REGISTER);
 
         return new OtpMessageResponse("Mã xác thực OTP 6 chữ số đã được gửi đến email " + email);
@@ -257,7 +257,7 @@ public class AuthServiceImpl implements AuthService {
 
         String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
         otpStore.saveOtp(email, otp);
-        log.info("Generated forgot password OTP for email [{}]: {}", email, otp);
+        log.debug("Generated forgot password OTP for email [{}]", email);
         emailService.sendOtpEmail(email, otp, OtpType.FORGOT_PASSWORD);
 
         return new OtpMessageResponse("Mã xác thực OTP 6 chữ số đã được gửi đến email " + email);

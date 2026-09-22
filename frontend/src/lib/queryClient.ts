@@ -73,9 +73,10 @@ export const queryKeys = {
   transformationCapabilities: ['transformation', 'capabilities'] as const,
   segmentHistory: (wsId: string, segmentId: string) =>
     ['segmentHistory', wsId, segmentId] as const,
-  glossaries: (wsId: string) => ['glossaries', wsId] as const,
-  glossaryTerms: (wsId: string, glossaryId: string) =>
-    ['glossaryTerms', wsId, glossaryId] as const,
+  projectGlossary: (wsId: string, projectId: string) =>
+    ['projectGlossary', wsId, projectId] as const,
+  glossaryTerms: (wsId: string, projectId: string) =>
+    ['glossaryTerms', wsId, projectId] as const,
   usage: (wsId: string, params?: Record<string, string | undefined>) =>
     ['usage', wsId, params ?? {}] as const,
   // Platform Super Admin (docs/34 / 09b Phase P) — no workspace scope
