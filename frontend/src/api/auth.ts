@@ -1,6 +1,8 @@
 import { apiRequest } from '@/lib/api/client'
 import type { AuthResponse, LoginRequest, RegisterRequest, User } from '@/types/auth'
 
+const googleExchangeRequests = new Map<string, Promise<AuthResponse>>()
+
 export function loginApi(body: LoginRequest) {
   return apiRequest<AuthResponse>('/auth/login', {
     method: 'POST',
@@ -36,12 +38,22 @@ export function getMeApi() {
 
 /** One-time code from BE after Google callback (09b B.1b). */
 export function googleExchangeApi(code: string) {
-  return apiRequest<AuthResponse>('/auth/google/exchange', {
+  const inFlight = googleExchangeRequests.get(code)
+  if (inFlight) return inFlight
+
+  const request = apiRequest<AuthResponse>('/auth/google/exchange', {
     method: 'POST',
     body: { code },
     skipAuth: true,
     skipRefresh: true,
   })
+
+  googleExchangeRequests.set(code, request)
+  request.then(
+    () => googleExchangeRequests.delete(code),
+    () => googleExchangeRequests.delete(code),
+  )
+  return request
 }
 
 /** Password reset request — send OTP to email. */
