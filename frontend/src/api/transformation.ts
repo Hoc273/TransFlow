@@ -124,6 +124,8 @@ export function createTransformationJobApi(workspaceId: string, body: CreateMedi
     ...body,
     projectId: body.projectId || undefined,
     rootAssetId: body.rootAssetId || body.documentId || undefined,
+    recipeId:
+      body.recipeId === 'summary.generative' ? 'summary.script_match' : body.recipeId,
     processingMode:
       body.processingMode ??
       (body.recipeId === 'localization.full' ? 'TRANSLATE_ONLY' : undefined),
@@ -291,6 +293,9 @@ export function continueWorkflowApi(workspaceId: string, jobId: string, checkpoi
   )
 }
 
+/**
+ * @deprecated Legacy W0 prototype route — unused in Media Studio UI. Backend does not implement this route.
+ */
 export function resumeWorkflowApi(workspaceId: string, jobId: string) {
   return apiRequest<void>(
     buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/workflow/resume`),
