@@ -13,7 +13,7 @@ from app.schemas.contract import (
     SummaryCutRange,
     SummaryProposal,
 )
-from app.services.llm_gateway import chat
+from app.services.llm_gateway import chat, text_reasoning_extra
 from app.services.provider_errors import (
     ProviderErrorCode,
     ProviderException,
@@ -172,10 +172,9 @@ async def summarize(req: SummarizeRequest) -> SummarizeResponse:
     )
 
     try:
-        extra_body = (
-            {"thinking": {"type": "disabled"}}
-            if settings.disable_thinking_for_summarize
-            else None
+        extra_body = text_reasoning_extra(
+            req.provider,
+            disabled=settings.disable_thinking_for_summarize,
         )
         result = await chat(
             req.provider,

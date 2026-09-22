@@ -70,7 +70,43 @@ class ProtocolAdapter(ABC):
                 capability=cap,
             )
 
+    def require_provider_capability(
+        self,
+        provider: ProviderPayload,
+        capability: str | Capability,
+    ) -> None:
+        """Require both adapter support and the configured provider capability.
+
+        ``capabilities=None`` is the legacy payload shape and deliberately keeps
+        adapter-level behavior. Once a capability set is present, it is the
+        authority for the configured provider/model and must contain the
+        requested capability.
+        """
+        cap = capability.value if isinstance(capability, Capability) else capability
+        self.require_capability(cap)
+        if provider.capabilities is not None and cap not in provider.capabilities:
+            raise ProviderConfiguration(
+                f"Provider does not declare capability {cap}",
+                code=ProviderErrorCode.PROVIDER_UNSUPPORTED_CAPABILITY,
+                provider=provider.base_url,
+                protocol=provider.protocol,
+                capability=cap,
+            )
+
     # ── TEXT ─────────────────────────────────────────────────────────────────
+
+    def text_reasoning_extra(
+        self,
+        provider: ProviderPayload,
+        *,
+        disabled: bool,
+    ) -> Optional[dict[str, Any]]:
+        """Return protocol-specific TEXT reasoning controls.
+
+        The safe default is no wire-level control. Adapters override this only
+        when their protocol has an established parameter.
+        """
+        return None
 
     async def chat(
         self,
@@ -81,7 +117,10 @@ class ProtocolAdapter(ABC):
         max_tokens: int = 2048,
         response_format: Optional[dict[str, Any]] = None,
         extra_body: Optional[dict[str, Any]] = None,
+        images: Optional[list[str]] = None,
     ) -> ChatResult:
+        if images:
+            self.require_provider_capability(provider, Capability.VISION)
         self._unsupported(Capability.TEXT)
 
     # ── STT ──────────────────────────────────────────────────────────────────

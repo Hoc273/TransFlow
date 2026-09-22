@@ -4,7 +4,7 @@ from app.core.config import settings
 from app.core.logging_config import get_internal_logger
 from app.core.prompts import build_content_brief_prompt
 from app.schemas.contract import ContentBriefRequest, ContentBriefResponse
-from app.services.llm_gateway import chat
+from app.services.llm_gateway import chat, text_reasoning_extra
 from app.services.provider_errors import ProviderErrorCode, ProviderException, ProviderValidation
 
 _log = get_internal_logger("content_brief")
@@ -41,6 +41,10 @@ async def understand_brief(req: ContentBriefRequest) -> ContentBriefResponse:
             system,
             user,
             max_tokens=2048,
+            extra_body=text_reasoning_extra(
+                req.provider,
+                disabled=settings.disable_thinking_for_summarize,
+            ),
         )
         if not result.text or not result.text.strip():
             raise ProviderValidation(

@@ -41,17 +41,12 @@ _fe_log = get_frontend_logger("routes")
 router = APIRouter()
 
 
-def _text_extra_body() -> dict | None:
-    """Build the thinking-disabled extra_body for TEXT calls (translate/qa).
-
-    Mirrors the summarize gateway: when the setting is on, pass the
-    documented DeepSeek V4 kill-switch so reasoning-capable models emit
-    JSON directly into ``content`` instead of ``reasoning_content``.
-    Non-DeepSeek providers ignore the unknown field per OpenAI spec.
-    """
-    if settings.disable_thinking_for_translate:
-        return {"thinking": {"type": "disabled"}}
-    return None
+def _text_extra_body(provider) -> dict | None:
+    """Build protocol-normalized reasoning controls for translate/QA."""
+    return llm_gateway.text_reasoning_extra(
+        provider,
+        disabled=settings.disable_thinking_for_translate,
+    )
 
 
 def _classify_text_failure(raw_text: str, finish_reason: str) -> tuple[str, str]:
@@ -96,7 +91,7 @@ async def translate(req: TranslateRequest) -> TranslateResponse | StreamingRespo
             user,
             max_tokens=settings.translate_max_tokens,
             response_format={"type": "json_object"},
-            extra_body=_text_extra_body(),
+            extra_body=_text_extra_body(req.provider),
         )
     except ProviderException as exc:
         return _translate_failed(req, exc)
@@ -152,7 +147,7 @@ async def qa(req: QARequest) -> QAResponse:
             user,
             max_tokens=settings.translate_max_tokens,
             response_format={"type": "json_object"},
-            extra_body=_text_extra_body(),
+            extra_body=_text_extra_body(req.provider),
         )
     except ProviderException as exc:
         return QAResponse(request_id=req.request_id, status="FAILED", error=str(exc))
@@ -228,7 +223,7 @@ async def _translate_stream(req: TranslateRequest, system: str, user: str):
             user,
             max_tokens=settings.translate_max_tokens,
             response_format={"type": "json_object"},
-            extra_body=_text_extra_body(),
+            extra_body=_text_extra_body(req.provider),
         )
     except ProviderException as exc:
         yield _sse("done", _translate_failed(req, exc).model_dump())

@@ -47,10 +47,6 @@ from app.services.protocol.static_voices import (
     PIPER_VOICES,
     PIPER_VOICE_MODELS,
 )
-from app.services.generated_asset_cache import (
-    NoopGeneratedAssetCache,
-    set_cache_override,
-)
 from app.services.protocol.types import SynthesizeResult
 from app.services.provider_errors import (
     ProviderErrorCode,
@@ -449,12 +445,6 @@ class CatalogRegistryTest(unittest.TestCase):
 # ── Gateway execution_info ───────────────────────────────────────────────────
 
 class GatewayExecutionInfoTest(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
-        set_cache_override(NoopGeneratedAssetCache())
-
-    def tearDown(self):
-        set_cache_override(None)
-
     async def test_gateway_completes_execution_info_per_segment(self):
         request = TtsRequest(
             correlation_id="corr-1",
@@ -534,12 +524,6 @@ class GatewayExecutionInfoTest(unittest.IsolatedAsyncioTestCase):
 # ── Gateway zero-key gate (P0-1) ──────────────────────────────────────────────
 
 class GatewayKeyGateTest(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
-        set_cache_override(NoopGeneratedAssetCache())
-
-    def tearDown(self):
-        set_cache_override(None)
-
     def _adapter(self, requires_key: bool) -> SimpleNamespace:
         return SimpleNamespace(requires_api_key=requires_key)
 
@@ -606,12 +590,6 @@ class GatewayKeyGateTest(unittest.IsolatedAsyncioTestCase):
 
 class GatewayPerSegmentErrorCodeTest(unittest.IsolatedAsyncioTestCase):
     """OI-01 (`93` §4.19.12): per-segment errorCode wire contract."""
-
-    def setUp(self):
-        set_cache_override(NoopGeneratedAssetCache())
-
-    def tearDown(self):
-        set_cache_override(None)
 
     def _request(self, *segment_ids: str) -> TtsRequest:
         return TtsRequest(

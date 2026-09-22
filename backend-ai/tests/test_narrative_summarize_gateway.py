@@ -13,7 +13,11 @@ from app.schemas.contract import (
     Usage,
 )
 from app.services import narrative_summarize_gateway
-from app.services.allocator import allocate_blocks, source_coverage_target_representable
+from app.services.allocator import (
+    allocate_blocks,
+    duration_window,
+    source_coverage_target_representable,
+)
 from app.services.narrative_planning_models import (
     BlockRanking,
     NarrativeDraft,
@@ -152,6 +156,48 @@ def _numbered_script(prefix: str, minimum_chars: int) -> str:
     return " ".join(sentences)
 
 
+def _duplicate_writer_payload() -> dict:
+    payload = _writer_payload()
+    payload["sections"][1]["script_source_lang"] = payload["sections"][0]["script_source_lang"]
+    return payload
+
+
+def _same_language_verbatim_request() -> NarrativeSummarizeRequest:
+    req = _request()
+    req.language = "vi"
+    req.transcript = [
+        SttSegment(
+            text="Nhân vật chính bước vào căn phòng tối và nhìn thấy chiếc hộp cũ nằm dưới ánh đèn",
+            start_ms=0,
+            end_ms=60_000,
+        ),
+        SttSegment(
+            text="Những dấu hiệu mới làm thay đổi cách mọi người hiểu về câu chuyện",
+            start_ms=60_000,
+            end_ms=120_000,
+        ),
+        SttSegment(
+            text="Cuối cùng nhóm nhân vật đưa ra lựa chọn và khép lại cuộc hành trình",
+            start_ms=120_000,
+            end_ms=180_000,
+        ),
+    ]
+    req.duration_ms = 180_000
+    req.target_duration_ms = 120_000
+    return req
+
+
+def _verbatim_writer_payload(source_text: str, *, whole_sentence: bool = False) -> dict:
+    payload = _writer_payload()
+    payload["sections"][0]["script_source_lang"] = (
+        source_text
+        if whole_sentence
+        else source_text
+        + " Sau đó nhóm nhân vật cân nhắc kế hoạch mới trước khi rời khỏi căn phòng trong im lặng."
+    )
+    return payload
+
+
 def _quantized_pause_transcript() -> list[dict[str, int | str]]:
     segments: list[dict[str, int | str]] = []
     gaps = (1_520, 1_600, 1_680, 1_760)
@@ -168,6 +214,31 @@ def _quantized_pause_transcript() -> list[dict[str, int | str]]:
         )
         cursor = end_ms + gaps[index % len(gaps)]
     return segments
+
+
+def _duration_request(
+    source_duration_ms: int,
+    target_duration_ms: int,
+    segment_duration_ms: int = 10_000,
+) -> NarrativeSummarizeRequest:
+    req = _request()
+    segments: list[SttSegment] = []
+    cursor = 0
+    while cursor < source_duration_ms:
+        end = min(source_duration_ms, cursor + segment_duration_ms)
+        segments.append(
+            SttSegment(
+                text=f"Timed source segment {len(segments) + 1}",
+                start_ms=cursor,
+                end_ms=end,
+            )
+        )
+        cursor = end
+    req.transcript = segments
+    req.duration_ms = source_duration_ms
+    req.target_duration_ms = target_duration_ms
+    req.max_sections = None
+    return req
 
 
 class TranscriptBlockBoundaryTest(unittest.TestCase):
@@ -256,6 +327,137 @@ class PacingPreflightTest(unittest.TestCase):
             210,
         )
 
+    def test_shorter_source_pacing_uses_selected_coverage_not_requested_target(self):
+        req = _duration_request(40_000, 60_000)
+        effective_target = narrative_summarize_gateway._effective_narration_target_ms(
+            req, 40_000
+        )
+
+        pacing = narrative_summarize_gateway._narration_pacing_targets(
+            [{"section_id": "S001", "blocks": []}],
+            {"S001": [(0, 40_000)]},
+            target_duration_ms=effective_target,
+        )
+
+        self.assertEqual(effective_target, 40_000)
+        self.assertEqual(pacing[0]["narration_target_ms"], 40_000)
+        self.assertEqual(pacing[0]["total_presentation_span_ms"], 40_000)
+        self.assertTrue(pacing[0]["normalized_to_requested"])
+
+class DuplicateNarrationDiagnosticTest(unittest.TestCase):
+    def test_sentence_diagnostic_targets_only_the_third_occurrence(self):
+        repeated = "The grounded takeaway remains visible in this section."
+        draft = NarrativeDraft(
+            sections=[
+                WrittenSection(
+                    section_id=f"S00{index}",
+                    script_source_lang=f"{repeated} Unique detail for section {index}.",
+                )
+                for index in range(1, 4)
+            ]
+        )
+
+        diagnostics = narrative_summarize_gateway._narrative_duplicate_diagnostics(
+            draft,
+            [
+                {"section_id": f"S00{index}", "target_chars": 100}
+                for index in range(1, 4)
+            ],
+        )
+
+        self.assertEqual([item["section_id"] for item in diagnostics], ["S003"])
+        self.assertEqual(diagnostics[0]["duplicate_kind"], "EXACT_SENTENCE")
+        self.assertEqual(diagnostics[0]["duplicate_sentence"], repeated)
+
+    def test_whole_section_diagnostic_targets_the_later_section(self):
+        script = "A grounded section-specific sentence explains the selected event."
+        draft = NarrativeDraft(
+            sections=[
+                WrittenSection(section_id="S001", script_source_lang=script),
+                WrittenSection(section_id="S002", script_source_lang=script),
+            ]
+        )
+
+        diagnostics = narrative_summarize_gateway._narrative_duplicate_diagnostics(
+            draft,
+            [
+                {"section_id": "S001", "target_chars": 100},
+                {"section_id": "S002", "target_chars": 100},
+            ],
+        )
+
+        self.assertEqual([item["section_id"] for item in diagnostics], ["S002"])
+        self.assertEqual(diagnostics[0]["duplicate_kind"], "WHOLE_SECTION")
+
+    def test_source_copy_diagnostic_uses_only_the_locked_beat_evidence(self):
+        source = "Nhân vật chính bước vào căn phòng tối và nhìn thấy chiếc hộp cũ nằm dưới ánh đèn"
+        copied_script = (
+            source
+            + " Sau đó nhóm nhân vật cân nhắc kế hoạch mới trước khi rời khỏi căn phòng trong im lặng."
+        )
+        draft = NarrativeDraft(
+            sections=[
+                WrittenSection(section_id="S001", script_source_lang=copied_script),
+                WrittenSection(section_id="S002", script_source_lang=copied_script),
+            ]
+        )
+        allocated = [
+            {
+                "section_id": "S001",
+                "target_chars": 100,
+                "blocks": [{"full_text": source}],
+            },
+            {
+                "section_id": "S002",
+                "target_chars": 100,
+                "blocks": [{"full_text": "A different locked event happens later."}],
+            },
+        ]
+
+        diagnostics = narrative_summarize_gateway._narrative_verbatim_diagnostics(
+            draft,
+            allocated,
+        )
+
+        self.assertEqual([item["section_id"] for item in diagnostics], ["S001"])
+        self.assertGreaterEqual(diagnostics[0]["run_words"], 15)
+        self.assertFalse(diagnostics[0]["terminal_after_budget"])
+        self.assertEqual(diagnostics[0]["source_evidence"], source)
+
+    def test_cross_batch_whole_section_duplicate_is_seen_after_draft_merge(self):
+        repeated = "This grounded sentence belongs to one locked source beat."
+        draft = NarrativeDraft(
+            sections=[
+                WrittenSection(
+                    section_id=f"S{index:03d}",
+                    script_source_lang=(repeated if index in {1, 13} else f"Unique beat {index} narration."),
+                )
+                for index in range(1, 14)
+            ]
+        )
+        allocated = [
+            {
+                "section_id": f"S{index:03d}",
+                "target_chars": 100,
+                "blocks": [{"full_text": f"Locked source beat {index}."}],
+            }
+            for index in range(1, 14)
+        ]
+
+        diagnostics = narrative_summarize_gateway._narrative_quality_diagnostics(
+            draft,
+            allocated,
+            language="en",
+        )
+
+        duplicate = [
+            item for item in diagnostics
+            if item.get("violation") == "DUPLICATE_NARRATION"
+        ]
+        self.assertEqual([item["section_id"] for item in duplicate], ["S013"])
+        self.assertEqual(duplicate[0]["duplicate_kind"], "WHOLE_SECTION")
+
+
 class MockModeTest(unittest.IsolatedAsyncioTestCase):
     async def test_mock_mode_returns_one_deterministic_plan(self):
         with patch.object(narrative_summarize_gateway.settings, "mock_mode", True):
@@ -270,7 +472,84 @@ class MockModeTest(unittest.IsolatedAsyncioTestCase):
             for section in first.plans[0].sections
             for ref in section.source_refs
         ]
-        self.assertEqual(refs, [(0, 60_000), (60_000, 120_000)])
+        self.assertEqual(refs, [(0, 60_000), (120_000, 180_000)])
+
+    async def test_unbounded_short_source_can_emit_more_than_32_ordered_beats(self):
+        req = _request()
+        req.transcript = [
+            SttSegment(
+                text=f"Timed story event {index}",
+                start_ms=index * 8_000,
+                end_ms=(index + 1) * 8_000,
+            )
+            for index in range(220)
+        ]
+        req.duration_ms = 1_760_000
+        req.max_sections = None
+        req.target_duration_ms = 300_000
+
+        with patch.object(narrative_summarize_gateway.settings, "mock_mode", True):
+            response = await narrative_summarize_gateway.summarize_narrative(req)
+
+        self.assertEqual(response.status, "COMPLETED")
+        plan = response.plans[0]
+        self.assertGreater(len(plan.sections), 32)
+        refs = [
+            (ref.start_ms, ref.end_ms)
+            for section in plan.sections
+            for ref in section.source_refs
+        ]
+        self.assertEqual(refs, sorted(refs))
+        self.assertEqual(refs[0][0], 0)
+        self.assertGreaterEqual(refs[-1][1], 1_700_000)
+        self.assertTrue(270_000 <= sum(end - start for start, end in refs) <= 330_000)
+
+    async def test_short_source_uses_maximum_grounded_coverage_and_warning(self):
+        req = _duration_request(40_000, 60_000)
+
+        with patch.object(narrative_summarize_gateway.settings, "mock_mode", True):
+            response = await narrative_summarize_gateway.summarize_narrative(req)
+
+        self.assertEqual(response.status, "COMPLETED")
+        plan = response.plans[0]
+        coverage = sum(
+            ref.end_ms - ref.start_ms
+            for section in plan.sections
+            for ref in section.source_refs
+        )
+        self.assertEqual(coverage, 40_000)
+        self.assertIn("SHORTER_THAN_REQUESTED", plan.warnings)
+
+    async def test_duration_matrix_uses_timed_units_when_canonical_blocks_are_too_coarse(self):
+        cases = [
+            (120_000, 30_000, 12_000),
+            (531_000, 240_000, 10_000),
+            (900_000, 300_000, 10_000),
+            (1_740_000, 300_000, 10_000),
+        ]
+
+        with patch.object(narrative_summarize_gateway.settings, "mock_mode", True):
+            for source_duration_ms, target_duration_ms, segment_duration_ms in cases:
+                response = await narrative_summarize_gateway.summarize_narrative(
+                    _duration_request(
+                        source_duration_ms,
+                        target_duration_ms,
+                        segment_duration_ms,
+                    )
+                )
+
+                self.assertEqual(response.status, "COMPLETED")
+                refs = [
+                    (ref.start_ms, ref.end_ms)
+                    for section in response.plans[0].sections
+                    for ref in section.source_refs
+                ]
+                coverage = sum(end - start for start, end in refs)
+                min_ms, max_ms = duration_window(target_duration_ms)
+                self.assertTrue(min_ms <= coverage <= max_ms)
+                self.assertEqual(refs, sorted(refs))
+                self.assertLessEqual(refs[0][0], source_duration_ms // 4)
+                self.assertGreaterEqual(refs[-1][1], source_duration_ms * 3 // 4)
 
 
 class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
@@ -300,8 +579,8 @@ class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
             f"Short detail {index} keeps the selected beat grounded in context."
             for index in range(7)
         )
-        for section in short["sections"]:
-            section["script_source_lang"] = short_script
+        for index, section in enumerate(short["sections"]):
+            section["script_source_lang"] = f"{short_script} Section {index} remains distinct."
 
         repaired = _writer_payload()
         response, chat_mock = await self._run(
@@ -328,14 +607,47 @@ class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
             repaired["sections"][0]["script_source_lang"],
         )
 
+    async def test_pacing_repair_accepts_null_beat_type_note_from_provider(self):
+        short = _writer_payload()
+        short_script = " ".join(
+            f"Short detail {index} keeps the selected beat grounded in context."
+            for index in range(7)
+        )
+        for index, section in enumerate(short["sections"]):
+            section["script_source_lang"] = f"{short_script} Section {index} remains distinct."
+
+        repaired = _writer_payload()
+        for section in repaired["sections"]:
+            section["beat_type_note"] = None
+
+        response, chat_mock = await self._run(
+            side_effect=[
+                _chat_result(json.dumps(_semantic_payload())),
+                _chat_result(json.dumps(short)),
+                _chat_result(json.dumps(repaired)),
+            ]
+        )
+
+        self.assertEqual(response.status, "COMPLETED")
+        self.assertIsNone(response.error)
+        self.assertEqual(chat_mock.await_count, 3)
+        repair_call = chat_mock.await_args_list[2]
+        self.assertIn("Use only the keys defined by the current <output_format>", repair_call.args[1])
+        self.assertIn("beat_type_note", repair_call.args[1])
+        self.assertEqual(
+            repaired["sections"][0]["script_source_lang"],
+            response.plans[0].sections[0].script_source_lang,
+        )
+        self.assertNotIn("beat_type_note", response.plans[0].sections[0].model_dump())
+
     async def test_overlong_writer_is_repaired_before_narrative_completion(self):
         overlong = _writer_payload()
         overlong_script = " ".join(
             f"Overlong detail {index} expands the selected beat beyond the pacing estimate."
             for index in range(20)
         )
-        for section in overlong["sections"]:
-            section["script_source_lang"] = overlong_script
+        for index, section in enumerate(overlong["sections"]):
+            section["script_source_lang"] = f"{overlong_script} Section {index} remains distinct."
 
         response, chat_mock = await self._run(
             side_effect=[
@@ -385,7 +697,7 @@ class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn('section_id="S002"', pacing_block)
         self.assertNotIn('section_id="S001"', pacing_block)
 
-    async def test_residual_underfill_after_one_repair_is_warning_only(self):
+    async def test_residual_underfill_gets_one_additional_bounded_correction(self):
         short = _writer_payload()
         short["sections"][0]["script_source_lang"] = (
             "Still too short for the opening premise."
@@ -399,18 +711,80 @@ class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
                 _chat_result(json.dumps(_semantic_payload())),
                 _chat_result(json.dumps(short)),
                 _chat_result(json.dumps(short)),
+                _chat_result(json.dumps(_writer_payload())),
             ]
         )
 
         self.assertEqual(response.status, "COMPLETED")
-        self.assertEqual(chat_mock.await_count, 3)
+        self.assertEqual(chat_mock.await_count, 4)
+
         self.assertIsNone(response.error)
-        self.assertTrue(
-            any(
-                warning.startswith("NARRATION_PACING_ESTIMATE_RESIDUAL:")
-                for warning in response.plans[0].warnings
-            )
+        correction_prompt = chat_mock.await_args_list[3].args[2]
+        self.assertIn("current_script", correction_prompt)
+        self.assertIn("Preserve the existing grounded narration", correction_prompt)
+
+    async def test_writer_batches_keep_more_than_32_beats_contiguous_and_local(self):
+        allocated = [
+            {
+                "section_id": f"S{index:03d}",
+                "title": "Story beat",
+                "goal": "Present the locked event",
+                "beat_hint": "BODY",
+                "blocks": [{
+                    "block_id": f"B{index:03d}",
+                    "start_ms": index * 6_000,
+                    "end_ms": (index + 1) * 6_000,
+                    "full_text": f"Locked source evidence for beat {index}.",
+                }],
+            }
+            for index in range(1, 34)
+        ]
+
+        def batch_payload(batch: list[dict]) -> str:
+            return json.dumps({
+                "sections": [
+                    {
+                        "section_id": section["section_id"],
+                        "heading": section["title"],
+                        "script_source_lang": (
+                            f"The writer describes {section['section_id']} from its locked evidence."
+                        ),
+                    }
+                    for section in batch
+                ]
+            })
+
+        batches = [allocated[index:index + 12] for index in range(0, len(allocated), 12)]
+        stage_mock = AsyncMock(
+            side_effect=[_chat_result(batch_payload(batch)) for batch in batches]
         )
+        with patch.object(narrative_summarize_gateway, "_call_json_stage", stage_mock):
+            draft, results = await narrative_summarize_gateway._call_narrative_writer_batches(
+                _request(),
+                allocated,
+                language="en",
+                intent={"goal_type": "SUMMARIZE_GENERATIVE"},
+                constraints=[],
+                content_brief="global brief must stay out of a local batch",
+                multimodal_context=None,
+                beat_visuals=None,
+                stage="NARRATIVE_WRITING",
+            )
+
+        self.assertEqual(len(results), 3)
+        self.assertEqual(stage_mock.await_count, 3)
+        self.assertEqual(
+            [section.section_id for section in draft.sections],
+            [f"S{index:03d}" for index in range(1, 34)],
+        )
+        first_user_prompt = stage_mock.await_args_list[0].args[3]
+        second_user_prompt = stage_mock.await_args_list[1].args[3]
+        self.assertIn('section_id="S001"', first_user_prompt)
+        self.assertIn('section_id="S012"', first_user_prompt)
+        self.assertNotIn('section_id="S013"', first_user_prompt)
+        self.assertIn('section_id="S013"', second_user_prompt)
+        self.assertNotIn('section_id="S001"', second_user_prompt)
+        self.assertNotIn("global brief must stay out", first_user_prompt)
 
     async def test_residual_overfill_after_bounded_repair_is_warning_only(self):
         overlong = _writer_payload()
@@ -425,6 +799,12 @@ class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
                 f"Repaired section {index}",
                 900,
             )
+        corrected = _writer_payload()
+        for index, section in enumerate(corrected["sections"]):
+            section["script_source_lang"] = _numbered_script(
+                f"Corrected section {index}",
+                1_000,
+            )
 
         with patch.object(
             narrative_summarize_gateway,
@@ -436,15 +816,16 @@ class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
                     _chat_result(json.dumps(_semantic_payload())),
                     _chat_result(json.dumps(overlong)),
                     _chat_result(json.dumps(repaired)),
+                    _chat_result(json.dumps(corrected)),
                 ]
             )
 
         self.assertEqual(response.status, "COMPLETED")
-        self.assertEqual(chat_mock.await_count, 3)
+        self.assertEqual(chat_mock.await_count, 4)
         self.assertIsNone(response.error)
         self.assertEqual(
             response.plans[0].sections[0].script_source_lang,
-            repaired["sections"][0]["script_source_lang"],
+            corrected["sections"][0]["script_source_lang"],
         )
         self.assertTrue(
             any(
@@ -453,30 +834,117 @@ class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-    async def test_tiny_section_estimate_residual_does_not_fail_valid_narration(self):
-        tiny = _writer_payload()
-        tiny["sections"][0]["script_source_lang"] = (
-            "The opening scene establishes the premise with a grounded detail."
-        )
-        tiny["sections"][1]["script_source_lang"] = (
-            "The next scene develops the conclusion with a grounded detail."
-        )
+    async def test_duplicate_writer_output_gets_one_targeted_repair(self):
+        duplicate = _duplicate_writer_payload()
+        repaired = _writer_payload()
 
-        with patch.object(
-            narrative_summarize_gateway,
-            "narration_target_chars",
-            return_value=50,
-        ):
-            response, chat_mock = await self._run(
-                side_effect=[
-                    _chat_result(json.dumps(_semantic_payload())),
-                    _chat_result(json.dumps(tiny)),
-                    _chat_result(json.dumps(tiny)),
-                ]
-            )
+        response, chat_mock = await self._run(
+            side_effect=[
+                _chat_result(json.dumps(_semantic_payload())),
+                _chat_result(json.dumps(duplicate)),
+                _chat_result(json.dumps(repaired)),
+            ]
+        )
 
         self.assertEqual(response.status, "COMPLETED")
         self.assertEqual(chat_mock.await_count, 3)
+        repair_prompt = chat_mock.await_args_list[2].args[2]
+        duplicate_block = repair_prompt.split("<duplicate_repair>", 1)[1].split(
+            "</duplicate_repair>", 1
+        )[0]
+        self.assertIn('section_id="S002"', duplicate_block)
+        self.assertNotIn('section_id="S001"', duplicate_block)
+        self.assertIn("target_chars", duplicate_block)
+        self.assertIn("current_script", duplicate_block)
+        self.assertIn("source grounding", duplicate_block)
+        self.assertEqual(
+            response.plans[0].sections[1].script_source_lang,
+            repaired["sections"][1]["script_source_lang"],
+        )
+
+    async def test_same_language_source_copy_is_repaired_with_pacing_in_one_request(self):
+        source = "Nhân vật chính bước vào căn phòng tối và nhìn thấy chiếc hộp cũ nằm dưới ánh đèn"
+        copied = _verbatim_writer_payload(source)
+        repaired = _writer_payload()
+
+        response, chat_mock = await self._run(
+            request=_same_language_verbatim_request(),
+            side_effect=[
+                _chat_result(json.dumps(_semantic_payload())),
+                _chat_result(json.dumps(copied)),
+                _chat_result(json.dumps(repaired)),
+            ],
+        )
+
+        self.assertEqual(response.status, "COMPLETED")
+        self.assertEqual(chat_mock.await_count, 3)
+        repair_prompt = chat_mock.await_args_list[2].args[2]
+        self.assertIn("<source_copy_repair>", repair_prompt)
+        self.assertIn("<pacing_repair>", repair_prompt)
+        self.assertNotIn("<duplicate_repair>", repair_prompt)
+
+    async def test_clear_source_copy_after_two_repairs_is_non_retryable(self):
+        source = "Nhân vật chính bước vào căn phòng tối và nhìn thấy chiếc hộp cũ nằm dưới ánh đèn"
+        copied = _verbatim_writer_payload(source, whole_sentence=True)
+
+        response, chat_mock = await self._run(
+            request=_same_language_verbatim_request(),
+            side_effect=[
+                _chat_result(json.dumps(_semantic_payload())),
+                _chat_result(json.dumps(copied)),
+                _chat_result(json.dumps(copied)),
+                _chat_result(json.dumps(copied)),
+            ],
+        )
+
+        self.assertEqual(response.status, "FAILED")
+        self.assertEqual(chat_mock.await_count, 4)
+        self.assertEqual(
+            response.error_detail.errorCode,
+            ProviderErrorCode.PROVIDER_OUTPUT_BUSINESS_RULE_VIOLATION.value,
+        )
+        self.assertFalse(response.error_detail.retryable)
+
+    async def test_duplicate_repair_exhaustion_fails_closed_without_loop(self):
+        duplicate = _duplicate_writer_payload()
+
+        response, chat_mock = await self._run(
+            side_effect=[
+                _chat_result(json.dumps(_semantic_payload())),
+                _chat_result(json.dumps(duplicate)),
+                _chat_result(json.dumps(duplicate)),
+                _chat_result(json.dumps(duplicate)),
+            ]
+        )
+
+        self.assertEqual(response.status, "FAILED")
+        self.assertEqual(chat_mock.await_count, 4)
+        self.assertEqual(
+            response.error_detail.errorCode,
+            ProviderErrorCode.PROVIDER_OUTPUT_BUSINESS_RULE_VIOLATION.value,
+        )
+        self.assertFalse(response.error_detail.retryable)
+
+    async def test_tiny_section_estimate_residual_does_not_fail_valid_narration(self):
+        tiny = _writer_payload()
+        tiny["sections"][0]["script_source_lang"] = _numbered_script(
+            "Tiny opening", 925
+        )
+        tiny["sections"][1]["script_source_lang"] = _numbered_script(
+            "Tiny conclusion", 840
+        )
+
+        response, chat_mock = await self._run(
+            side_effect=[
+                _chat_result(json.dumps(_semantic_payload())),
+                _chat_result(json.dumps(tiny)),
+                _chat_result(json.dumps(tiny)),
+                _chat_result(json.dumps(tiny)),
+            ]
+        )
+
+        self.assertEqual(response.status, "COMPLETED")
+        self.assertEqual(chat_mock.await_count, 4)
         self.assertIsNone(response.error)
         self.assertTrue(
             any(
@@ -498,7 +966,7 @@ class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
                 for section in plan.sections
                 for ref in section.source_refs
             ],
-            [(0, 60_000), (60_000, 120_000)],
+            [(0, 60_000), (120_000, 180_000)],
         )
         self.assertEqual(response.usage.input_tokens, 40)
         self.assertEqual(response.usage.output_tokens, 60)
@@ -509,8 +977,8 @@ class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("start_ms", planning_call.args[2])
         self.assertNotIn("source_refs", planning_call.args[2])
         self.assertIn("Opening premise", writer_call.args[2])
-        self.assertIn("Main idea", writer_call.args[2])
-        self.assertNotIn("Closing takeaway", writer_call.args[2])
+        self.assertIn("Closing takeaway", writer_call.args[2])
+        self.assertNotIn("Main idea", writer_call.args[2])
         self.assertNotIn("start_ms", writer_call.args[2])
         self.assertNotIn("source_refs", writer_call.args[2])
 
@@ -563,6 +1031,62 @@ class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
             ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED.value,
         )
         self.assertEqual(chat_mock.await_count, 1)
+
+    async def test_deepseek_dashscope_reasoning_json_is_parsed_by_semantic_stage(self):
+        from app.services.protocol.dashscope_native import DashScopeNativeAdapter
+
+        provider = ProviderPayload(
+            protocol="dashscope_native",
+            base_url="https://dashscope.test/compatible-mode/v1",
+            api_key="sk-real-key",
+            model="deepseek-v4.1-flash",
+        )
+        planning_text = DashScopeNativeAdapter()._extract_text({
+            "choices": [{"message": {
+                "content": "",
+                "reasoning_content": json.dumps(_semantic_payload()),
+            }}],
+        })
+        response, chat_mock = await self._run(
+            provider=provider,
+            side_effect=[
+                _chat_result(planning_text),
+                _chat_result(json.dumps(_writer_payload())),
+            ],
+        )
+
+        self.assertEqual("COMPLETED", response.status)
+        self.assertEqual(
+            {"enable_thinking": False},
+            chat_mock.await_args_list[0].kwargs["extra_body"],
+        )
+
+    async def test_deepseek_reasoning_prose_still_fails_semantic_schema(self):
+        from app.services.protocol.dashscope_native import DashScopeNativeAdapter
+
+        provider = ProviderPayload(
+            protocol="dashscope_native",
+            base_url="https://dashscope.test/compatible-mode/v1",
+            api_key="sk-real-key",
+            model="deepseek-v4.1-flash",
+        )
+        prose = DashScopeNativeAdapter()._extract_text({
+            "choices": [{"message": {
+                "content": "",
+                "reasoning_content": "I should construct the semantic plan next.",
+            }}],
+        })
+        response, chat_mock = await self._run(
+            provider=provider,
+            side_effect=[_chat_result(prose)],
+        )
+
+        self.assertEqual("FAILED", response.status)
+        self.assertEqual(
+            ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED.value,
+            response.error_detail.errorCode,
+        )
+        self.assertEqual(1, chat_mock.await_count)
 
     async def test_writer_cannot_return_source_refs(self):
         writer = _writer_payload()
@@ -662,17 +1186,41 @@ class StagedGatewayTest(unittest.IsolatedAsyncioTestCase):
             f"Takeaway detail {index} connects the conflict to the final conclusion."
             for index in range(11)
         )
+        # Overlapping ASR segments inside one block split at sentence boundaries
+        # into an extra beat (coverage-preserving); the writer must cover it.
+        writer["sections"].append({
+            "section_id": "S003",
+            "heading": "Takeaway continued",
+            "script_source_lang": " ".join(
+                f"Closing detail {index} keeps the final beat grounded."
+                for index in range(11)
+            ),
+            "beat_type": "PAYOFF",
+            "notes": None,
+        })
 
         response, chat_mock = await self._run(
             request=req,
             side_effect=[
                 _chat_result(json.dumps(_semantic_payload())),
                 _chat_result(json.dumps(writer)),
+                _chat_result(json.dumps({
+                    "sections": [
+                        {**writer["sections"][0]},
+                        {**writer["sections"][2]},
+                    ],
+                })),
+                _chat_result(json.dumps({
+                    "sections": [
+                        {**writer["sections"][0]},
+                        {**writer["sections"][2]},
+                    ],
+                })),
             ],
         )
 
         self.assertEqual(response.status, "COMPLETED")
-        self.assertEqual(chat_mock.await_count, 2)
+        self.assertEqual(chat_mock.await_count, 4)
 
 
 class PromptBoundaryTest(unittest.TestCase):
@@ -700,6 +1248,26 @@ class PromptBoundaryTest(unittest.TestCase):
         self.assertNotIn("source_refs", user)
         self.assertNotIn("merged", user.lower())
         self.assertNotIn("script_source_lang", user)
+
+    def test_semantic_prompt_guides_late_resolution_essentiality_without_credit_bias(self):
+        from app.core.prompts import build_narrative_semantic_plan_prompt
+
+        # The guidance is system-level; this test exercises the actual builder
+        # contract without requiring an LLM call.
+        system, _ = build_narrative_semantic_plan_prompt(
+            [{
+                "block_id": "B001",
+                "ordered_index": 1,
+                "text_preview": "The outcome resolves the central conflict.",
+            }],
+            language="en",
+            intent={"goal_type": "SUMMARIZE_GENERATIVE"},
+            constraints=[],
+            max_sections=3,
+        )
+        self.assertIn("late resolution, outcome, or conclusion", system)
+        self.assertIn("credits, ending music", system)
+        self.assertIn("soft preferences", system)
 
     def test_canonical_blocks_use_existing_segment_boundaries(self):
         transcript = [

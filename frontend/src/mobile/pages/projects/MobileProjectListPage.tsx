@@ -166,7 +166,7 @@ export function MobileProjectListPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map((proj) => {
-            const mediaCount = proj.mediaCount ?? proj.documentCount ?? 0
+            const mediaCount = proj.mediaCount ?? 0
             const progress = proj.progressPercent ?? 0
             const targetUrl = `/w/${workspaceId}/media?projectId=${proj.id}`
 

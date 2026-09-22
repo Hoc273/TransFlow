@@ -15,6 +15,16 @@ class PlanningOutputError(ValueError):
     pass
 
 
+def _normalize_written_section_compat(raw_section: object) -> object:
+    """Remove only DeepSeek's semantically-empty nullable helper field."""
+    if not isinstance(raw_section, dict):
+        return raw_section
+    normalized = dict(raw_section)
+    if normalized.get("beat_type_note") is None:
+        normalized.pop("beat_type_note", None)
+    return normalized
+
+
 def parse_semantic_plan(
     raw_text: str,
     blocks: list[TranscriptBlock],
@@ -90,7 +100,17 @@ def parse_narrative_draft(
     expected_section_ids: list[str],
 ) -> NarrativeDraft:
     try:
-        draft = NarrativeDraft.model_validate(parse_json_object(raw_text))
+        payload = parse_json_object(raw_text)
+        sections = payload.get("sections")
+        if isinstance(sections, list):
+            payload = {
+                **payload,
+                "sections": [
+                    _normalize_written_section_compat(section)
+                    for section in sections
+                ],
+            }
+        draft = NarrativeDraft.model_validate(payload)
     except (ValueError, ValidationError) as exc:
         raise PlanningOutputError(f"Malformed narrative writing output: {exc}") from exc
 
@@ -135,7 +155,9 @@ def parse_narrative_repair(
                 raise ValueError(
                     f"Narrative repair returned duplicate section_id {section_id}"
                 )
-            section = WrittenSection.model_validate(raw_section)
+            section = WrittenSection.model_validate(
+                _normalize_written_section_compat(raw_section)
+            )
             if not section.script_source_lang.strip():
                 raise ValueError(
                     f"Narrative repair returned blank script for section {section_id}"

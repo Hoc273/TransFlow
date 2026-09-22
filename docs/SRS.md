@@ -279,10 +279,11 @@ quyền xem Project/job**.
   theo cấp hệ thống / không gian làm việc / dự án.
 - Thanh toán theo Credit: cấp Credit miễn phí ban đầu (không refill), mua gói Credit bổ sung, cấu hình API
   key cá nhân trong Cài đặt cá nhân, và 2 chế độ tính chi phí do Lead cấu hình cho Workspace.
+- Quản trị nền tảng dành cho tài khoản nội bộ có cờ `is_platform_admin`: xem KPI toàn hệ thống, trạng thái
+  dịch vụ, danh bạ người dùng, danh sách Workspace và nhật ký kiểm toán qua khu vực tách biệt với Workspace.
 
 ### 4.2 Định hướng mở rộng trong tương lai (chưa triển khai ở giai đoạn này)
 - Sản xuất nội dung sáng tạo bằng AI (tạo video mới từ ý tưởng/tư liệu, thay vì chỉ xử lý video có sẵn).
-- Bảng điều khiển quản trị toàn nền tảng (dành cho đội vận hành nội bộ, quản lý xuyên suốt tất cả khách hàng).
 
 ### 4.3 Ngoài phạm vi (không triển khai ở dự án này)
 - **Dịch file/Text Translation độc lập**: không upload `.txt/.docx` để tạo Document/Translation Job/Text Editor.
@@ -591,6 +592,18 @@ dịch vào TM. Việc dịch sử dụng context hiện tại + Glossary + prov
 Người dùng được thông báo khi một yêu cầu xử lý (đơn lẻ hoặc lô) hoàn thành, gặp lỗi, hoặc chuyển sang
 trạng thái "cần chạy lại".
 
+### 5.8 Quản trị nền tảng (Platform Super Admin)
+
+- Platform Super Admin là quyền vận hành nội bộ toàn hệ thống, được xác định bằng cờ
+  `users.is_platform_admin`; đây **không phải** role thứ tư của Workspace và không thay đổi mô hình
+  `LEAD/MEMBER/CLIENT`.
+- Chỉ tài khoản có cờ này mới được truy cập khu vực `/platform` và API `/api/platform/*`.
+- Khu vực quản trị cung cấp: tổng quan KPI, sức khỏe PostgreSQL/Redis/RabbitMQ/MinIO/AI Worker, danh bạ
+  người dùng, danh sách Workspace và nhật ký kiểm toán.
+- Người không có cờ Platform Admin phải bị từ chối ở backend, kể cả khi biết URL hoặc tự gọi API.
+- Các API quản trị chỉ phục vụ quan sát/tra cứu trong MVP; không mặc nhiên cấp quyền sửa dữ liệu nghiệp vụ
+  của Workspace hoặc bỏ qua các gate RBAC/ownership hiện hành.
+
 ---
 
 ## 6. Ràng buộc & nguyên tắc nghiệp vụ quan trọng
@@ -611,6 +624,7 @@ trạng thái "cần chạy lại".
 | Công thức tính Credit độc lập với chế độ thanh toán | Việc áp dụng công thức Trường hợp 1 hay Trường hợp 2 chỉ phụ thuộc người thực hiện thao tác có API key cá nhân hay không. |
 | Role và Project access tách biệt | Role nằm ở Workspace; Member/Client chỉ truy cập Project được gán. Client luôn bị chặn ở mọi hành động tạo/sửa/duyệt — chỉ có quyền xem. |
 | Dịch thuật tập trung vào Media Studio | Không có dịch file/Text Translation hoặc Translation Memory; giữ Glossary, QA và Video Batch Localization như năng lực hỗ trợ video. |
+| Platform Admin độc lập với RBAC Workspace | `is_platform_admin` là cờ vận hành cấp hệ thống, không phải role Workspace và phải được kiểm tra ở backend cho mọi `/api/platform/*`. |
 
 ---
 
@@ -635,6 +649,9 @@ dấu (*), quyền của Member chỉ áp dụng cho job DO CHÍNH MEMBER ĐÓ T
 | Bỏ qua lỗi chất lượng — override (có lý do) | ✔ (mọi job) | ✔ (*chỉ job của mình) | — |
 | Xác nhận tại các mốc quan trọng | ✔ (mọi job) | ✔ (*chỉ job của mình) | — |
 | Xem tiến trình & kết quả (mọi job trong Project) | ✔ | ✔ | ✔ |
+
+Platform Super Admin không nằm trong ma trận role Workspace ở trên. Quyền này chỉ mở khu vực quan sát
+toàn nền tảng theo §5.8 và không tự biến tài khoản thành Lead của các Workspace.
 
 ### 7.2 Danh sách các điểm cần xác nhận thêm
 

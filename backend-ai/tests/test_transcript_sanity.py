@@ -71,6 +71,10 @@ class TranscriptSanityValidatorTest(unittest.TestCase):
         verdict = TranscriptSanityValidator.validate([_seg(0, 5000)], 10_000)
         self.assertIs(verdict.result, TranscriptSanityResult.VALID)
 
+    def test_long_trailing_silence_is_not_hard_failed(self):
+        verdict = TranscriptSanityValidator.validate([_seg(0, 170_000)], 531_000)
+        self.assertIs(verdict.result, TranscriptSanityResult.VALID)
+
     def test_valid_segment_ending_exactly_at_duration(self):
         verdict = TranscriptSanityValidator.validate([_seg(0, 131_243)], 131_243)
         self.assertIs(verdict.result, TranscriptSanityResult.VALID)
@@ -233,6 +237,30 @@ class SttGatewaySanityIntegrationTest(unittest.IsolatedAsyncioTestCase):
                 adapter, _request(131_243), None
             )
         self.assertEqual(result.segments[0].end_ms, 131_243)
+
+    async def test_incomplete_stream_error_then_complete_retry_succeeds(self):
+        adapter = AsyncMock()
+        adapter.transcribe.side_effect = [
+            ProviderValidation(
+                "DashScope STT stream was incomplete",
+                code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+            ),
+            type(
+                "TranscribeResult",
+                (),
+                {"segments": [_seg(0, 170_000)], "detected_lang": "en"},
+            )(),
+        ]
+
+        async def _sleep(_attempt: int) -> None:
+            pass
+
+        with unittest.mock.patch.object(stt_gateway, "_sleep_backoff", _sleep):
+            result = await stt_gateway._transcribe_with_retry(
+                adapter, _request(531_000), None
+            )
+        self.assertEqual(170_000, result.segments[-1].end_ms)
+        self.assertEqual(2, adapter.transcribe.await_count)
 
     async def test_valid_transcript_passes_through(self):
         adapter = AsyncMock()

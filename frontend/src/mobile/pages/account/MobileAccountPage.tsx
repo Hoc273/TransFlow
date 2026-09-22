@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom'
 import {
   IconBell,
   IconChevronRight,
+  IconCoins,
   IconLock,
   IconLogout,
   IconMoon,
@@ -9,11 +10,13 @@ import {
   IconUser,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
+import { useTranslation } from 'react-i18next'
 import { MobileCard } from '../../components/MobileCard'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 
 export function MobileAccountPage() {
+  const { t } = useTranslation('account')
   const { workspaceId } = useParams()
   const user = useAuthStore((s) => s.user)
   const currentWorkspace = useAuthStore((s) => s.currentWorkspace)
@@ -72,6 +75,20 @@ export function MobileAccountPage() {
               <IconUser size={18} className="text-neutral-500 shrink-0" />
               <span className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-200">
                 Hồ sơ cá nhân
+              </span>
+            </div>
+            <IconChevronRight size={16} className="shrink-0 text-neutral-400" />
+          </Link>
+
+          {/* Credit */}
+          <Link
+            to={`${baseAccountPath}/credit`}
+            className="flex min-h-[52px] min-w-0 items-center justify-between gap-2 p-3.5 active:bg-neutral-50 dark:active:bg-neutral-800/50 cursor-pointer transition-colors"
+          >
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <IconCoins size={18} className="text-neutral-500 shrink-0" />
+              <span className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                {t('nav.credit')}
               </span>
             </div>
             <IconChevronRight size={16} className="shrink-0 text-neutral-400" />

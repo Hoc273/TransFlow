@@ -9,6 +9,7 @@
     "profile": "Hồ sơ",
     "security": "Bảo mật",
     "preferences": "Tùy chọn",
+    "credit": "Credit & thanh toán",
     "memberships": "Thành viên",
     "myWorkspaces": "Workspace của tôi",
     "notificationsSessions": "Thông báo & Phiên",
@@ -117,6 +118,44 @@
     "cannotLeaveLastAdmin": "Không thể rời — bạn là Admin cuối cùng. Chuyển quyền sở hữu trước.",
     "empty": "Bạn chưa thuộc workspace nào.",
     "wsSettingsNote": "Cài đặt cấp workspace (Members, AI Providers) là trang riêng. Dùng sidebar System khi có quyền Admin — /w/:id/settings/members và /w/:id/settings/provider."
+  },
+  "credit": {
+    "available": "Số dư khả dụng",
+    "unit": "credit",
+    "balanceHelp": "Credit được trừ khi các công đoạn AI và xử lý media chạy. Mọi vai trò trong workspace đều có thể mua credit cho tài khoản cá nhân.",
+    "addTitle": "Nạp thêm credit",
+    "addDesc": "Chọn gói và ghi nhận mã tham chiếu thanh toán. MVP hiện chưa kết nối cổng thanh toán trực tuyến.",
+    "buy": "Mua gói credit",
+    "history": "Sổ giao dịch credit",
+    "historyDesc": "Theo dõi các lần cấp, mua, sử dụng và điều chỉnh credit trên tài khoản.",
+    "filterLabel": "Loại giao dịch",
+    "allTypes": "Tất cả giao dịch",
+    "columns": {
+      "transaction": "Giao dịch",
+      "date": "Thời gian",
+      "amount": "Thay đổi",
+      "balance": "Số dư sau giao dịch"
+    },
+    "types": {
+      "INITIAL_GRANT": "Cấp ban đầu",
+      "PACKAGE_PURCHASE": "Mua gói",
+      "AI_USAGE": "Sử dụng AI",
+      "ADJUSTMENT": "Điều chỉnh"
+    },
+    "noReference": "Giao dịch tài khoản",
+    "empty": "Không có giao dịch credit phù hợp bộ lọc.",
+    "page": "Trang {{current}} / {{total}}",
+    "purchaseSuccess": "Đã mua gói. Số dư mới của bạn là {{balance}} credit.",
+    "modal": {
+      "title": "Chọn gói credit",
+      "desc": "Credit của gói được cộng ngay sau khi xác nhận.",
+      "confirm": "Xác nhận mua",
+      "noPackages": "Hiện không có gói credit khả dụng.",
+      "reference": "Mã tham chiếu thanh toán",
+      "referencePlaceholder": "Ví dụ: BANK-2026-00125",
+      "referenceHelp": "Nhập mã chuyển khoản hoặc mã thanh toán nội bộ. Hệ thống chưa kết nối cổng thanh toán thật.",
+      "error": "Không thể mua gói. Hãy kiểm tra mã tham chiếu và thử lại."
+    }
   },
   "danger": {
     "title": "Xóa tài khoản",

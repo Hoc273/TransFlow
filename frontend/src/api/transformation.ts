@@ -75,7 +75,7 @@ export type BatchEditMediaSegmentsBody = {
 }
 
 export type BatchEditMediaSegmentsResponse = {
-  segments: import('@/types/job').SegmentItem[]
+  segments: import('@/types/media').SegmentItem[]
 }
 
 // ---------- availability projection (CT10.3A/CT10.3B) ----------

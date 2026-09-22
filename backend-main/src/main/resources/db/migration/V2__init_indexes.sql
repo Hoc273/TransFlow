@@ -1,6 +1,6 @@
 -- V2__init_indexes.sql
--- transflow_mini — toàn bộ index (UNIQUE + thường), tổng hợp từ docs/Database_Design.md (v3.3).
--- Chạy sau V1__init_tables.sql. Gom theo đúng nhóm bảng của V1 để dễ đối chiếu.
+-- Indexes and bootstrap data for the squashed TransFlow baseline.
+-- Run only after V1__init_tables.sql on a fresh schema.
 
 -- =========================================================================
 -- Auth / Workspace / Project
@@ -51,6 +51,8 @@ CREATE INDEX ix_media_jobs_project_created ON media_jobs(project_id, created_at 
 CREATE INDEX ix_media_jobs_source_summary ON media_jobs(source_summary_job_id) WHERE source_summary_job_id IS NOT NULL;
 -- Phục vụ trực tiếp truy vấn "job của tôi" cho authorization QA/checkpoint (SRS §3.3).
 CREATE INDEX ix_media_jobs_created_by ON media_jobs(created_by_user_id);
+CREATE INDEX ix_media_jobs_tts_provider ON media_jobs(tts_provider_id);
+CREATE INDEX ix_media_jobs_tts_voice ON media_jobs(tts_voice_id);
 
 CREATE INDEX ix_media_job_stages_job ON media_job_stages(media_job_id, stage_name);
 
@@ -88,3 +90,78 @@ CREATE INDEX ix_notifications_user_unread ON notifications(user_id) WHERE read_a
 
 CREATE INDEX ix_ai_usage_logs_workspace_op ON ai_usage_logs(workspace_id, operation, created_at DESC);
 CREATE INDEX ix_ai_usage_logs_user ON ai_usage_logs(performed_by_user_id, created_at DESC);
+
+-- =========================================================================
+-- Bootstrap data (formerly V3-V6)
+-- =========================================================================
+
+INSERT INTO terms_versions (version, content_ref, is_current, published_at)
+VALUES ('v1', 'terms/v1.md', true, now());
+
+INSERT INTO credit_packages (id, name, credit_amount, price_amount, price_currency, is_active, created_at)
+VALUES
+    (gen_random_uuid(), 'Gói Khởi động (Starter)', 500.0000, 50000.00, 'VND', true, now()),
+    (gen_random_uuid(), 'Gói Sáng tạo (Creator)', 2000.0000, 180000.00, 'VND', true, now()),
+    (gen_random_uuid(), 'Gói Chuyên nghiệp (Business)', 10000.0000, 800000.00, 'VND', true, now());
+
+INSERT INTO credit_pricing_config (
+    id, capability, provider_scope, infra_coefficient_x, token_coefficient_y,
+    effective_from, effective_to, created_at
+) VALUES
+    (gen_random_uuid(), 'STT', NULL, 0.000100, 0.000300, now(), NULL, now()),
+    (gen_random_uuid(), 'TRANSLATE', NULL, 0.000100, 0.000400, now(), NULL, now()),
+    (gen_random_uuid(), 'TTS', NULL, 0.000150, 0.000500, now(), NULL, now()),
+    (gen_random_uuid(), 'SUMMARIZE_SCRIPT', NULL, 0.000100, 0.000400, now(), NULL, now()),
+    (gen_random_uuid(), 'RENDER', NULL, 0.000200, 0.000000, now(), NULL, now()),
+    (gen_random_uuid(), 'VISION', NULL, 0.000200, 0.000600, now(), NULL, now());
+
+INSERT INTO platform_ai_providers (
+    id, protocol, capabilities, base_url, api_key_enc, default_model, is_active, created_at
+) VALUES (
+    '11111111-1111-1111-1111-111111111111',
+    'openai_compatible',
+    ARRAY['STT','TRANSLATE','TTS','VISION']::VARCHAR[],
+    'https://api.openai.com/v1',
+    decode('tnctYyrQvJqa4i08mbPH5G+RZIf4MfSfGsvqetgzOtqLRDTCz/YBi9UGLIuIzl75', 'base64'),
+    'gpt-4o',
+    true,
+    now()
+);
+
+INSERT INTO tts_voices (
+    id, provider_source, platform_provider_id, voice_id, language, languages, gender, is_active, cached_at
+) VALUES
+    (gen_random_uuid(), 'PLATFORM', '11111111-1111-1111-1111-111111111111', 'alloy', 'en', ARRAY['en','vi']::VARCHAR[], 'UNKNOWN', true, now()),
+    (gen_random_uuid(), 'PLATFORM', '11111111-1111-1111-1111-111111111111', 'echo', 'en', ARRAY['en','vi']::VARCHAR[], 'MALE', true, now()),
+    (gen_random_uuid(), 'PLATFORM', '11111111-1111-1111-1111-111111111111', 'fable', 'en', ARRAY['en','vi']::VARCHAR[], 'UNKNOWN', true, now()),
+    (gen_random_uuid(), 'PLATFORM', '11111111-1111-1111-1111-111111111111', 'onyx', 'en', ARRAY['en','vi']::VARCHAR[], 'MALE', true, now()),
+    (gen_random_uuid(), 'PLATFORM', '11111111-1111-1111-1111-111111111111', 'nova', 'en', ARRAY['en','vi']::VARCHAR[], 'FEMALE', true, now()),
+    (gen_random_uuid(), 'PLATFORM', '11111111-1111-1111-1111-111111111111', 'shimmer', 'en', ARRAY['en','vi']::VARCHAR[], 'FEMALE', true, now()),
+    (gen_random_uuid(), 'PLATFORM', '11111111-1111-1111-1111-111111111111', 'nova-vi', 'vi', ARRAY['vi','en']::VARCHAR[], 'FEMALE', true, now()),
+    (gen_random_uuid(), 'PLATFORM', '11111111-1111-1111-1111-111111111111', 'onyx-vi', 'vi', ARRAY['vi','en']::VARCHAR[], 'MALE', true, now());
+
+INSERT INTO media_presets (
+    id, scope, workspace_id, project_id, name, subtitle_style, voice_config,
+    render_config, is_default, active
+) VALUES (
+    '00000000-0000-0000-0000-000000000001',
+    'SYSTEM', NULL, NULL, 'Standard Subtitle & Dub',
+    '{"fontFamily":"Inter","fontSize":24,"textColor":"#FFFFFF","backgroundColor":"#00000080","subtitlePosition":"BOTTOM","verticalOffsetPercent":8}'::jsonb,
+    '{"stability":0.75,"similarityBoost":0.85,"style":0.0}'::jsonb,
+    '{"outputAspectRatio":"16:9","videoCodec":"libx264","audioCodec":"aac"}'::jsonb,
+    true, true
+), (
+    '00000000-0000-0000-0000-000000000002',
+    'SYSTEM', NULL, NULL, 'Social Media Shorts / Reels',
+    '{"fontFamily":"Roboto","fontSize":32,"textColor":"#FFD700","backgroundColor":"#000000CC","subtitlePosition":"CENTER","verticalOffsetPercent":0,"isBold":true}'::jsonb,
+    '{"stability":0.70,"similarityBoost":0.80,"style":0.2}'::jsonb,
+    '{"outputAspectRatio":"9:16","videoCodec":"libx264","audioCodec":"aac"}'::jsonb,
+    false, true
+), (
+    '00000000-0000-0000-0000-000000000003',
+    'SYSTEM', NULL, NULL, 'Cinematic Subtitles',
+    '{"fontFamily":"Outfit","fontSize":22,"textColor":"#F0F0F0","backgroundColor":"#1A1A1AB3","subtitlePosition":"BOTTOM","verticalOffsetPercent":5}'::jsonb,
+    '{}'::jsonb,
+    '{"outputAspectRatio":"21:9","videoCodec":"libx264","audioCodec":"aac"}'::jsonb,
+    false, true
+);

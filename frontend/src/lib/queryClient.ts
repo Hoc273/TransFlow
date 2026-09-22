@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/react-query'
+import type { CreditTransactionQuery } from '@/types/credit'
 
 /** Default staleTime: 30s (realtime/dashboard). Override per query (09b A.5.1). */
 export const STALE = {
@@ -27,6 +28,11 @@ export function createAppQueryClient() {
 }
 
 export const queryKeys = {
+  userCredit: ['credit', 'balance'] as const,
+  creditPackages: ['credit', 'packages'] as const,
+  creditTransactionsRoot: ['credit', 'transactions'] as const,
+  creditTransactions: (params: CreditTransactionQuery = {}) =>
+    ['credit', 'transactions', params] as const,
   workspaces: ['workspaces'] as const,
   workspace: (id: string) => ['workspaces', id] as const,
   members: (wsId: string) => ['members', wsId] as const,
@@ -46,8 +52,6 @@ export const queryKeys = {
   projects: (wsId: string) => ['projects', wsId] as const,
   projectMembers: (wsId: string, projectId: string) =>
     ['projectMembers', wsId, projectId] as const,
-  documents: (wsId: string, projectId: string) => ['documents', wsId, projectId] as const,
-  document: (wsId: string, documentId: string) => ['document', wsId, documentId] as const,
   jobs: (wsId: string, documentId: string) => ['jobs', wsId, documentId] as const,
   job: (wsId: string, jobId: string) => ['job', wsId, jobId] as const,
   mediaJobs: (wsId: string, projectId: string) => ['mediaJobs', wsId, projectId] as const,
@@ -69,11 +73,10 @@ export const queryKeys = {
   transformationCapabilities: ['transformation', 'capabilities'] as const,
   segmentHistory: (wsId: string, segmentId: string) =>
     ['segmentHistory', wsId, segmentId] as const,
-  glossaries: (wsId: string) => ['glossaries', wsId] as const,
-  glossaryTerms: (wsId: string, glossaryId: string) =>
-    ['glossaryTerms', wsId, glossaryId] as const,
-  tm: (wsId: string, params: { sl: string; tl: string; source?: string }) =>
-    ['tm', wsId, params] as const,
+  projectGlossary: (wsId: string, projectId: string) =>
+    ['projectGlossary', wsId, projectId] as const,
+  glossaryTerms: (wsId: string, projectId: string) =>
+    ['glossaryTerms', wsId, projectId] as const,
   usage: (wsId: string, params?: Record<string, string | undefined>) =>
     ['usage', wsId, params ?? {}] as const,
   // Platform Super Admin (docs/34 / 09b Phase P) — no workspace scope

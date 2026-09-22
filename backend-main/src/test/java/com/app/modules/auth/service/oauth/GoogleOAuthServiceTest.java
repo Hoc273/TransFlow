@@ -1,6 +1,8 @@
 package com.app.modules.auth.service.oauth;
 
 import com.app.common.config.AppProperties;
+import com.app.common.exception.AppException;
+import com.app.common.exception.ErrorCode;
 import com.app.common.security.JwtService;
 import com.app.modules.auth.dto.AuthResponse;
 import com.app.modules.auth.entity.User;
@@ -130,5 +132,9 @@ class GoogleOAuthServiceTest {
         var creditOpt = creditAccountRepository.findByUserId(user.getId());
         assertTrue(creditOpt.isPresent());
         assertEquals(0, new BigDecimal("100.0000").compareTo(creditOpt.get().getBalance()));
+
+        AppException reusedCode = assertThrows(AppException.class,
+                () -> googleOAuthService.exchange(exchangeCode));
+        assertEquals(ErrorCode.GOOGLE_STATE_INVALID, reusedCode.getErrorCode());
     }
 }

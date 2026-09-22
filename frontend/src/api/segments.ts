@@ -1,6 +1,6 @@
 import { apiRequest, buildWorkspacePath } from '@/lib/api/client'
 import type { HistoryEvent } from '@/types/history'
-import type { SegmentItem, UpdateSegmentBody } from '@/types/job'
+import type { SegmentItem, UpdateSegmentBody } from '@/types/media'
 import type { OverrideQaIssueBody, ResolveIssueBody } from '@/types/qa'
 
 export function updateSegmentApi(

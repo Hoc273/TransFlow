@@ -1,4 +1,4 @@
-"""OpenAI-compatible protocol adapter (TEXT + STT + TTS + VISION)."""
+"""OpenAI-compatible protocol adapter (TEXT + VISION + STT + TTS)."""
 from __future__ import annotations
 
 import io
@@ -214,6 +214,16 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
 
     # ── TEXT ─────────────────────────────────────────────────────────────────
 
+    def text_reasoning_extra(
+        self,
+        provider: ProviderPayload,
+        *,
+        disabled: bool,
+    ) -> Optional[dict[str, Any]]:
+        if disabled:
+            return {"thinking": {"type": "disabled"}}
+        return None
+
     async def chat(
         self,
         provider: ProviderPayload,
@@ -225,22 +235,32 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
         extra_body: Optional[dict[str, Any]] = None,
         images: Optional[list[str]] = None,
     ) -> ChatResult:
-        # VISION capability gate — when images provided, require VISION
+        request_capability = Capability.VISION.value if images else Capability.TEXT.value
+        # Image input is a first-class VISION operation. IMAGE is reserved for
+        # generation and VIDEO has no generic input operation here.
         if images:
-            if not self.supports(Capability.VISION):
-                self.require_capability(Capability.VISION)
-            # also ensure at least TEXT for fallback
+            self.require_provider_capability(provider, Capability.VISION)
             url = join_url(provider.base_url, "/chat/completions")
             # Build vision message (OpenAI spec: content array with text + image_url)
             user_parts: list[dict[str, Any]] = [{"type": "text", "text": user}]
             for img_url in images:
                 # img_url may be http(s) URL or data:image/...;base64
-                # If raw storage ref (bucket/key#t=...), keep as text placeholder
-                if img_url.startswith("http://") or img_url.startswith("https://") or img_url.startswith("data:"):
-                    user_parts.append({"type": "image_url", "image_url": {"url": img_url}})
-                else:
-                    # Non-URL ref — append as text so provider still gets context
-                    user_parts.append({"type": "text", "text": f"Frame ref: {img_url}"})
+                if not (
+                    isinstance(img_url, str)
+                    and (
+                        img_url.startswith("http://")
+                        or img_url.startswith("https://")
+                        or img_url.startswith("data:image/")
+                    )
+                ):
+                    raise ProviderValidation(
+                        "VISION requires an image URL or image data URL",
+                        code=ProviderErrorCode.PROVIDER_BAD_REQUEST,
+                        provider=provider.base_url,
+                        protocol=provider.protocol,
+                        capability=Capability.VISION.value,
+                    )
+                user_parts.append({"type": "image_url", "image_url": {"url": img_url}})
             payload: dict[str, Any] = {
                 "model": provider.model,
                 "temperature": provider.temperature,
@@ -251,7 +271,7 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
                 ],
             }
         else:
-            self.require_capability(Capability.TEXT)
+            self.require_provider_capability(provider, Capability.TEXT)
             url = join_url(provider.base_url, "/chat/completions")
             payload: dict[str, Any] = {
                 "model": provider.model,
@@ -280,29 +300,45 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
         # Captures the COMPLETE request payload (model, messages,
         # response_format, thinking, …) before any provider call so we
         # can confirm fields are actually being sent.
-        _debug_dump_request(payload, url, request_headers)
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
+                _debug_dump_request(payload, url, request_headers)
                 resp = await client.post(
                     url,
                     headers=request_headers,
                     json=payload,
                 )
+                _debug_dump_response(resp, resp.text)
+
+                if self._should_retry_without_thinking(resp, payload):
+                    fallback_payload = dict(payload)
+                    fallback_payload.pop("thinking", None)
+                    _prov_log.info(
+                        "OpenAI-compatible model rejected thinking control; "
+                        "retrying once without it",
+                        extra={
+                            "protocol": self.protocol,
+                            "capability": "TEXT",
+                            "model": provider.model,
+                            "vendorStatus": resp.status_code,
+                        },
+                    )
+                    _debug_dump_request(fallback_payload, url, request_headers)
+                    resp = await client.post(
+                        url,
+                        headers=request_headers,
+                        json=fallback_payload,
+                    )
+                    _debug_dump_response(resp, resp.text)
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             raise ProviderTransport(
                 str(exc),
                 provider=provider.base_url,
                 protocol=provider.protocol,
-                capability="TEXT",
+                capability=request_capability,
             ) from exc
 
-        # Capture the COMPLETE raw response body BEFORE any parsing,
-        # normalization, or field selection. Answers "did the provider
-        # return JSON somewhere we did not look?" / "what is the actual
-        # finish_reason?".
-        _debug_dump_response(resp, resp.text)
-
-        raise_for_http_status(resp, provider, operation="chat", capability="TEXT", log=_prov_log)
+        raise_for_http_status(resp, provider, operation="chat", capability=request_capability, log=_prov_log)
         data = resp.json()
         choice0 = (data.get("choices") or [{}])[0]
         message = choice0.get("message") or {}
@@ -373,6 +409,63 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
 
     # ── STT ──────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _should_retry_without_thinking(
+        response: httpx.Response,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Detect a provider rejection of Transflow's thinking disable control."""
+        if payload.get("thinking") != {"type": "disabled"} or response.status_code != 400:
+            return False
+        try:
+            detail = (response.text or "").casefold()
+        except Exception:
+            return False
+        if "thinking" not in detail:
+            return False
+        unsupported_markers = (
+            "not support",
+            "unsupported",
+            "unknown parameter",
+            "unrecognized parameter",
+            "unexpected parameter",
+            "invalid parameter",
+            "invalid_parameter",
+            "invalidparameter",
+            "unknown field",
+            "unrecognized field",
+            "not allowed",
+            "extra inputs are not permitted",
+        )
+        return any(marker in detail for marker in unsupported_markers)
+
+    @staticmethod
+    def _should_retry_without_response_format(
+        response: httpx.Response,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Allow one narrow retry when a provider rejects this optional field."""
+        if "response_format" not in payload or response.status_code != 400:
+            return False
+        try:
+            detail = (response.text or "").casefold()
+        except Exception:
+            return False
+        if "response_format" not in detail:
+            return False
+        unsupported_markers = (
+            "not support",
+            "unsupported",
+            "unknown",
+            "unrecognized",
+            "unexpected",
+            "invalid parameter",
+            "invalid_parameter",
+            "not allowed",
+            "extra inputs are not permitted",
+        )
+        return any(marker in detail for marker in unsupported_markers)
+
     async def transcribe(
         self,
         provider: ProviderPayload,
@@ -380,7 +473,7 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
         *,
         source_lang: Optional[str] = None,
     ) -> TranscribeResult:
-        self.require_capability(Capability.STT)
+        self.require_provider_capability(provider, Capability.STT)
         url = join_url(provider.base_url, "/audio/transcriptions")
         stt_timeout = max(settings.request_timeout_seconds, 600.0)
 
@@ -397,6 +490,25 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
                     data=data,
                     files={"file": (file_name, io.BytesIO(file_bytes), mime)},
                 )
+                if self._should_retry_without_response_format(response, data):
+                    fallback_data = dict(data)
+                    fallback_data.pop("response_format", None)
+                    _prov_log.info(
+                        "OpenAI-compatible transcription rejected response_format; "
+                        "retrying once without it",
+                        extra={
+                            "protocol": self.protocol,
+                            "capability": Capability.STT.value,
+                            "model": provider.model,
+                            "vendorStatus": response.status_code,
+                        },
+                    )
+                    response = await client.post(
+                        url,
+                        headers=self.auth_headers(provider.api_key),
+                        data=fallback_data,
+                        files={"file": (file_name, io.BytesIO(file_bytes), mime)},
+                    )
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             raise ProviderTransport(
                 str(exc),
@@ -438,40 +550,92 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
 
     @staticmethod
     def _parse_whisper_response(payload: dict) -> TranscribeResult:
-        detected_lang = payload.get("language") or None
-        duration = float(payload.get("duration") or 0.0)
+        if not isinstance(payload, dict):
+            raise ProviderValidation(
+                "STT provider returned an object with an unsupported shape",
+                code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+                capability=Capability.STT.value,
+            )
+
+        detected_lang = (
+            payload.get("language")
+            or payload.get("detected_language")
+            or payload.get("detected_lang")
+            or payload.get("lang")
+            or None
+        )
+        duration_value = payload.get("duration")
+        if not OpenAICompatibleAdapter._is_number(duration_value):
+            duration_ms = payload.get("duration_ms")
+            duration_value = float(duration_ms) / 1000.0 if OpenAICompatibleAdapter._is_number(duration_ms) else 0.0
+        duration = float(duration_value or 0.0)
         segments: list[SttSegment] = []
 
         raw_segments = payload.get("segments")
+        if not isinstance(raw_segments, list):
+            for alias in ("data", "results"):
+                candidate = payload.get(alias)
+                if (
+                    isinstance(candidate, list)
+                    and candidate
+                    and all(
+                        isinstance(item, dict)
+                        and isinstance(item.get("text"), str)
+                        and (
+                            ("start" in item and "end" in item)
+                            or ("start_ms" in item and "end_ms" in item)
+                        )
+                        for item in candidate
+                    )
+                ):
+                    raw_segments = candidate
+                    break
         if isinstance(raw_segments, list):
             for seg in raw_segments:
                 if not isinstance(seg, dict):
                     continue
                 text = (seg.get("text") or "").strip()
-                start = seg.get("start")
-                end = seg.get("end")
-                if text and isinstance(start, (int, float)) and isinstance(end, (int, float)):
+                start_ms, end_ms = OpenAICompatibleAdapter._segment_timestamps_ms(seg)
+                if text and start_ms is not None and end_ms is not None and end_ms > start_ms:
                     segments.append(
                         SttSegment(
                             text=text,
-                            start_ms=int(start * 1000),
-                            end_ms=int(end * 1000),
+                            start_ms=start_ms,
+                            end_ms=end_ms,
                             confidence=seg.get("confidence"),
                         )
                     )
 
         if not segments:
-            text = (payload.get("text") or "").strip()
-            if text:
-                segments.append(
-                    SttSegment(text=text, start_ms=0, end_ms=int(duration * 1000))
-                )
+            raise ProviderValidation(
+                "STT provider returned no usable timed segments",
+                code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+                capability=Capability.STT.value,
+            )
 
         return TranscribeResult(
             segments=segments,
             detected_lang=detected_lang,
             audio_seconds=duration,
         )
+
+    @staticmethod
+    def _segment_timestamps_ms(segment: dict[str, Any]) -> tuple[int | None, int | None]:
+        """Normalize seconds or explicit millisecond segment timestamps."""
+        start_ms = segment.get("start_ms")
+        end_ms = segment.get("end_ms")
+        if OpenAICompatibleAdapter._is_number(start_ms) and OpenAICompatibleAdapter._is_number(end_ms):
+            return int(start_ms), int(end_ms)
+
+        start = segment.get("start")
+        end = segment.get("end")
+        if OpenAICompatibleAdapter._is_number(start) and OpenAICompatibleAdapter._is_number(end):
+            return int(float(start) * 1000), int(float(end) * 1000)
+        return None, None
+
+    @staticmethod
+    def _is_number(value: Any) -> bool:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
 
     # ── TTS ──────────────────────────────────────────────────────────────────
 
@@ -481,15 +645,7 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
         text: str,
         voice_id: str,
     ) -> SynthesizeResult:
-        self.require_capability(Capability.TTS)
-        if provider.capabilities and "TTS" not in provider.capabilities:
-            raise ProviderValidation(
-                "Provider does not support TTS capability",
-                code=ProviderErrorCode.PROVIDER_UNSUPPORTED_CAPABILITY,
-                provider=provider.base_url,
-                protocol=provider.protocol,
-                capability="TTS",
-            )
+        self.require_provider_capability(provider, Capability.TTS)
         payload = {
             "model": provider.model,
             "input": text,
@@ -503,6 +659,24 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
                     headers=self.auth_headers(provider.api_key),
                     json=payload,
                 )
+                if self._should_retry_without_response_format(response, payload):
+                    fallback_payload = dict(payload)
+                    fallback_payload.pop("response_format", None)
+                    _prov_log.info(
+                        "OpenAI-compatible speech rejected response_format; "
+                        "retrying once without it",
+                        extra={
+                            "protocol": self.protocol,
+                            "capability": Capability.TTS.value,
+                            "model": provider.model,
+                            "vendorStatus": response.status_code,
+                        },
+                    )
+                    response = await client.post(
+                        join_url(provider.base_url, "/audio/speech"),
+                        headers=self.auth_headers(provider.api_key),
+                        json=fallback_payload,
+                    )
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             raise ProviderTransport(
                 str(exc),
@@ -519,6 +693,15 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
                 provider=provider.base_url,
                 protocol=provider.protocol,
                 capability="TTS",
+            )
+        content_type = (response.headers.get("content-type") or "").split(";", 1)[0].strip().casefold()
+        if content_type.startswith("audio/") and content_type not in {"audio/mpeg", "audio/mp3"}:
+            raise ProviderValidation(
+                f"OpenAI-compatible TTS returned non-MP3 audio ({content_type})",
+                code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+                provider=provider.base_url,
+                protocol=provider.protocol,
+                capability=Capability.TTS.value,
             )
         return SynthesizeResult(
             audio_bytes=response.content,

@@ -31,7 +31,7 @@ React + Vite (SPA)
 Spring Boot ("Core") ────────────────────────────────────────────
    │  • PostgreSQL (SoT duy nhất) · RabbitMQ (consumer duy nhất)   │
    │  • Auth / Workspace-Project / RBAC 3 vai trò / Credit Ledger  │
-   │  • Glossary / QA / Preset / Notification                     │
+   │  • Platform Admin / Glossary / QA / Preset / Notification    │
    │            │ internal REST (context đóng gói: glossary,      │
    │            │ provider đã resolve, subtitle style, script)    │
    │            ▼                                                 │
@@ -53,8 +53,8 @@ Redis — cache phiên Refine Summarization (TTL) + session/rate-limit
 ```
 
 **Không có trong dự án này** (SRS §4.2/4.3, không build): Dịch file/Text Translation độc lập,
-Batch dịch file, Translation Memory, Creative Production (Composition Worker), Bảng điều khiển quản trị
-toàn nền tảng (Platform Admin), voice cloning/lip-sync, video editor đầy đủ, public API/plugin,
+Batch dịch file, Translation Memory, Creative Production (Composition Worker), voice cloning/lip-sync,
+video editor đầy đủ, public API/plugin,
 podcast/meeting/livestream.
 
 **Phase 2 tuỳ chọn** (SRS §4.4, không cam kết MVP): tích hợp `yt-dlp` (nhập video qua link) và tích hợp nền
@@ -356,10 +356,22 @@ mở §14). Số dư không đủ → mặc định thiết kế `BLOCK_UPFRONT`
 - Không có API key cá nhân hợp lệ cho capability cần dùng → hệ thống tự dùng **nguồn AI nền tảng**
   (`platform_ai_providers`) — kích hoạt công thức Trường hợp 2 (§10.2).
 
+### 11.1 Platform Super Admin
+
+- Quyền quản trị nền tảng được biểu diễn bằng `users.is_platform_admin`, độc lập hoàn toàn với role
+  `LEAD/MEMBER/CLIENT` trong Workspace.
+- Mọi endpoint `/api/platform/*` phải đọc lại cờ quyền từ PostgreSQL và từ chối bằng `UNAUTHORIZED` nếu
+  tài khoản không phải Platform Admin; không chỉ tin vào route guard phía frontend.
+- Bề mặt read-only của MVP gồm: KPI toàn hệ thống, health của PostgreSQL/Redis/RabbitMQ/MinIO/AI Worker,
+  danh bạ user, danh sách Workspace và audit log.
+- Platform Admin không tự động có membership hoặc quyền mutation trong Workspace. Mọi thao tác nghiệp vụ
+  vẫn phải qua RBAC, Project assignment và job ownership tương ứng.
+
 ---
 
 ## 12. Bảo mật & multi-tenancy
 - JWT access+refresh; đăng nhập Google (OAuth2).
+- `/api/platform/*` yêu cầu JWT hợp lệ và `users.is_platform_admin = true`.
 - Không có Document/Text Translation domain hoặc Translation Memory trong access model hiện hành.
 - Mọi bảng nghiệp vụ có `workspace_id`; scope theo workspace của user hiện tại.
 - RBAC 3 vai trò cấp Workspace (§4) + Project assignment + quy tắc job-ownership cho QA/checkpoint được

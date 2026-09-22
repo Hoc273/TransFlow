@@ -903,6 +903,92 @@ class DubAudioTimingTest(unittest.TestCase):
         self.assertTrue(any("outline_width/outline_color ignored" in line
                             for line in captured.output))
 
+    def test_dual_box_outline_bakes_styles_in_ass_and_keeps_force_style_placement_only(self):
+        # 2026-09 dual-event: converted ASS carries Box (yellow) + Default
+        # (black text, white ring); force_style keeps Alignment/MarginV/Bold
+        # only so it cannot override either baked style. Positioning identical
+        # to the single path (same \pos + MarginV).
+        with TemporaryDirectory() as d:
+            srt = os.path.join(d, "sub.srt")
+            with open(srt, "w", encoding="utf-8") as fh:
+                fh.write("1\n00:00:00,500 --> 00:00:02,500\nHello world\n")
+            ass = _srt_vtt_to_ass(
+                srt, "srt", 1920, 1080, alignment=2, margin_v=130,
+                background_box=True, background_color="#FFFF00FF",
+                text_color="#000000", outline_width=2, outline_color="#FFFFFF",
+            )
+            try:
+                content = open(ass, "r", encoding="utf-8").read()
+            finally:
+                os.remove(ass)
+        # Yellow opaque: alpha FF → ASS 00, BGR 00FFFF.
+        self.assertIn(
+            "Style: Box,Arial,44,&HFF000000,&H000000FF,&H0000FFFF,&H0000FFFF,"
+            "0,0,0,0,100,100,0,0,3,4,0,2,10,10,130,1",
+            content,
+        )
+        self.assertIn(
+            "Style: Default,Arial,44,&H00000000,&H000000FF,&H00FFFFFF,&H80000000,"
+            "0,0,0,0,100,100,0,0,1,2,0,2,10,10,130,1",
+            content,
+        )
+        self.assertIn(
+            "Dialogue: 0,0:00:00.50,0:00:02.50,Box,,0,0,130,,"
+            "{\\an2\\pos(960,950)}Hello world",
+            content,
+        )
+        self.assertIn(
+            "Dialogue: 1,0:00:00.50,0:00:02.50,Default,,0,0,130,,"
+            "{\\an2\\pos(960,950)}Hello world",
+            content,
+        )
+
+    def test_dual_box_outline_force_style_has_no_box_or_primary(self):
+        # Converted path: force_style must not carry box/PrimaryColour or it
+        # would override the baked dual styles; single path keeps them.
+        with TemporaryDirectory() as temp_dir:
+            subtitle_path = os.path.join(temp_dir, "sub.srt")
+            with open(subtitle_path, "w", encoding="utf-8") as fh:
+                fh.write("1\n00:00:00,500 --> 00:00:02,500\nHello world\n")
+            with patch("app.services.ffmpeg._run") as run, patch(
+                "app.services.ffmpeg.get_video_height", return_value=1080
+            ), patch("app.services.ffmpeg.get_video_width", return_value=1920):
+                burn_subtitles(
+                    "source.mp4", subtitle_path, "render.mp4",
+                    subtitle_format="srt", background_box=True,
+                    background_color="#FFFF00FF", text_color="#000000",
+                    bold=True, outline_width=2, outline_color="#FFFFFF",
+                )
+            vf_dual = run.call_args.args[0]
+            vf_dual = vf_dual[vf_dual.index("-vf") + 1]
+        self.assertIn("Alignment=", vf_dual)
+        self.assertIn("MarginV=", vf_dual)
+        self.assertIn("Bold=-1", vf_dual)
+        self.assertNotIn("BorderStyle=", vf_dual)
+        self.assertNotIn("PrimaryColour=", vf_dual)
+        self.assertNotIn("OutlineColour=", vf_dual)
+        # No cover overlay: no mask/layers were passed.
+        self.assertNotIn("drawbox", vf_dual)
+        self.assertNotIn("boxblur", vf_dual)
+
+    def test_single_style_path_stays_byte_identical_without_outline(self):
+        # No outline → historical single style, \pos unchanged.
+        with TemporaryDirectory() as d:
+            srt = os.path.join(d, "sub.srt")
+            with open(srt, "w", encoding="utf-8") as fh:
+                fh.write("1\n00:00:00,500 --> 00:00:02,500\nHello world\n")
+            ass = _srt_vtt_to_ass(srt, "srt", 1920, 1080, alignment=2, margin_v=130)
+            try:
+                content = open(ass, "r", encoding="utf-8").read()
+            finally:
+                os.remove(ass)
+        self.assertIn(
+            "Style: Default,Arial,44,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,"
+            "0,0,0,0,100,100,0,0,3,0,0,2,10,10,130,1",
+            content,
+        )
+        self.assertNotIn("Style: Box,", content)
+
     def test_srt_vtt_to_ass_pins_playres_to_video_frame(self):
         # PRESET-VIZ (docs/97 §19.16): the legacy SRT burn path mis-scales
         # MarginV because libass reads SRT with a fixed PlayResY of 288. The

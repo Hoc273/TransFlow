@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { IconLogout, IconSettings, IconShieldCheck, IconUser } from '@tabler/icons-react'
+import { IconLogout, IconSettings, IconUser } from '@tabler/icons-react'
 import { useAuthStore, getLastWorkspaceId } from '@/store/authStore'
 import { useLogout } from '@/hooks/useAuth'
 import { initialsFromName } from '@/lib/format'
 
 export function AvatarMenu() {
-  const { t } = useTranslation(['common', 'platform'])
+  const { t } = useTranslation('common')
   const { workspaceId } = useParams()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -87,20 +87,6 @@ export function AvatarMenu() {
                 <IconSettings size={15} />
                 {t('settings')}
               </button>
-            </>
-          )}
-          {Boolean(user?.isPlatformAdmin) && (
-            <>
-              <div className="app-dropdown-divider" />
-              <Link
-                to="/platform"
-                className="app-dropdown-item text-[var(--color-accent)] font-medium"
-                role="menuitem"
-                onClick={close}
-              >
-                <IconShieldCheck size={15} />
-                <span>Platform Super Admin</span>
-              </Link>
             </>
           )}
           <div className="app-dropdown-divider" />

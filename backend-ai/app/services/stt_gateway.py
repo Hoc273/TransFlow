@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Sequence
 
 import httpx
 
@@ -20,7 +22,7 @@ from app.schemas.contract import (
     SttUsage,
     ValidateProviderResponse,
 )
-from app.services.protocol import AudioInput, require_adapter
+from app.services.protocol import AudioInput, TranscribeResult, require_adapter
 from app.services.provider_errors import (
     ProviderException,
     ProviderErrorCode,
@@ -37,6 +39,37 @@ from app.services.transcript_sanity import (
 
 _int_log = get_internal_logger("stt_gateway")
 _prov_log = get_provider_logger("stt_gateway")
+
+_STT_CHUNK_THRESHOLD_MS = 10 * 60 * 1000
+_STT_CHUNK_DURATION_MS = 6 * 60 * 1000
+_STT_CHUNK_CONCURRENCY = 2
+_STT_CHUNK_BOUNDARY_TOLERANCE_MS = 3_000
+_STT_TAIL_RECOVERY_TRIGGER_MS = 120_000
+_STT_TAIL_RECOVERY_WINDOW_MS = 120_000
+
+
+@dataclass(frozen=True)
+class _AudioChunk:
+    index: int
+    start_ms: int
+    end_ms: int
+    path: Path
+
+    @property
+    def duration_ms(self) -> int:
+        return self.end_ms - self.start_ms
+
+
+@dataclass(frozen=True)
+class _RecoveryWindow:
+    chunk_index: int
+    start_ms: int
+    end_ms: int
+    path: Path
+
+    @property
+    def duration_ms(self) -> int:
+        return self.end_ms - self.start_ms
 
 
 def _malformed_message(violation: TranscriptSanityViolation | None,
@@ -67,10 +100,33 @@ def _malformed_message(violation: TranscriptSanityViolation | None,
     return f"STT transcript timing is invalid ({violation.reason}){suffix}"
 
 
-def _log_sanity_verdict(verdict, req, attempt: int, segments) -> None:
+def _log_sanity_verdict(
+    verdict,
+    req,
+    attempt: int,
+    segments,
+    *,
+    validation_duration_ms: int | None = None,
+) -> None:
     """Structured observability event (docs/97 §19.15 §11) — identifies which
     provider/model tends to produce malformed timing. No secrets logged."""
     violation = verdict.violation
+    valid_ends = [
+        int(segment.end_ms)
+        for segment in (segments or [])
+        if isinstance(getattr(segment, "end_ms", None), int)
+    ]
+    max_end_ms = max(valid_ends, default=None)
+    duration_ms = (
+        validation_duration_ms
+        if validation_duration_ms is not None
+        else req.asset_duration_ms
+    )
+    trailing_gap_ms = (
+        max(0, duration_ms - max_end_ms)
+        if duration_ms is not None and max_end_ms is not None
+        else None
+    )
     extra = {
         "event": "STT_TRANSCRIPT_SANITY_CHECK",
         "result": verdict.result.value,
@@ -78,9 +134,14 @@ def _log_sanity_verdict(verdict, req, attempt: int, segments) -> None:
         "model": req.provider.model,
         "correlationId": req.correlation_id,
         "mediaJobId": req.media_job_id,
-        "assetDurationMs": req.asset_duration_ms,
+        "assetDurationMs": duration_ms,
         "segmentCount": len(segments) if segments is not None else 0,
-        "maxEndMs": violation.max_end_ms if violation else None,
+        "maxEndMs": (
+            violation.max_end_ms
+            if violation and violation.max_end_ms is not None
+            else max_end_ms
+        ),
+        "trailingGapMs": trailing_gap_ms,
         "largestGapMs": violation.largest_gap_ms if violation else None,
         "gapBeforeSegmentIndex": violation.gap_before_index if violation else None,
         "firstInvalidSegmentIndex": violation.first_invalid_index if violation else None,
@@ -110,13 +171,26 @@ async def transcribe(req: "SttRequest") -> SttResponse:
     if settings.mock_mode or not settings.key_is_usable(req.provider.api_key):
         return _mock_response(req)
 
-    tmp_path: Path | None = None
     try:
-        # Build AudioInput. Prefer URL for adapters that accept remote audio
-        # (e.g. DashScope). For multipart-only adapters (OpenAI Whisper),
-        # download first and pass BYTES.
-        audio_input = await _prepare_audio_input(adapter, req.audio_url)
-        result = await _transcribe_with_retry(adapter, req, audio_input)
+        if (
+            req.asset_duration_ms is not None
+            and req.asset_duration_ms > _STT_CHUNK_THRESHOLD_MS
+        ):
+            result = await _transcribe_long_audio(adapter, req)
+        else:
+            # Build AudioInput. Prefer URL for adapters that accept remote audio
+            # (e.g. DashScope). For multipart-only adapters (OpenAI Whisper),
+            # download first and pass BYTES.
+            audio_input = await _prepare_audio_input(adapter, req.audio_url)
+            result = await _transcribe_with_retry(adapter, req, audio_input)
+            if not result.segments:
+                raise ProviderValidation(
+                    "STT detected no speech in the audio",
+                    code=ProviderErrorCode.PROVIDER_EMPTY_RESPONSE,
+                    provider=req.provider.base_url,
+                    protocol=req.provider.protocol,
+                    capability="STT",
+                )
         return SttResponse(
             correlation_id=req.correlation_id,
             status="COMPLETED",
@@ -139,12 +213,506 @@ async def transcribe(req: "SttRequest") -> SttResponse:
             protocol=req.provider.protocol,
             capability="STT",
         ) from exc
+
+
+def _all_zero_timing(segments: Sequence[SttSegment] | None) -> bool:
+    return bool(segments) and all(
+        segment.start_ms == 0 and segment.end_ms == 0
+        for segment in segments
+    )
+
+
+def _max_segment_end(segments: Sequence[SttSegment] | None) -> int | None:
+    if not segments:
+        return None
+    return max(segment.end_ms for segment in segments)
+
+
+def _has_real_timed_speech(result: TranscribeResult) -> bool:
+    return bool(result.segments) and not _all_zero_timing(result.segments)
+
+
+def _split_recovery_range(start_ms: int, end_ms: int) -> list[tuple[int, int]]:
+    return [
+        (window_start_ms, min(window_start_ms + _STT_TAIL_RECOVERY_WINDOW_MS, end_ms))
+        for window_start_ms in range(start_ms, end_ms, _STT_TAIL_RECOVERY_WINDOW_MS)
+    ]
+
+
+def _chunk_recovery_range(
+    chunk: _AudioChunk,
+    result: TranscribeResult,
+    *,
+    has_peer_speech: bool,
+) -> tuple[int, int] | None:
+    """Return a local recovery range for an initial chunk result."""
+    if _all_zero_timing(result.segments):
+        return None
+    if result.segments:
+        max_end_ms = _max_segment_end(result.segments)
+        if (
+            max_end_ms is not None
+            and chunk.duration_ms - max_end_ms >= _STT_TAIL_RECOVERY_TRIGGER_MS
+        ):
+            return max_end_ms, chunk.duration_ms
+        return None
+    if chunk.duration_ms >= _STT_TAIL_RECOVERY_TRIGGER_MS and has_peer_speech:
+        return 0, chunk.duration_ms
+    return None
+
+
+async def _materialize_recovery_windows(
+    source_path: Path,
+    chunk: _AudioChunk,
+    local_start_ms: int,
+    local_end_ms: int,
+    output_dir: Path,
+    req,
+) -> list[_RecoveryWindow]:
+    windows: list[_RecoveryWindow] = []
+    for window_index, (window_start_ms, window_end_ms) in enumerate(
+        _split_recovery_range(local_start_ms, local_end_ms)
+    ):
+        global_start_ms = chunk.start_ms + window_start_ms
+        global_end_ms = chunk.start_ms + window_end_ms
+        window_path = output_dir / (
+            f"recovery-{chunk.index:04d}-{window_index:04d}.wav"
+        )
+        await _run_ffmpeg_chunk(
+            source_path,
+            window_path,
+            global_start_ms,
+            global_end_ms,
+            req,
+        )
+        windows.append(
+            _RecoveryWindow(
+                chunk_index=chunk.index,
+                start_ms=global_start_ms,
+                end_ms=global_end_ms,
+                path=window_path,
+            )
+        )
+    return windows
+
+
+def _offset_recovered_segments(
+    window: _RecoveryWindow,
+    result: TranscribeResult,
+) -> list[SttSegment]:
+    if not result.segments or _all_zero_timing(result.segments):
+        return []
+    recovered: list[SttSegment] = []
+    for segment in result.segments:
+        start_ms = segment.start_ms + window.start_ms
+        end_ms = segment.end_ms + window.start_ms
+        if start_ms < window.start_ms or end_ms > window.end_ms:
+            continue
+        recovered.append(
+            SttSegment(
+                text=segment.text,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                confidence=segment.confidence,
+            )
+        )
+    return recovered
+
+
+def _log_long_audio_diagnostic(message: str, diagnostic: dict[str, object]) -> None:
+    _int_log.info(
+        message,
+        extra={"event": message, "details": dict(diagnostic), **diagnostic},
+    )
+
+
+async def _transcribe_long_audio(adapter, req) -> TranscribeResult:
+    """Materialize one long input, transcribe chunks, and recover large tails."""
+    source_path = await _download_audio(req.audio_url)
+    chunk_diagnostics: list[dict[str, object]] = []
+    recovered_segments: list[SttSegment] = []
+    recovery_results: list[TranscribeResult] = []
+    results: list[TranscribeResult] = []
+    chunks: list[_AudioChunk] = []
+    merged_segments: list[SttSegment] = []
+    try:
+        with tempfile.TemporaryDirectory(prefix="transflow-stt-") as chunk_dir:
+            chunks = await _materialize_audio_chunks(
+                source_path, req.asset_duration_ms, Path(chunk_dir), req
+            )
+            semaphore = asyncio.Semaphore(_STT_CHUNK_CONCURRENCY)
+
+            async def transcribe_local_audio(
+                path: Path,
+                duration_ms: int,
+            ) -> TranscribeResult:
+                async with semaphore:
+                    return await _transcribe_with_retry(
+                        adapter,
+                        req,
+                        AudioInput.from_file(path, mime_type="audio/wav"),
+                        validation_duration_ms=duration_ms,
+                    )
+
+            results = list(
+                await asyncio.gather(
+                    *(
+                        transcribe_local_audio(chunk.path, chunk.duration_ms)
+                        for chunk in chunks
+                    )
+                )
+            )
+            peer_speech_indexes = {
+                chunk.index
+                for chunk, result in zip(chunks, results)
+                if _has_real_timed_speech(result)
+            }
+
+            for chunk, result in zip(chunks, results):
+                initial_max_end_ms = _max_segment_end(result.segments)
+                initial_trailing_gap_ms = (
+                    max(0, chunk.duration_ms - initial_max_end_ms)
+                    if initial_max_end_ms is not None
+                    else None
+                )
+                recovery_range = _chunk_recovery_range(
+                    chunk,
+                    result,
+                    has_peer_speech=any(
+                        peer_index != chunk.index
+                        for peer_index in peer_speech_indexes
+                    ),
+                )
+                diagnostic: dict[str, object] = {
+                    "chunkIndex": chunk.index,
+                    "chunkStartMs": chunk.start_ms,
+                    "chunkEndMs": chunk.end_ms,
+                    "chunkDurationMs": chunk.duration_ms,
+                    "initialSegmentCount": len(result.segments or []),
+                    "initialMaxEndMs": initial_max_end_ms,
+                    "initialTrailingGapMs": initial_trailing_gap_ms,
+                    "tailRecoveryTriggered": recovery_range is not None,
+                    "recoveryWindowCount": 0,
+                    "recoveredSegmentCount": 0,
+                    "finalMaxEndMs": initial_max_end_ms,
+                    "recoveryState": "NOT_TRIGGERED",
+                }
+
+                if recovery_range is not None:
+                    recovery_ranges = _split_recovery_range(*recovery_range)
+                    diagnostic["recoveryWindowCount"] = len(recovery_ranges)
+                    try:
+                        windows = await _materialize_recovery_windows(
+                            source_path,
+                            chunk,
+                            recovery_range[0],
+                            recovery_range[1],
+                            Path(chunk_dir),
+                            req,
+                        )
+                        window_results = await asyncio.gather(
+                            *(
+                                transcribe_local_audio(
+                                    window.path,
+                                    window.duration_ms,
+                                )
+                                for window in windows
+                            ),
+                            return_exceptions=True,
+                        )
+                        provider_failure = next(
+                            (
+                                item
+                                for item in window_results
+                                if isinstance(item, ProviderException)
+                            ),
+                            None,
+                        )
+                        for item in window_results:
+                            if isinstance(item, BaseException) and not isinstance(
+                                item, ProviderException
+                            ):
+                                raise item
+                        if provider_failure is not None:
+                            diagnostic["recoveryState"] = "UNCERTAIN"
+                        else:
+                            chunk_recovered_segments = [
+                                segment
+                                for window, window_result in zip(
+                                    windows, window_results
+                                )
+                                for segment in _offset_recovered_segments(
+                                    window,
+                                    window_result,
+                                )
+                            ]
+                            recovered_segments.extend(chunk_recovered_segments)
+                            recovery_results.extend(
+                                item
+                                for item in window_results
+                                if isinstance(item, TranscribeResult)
+                            )
+                            diagnostic["recoveredSegmentCount"] = len(
+                                chunk_recovered_segments
+                            )
+                            diagnostic["recoveryState"] = (
+                                "RECOVERED"
+                                if chunk_recovered_segments
+                                else "NO_SPEECH"
+                            )
+                    except ProviderException:
+                        diagnostic["recoveryState"] = "UNCERTAIN"
+
+                local_recovered_ends = [
+                    segment.end_ms - chunk.start_ms
+                    for segment in recovered_segments
+                    if chunk.start_ms <= segment.start_ms < chunk.end_ms
+                ]
+                final_ends = [
+                    end_ms
+                    for end_ms in [initial_max_end_ms, *local_recovered_ends]
+                    if end_ms is not None
+                ]
+                diagnostic["finalMaxEndMs"] = max(final_ends, default=None)
+                chunk_diagnostics.append(diagnostic)
+                _log_long_audio_diagnostic("STT_LONG_AUDIO_CHUNK", diagnostic)
+
+            initial_merged_segments = _merge_chunk_transcripts(chunks, results)
+            merged_segments = sorted(
+                [*initial_merged_segments, *recovered_segments],
+                key=lambda segment: (segment.start_ms, segment.end_ms),
+            )
+
+        final_max_end_ms = _max_segment_end(merged_segments)
+        asset_duration_ms = req.asset_duration_ms
+        final_trailing_gap_ms = (
+            max(0, asset_duration_ms - final_max_end_ms)
+            if final_max_end_ms is not None
+            else asset_duration_ms
+        )
+        final_diagnostic: dict[str, object] = {
+            "assetDurationMs": asset_duration_ms,
+            "transcriptMaxEndMs": final_max_end_ms,
+            "trailingGapMs": final_trailing_gap_ms,
+            "trailingGapRatio": (
+                final_trailing_gap_ms / asset_duration_ms
+                if asset_duration_ms
+                else 0.0
+            ),
+            "recoveredChunkIndexes": [
+                diagnostic["chunkIndex"]
+                for diagnostic in chunk_diagnostics
+                if diagnostic["recoveryState"] == "RECOVERED"
+            ],
+            "uncertainChunkIndexes": [
+                diagnostic["chunkIndex"]
+                for diagnostic in chunk_diagnostics
+                if diagnostic["recoveryState"] == "UNCERTAIN"
+            ],
+        }
+        _log_long_audio_diagnostic("STT_LONG_AUDIO_SUMMARY", final_diagnostic)
+        if not merged_segments:
+            raise ProviderValidation(
+                "STT detected no speech in the audio",
+                code=ProviderErrorCode.PROVIDER_EMPTY_RESPONSE,
+                provider=req.provider.base_url,
+                protocol=req.provider.protocol,
+                capability="STT",
+            )
+
+        verdict = TranscriptSanityValidator.validate(
+            merged_segments, req.asset_duration_ms
+        )
+        _log_sanity_verdict(verdict, req, 0, merged_segments)
+        if verdict.result is TranscriptSanityResult.MALFORMED:
+            raise ProviderValidation(
+                _malformed_message(verdict.violation, req.asset_duration_ms),
+                code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+                provider=req.provider.base_url,
+                protocol=req.provider.protocol,
+                capability="STT",
+            )
+
+        all_results = [*results, *recovery_results]
+        detected_lang = _detected_language(req.source_lang, all_results)
+        audio_seconds = sum(
+            max(0.0, result.audio_seconds) for result in all_results
+        )
+        if audio_seconds <= 0 and req.asset_duration_ms:
+            audio_seconds = req.asset_duration_ms / 1000.0
+        return TranscribeResult(
+            segments=merged_segments,
+            detected_lang=detected_lang,
+            audio_seconds=audio_seconds,
+            metadata={
+                "chunked": True,
+                "chunk_count": len(chunks),
+                "chunkDiagnostics": chunk_diagnostics,
+                "longAudioDiagnostics": final_diagnostic,
+            },
+        )
     finally:
-        if tmp_path and tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except OSError:
-                pass
+        try:
+            source_path.unlink()
+        except OSError:
+            pass
+
+
+def _chunk_ranges(asset_duration_ms: int) -> list[tuple[int, int]]:
+    return [
+        (start_ms, min(start_ms + _STT_CHUNK_DURATION_MS, asset_duration_ms))
+        for start_ms in range(0, asset_duration_ms, _STT_CHUNK_DURATION_MS)
+    ]
+
+
+async def _materialize_audio_chunks(
+    source_path: Path,
+    asset_duration_ms: int,
+    output_dir: Path,
+    req,
+) -> list[_AudioChunk]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    chunks: list[_AudioChunk] = []
+    for index, (start_ms, end_ms) in enumerate(_chunk_ranges(asset_duration_ms)):
+        chunk_path = output_dir / f"chunk-{index:04d}.wav"
+        await _run_ffmpeg_chunk(source_path, chunk_path, start_ms, end_ms, req)
+        chunks.append(_AudioChunk(index, start_ms, end_ms, chunk_path))
+    return chunks
+
+
+async def _run_ffmpeg_chunk(
+    source_path: Path,
+    chunk_path: Path,
+    start_ms: int,
+    end_ms: int,
+    req,
+) -> None:
+    duration_ms = end_ms - start_ms
+    command = [
+        "ffmpeg",
+        "-y",
+        "-ss",
+        f"{start_ms / 1000.0:.3f}",
+        "-i",
+        str(source_path),
+        "-t",
+        f"{duration_ms / 1000.0:.3f}",
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-c:a",
+        "pcm_s16le",
+        str(chunk_path),
+    ]
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            _, stderr = await process.communicate()
+        except asyncio.CancelledError:
+            if process.returncode is None:
+                process.terminate()
+            raise
+    except OSError as exc:
+        raise ProviderTransport(
+            f"Unable to materialize STT audio chunk: {exc}",
+            code=ProviderErrorCode.PROVIDER_TRANSPORT_ERROR,
+            provider=req.provider.base_url,
+            protocol=req.provider.protocol,
+            capability="STT",
+        ) from exc
+    if process.returncode != 0 or not chunk_path.is_file():
+        detail = stderr.decode("utf-8", errors="replace")[-300:]
+        raise ProviderTransport(
+            "Unable to materialize STT audio chunk"
+            + (f": {detail}" if detail else ""),
+            code=ProviderErrorCode.PROVIDER_TRANSPORT_ERROR,
+            provider=req.provider.base_url,
+            protocol=req.provider.protocol,
+            capability="STT",
+        )
+
+
+def _merge_chunk_transcripts(
+    chunks: Sequence[_AudioChunk],
+    results: Sequence[TranscribeResult],
+) -> list[SttSegment]:
+    raw_segments = [
+        segment
+        for result in results
+        for segment in (result.segments or [])
+    ]
+    if not raw_segments:
+        return []
+    # Preserve the documented no-timing sentinel. It cannot be offset without
+    # turning it into invalid mixed timing, and the downstream projector owns
+    # synthesis for this exact all-zero shape.
+    if all(
+        segment.start_ms == 0 and segment.end_ms == 0
+        for segment in raw_segments
+    ):
+        return raw_segments
+
+    merged: list[SttSegment] = []
+    for chunk, result in zip(chunks, results):
+        for segment in result.segments or []:
+            merged.append(
+                SttSegment(
+                    text=segment.text,
+                    start_ms=segment.start_ms + chunk.start_ms,
+                    end_ms=segment.end_ms + chunk.start_ms,
+                    confidence=segment.confidence,
+                )
+            )
+    return merged
+
+
+def _detected_language(source_lang: str | None, results: Sequence[TranscribeResult]) -> str | None:
+    if source_lang and source_lang.strip():
+        return source_lang.strip()
+    for result in results:
+        if result.detected_lang and result.detected_lang.strip():
+            return result.detected_lang.strip()
+    return None
+
+
+def _normalize_chunk_transcript(
+    result: TranscribeResult,
+    chunk_duration_ms: int,
+) -> TranscribeResult:
+    """Reconcile a small provider tail drift with the materialized chunk boundary."""
+    normalized_segments: list[SttSegment] = []
+    changed = False
+    for segment in result.segments:
+        end_ms = segment.end_ms
+        if (
+            segment.start_ms < chunk_duration_ms < segment.end_ms
+            and segment.end_ms - chunk_duration_ms
+            <= _STT_CHUNK_BOUNDARY_TOLERANCE_MS
+        ):
+            end_ms = chunk_duration_ms
+            changed = True
+        normalized_segments.append(
+            SttSegment(
+                text=segment.text,
+                start_ms=segment.start_ms,
+                end_ms=end_ms,
+                confidence=segment.confidence,
+            )
+        )
+    if not changed:
+        return result
+    return TranscribeResult(
+        segments=normalized_segments,
+        detected_lang=result.detected_lang,
+        audio_seconds=result.audio_seconds,
+        metadata=dict(result.metadata),
+    )
 
 
 async def _prepare_audio_input(adapter, audio_url: str) -> AudioInput:
@@ -168,8 +736,19 @@ async def _prepare_audio_input(adapter, audio_url: str) -> AudioInput:
             pass
 
 
-async def _transcribe_with_retry(adapter, req, audio_input: AudioInput):
+async def _transcribe_with_retry(
+    adapter,
+    req,
+    audio_input: AudioInput,
+    *,
+    validation_duration_ms: int | None = None,
+):
     attempt = 0
+    duration_ms = (
+        validation_duration_ms
+        if validation_duration_ms is not None
+        else req.asset_duration_ms
+    )
     while True:
         try:
             result = await adapter.transcribe(
@@ -182,14 +761,25 @@ async def _transcribe_with_retry(adapter, req, audio_input: AudioInput):
             # they reach the timing projection. Raising PROVIDER_RESPONSE_
             # MALFORMED (retryable) here reuses the existing retry loop — the
             # provider is re-invoked, never the malformed transcript returned.
+            if validation_duration_ms is not None:
+                result = _normalize_chunk_transcript(
+                    result,
+                    validation_duration_ms,
+                )
             verdict = TranscriptSanityValidator.validate(
-                result.segments, req.asset_duration_ms
+                result.segments, duration_ms
             )
-            _log_sanity_verdict(verdict, req, attempt, result.segments)
+            _log_sanity_verdict(
+                verdict,
+                req,
+                attempt,
+                result.segments,
+                validation_duration_ms=duration_ms,
+            )
             if verdict.result is TranscriptSanityResult.MALFORMED:
                 violation = verdict.violation
                 raise ProviderValidation(
-                    _malformed_message(violation, req.asset_duration_ms),
+                    _malformed_message(violation, duration_ms),
                     code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
                     provider=req.provider.base_url,
                     protocol=req.provider.protocol,
@@ -206,6 +796,10 @@ async def _transcribe_with_retry(adapter, req, audio_input: AudioInput):
                         "errorCode": exc.code,
                         "provider": req.provider.base_url,
                         "protocol": req.provider.protocol,
+                        "model": req.provider.model,
+                        "correlationId": req.correlation_id,
+                        "mediaJobId": req.media_job_id,
+                        "assetDurationMs": duration_ms,
                     },
                 )
                 await _sleep_backoff(attempt)

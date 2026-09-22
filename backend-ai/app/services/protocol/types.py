@@ -17,6 +17,9 @@ class Capability(str, Enum):
     TEXT = "TEXT"
     STT = "STT"
     TTS = "TTS"
+    EMBEDDING = "EMBEDDING"
+    IMAGE = "IMAGE"
+    VIDEO = "VIDEO"
     VISION = "VISION"
 
 

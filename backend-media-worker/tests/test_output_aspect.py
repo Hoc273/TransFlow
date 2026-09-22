@@ -14,6 +14,7 @@ from app.services.ffmpeg import (
     _build_layer_filters,
     _build_mask_filter,
     _build_reframe_filter,
+    _classify_ffmpeg_error,
     _compose_vf,
     _reframe_target_dims,
     _validate_output_aspect_ratio,
@@ -100,7 +101,7 @@ class ReframeFilterTest(unittest.TestCase):
 
     def test_compose_vf_joins_prefix_and_chain(self):
         self.assertEqual(_compose_vf(None, "subtitles=x"), "subtitles=x")
-        self.assertEqual(_compose_vf("split=2[a][b];…", "subtitles=x"), "split=2[a][b];…;subtitles=x")
+        self.assertEqual(_compose_vf("split=2[a][b];…", "subtitles=x"), "split=2[a][b];…,subtitles=x")
 
 
 class CoverGeometryOnTargetFrameTest(unittest.TestCase):
@@ -139,6 +140,33 @@ class CoverGeometryOnTargetFrameTest(unittest.TestCase):
 class CapabilityAdvertisementTest(unittest.TestCase):
     def test_worker_advertises_render_output_aspect(self):
         self.assertIn("RENDER_OUTPUT_ASPECT", SUPPORTED_RENDER_FEATURES)
+
+
+class ClassifyFfmpegErrorTest(unittest.TestCase):
+    def test_banner_codec_option_does_not_trigger_codec_unsupported(self):
+        stderr = (
+            "ffmpeg version 7.1.5 Copyright (c) 2000-2026 the FFmpeg developers\n"
+            "  configuration: --prefix=/usr --enable-libcodec2 --enable-libx264\n"
+            "  libavutil      59. 39.100 / 59. 39.100\n"
+            "  libavcodec     61. 19.101 / 61. 19.101\n"
+            "  libpostproc    58.  3.100 / 58.  3.100\n"
+            "Simple filtergraph ... had 2 input(s) and 2 output(s).\n"
+            "Error opening output files: Invalid argument\n"
+        )
+        code, retryable = _classify_ffmpeg_error(stderr)
+        self.assertEqual("INVALID_INPUT", code)
+        self.assertFalse(retryable)
+
+    def test_actual_codec_error_is_classified_as_codec_unsupported(self):
+        stderr = (
+            "ffmpeg version 7.1.5 Copyright (c) 2000-2026 the FFmpeg developers\n"
+            "  configuration: --prefix=/usr --enable-libcodec2\n"
+            "  libavcodec     61. 19.101 / 61. 19.101\n"
+            "Unknown encoder 'libnonexistent'\n"
+        )
+        code, retryable = _classify_ffmpeg_error(stderr)
+        self.assertEqual("CODEC_UNSUPPORTED", code)
+        self.assertFalse(retryable)
 
 
 if __name__ == "__main__":

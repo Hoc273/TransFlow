@@ -84,6 +84,7 @@ users(
   full_name VARCHAR(200) NOT NULL,
   google_sub VARCHAR,
   google_linked BOOLEAN NOT NULL DEFAULT false,
+  is_platform_admin BOOLEAN NOT NULL DEFAULT false, -- quyền vận hành cấp hệ thống, không phải role Workspace
   status VARCHAR CHECK (status IN ('ACTIVE','DISABLED')) NOT NULL DEFAULT 'ACTIVE',
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
@@ -121,6 +122,10 @@ projects(
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   name VARCHAR(200) NOT NULL,
   source_lang VARCHAR(20),
+  default_glossary_id UUID,
+  tm_enabled BOOLEAN NOT NULL DEFAULT true, -- legacy UI compatibility; không kích hoạt TM trong v1.4b
+  domain VARCHAR(80),
+  tone VARCHAR(80),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 )
@@ -146,6 +151,8 @@ CREATE INDEX ix_project_members_project ON project_members(project_id);
 - `MEMBER`/`CLIENT` phải có row `project_members` mới được đọc Project;
 - quyền ghi lấy từ `workspace_members.role`: `LEAD|MEMBER` được thao tác, `CLIENT` read-only;
 - Project assignment không thay đổi role và không tạo thêm một lớp role thứ hai.
+- `is_platform_admin` độc lập với membership/role Workspace; mọi API `/api/platform/*` kiểm tra cờ này từ
+  bản ghi `users`, nhưng cờ không tự cấp quyền mutation vào dữ liệu của Workspace.
 
 ## 4. Credit & Thanh toán (không đổi so với thiết kế trước)
 
@@ -371,6 +378,7 @@ media_jobs(
                     NOT NULL DEFAULT 'ORIGINAL_ONLY',
   source_separation_enabled BOOLEAN NOT NULL DEFAULT false,
 
+  tts_provider_id UUID,
   tts_voice_id UUID REFERENCES tts_voices(id),
 
   visual_context_enabled BOOLEAN NOT NULL DEFAULT false,
@@ -394,6 +402,7 @@ media_jobs(
   ),
   CONSTRAINT ck_audio_mode_sep CHECK (output_audio_mode <> 'DUB_MIX' OR source_separation_enabled = true),
   CONSTRAINT ck_audio_mode_voice CHECK ((output_audio_mode = 'ORIGINAL_ONLY') = (tts_voice_id IS NULL)),
+  CONSTRAINT ck_media_jobs_tts_binding CHECK ((tts_provider_id IS NULL) = (tts_voice_id IS NULL)),
   CONSTRAINT ck_source_summary_job CHECK (
     source_summary_job_id IS NULL OR recipe_id = 'summary.script_match'
   )
@@ -669,7 +678,7 @@ CREATE INDEX ix_ai_usage_logs_user ON ai_usage_logs(performed_by_user_id, create
 | `localization_batches` | CHECK array_length nguồn≤20; `target_lang` là scalar không phải mảng | Giới hạn lô + đúng bản chất "1 ngôn ngữ/lô" (v1.4) |
 | `media_jobs` | CHECK `ck_job_recipe_mode`, không có `PARTIALLY_FAILED` trong status | "1 yêu cầu không có lỗi một phần" |
 | `media_jobs` | `created_by_user_id NOT NULL`, immutable ở service | Cơ sở duy nhất cho authorization QA/checkpoint (SRS §3.3) |
-| `media_jobs` | CHECK `ck_audio_mode_sep`/`ck_audio_mode_voice` | Ràng buộc DUB_MIX cần tách nguồn, mode cần giọng nhất quán |
+| `media_jobs` | CHECK `ck_audio_mode_sep`/`ck_audio_mode_voice`/`ck_media_jobs_tts_binding` | Ràng buộc DUB_MIX cần tách nguồn, mode cần giọng và provider/voice phải luôn đi theo cặp |
 | `summary_proposals` | CHECK `ck_proposal_origin_fields`, UNIQUE partial (stage,round) WHERE AI | Phân biệt AI (có script) vs HUMAN |
 | `qa_issue_overrides.reason` | CHECK char_length ≥ 10 | Bắt buộc lý do override rõ ràng |
 | `credit_accounts.balance` | CHECK ≥ 0 | Không âm — chặn tạo job nếu không đủ |
@@ -679,6 +688,9 @@ CREATE INDEX ix_ai_usage_logs_user ON ai_usage_logs(performed_by_user_id, create
 
 ## 13. Ghi chú migration
 - Schema **mới hoàn toàn** — không migrate dữ liệu từ base gốc.
+- Flyway được squash còn đúng 2 baseline: `V1__init_tables.sql` tạo schema/constraint và
+  `V2__init_indexes.sql` tạo index + seed dữ liệu nền. Database đã chạy chuỗi V1–V12 cũ phải reset schema
+  và `flyway_schema_history` trước khi dùng baseline này; không chồng baseline mới lên history cũ.
 - **Thứ tự tạo bảng chính (do FK chéo):**
   1. `users` → `workspaces` → `workspace_members` → `projects` → `project_members`.
   2. `terms_versions`, `credit_packages`, `platform_ai_providers` (độc lập).

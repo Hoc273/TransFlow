@@ -128,7 +128,7 @@ export function ProjectListPage() {
               <tbody>
                 {projects.map((p) => {
                   const targetPath = `/w/${workspaceId}/media?projectId=${p.id}`
-                  const videoCount = p.mediaCount ?? p.documentCount ?? 0
+                  const videoCount = p.mediaCount ?? 0
 
                   return (
                     <tr

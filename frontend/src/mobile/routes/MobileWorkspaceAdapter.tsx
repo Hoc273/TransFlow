@@ -32,6 +32,7 @@ const MobileMediaListPage = lazy(() => import('../pages/media/MobileMediaListPag
 const MobileMembersPage = lazy(() => import('../pages/settings/MobileMembersPage').then(m => ({ default: m.MobileMembersPage })))
 const MobilePresetSettingsPage = lazy(() => import('../pages/settings/MobilePresetSettingsPage').then(m => ({ default: m.MobilePresetSettingsPage })))
 const MobileAccountPage = lazy(() => import('../pages/account/MobileAccountPage').then(m => ({ default: m.MobileAccountPage })))
+const MobileCreditPage = lazy(() => import('../pages/account/MobileCreditPage').then(m => ({ default: m.MobileCreditPage })))
 const MobileNotificationPage = lazy(() => import('../pages/notification/MobileNotificationPage').then(m => ({ default: m.MobileNotificationPage })))
 
 export function MobileWorkspaceAdapter() {
@@ -82,13 +83,9 @@ export function MobileWorkspaceAdapter() {
             <Route index element={<MobileDashboardPage />} />
             <Route path="notifications" element={<MobileNotificationPage />} />
             <Route path="projects" element={<MobileProjectListPage />} />
-            <Route path="projects/:projectId/documents" element={<Navigate to="../media" replace />} />
-            <Route path="documents/:documentId/jobs" element={<Navigate to="../media" replace />} />
-            <Route path="jobs/:jobId/editor" element={<Navigate to="../media" replace />} />
             <Route path="batches" element={<MobileBatchListPage />} />
             <Route path="batches/:batchId" element={<MobileBatchDetailPage />} />
             <Route path="glossaries" element={<MobileGlossaryPage />} />
-            <Route path="tm" element={<Navigate to="../glossaries" replace />} />
             <Route path="media" element={<MobileMediaListPage />} />
             <Route path="media/presets" element={<MobilePresetSettingsPage />} />
             <Route
@@ -102,8 +99,13 @@ export function MobileWorkspaceAdapter() {
             <Route path="settings/members" element={<MobileMembersPage />} />
             <Route path="settings/provider" element={<Navigate to="../account/security" replace />} />
             <Route path="settings/media-presets" element={<Navigate to="../media/presets" replace />} />
-            <Route path="creative/*" element={<Navigate to="../media" replace />} />
+            <Route path="account/credit" element={<MobileCreditPage />} />
             <Route path="account/*" element={<MobileAccountPage />} />
+            {/* Legacy route redirects */}
+            <Route path="tm/*" element={<Navigate to="../glossaries" replace />} />
+            <Route path="documents/*" element={<Navigate to="../media" replace />} />
+            <Route path="creative/*" element={<Navigate to="../media" replace />} />
+            <Route path="jobs/*" element={<Navigate to="../media" replace />} />
             <Route path="*" element={<Navigate to="" replace />} />
           </Route>
         </Routes>
@@ -119,17 +121,12 @@ export function MobileWorkspaceAdapter() {
           <Route index element={<DashboardPage />} />
           <Route path="notifications" element={<NotificationCenterPage />} />
           <Route path="projects" element={<ProjectListPage />} />
-          <Route path="projects/:projectId/documents" element={<Navigate to="../media" replace />} />
-          <Route path="documents/:documentId/jobs" element={<Navigate to="../media" replace />} />
-          <Route path="jobs/:jobId/editor" element={<Navigate to="../media" replace />} />
           <Route path="batches" element={<BatchListPage />} />
           <Route path="batches/:batchId" element={<BatchDetailPage />} />
           <Route path="glossaries" element={<GlossaryPage />} />
-          <Route path="tm" element={<Navigate to="../glossaries" replace />} />
           <Route path="media" element={<MediaListPage />} />
           <Route path="media/presets" element={<PresetSettingsPage />} />
           <Route path="media/jobs/:jobId" element={<MediaJobPage />} />
-          <Route path="creative/*" element={<Navigate to="../media" replace />} />
           <Route
             path="dashboard/usage"
             element={
@@ -143,6 +140,11 @@ export function MobileWorkspaceAdapter() {
           <Route path="settings/media-presets" element={<Navigate to="../media/presets" replace />} />
           <Route path="account/:section" element={<AccountSettingsPage />} />
           <Route path="account" element={<Navigate to="profile" replace />} />
+          {/* Legacy route redirects */}
+          <Route path="tm/*" element={<Navigate to="../glossaries" replace />} />
+          <Route path="documents/*" element={<Navigate to="../media" replace />} />
+          <Route path="creative/*" element={<Navigate to="../media" replace />} />
+          <Route path="jobs/*" element={<Navigate to="../media" replace />} />
           <Route path="*" element={<Navigate to="" replace />} />
         </Route>
       </Routes>

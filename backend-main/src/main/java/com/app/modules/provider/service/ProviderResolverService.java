@@ -12,8 +12,24 @@ public interface ProviderResolverService {
 
     ProviderResolution resolveForCapability(UUID userId, String capability);
 
-    /** Language of a tts_voices row, used to validate targetLang match (API_Contract.md §5). */
-    Optional<String> resolveVoiceLanguage(UUID ttsVoiceId);
+    /**
+     * Resolves the language only when the requested active voice belongs to the requested active,
+     * TTS-capable provider and that provider is available to the user. This is the public module
+     * boundary used by media_job; callers must never validate provider repositories directly.
+     */
+    Optional<String> resolveVoiceLanguage(UUID userId, UUID ttsProviderId, UUID ttsVoiceId);
+
+    /**
+     * Legacy voiceId string resolution (ADR-CEP B7 parity).
+     * Finds active voice by voice_id string matching targetLang and accessible to user.
+     */
+    ResolvedVoice resolveLegacyVoice(UUID userId, String voiceId, String targetLang);
+
+    record ResolvedVoice(
+            UUID providerId,
+            UUID voiceId,
+            String language
+    ) {}
 
     record ProviderResolution(
             String providerType,

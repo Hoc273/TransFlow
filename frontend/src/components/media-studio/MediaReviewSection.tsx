@@ -4,8 +4,7 @@ import { MediaSubtitleEditor } from '@/components/media-studio/MediaSubtitleEdit
 import { ReviewVideoPane } from '@/components/media-studio/ReviewVideoPane'
 import { countIssuesByBand } from '@/components/media-studio/MediaQaPanel'
 import { useMediaLinkedJob, useRenderConfig } from '@/hooks/useMedia'
-import type { MediaJob } from '@/types/media'
-import type { SegmentItem } from '@/types/job'
+import type { MediaJob, SegmentItem } from '@/types/media'
 
 type Props = {
   workspaceId: string

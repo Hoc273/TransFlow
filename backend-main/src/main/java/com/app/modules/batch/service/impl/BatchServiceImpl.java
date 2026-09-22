@@ -59,7 +59,7 @@ public class BatchServiceImpl implements BatchService {
 
         SharedJobConfig config = request.sharedConfig() != null
                 ? request.sharedConfig()
-                : new SharedJobConfig(null, null, null, null, null, null, null);
+                : new SharedJobConfig(null, null, null, null, null, null, null, null);
 
         LocalizationBatch batch = new LocalizationBatch();
         batch.setWorkspaceId(workspaceId);
@@ -77,7 +77,7 @@ public class BatchServiceImpl implements BatchService {
             CreateMediaJobRequest jobRequest = new CreateMediaJobRequest(
                     projectId, assetId, MediaJob.RECIPE_LOCALIZATION_FULL, config.processingMode(),
                     request.targetLang(), null, config.subtitleMode(), config.outputAudioMode(),
-                    config.sourceSeparationEnabled(), config.ttsVoiceId(), null, config.workflowMode(),
+                    config.sourceSeparationEnabled(), config.ttsProviderId(), config.ttsVoiceId(), null, config.workflowMode(),
                     config.presetId());
             mediaJobService.createBatchChildJob(workspaceId, userId, batch.getId(), jobRequest);
         }

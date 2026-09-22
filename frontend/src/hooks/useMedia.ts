@@ -34,11 +34,13 @@ import {
   getMediaAssetApi,
   type EditMediaSegmentBody,
 } from '@/api/media'
-import { getJobApi } from '@/api/jobs'
+import { overrideQaIssueApi, resolveQaIssueApi } from '@/api/segments'
+import type { OverrideQaIssueBody, ResolveIssueBody } from '@/types/qa'
 import { hasActiveMediaStages, isActiveMediaJobStatus } from '@/lib/media'
 import { STALE, queryKeys } from '@/lib/queryClient'
 import type {
   CreateCustomProposalBody,
+  JobDetail,
   MediaExportFormat,
   MediaJob,
   OverrideSourceLangBody,
@@ -100,16 +102,47 @@ export function useMediaProposals(workspaceId: string | undefined, jobId: string
   })
 }
 
-/** Linked text translation job (segments + QA) once TRANSLATE has run. */
+/** Legacy linked text job stub — returns null as text jobs are removed in v3.3. */
 export function useMediaLinkedJob(
-  workspaceId: string | undefined,
-  translationJobId: string | null | undefined,
-) {
-  return useQuery({
-    queryKey: queryKeys.job(workspaceId ?? '', translationJobId ?? ''),
-    queryFn: () => getJobApi(workspaceId!, translationJobId!),
-    enabled: !!workspaceId && !!translationJobId,
-    staleTime: STALE.semiLive,
+  _workspaceId: string | undefined,
+  _translationJobId: string | null | undefined,
+): { data: JobDetail | null; isLoading: boolean } {
+  return { data: null, isLoading: false }
+}
+
+export function useResolveQaIssue(workspaceId: string | undefined, jobId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      issueId,
+      body,
+    }: {
+      issueId: string
+      body?: ResolveIssueBody
+    }) => resolveQaIssueApi(workspaceId!, issueId, body),
+    onSuccess: () => {
+      if (workspaceId && jobId) {
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, jobId) })
+      }
+    },
+  })
+}
+
+export function useOverrideQaIssue(workspaceId: string | undefined, jobId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      issueId,
+      body,
+    }: {
+      issueId: string
+      body: OverrideQaIssueBody
+    }) => overrideQaIssueApi(workspaceId!, issueId, body),
+    onSuccess: () => {
+      if (workspaceId && jobId) {
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, jobId) })
+      }
+    },
   })
 }
 

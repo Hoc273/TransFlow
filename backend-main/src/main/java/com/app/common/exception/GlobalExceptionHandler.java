@@ -10,6 +10,7 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -72,6 +73,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AccessDeniedException.class)
     ResponseEntity<ApiResponse<?>> handleAccessDenied(AccessDeniedException e) {
         ErrorCode errorCode = ErrorCode.UNAUTHORIZED;
+        return ResponseEntity.status(errorCode.getHttpStatusCode()).body(
+                ApiResponse.builder()
+                        .code(errorCode.getCode())
+                        .message(errorCode.getMessage())
+                        .build());
+    }
+
+    // Không có controller/static resource khớp với request — trả envelope 404, không log như lỗi hệ thống.
+    @ExceptionHandler(NoResourceFoundException.class)
+    ResponseEntity<ApiResponse<?>> handleNoResourceFound(NoResourceFoundException e) {
+        ErrorCode errorCode = ErrorCode.RESOURCE_NOT_FOUND;
         return ResponseEntity.status(errorCode.getHttpStatusCode()).body(
                 ApiResponse.builder()
                         .code(errorCode.getCode())

@@ -51,7 +51,8 @@ class BatchServiceImplTest {
 
     private CreateBatchRequest request(List<UUID> assetIds) {
         return new CreateBatchRequest("My batch", assetIds, "en",
-                new SharedJobConfig("TRANSLATE_ONLY", "SOFT_SUB", "ORIGINAL_ONLY", false, null, "MANUAL", null));
+                new SharedJobConfig("TRANSLATE_ONLY", "SOFT_SUB", "ORIGINAL_ONLY", false,
+                        null, null, "MANUAL", null));
     }
 
     // ---- createBatch ----

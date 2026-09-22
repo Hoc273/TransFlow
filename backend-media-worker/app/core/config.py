@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +24,10 @@ class Settings(BaseSettings):
     # Logical names VALIDATION_DURATION_TOLERANCE_MS/_PCT; runtime prefix MEDIA_WORKER_.
     validation_duration_tolerance_ms: int = 500
     validation_duration_tolerance_pct: float = 2.0
+
+    # Heavy render work is offloaded to threads but remains deliberately bounded
+    # to preserve the worker's previous single-render operational behavior.
+    render_max_concurrency: int = Field(default=1, ge=1)
 
     # B1.0 ASS burn fonts dir (docs/93 §4.6.6): fonts-dejavu-core in the worker
     # image installs DejaVuSans.ttf under /usr/share/fonts/truetype/dejavu.

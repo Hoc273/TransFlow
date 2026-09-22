@@ -45,6 +45,14 @@ def test_advertisement_declares_subtitle_mask_blur_render_feature():
     assert "SUBTITLE_MASK_BLUR" in cap["render_features"]
 
 
+def test_advertisement_declares_subtitle_box_outline_render_feature():
+    # 2026-09 dual-event: box + glyph outline renders together (Layer 0 box
+    # + Layer 1 outlined text, one encode). Spring claim-gates the combo on
+    # it so old workers fail closed instead of dropping the outline.
+    cap = worker_capability_advertisement()
+    assert "SUBTITLE_BOX_OUTLINE" in cap["render_features"]
+
+
 def test_capabilities_endpoint():
     client = TestClient(app)
     response = client.get("/internal/media/capabilities")

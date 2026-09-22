@@ -103,12 +103,13 @@
   2. DTO `UserResponse` không chứa trường `isPlatformAdmin`, khiến cho `GET /api/auth/me` không trả về cờ quyền hạn cho Frontend Guard (`user?.isPlatformAdmin`).
   3. Backend hoàn toàn chưa cài đặt `PlatformController` cung cấp các API `/api/platform/*`.
 - **Giải pháp xử lý (Đã hoàn thành 100%):**
-  1. Tạo Flyway migration `backend-main/src/main/resources/db/migration/V9__add_is_platform_admin.sql` thêm cột `is_platform_admin BOOLEAN NOT NULL DEFAULT FALSE`.
+  1. Thêm `is_platform_admin BOOLEAN NOT NULL DEFAULT FALSE` trực tiếp vào baseline Flyway
+     `V1__init_tables.sql`.
   2. Bổ sung trường `isPlatformAdmin` vào `User.java` và `@JsonProperty("isPlatformAdmin")` trong `UserResponse.java` (giữ constructor tương thích ngược).
   3. Xây dựng `PlatformController.java` (`com.app.modules.platform.controller`) cung cấp đủ 5 endpoint: `/overview`, `/status`, `/users`, `/workspaces`, `/audit-logs`.
   4. Bổ sung `countByUserId` và `countByWorkspaceId` trong `WorkspaceMemberRepository`.
   5. Viết bộ kiểm thử `PlatformControllerTest.java` (4/4 test cases pass 100%).
-  6. Khởi tạo tài khoản Super Admin mẫu sẵn sàng sử dụng.
+  6. Không seed tài khoản/mật khẩu Super Admin mặc định; quyền phải được cấp có kiểm soát theo môi trường.
 
 #### Lỗi 5 (Lỗi tiềm ẩn đã phát hiện & đồng bộ): Lệch giá trị Enum `CostMode` giữa Frontend và Backend
 - **Hiện tượng:** Frontend `frontend/src/api/workspaces.ts` từng khai báo type là `'WORKSPACE_OWNER' | 'INDIVIDUAL_USER'`.
@@ -122,11 +123,10 @@
 
 ---
 
-### 2.3 Tài khoản Super Admin mặc định
-Để kiểm thử phân hệ Super Admin Platform (`/platform`), sử dụng tài khoản sau:
-- **Email:** `admin@transflow.com`
-- **Mật khẩu:** `AdminPassword123!`
-- **Quyền hạn:** `isPlatformAdmin: true`, Workspace Role: `LEAD`, Số dư Credit: `999,999`.
+### 2.3 Cấp quyền Super Admin cho môi trường kiểm thử
+Hệ thống không cung cấp tài khoản hoặc mật khẩu Super Admin mặc định. Sau khi tạo một user kiểm thử bằng
+luồng auth bình thường, quản trị viên môi trường cấp `users.is_platform_admin = true` bằng quy trình vận
+hành an toàn. Cờ này độc lập với Workspace Role và số dư Credit.
 
 ---
 
@@ -179,7 +179,8 @@ GOOGLE_REDIRECT_URI=http://localhost:8080/api/auth/google/callback
 #### Vấn đề 2: Bổ sung đầy đủ các trường cấu hình Project (`defaultGlossaryId`, `tmEnabled`, `domain`, `tone`) vào Backend
 - **Hiện tượng:** Form `CreateProjectModal.tsx:59-67` trên Frontend gửi payload gồm `name`, `sourceLang`, `defaultGlossaryId`, `tmEnabled`, `domain`, `tone` nhằm cung cấp ngữ cảnh thiết yếu để AI dịch thuật, tạo phụ đề và lồng tiếng chuẩn xác. Trước đó Backend `Project.java` và DTO `CreateProjectRequest.java`, `ProjectResponse.java` chỉ khai báo 2 trường `name` và `sourceLang`.
 - **Giải pháp xử lý:**
-  1. Tạo Flyway migration `V11__add_project_settings_fields.sql` đảm bảo 4 cột `default_glossary_id`, `tm_enabled`, `domain`, `tone` luôn hiện diện trên bảng `projects`.
+  1. Đưa 4 cột `default_glossary_id`, `tm_enabled`, `domain`, `tone` trực tiếp vào bảng `projects` trong
+     baseline `V1__init_tables.sql`.
   2. Cập nhật Entity `Project.java` ánh xạ đầy đủ 4 trường với JPA.
   3. Bổ sung các trường vào `CreateProjectRequest.java` và `ProjectResponse.java` (kèm constructor tương thích ngược tránh ảnh hưởng các test hiện hữu).
   4. Cập nhật `ProjectServiceImpl.java` lưu trữ và trả về trọn vẹn các thuộc tính khi tạo mới Project.
@@ -317,7 +318,7 @@ flowchart TD
 
     CheckType -->|"Port 8080 in use / Exit code 1"| PortErr["Tắt tiến trình chiếm cổng 8080:<br/>Stop-Process -Id (Get-NetTCPConnection -LocalPort 8080).OwningProcess -Force"]
     CheckType -->|"Không nhận được OTP email"| MailErr["Xem mã OTP in trực tiếp tại cửa sổ Terminal Backend<br/>Dòng: [EMAIL LOCAL FALLBACK] OTP for ..."]
-    CheckType -->|"Vào /platform bị 403 Forbidden"| AdminErr["Tài khoản chưa có quyền Super Admin.<br/>Đăng nhập tài khoản mẫu admin@transflow.com / AdminPassword123!"]
+    CheckType -->|"Vào /platform bị 403 Forbidden"| AdminErr["Tài khoản chưa có quyền Super Admin.<br/>Cấp is_platform_admin=true theo quy trình vận hành của môi trường."]
     CheckType -->|"Lỗi 401 Unauthorized"| AuthErr["Token hết hạn hoặc chưa đăng nhập.<br/>Đăng nhập lại tại /login để lấy cặp JWT mới."]
     CheckType -->|"Báo Google chưa cấu hình"| GoogleErr["Thêm GOOGLE_CLIENT_ID & GOOGLE_CLIENT_SECRET vào file .env"]
     CheckType -->|"Docker Postgres / Redis không kết nối"| DockerErr["Chạy lệnh: docker compose up -d<br/>Kiểm tra lại trạng thái container: docker ps"]

@@ -6,13 +6,11 @@ import {
   IconChartBar,
   IconFolder,
   IconLayoutGrid,
-  IconShieldCheck,
   IconUsers,
   IconVideo,
 } from '@tabler/icons-react'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useUiStore } from '@/store/uiStore'
-import { useAuthStore } from '@/store/authStore'
 import { usePermission } from '@/hooks/usePermission'
 import { cn } from '@/lib/cn'
 import type { PermissionAction } from '@/lib/permissions'
@@ -82,12 +80,6 @@ function buildGroups(workspaceId: string): NavGroup[] {
           icon: IconUsers,
           path: `${base}/settings/members`,
         },
-        {
-          key: 'platform',
-          labelKey: 'nav.platformAdmin',
-          icon: IconShieldCheck,
-          path: '/platform',
-        },
       ],
     },
   ]
@@ -102,12 +94,10 @@ export function SidebarNav({ mobileOpen, className }: SidebarNavProps) {
   const { t } = useTranslation('common')
   const { workspaceId = '' } = useParams()
   const collapsed = useUiStore((s) => s.sidebarCollapsed)
-  const isPlatformAdmin = useAuthStore((s) => Boolean(s.user?.isPlatformAdmin))
   const canUsage = usePermission('dashboard.usage')
   const groups = buildGroups(workspaceId)
 
   const allowed = (item: NavItem) => {
-    if (item.key === 'platform') return isPlatformAdmin
     if (!item.permission) return true
     if (item.permission === 'dashboard.usage') return canUsage
     return true

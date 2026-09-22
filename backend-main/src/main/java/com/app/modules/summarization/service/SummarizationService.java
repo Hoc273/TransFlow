@@ -36,5 +36,6 @@ public interface SummarizationService {
                                         int requestedDurationSeconds, String targetLang);
 
     /** Arch §7.7 — "tóm tắt thêm ngôn ngữ", only when the source job's selected proposal is AI-generated. */
-    MediaJob createSummaryLanguageJob(UUID workspaceId, UUID userId, UUID jobId, String targetLang, UUID ttsVoiceId);
+    MediaJob createSummaryLanguageJob(UUID workspaceId, UUID userId, UUID jobId, String targetLang,
+                                      UUID ttsProviderId, UUID ttsVoiceId);
 }
