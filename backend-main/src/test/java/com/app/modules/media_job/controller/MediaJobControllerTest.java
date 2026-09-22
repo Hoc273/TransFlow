@@ -313,6 +313,29 @@ class MediaJobControllerTest {
     }
 
     @Test
+    void createJob_summaryGenerativeAlias_mapsToScriptMatchAndSucceeds() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-summarygen@transflow.com");
+        UUID assetId = uploadAndConsentAsset(lead, lead.accessToken());
+
+        var body = objectMapper.createObjectNode();
+        body.put("projectId", lead.projectId().toString());
+        body.put("rootAssetId", assetId.toString());
+        body.put("recipeId", "summary.generative");
+        body.put("targetLang", "en");
+        body.put("requestedDurationSeconds", 60);
+        body.put("sourceLang", "vi");
+
+        mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs")
+                        .header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.recipeId").value("summary.script_match"))
+                .andExpect(jsonPath("$.data.sourceLanguage").value("vi"))
+                .andExpect(jsonPath("$.data.stages").isArray());
+    }
+
+    @Test
     void createJob_voiceLanguageMismatch_returnsBusinessError() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-voicemismatch@transflow.com");
         UUID assetId = uploadAndConsentAsset(lead, lead.accessToken());
@@ -409,7 +432,8 @@ class MediaJobControllerTest {
         mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId + "/cancel")
                         .header("Authorization", "Bearer " + lead.accessToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.data.stages").isArray());
 
         var stages = mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId);
         boolean anyStillPending = stages.stream().anyMatch(s -> s.getStatus() == MediaJobStage.StageStatus.PENDING);
@@ -501,6 +525,7 @@ class MediaJobControllerTest {
         UUID voiceId = createVoice("en");
 
         var body = objectMapper.createObjectNode();
+        body.put("ttsProviderId", "openai");
         body.put("ttsVoiceId", voiceId.toString());
 
         mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs/" + jobId + "/voice")
@@ -508,7 +533,8 @@ class MediaJobControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.ttsVoiceId").value(voiceId.toString()));
+                .andExpect(jsonPath("$.data.ttsVoiceId").value(voiceId.toString()))
+                .andExpect(jsonPath("$.data.stages").isArray());
     }
 
     // ---- subtitles ----

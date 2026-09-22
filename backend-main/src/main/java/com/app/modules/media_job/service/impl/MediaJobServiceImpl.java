@@ -111,7 +111,8 @@ public class MediaJobServiceImpl implements MediaJobService {
         }
 
         boolean isLocalization = MediaJob.RECIPE_LOCALIZATION_FULL.equals(req.recipeId());
-        boolean isSummary = MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(req.recipeId());
+        boolean isSummary = MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(req.recipeId())
+                || "summary.generative".equals(req.recipeId());
         if (!isLocalization && !isSummary) {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
@@ -128,8 +129,14 @@ public class MediaJobServiceImpl implements MediaJobService {
 
         MediaJob.SubtitleMode subtitleMode = req.subtitleMode() != null
                 ? parseEnum(MediaJob.SubtitleMode.class, req.subtitleMode()) : MediaJob.SubtitleMode.SOFT_SUB;
-        MediaJob.OutputAudioMode outputAudioMode = req.outputAudioMode() != null
-                ? parseEnum(MediaJob.OutputAudioMode.class, req.outputAudioMode()) : MediaJob.OutputAudioMode.ORIGINAL_ONLY;
+        MediaJob.OutputAudioMode outputAudioMode;
+        if (req.outputAudioMode() != null) {
+            outputAudioMode = parseEnum(MediaJob.OutputAudioMode.class, req.outputAudioMode());
+        } else if (Boolean.TRUE.equals(req.keepOriginalAudio())) {
+            outputAudioMode = MediaJob.OutputAudioMode.ORIGINAL_ONLY;
+        } else {
+            outputAudioMode = MediaJob.OutputAudioMode.ORIGINAL_ONLY;
+        }
         MediaJob.WorkflowMode workflowMode = req.workflowMode() != null
                 ? parseEnum(MediaJob.WorkflowMode.class, req.workflowMode()) : MediaJob.WorkflowMode.MANUAL;
         if (subtitleMode == null || outputAudioMode == null || workflowMode == null) {
@@ -157,12 +164,16 @@ public class MediaJobServiceImpl implements MediaJobService {
 
         UUID resolvedPresetId = presetResolver.resolveForJobCreation(req.presetId(), req.projectId(), workspaceId);
 
+        String canonicalRecipeId = isSummary ? MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH : req.recipeId();
         MediaJob job = new MediaJob();
         job.setWorkspaceId(workspaceId);
         job.setProjectId(req.projectId());
         job.setRootAssetId(req.rootAssetId());
         job.setBatchId(batchId);
-        job.setRecipeId(req.recipeId());
+        job.setRecipeId(canonicalRecipeId);
+        if (req.sourceLang() != null && !req.sourceLang().isBlank()) {
+            job.setSourceLanguage(req.sourceLang().trim());
+        }
         job.setProcessingMode(processingMode);
         job.setTargetLang(req.targetLang());
         job.setRequestedDurationSeconds(req.requestedDurationSeconds());
@@ -247,6 +258,9 @@ public class MediaJobServiceImpl implements MediaJobService {
     public List<MediaJob> listJobs(UUID workspaceId, UUID userId, UUID projectId,
                                     MediaJob.JobStatus status, String recipeId) {
         access.requireProjectAccess(workspaceId, userId, projectId);
+        if ("summary.generative".equals(recipeId)) {
+            recipeId = MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH;
+        }
         if (status != null && recipeId != null) {
             return mediaJobRepository.findByWorkspaceIdAndProjectIdAndStatusAndRecipeId(workspaceId, projectId, status, recipeId);
         }
