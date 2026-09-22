@@ -2,7 +2,7 @@ package com.app.modules.transformation.controller;
 
 import com.app.common.dto.ApiResponse;
 import com.app.modules.transformation.dto.AvailabilityProjection;
-import com.app.modules.transformation.service.TransformationService;
+import com.app.modules.transformation.service.WorkerCapabilityService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -11,16 +11,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/transformation")
 public class TransformationController {
 
-    private final TransformationService transformationService;
+    private final WorkerCapabilityService workerCapabilityService;
 
-    public TransformationController(TransformationService transformationService) {
-        this.transformationService = transformationService;
+    public TransformationController(WorkerCapabilityService workerCapabilityService) {
+        this.workerCapabilityService = workerCapabilityService;
     }
 
     @GetMapping("/capabilities")
     public ApiResponse<AvailabilityProjection> getCapabilities() {
         return ApiResponse.<AvailabilityProjection>builder()
-                .data(transformationService.getCapabilities())
+                .data(workerCapabilityService.getCapabilities())
                 .build();
     }
 }

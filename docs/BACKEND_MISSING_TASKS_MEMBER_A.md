@@ -177,6 +177,32 @@ Mỗi nhánh = 1 PR nhỏ.
   → `OFFLINE`/`FAST` unavailable với `unavailableReason`; bật lại → phục hồi sau khi cache hết hạn; mở màn upload trên FE
   và thấy chế độ đúng.
 
+**Ghi chú đã làm (nhánh `feature/backend-java/capabilitiesandReadiness` — giữ tên theo convention `feature/backend-java/*`, lệch `feature/transformation-capabilities` trong plan):**
+- Đã chốt: **JWT bắt buộc** — gỡ `/api/transformation/capabilities` khỏi `SecurityConfig.PUBLIC_PATHS` (FE chỉ gọi từ
+  `UploadConsentPanel` sau đăng nhập, qua `apiRequest` có Bearer).
+- Vị trí code: **giữ module `transformation`** (stub đã có sẵn trên nhánh, khớp route) thay vì `provider` như plan ghi;
+  service `WorkerCapabilityService` + `impl/WorkerCapabilityServiceImpl`. Đã bổ sung module vào bảng §4.8 CLAUDE.md và
+  ngoại lệ `TransformationController` ở §4.2.
+- Probe `GET /health` qua **`common/health/ServiceHealthProbe`** (package mới trong `common` — chỉ thêm file, **đã báo sẽ
+  dùng chung cho mục 9 `/api/platform/status`**): timeout `app.health-probe.timeout-ms` (env `HEALTH_PROBE_TIMEOUT_MS`,
+  mặc định 2000); 2xx + `status="ok"` → up; mọi exception/timeout/non-2xx/status khác → down, không ném.
+- `MEDIA_WORKER_URL` đọc qua **`@Value`** (`app.media-worker.base-url`, default `http://localhost:8001`) — **không** thêm
+  field vào record `AppProperties.MediaWorker` vì record 2 component + auxiliary ctor làm Spring Boot không bind được
+  `hmac-secret` (đã thử, làm `MediaCallbackControllerTest` fail 401, đã revert). `application.yaml`, `.env.example`,
+  docker-compose (block backend-main đang comment) đã cập nhật.
+- Luật đã chốt: `FAST` ⇔ backend-ai + media-worker healthy; `STUDIO` ⇔ `FAST` && `separation.engine` trong /health của
+  backend-ai non-blank ≠ `none`/`disabled` (**không** xét `gpu_available` — Demucs chạy được CPU). `unavailableReason`:
+  `AI_GATEWAY_DOWN` | `MEDIA_WORKER_DOWN` (cả hai down → `AI_GATEWAY_DOWN`) | `SEPARATION_DISABLED` (STUDIO kế thừa
+  reason hạ tầng khi FAST down). `state` = `READY`/`DEGRADED`/`OFFLINE`; `readiness.status` = `READY` khi mọi mode
+  available, ngược lại `DRAINING`; `workerCount` ≤ 1.
+- Cache projection in-memory (`AtomicReference` + TTL), `app.transformation.capabilities-cache-ttl-seconds`
+  (env `TRANSFORMATION_CAPABILITIES_CACHE_TTL_SECONDS`, default 5s, `0` = tắt cache).
+- **Không** validate `requestedMode` khi tạo job ở nhánh này (đã chốt — FE guard `guardCreateWithFreshCapabilities` đã
+  chặn trước khi tạo).
+- Không `ErrorCode` mới (endpoint luôn 200, DOWN báo qua flag) → §15.2/§15.3 giữ nguyên.
+- Contract: đã thêm **§5.2 Worker Capabilities & Readiness** vào `API_Contract.md` (shape + quy tắc chiếu).
+- Kiểm tra thủ công với `backend-ai` + `media-worker` thật: **chưa làm** (cần bật docker compose).
+
 ---
 
 ---
@@ -244,4 +270,4 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 | 7 | `feature/tts-voice-preview` | [x] | [x] | [ ] | [x] |     [ ]     |
 | 8 | `feature/auth-forgot-password-otp` | [x] | [x] | [ ] | [x] |     [ ]     |
 | 9 | `feature/platform-admin-api` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
-| 10 | `feature/transformation-capabilities` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 10 | `feature/transformation-capabilities` | [x] | [x] | [ ] | [x] |     [ ]     |

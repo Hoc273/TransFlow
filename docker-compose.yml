@@ -156,6 +156,10 @@ services:
   #     MEDIA_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
   #     MEDIA_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
   #     MEDIA_STORAGE_BUCKET: ${MINIO_MEDIA_BUCKET:-transflow-media}
+  #     # URL nội bộ tới media-worker trong docker network (probe /health cho
+  #     # /api/transformation/capabilities); phải khớp MEDIA_WORKER_HMAC_SECRET của worker.
+  #     MEDIA_WORKER_URL: ${MEDIA_WORKER_INTERNAL_URL:-http://media-worker:8000}
+  #     MEDIA_WORKER_HMAC_SECRET: ${MEDIA_WORKER_HMAC_SECRET:-}
   #     FE_ORIGIN: http://localhost:5173
   #     JWT_SECRET: ${JWT_SECRET:-}
   #     JWT_ACCESS_TTL_MINUTES: ${JWT_ACCESS_TTL_MINUTES:-30}

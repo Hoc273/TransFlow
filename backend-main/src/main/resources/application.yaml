@@ -118,6 +118,11 @@ app:
     supported-source-langs: ${MEDIA_SUPPORTED_SOURCE_LANGS:vi,en,zh,ja,ko,fr,de,es,th,id,ru}
   media-worker:
     hmac-secret: ${MEDIA_WORKER_HMAC_SECRET:}
+    base-url: ${MEDIA_WORKER_URL:http://localhost:8001}
+  health-probe:
+    timeout-ms: ${HEALTH_PROBE_TIMEOUT_MS:2000}
+  transformation:
+    capabilities-cache-ttl-seconds: ${TRANSFORMATION_CAPABILITIES_CACHE_TTL_SECONDS:5}
   crypto:
     provider-key-secret: ${PROVIDER_KEY_ENC_SECRET:MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=}
   ai:

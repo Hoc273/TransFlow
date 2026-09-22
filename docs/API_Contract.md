@@ -191,6 +191,56 @@
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/refine` | LEAD/MEMBER (project) | `{feedbackText}` → AI viết lại kịch bản (round mới). Tối đa **5 lần/phiên**; phiên lưu Redis TTL, hết hạn không mất proposal đã lưu (Arch §7.4). `429` khi vượt 5 lần. |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/summary-languages` | LEAD/MEMBER (project) | `{targetLang, ttsProviderId?, ttsVoiceId?}` — hai ID TTS phải cùng có hoặc cùng vắng; chỉ khi phương án đã chọn là AI. Tạo 1 `media_jobs` mới với `source_summary_job_id` trỏ về job gốc, giữ nguyên đoạn đã chọn, `SUMMARIZE` = `SKIPPED` (Arch §7.7). |
 
+### 5.2 Worker Capabilities & Readiness
+
+| Method | Path | Role | Mô tả |
+|---|---|---|---|
+| GET | `/api/transformation/capabilities` | JWT (mọi user đã đăng nhập) | Projection toàn hệ thống (không workspace-scoped) về chế độ xử lý video khả dụng — FE gọi khi mở màn tạo job và revalidate ngay trước khi tạo để không đẩy job vào hàng đợi chết. `FAST` = dịch/lồng tiếng chuẩn, `STUDIO` = lồng tiếng nâng cao giữ ngữ điệu (cần source separation). Read-only; **luôn trả 200** — hạ tầng lỗi được báo qua cờ `available`/`unavailableReason`/`state`, **không** qua mã lỗi nghiệp vụ (không có `ErrorCode` riêng). |
+
+**Shape `data` (camelCase):**
+
+```json
+{
+  "protocolVersion": "1.0",
+  "supportedExecutionModes": ["FAST", "STUDIO"],
+  "defaultExecutionMode": "FAST",
+  "availability": {
+    "FAST": { "available": true, "unavailableReason": null },
+    "STUDIO": { "available": false, "unavailableReason": "SEPARATION_DISABLED" }
+  },
+  "workerCapability": {
+    "state": "READY",
+    "workerCount": 1,
+    "compatibleFastWorkers": 1,
+    "compatibleStudioWorkers": 0
+  },
+  "readiness": {
+    "status": "DRAINING",
+    "readyExecutionModes": ["FAST"],
+    "reasons": ["SEPARATION_DISABLED"],
+    "evaluatedAt": "2026-09-22T08:00:00Z"
+  }
+}
+```
+
+**Quy tắc chiếu** (probe `GET /health` của `backend-ai` và `backend-media-worker` qua `common/health/ServiceHealthProbe`,
+timeout `app.health-probe.timeout-ms` mặc định 2000ms; kết quả cache in-memory
+`app.transformation.capabilities-cache-ttl-seconds` mặc định 5s để FE polling không dồn request xuống worker):
+
+- `FAST` available ⇔ backend-ai **và** media-worker đều healthy (2xx + `status="ok"`). Nếu không:
+  `unavailableReason` = `AI_GATEWAY_DOWN` hoặc `MEDIA_WORKER_DOWN` (cả hai down → `AI_GATEWAY_DOWN`).
+- `STUDIO` available ⇔ `FAST` available **và** backend-ai báo `separation.engine` hợp lệ trong `/health`
+  (tức `SEPARATION_ENGINE_ID` được cấu hình; rỗng/`none`/`disabled` → `unavailableReason` = `SEPARATION_DISABLED`).
+  Khi `FAST` down, `STUDIO` kế thừa reason hạ tầng của `FAST`.
+- `workerCapability.state`: cả hai service healthy → `READY`; chỉ một → `DEGRADED`; không có → `OFFLINE`.
+  `workerCount` = số media-worker healthy (hiện tối đa 1); `compatibleFastWorkers` = `workerCount` khi worker
+  healthy; `compatibleStudioWorkers` = `workerCount` khi worker healthy **và** separation bật.
+- `readiness.status`: `READY` khi mọi `supportedExecutionModes` đều available, ngược lại `DRAINING`;
+  `readyExecutionModes` = các mode đang available; `reasons` = tập `unavailableReason` không trùng.
+
+> Backend **không** validate `requestedMode` khi tạo job — chống job chết là trách nhiệm của FE
+> (revalidate bằng endpoint này ngay trước khi gọi `POST .../media/jobs`).
+
 ---
 
 ## 6. Video Batch Localization (SRS §5.4; Arch §6)
