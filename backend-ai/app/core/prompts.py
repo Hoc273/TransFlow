@@ -6,6 +6,49 @@ from __future__ import annotations
 from app.schemas.contract import GlossaryTerm
 
 
+_LANGUAGE_DESCRIPTIONS = {
+    "vi": ("Vietnamese", "tiếng Việt"),
+    "en": ("English", None),
+    "fr": ("French", "français"),
+    "es": ("Spanish", "español"),
+    "de": ("German", "Deutsch"),
+    "it": ("Italian", "italiano"),
+    "pt": ("Portuguese", "português"),
+    "nl": ("Dutch", "Nederlands"),
+    "id": ("Indonesian", "Bahasa Indonesia"),
+    "ms": ("Malay", "Bahasa Melayu"),
+    "tr": ("Turkish", "Türkçe"),
+    "pl": ("Polish", "polski"),
+    "zh": ("Chinese", "中文"),
+    "cmn": ("Mandarin Chinese", "普通话"),
+    "ja": ("Japanese", "日本語"),
+    "ko": ("Korean", "한국어"),
+    "ru": ("Russian", "русский"),
+    "uk": ("Ukrainian", "українська"),
+    "bg": ("Bulgarian", "български"),
+    "sr": ("Serbian", "српски"),
+    "ar": ("Arabic", "العربية"),
+    "fa": ("Persian", "فارسی"),
+    "ur": ("Urdu", "اردو"),
+    "hi": ("Hindi", "हिन्दी"),
+    "mr": ("Marathi", "मराठी"),
+    "ne": ("Nepali", "नेपाली"),
+}
+
+
+def _language_label(language_code: str | None) -> str:
+    """Describe a language for the model while preserving its wire-level code."""
+    code = str(language_code or "").strip()
+    primary = code.lower().replace("_", "-").split("-", 1)[0]
+    description = _LANGUAGE_DESCRIPTIONS.get(primary)
+    if description is None:
+        return code
+    name, native_name = description
+    if native_name:
+        return f"{name} ({native_name}, code: {code})"
+    return f"{name} (code: {code})"
+
+
 def _glossary_block(glossary: list[GlossaryTerm]) -> str:
     if not glossary:
         return ""
@@ -23,9 +66,16 @@ def _glossary_block(glossary: list[GlossaryTerm]) -> str:
 TRANSLATE_SYSTEM = (
     "You are a professional translator. Translate the text inside <source_text> "
     "from {source_lang} to {target_lang}. Strictly obey terms in <glossary>. "
-    "Preserve numbers, placeholders ({{name}}, %s), and inline tags exactly. "
+    "The translation must be entirely in {target_lang}; keep another language only "
+    "for proper nouns, placeholders, or glossary terms that genuinely must remain. "
+    "Short dialogue, slang, memes, interjections, and sound effects are not exceptions. "
+    "Translate or naturally adapt them into {target_lang}. If no direct equivalent exists, "
+    "use a natural target-language translation or a transliteration appropriate for the target script. "
+    "Do not copy source-language script as the translation merely because the phrase is short or idiomatic. "
+    "Preserve "
+    "numbers, placeholders ({{name}}, %s), and inline tags exactly. "
     "If <qa_feedback> is present, this is a correction round: produce a new "
-    "translation that fixes every listed issue. "
+    "translation that fixes every listed issue while remaining entirely in {target_lang}. "
     "Return ONLY a JSON object described in <output_format>; no prose, no code fences."
 )
 
@@ -58,6 +108,11 @@ def _generative_tts_feedback_block(feedback: object) -> str:
         "section_id",
         "story_arc",
         "source_refs",
+        "requested_target_tts_duration_ms",
+        "allowed_min_tts_duration_ms",
+        "allowed_max_tts_duration_ms",
+        "repair_aim_tts_duration_ms",
+        "repair_direction",
         "measured_tts_duration_ms",
         "target_tts_duration_ms",
         "duration_deficit_ms",
@@ -74,10 +129,126 @@ def _generative_tts_feedback_block(feedback: object) -> str:
             "  <instruction>Keep the same section identity, source grounding, and story arc.</instruction>",
             "  <instruction>Rewrite only with facts supported by the source text; do not invent details.</instruction>",
             "  <instruction>Aim for the target duration using the observed target-language speaking rate and target character estimate.</instruction>",
+            "  <instruction>The repair aim is intentionally inside the accepted duration window; aim near target_chars_estimate, not merely the nearest boundary.</instruction>",
+            "  <instruction>Measured TTS duration remains authoritative.</instruction>",
             "  <instruction>Return only the translated text in the normal JSON response.</instruction>",
         ]
     )
     lines.append("</generative_tts_feedback>")
+    return "\n".join(lines)
+
+
+def _generative_tts_pacing_block(pacing: object) -> str:
+    """Render initial cold-start target-language pacing (estimate, not measured evidence)."""
+    if not isinstance(pacing, dict):
+        return ""
+    target_chars = pacing.get("target_chars_estimate")
+    try:
+        target_chars_number = int(target_chars) if target_chars is not None else 0
+    except (TypeError, ValueError):
+        target_chars_number = 0
+    acceptable_lower = pacing.get("acceptable_lower_chars")
+    acceptable_upper = pacing.get("acceptable_upper_chars")
+    if target_chars_number > 0:
+        if acceptable_lower in (None, ""):
+            acceptable_lower = round(target_chars_number * 0.90)
+        if acceptable_upper in (None, ""):
+            acceptable_upper = round(target_chars_number * 1.10)
+    keys = (
+        "section_id",
+        "target_tts_duration_ms",
+        "estimated_target_chars_per_second",
+        "target_chars_estimate",
+        "acceptable_lower_chars",
+        "acceptable_upper_chars",
+    )
+    lines = ["<generative_tts_pacing>"]
+    for key in keys:
+        value = {
+            "acceptable_lower_chars": acceptable_lower,
+            "acceptable_upper_chars": acceptable_upper,
+        }.get(key, pacing.get(key))
+        if value is not None and value != "":
+            lines.append(f'  <metric name="{key}">{value}</metric>')
+    lines.extend(
+        [
+            "  <instruction>This is a cold-start estimate from the bound TTS voice, not measured evidence.</instruction>",
+            "  <instruction>Keep the same section identity, source grounding, and story arc.</instruction>",
+            "  <instruction>Rewrite only with facts supported by the source text; do not invent details to pad length.</instruction>",
+            "  <instruction>When enough grounded source content is available, the output must stay inside the acceptable character band.</instruction>",
+            "  <instruction>Preserve the full grounded narration; do not compress it into a short summary just to fit a response.</instruction>",
+            "  <instruction>Measured TTS duration remains authoritative.</instruction>",
+            "  <instruction>Return only the translated text in the normal JSON response.</instruction>",
+        ]
+    )
+    lines.append("</generative_tts_pacing>")
+    return "\n".join(lines)
+
+
+def _generative_tts_correction_block(correction: object) -> str:
+    """Render one bounded edit of an already-generated target-language script."""
+    if not isinstance(correction, dict):
+        return ""
+    keys = (
+        "section_id",
+        "actual_target_chars",
+        "target_chars_estimate",
+        "acceptable_lower_chars",
+        "acceptable_upper_chars",
+        "deficit_chars",
+        "overage_chars",
+        "target_tts_duration_ms",
+        "measured_tts_duration_ms",
+        "observed_target_chars_per_second",
+        "repair_aim_tts_duration_ms",
+    )
+    lines = ["<generative_tts_correction>"]
+    for key in keys:
+        value = correction.get(key)
+        if value is not None and value != "":
+            lines.append(f'  <metric name="{key}">{value}</metric>')
+    lines.append(
+        f'<current_target_text>{correction.get("current_target_text") or ""}</current_target_text>'
+    )
+    lines.extend(
+        [
+            "  <instruction>Preserve the existing grounded target-language narration and edit it in place; do not restart translation with a shorter summary.</instruction>",
+            "  <instruction>Expand or trim only with details supported by the locked source text, keeping the same section identity, source refs, story order, and visual beat ownership.</instruction>",
+            "  <instruction>Stay within the requested character band and return only the corrected translation in the normal JSON response.</instruction>",
+            "  <instruction>Measured TTS duration remains authoritative.</instruction>",
+        ]
+    )
+    lines.append("</generative_tts_correction>")
+    return "\n".join(lines)
+
+
+def _target_language_correction_block(correction: object) -> str:
+    """Render a fresh retranslation after a target-language script guard failure."""
+    if not isinstance(correction, dict):
+        return ""
+    target_lang = correction.get("target_lang") or ""
+    target_label = _language_label(target_lang)
+    current_target = correction.get("current_target_text") or ""
+    lines = ["<target_language_correction>"]
+    if target_lang:
+        lines.append(f"<target_lang>{target_lang}</target_lang>")
+    for key in ("incompatible_script", "incompatible_ratio"):
+        value = correction.get(key)
+        if value is not None and value != "":
+            lines.append(f"<{key}>{value}</{key}>")
+    lines.append(f"<current_target_text>{current_target}</current_target_text>")
+    lines.extend(
+        [
+            "<instruction>The previous target candidate was rejected for target-language/script mismatch. Treat current_target_text as rejected diagnostic context, not text to preserve.</instruction>",
+            f"<instruction>Translate the source text again from scratch into {target_label or 'the target language'}, grounded in the source text and glossary.</instruction>",
+            "<instruction>Do not copy, preserve, or rephrase incompatible-script wording from current_target_text.</instruction>",
+            f"<instruction>The entire replacement must be in {target_label or 'the target language'}, except genuine proper nouns, placeholders, and required glossary terms.</instruction>",
+            "<instruction>Short dialogue, slang, memes, interjections, and sound effects are not exceptions; translate or naturally adapt them, using transliteration only when appropriate for the target script.</instruction>",
+            "<instruction>Preserve every active generative TTS pacing, feedback, and correction constraint in this request.</instruction>",
+            "<instruction>Return only the corrected translation in the normal JSON response.</instruction>",
+        ]
+    )
+    lines.append("</target_language_correction>")
     return "\n".join(lines)
 
 
@@ -86,9 +257,25 @@ def build_translate_prompt(
     target_lang: str,
     source_text: str,
     glossary: list[GlossaryTerm],
-    context: dict | None,
+    tm_context_or_context: list | dict | None = None,
+    context: dict | None = None,
 ) -> tuple[str, str]:
-    system = TRANSLATE_SYSTEM.format(source_lang=source_lang, target_lang=target_lang)
+    # Compat: origin passes (glossary, tm_context, context) – 6 args – while
+    # routes passes (glossary, context) – 5 args. TM is out-of-scope (no
+    # <translation_memory> rendering); tm_context is accepted and ignored so
+    # origin tests calling with [] keep passing.
+    if context is None and isinstance(tm_context_or_context, dict):
+        context = tm_context_or_context
+    elif context is not None:
+        # 6-arg call: tm_context_or_context is tm_context (ignored)
+        pass
+    elif isinstance(tm_context_or_context, list):
+        # 5-arg legacy where 5th was tm_context list without context
+        context = None
+    system = TRANSLATE_SYSTEM.format(
+        source_lang=_language_label(source_lang),
+        target_lang=_language_label(target_lang),
+    )
     parts: list[str] = []
     gb = _glossary_block(glossary)
     if gb:
@@ -97,16 +284,37 @@ def build_translate_prompt(
         fb = _qa_feedback_block(context.get("qa_feedback") or [])
         if fb:
             parts.append(fb)
+        language_correction = _target_language_correction_block(
+            context.get("target_language_correction")
+        )
+        if language_correction:
+            parts.append(language_correction)
         pacing = _generative_tts_feedback_block(
             context.get("generative_tts_feedback")
         )
         if pacing:
             parts.append(pacing)
+        initial_pacing = _generative_tts_pacing_block(
+            context.get("generative_tts_pacing")
+        )
+        if initial_pacing:
+            parts.append(initial_pacing)
+        correction = _generative_tts_correction_block(
+            context.get("generative_tts_correction")
+        )
+        if correction:
+            parts.append(correction)
         # Remaining scalar context (domain, tone, …) as a compact self-closing tag.
         ctx = " ".join(
             f'{k}="{v}"'
             for k, v in context.items()
-            if v and k not in {"qa_feedback", "generative_tts_feedback"}
+            if v and k not in {
+                "qa_feedback",
+                "target_language_correction",
+                "generative_tts_feedback",
+                "generative_tts_pacing",
+                "generative_tts_correction",
+            }
         )
         if ctx:
             parts.append(f"<context {ctx}/>")
@@ -119,6 +327,10 @@ QA_SYSTEM = (
     "You are a meticulous bilingual QA editor. Compare <translated_text> against "
     "<source_text> ({source_lang}→{target_lang}) and report issues for the checks "
     "in <checks>. Consider morphological variants when judging glossary adherence. "
+    "source_span must be a verbatim excerpt from <source_text> and may therefore be "
+    "in the source language (including Chinese). target_span must be a verbatim excerpt "
+    "from <translated_text>. suggestion must be replacement text in {target_lang}. "
+    "message must be written in {target_lang} for the current review text. "
     "Return ONLY the JSON object in <output_format>; no prose, no code fences."
 )
 
@@ -128,7 +340,7 @@ QA_OUTPUT_FORMAT = (
     '"source_span": "<concise excerpt ≤500 chars from source_text>", '
     '"target_span": "<concise excerpt ≤500 chars from translated_text>", '
     '"suggestion": "<fix>", '
-    '"blocking_actions": ["BLOCK_EXPORT|BLOCK_RENDER"]'
+    '"blocking_actions": ["BLOCK_APPROVAL|BLOCK_EXPORT|BLOCK_RENDER"]'
     '}], "score": <0..1>}</output_format>'
 )
 
@@ -266,11 +478,16 @@ NARRATIVE_SEMANTIC_PLAN_SYSTEM = (
     "narrative materially incomplete; beat_hint is a descriptive arc role and does not imply "
     "essential=true. Use preferred_blocks for semantic candidates within the section; they are "
     "soft preferences, not physical first/last requirements. The runtime preserves explicitly "
-    "essential sections when the target budget permits. Disconnected or distant scenes "
+    "essential sections when the target budget permits. Mark a late resolution, outcome, or "
+    "conclusion section essential=true when omitting it would make the story materially incomplete; "
+    "do not mark credits, ending music, or a content-free outro essential merely because it is late. "
+     "Disconnected or distant scenes "
     "must be separated into different "
     "sections; do not group distant scenes into the same section. Do not write narration. Do not "
     "output timestamps, milliseconds, source_refs, duration totals, merged coverage, cuts, or "
-    "arithmetic. Return only the JSON object described in <output_format>; no prose or markdown fences."
+    "arithmetic. Keep reasoning_note to one short sentence or empty, confidence optional, "
+    "warnings only for real grounding risks; per-block reason must be a short phrase or omitted. "
+    "Return only the JSON object described in <output_format>; no prose or markdown fences."
 )
 
 NARRATIVE_WRITER_SYSTEM = (
@@ -281,29 +498,38 @@ NARRATIVE_WRITER_SYSTEM = (
     "event before the corresponding visual range begins. Ground each section's narration strictly to "
     "the footage of that section; never leak or anticipate events belonging to subsequent sections. "
     "Ground every narration sentence in the provided source evidence — do not hallucinate facts "
-    "beyond the transcript. Write script_source_lang in the source language declared by <language>; "
-    "target_langs are downstream translation destinations. Structure the narrative as hook → context "
+    "beyond the transcript. Write every narration script in the source language declared by "
+    "<language> and put it in the script_source_lang field; target_langs are downstream translation "
+    "destinations, not the language for this writer. Structure the narrative as hook → context "
     "→ key events → conclusion: first section(s) HOOK, then CONTEXT, then "
     "RISING_ACTION/CLIMAX/TURNING_POINT for key events, then RESOLUTION/PAYOFF/CTA for conclusion. "
-    "RECAP STYLE (sentence-level captions): write third-person past-tense narration in the target "
-    "narration language as clean storytelling, structured into distinct short sentences "
+    "RECAP STYLE (sentence-level captions): write third-person past-tense narration in the declared "
+    "source language as clean storytelling, structured into distinct short sentences "
     "(approximately 4-8 short sentences per section; pace the narration to naturally fill the "
-    "section footage duration at ~13-16 characters per second or ~2.5-3 words per second without "
+    "section footage duration following the per-section target_chars estimate without "
     "leaving long dead silence); never emit one huge paragraph for a whole section; avoid sentence "
-    "chains joined only by commas; avoid unnecessary repetition and de-duplicate narration. Do NOT "
-    "reproduce long verbatim dialogue (no verbatim span longer than 15 words); do NOT copy long "
-    "Chinese/Han-script or romaji chant material — when such content matters, summarize or translate "
-    "its meaning into the narration language instead. Keep the CTA as a separate final sentence. "
+    "chains joined only by commas; avoid unnecessary repetition and de-duplicate narration. Never "
+    "duplicate an entire section. Across the complete draft, an exact normalized sentence of 20 "
+    "or more characters may appear at most twice; after the second use, rewrite it with "
+    "section-specific grounded detail. Do not shorten or delete narration solely to hide repetition. Do NOT "
+     "reproduce long verbatim source copy (no exact source run of 15 or more words); do NOT copy long "
+    "CJK/Han-script or romaji chant material from evidence unless that material is in the declared "
+    "source language. When such material is not in the declared source language, summarize or "
+    "translate its meaning into the declared source language instead. Keep the CTA as a separate final sentence. "
     "You may write headings, narration, transitions in notes, and beat_type from the "
     "allowed list: HOOK, BODY, PAYOFF, CTA, CONTEXT, RISING_ACTION, CLIMAX, TURNING_POINT, "
     "FALLING_ACTION, RESOLUTION, THEME. For each beat also write visual_description (1-2 sentences "
     "describing what the viewer should see, grounded in the source visual implied by the selected "
     "blocks), visual_strategy (SOURCE_CUT for V1 text-grounded; GENERATED/RETRIEVED reserved), "
     "importance 0.0-1.0 (higher = more central), and generate_terms 5-8 concise visual retrieval "
-    "terms (e.g. 'sunset beach', 'crowd cheering'). Do not invent custom beat types outside the "
+    "terms (e.g. 'sunset beach', 'crowd cheering'). Keep global_reasoning_note to one short sentence "
+    "or empty, confidence optional, warnings only for real grounding risks; notes must be brief "
+    "transitions, not essays. Do not invent custom beat types outside the "
     "allowed list. Do not select footage, omit or add sections, output timestamps, output "
     "milliseconds, output source_refs, change block assignment, or perform duration arithmetic. "
-    "Return only the JSON object described in <output_format>; no prose or markdown fences."
+    "Use only the keys defined by the current <output_format>; do not add helper or commentary "
+    "fields such as beat_type_note. Return only the JSON object described in <output_format>; "
+    "no prose or markdown fences."
 )
 
 NARRATIVE_SEMANTIC_PLAN_OUTPUT_FORMAT = (
@@ -420,6 +646,9 @@ def _narrative_pacing_feedback_block(feedback: list[dict] | None) -> str:
         ratio = float(item.get("ratio") or 0.0)
         deficit = int(item.get("deficit_chars") or 0)
         overage = int(item.get("overage_chars") or 0)
+        lower = int(item.get("acceptable_lower_chars") or round(target * 0.90))
+        upper = int(item.get("acceptable_upper_chars") or round(target * 1.10))
+        current_script = str(item.get("current_script") or "")
         status = item.get("pacing_status") or ""
         if status == "UNDERFILL" or deficit > 0:
             instruction = f"add approximately {deficit} characters of grounded narration"
@@ -428,13 +657,107 @@ def _narrative_pacing_feedback_block(feedback: list[dict] | None) -> str:
         lines.append(
             f'<section section_id="{section_id}" target_chars="{target}" '
             f'actual_chars="{actual}" ratio="{ratio:.2f}" pacing_status="{status}" '
-            f'deficit_chars="{deficit}" overage_chars="{overage}">{instruction}</section>'
+            f'acceptable_lower_chars="{lower}" acceptable_upper_chars="{upper}" '
+            f'deficit_chars="{deficit}" overage_chars="{overage}">'
+            f'{instruction}<current_script>{current_script}</current_script></section>'
         )
     lines.extend([
+        "Preserve the existing grounded narration shown in current_script. Expand or trim that "
+        "existing script instead of replacing it with a shorter summary. Add only details supported "
+        "by the locked transcript and visual evidence; stay inside the acceptable character band.",
         "Return JSON with a sections array containing exactly the reported section_ids in the same "
         "order; include only those replacement sections. Do not add timestamps, source_refs, or "
         "new footage. Runtime restores sections not reported above from the original draft.",
+        "Use only the keys defined by the current <output_format>; do not add helper or commentary "
+        "fields such as beat_type_note.",
         "</pacing_repair>",
+    ])
+    return "\n".join(lines)
+
+
+def _narrative_duplicate_feedback_block(feedback: list[dict] | None) -> str:
+    if not feedback:
+        return ""
+    lines = [
+        "<duplicate_repair>",
+        "The previous draft violated the narration de-duplication rule. Repair only the reported "
+        "section_ids; preserve source grounding, locked footage/source assignment, beat order, and "
+        "story arc. target_chars is a source-language estimate, so keep the replacement near that "
+        "length and do not make narration shorter just to remove repetition.",
+    ]
+    for item in feedback:
+        section_id = item.get("section_id", "")
+        duplicate_kind = item.get("duplicate_kind", "")
+        target = int(item.get("target_chars") or 0)
+        duplicate_sentence = str(item.get("duplicate_sentence") or "")
+        current_script = str(item.get("current_script") or "")
+        lines.append(
+            f'<section section_id="{section_id}" duplicate_kind="{duplicate_kind}" '
+            f'target_chars="{target}"><duplicate_sentence>{duplicate_sentence}</duplicate_sentence>'
+            f'<current_script>{current_script}</current_script></section>'
+        )
+    lines.extend([
+        "Replace the offending whole-section or exact sentence wording with a materially different, "
+        "section-specific detail supported by that section's transcript and visual evidence. Do not "
+        "deduplicate by deleting text, changing section_id, changing footage, or copying another "
+        "section. Keep the same beat/order/story role and preserve approximately the current length.",
+        "Return JSON with a sections array containing exactly the reported section_ids in the same "
+        "order; include only those replacement sections. Do not add timestamps, source_refs, or new "
+        "footage. Runtime restores sections not reported above from the original draft.",
+        "Use only the keys defined by the current <output_format>; do not add helper or commentary "
+        "fields such as beat_type_note.",
+        "</duplicate_repair>",
+    ])
+    return "\n".join(lines)
+
+
+def _narrative_verbatim_feedback_block(feedback: list[dict] | None) -> str:
+    if not feedback:
+        return ""
+    lines = [
+        "<source_copy_repair>",
+        "The previous narration copied wording from the transcript evidence of the same locked beat. "
+        "Rewrite the reported section in the declared source language as a concise recap; preserve "
+        "the section_id, footage assignment, order, and grounded meaning. A short exact phrase may "
+        "remain only when it is necessary, but do not reproduce a long source run.",
+    ]
+    for item in feedback:
+        lines.append(
+            f'<section section_id="{item.get("section_id", "")}" '
+            f'run_words="{int(item.get("run_words") or 0)}" '
+            f'target_chars="{int(item.get("target_chars") or 0)}">'
+            f'<verbatim_span>{item.get("verbatim_span", "")}</verbatim_span>'
+            f'<current_script>{item.get("current_script", "")}</current_script></section>'
+        )
+    lines.extend([
+        "Use section-specific detail from the locked evidence and keep approximately the current "
+        "narration length. Do not change section_id, source assignment, or add timestamps/source_refs.",
+        "Return exactly the reported section_ids in source order using the current <output_format>.",
+        "</source_copy_repair>",
+    ])
+    return "\n".join(lines)
+
+
+def _narrative_structure_feedback_block(feedback: list[dict] | None) -> str:
+    if not feedback:
+        return ""
+    lines = [
+        "<narrative_structure_repair>",
+        "Repair the reported writer-quality violations in place. Keep the same section_id, locked "
+        "footage, source grounding, order, beat role, and approximately the same narration length.",
+    ]
+    for item in feedback:
+        lines.append(
+            f'<section section_id="{item.get("section_id", "")}" '
+            f'violation="{item.get("violation", "")}" '
+            f'target_chars="{int(item.get("target_chars") or 0)}">'
+            f'<diagnostic>{item.get("message", "")}</diagnostic>'
+            f'<current_script>{item.get("current_script", "")}</current_script></section>'
+        )
+    lines.extend([
+        "Return exactly the reported section_ids in source order using the current <output_format>.",
+        "Do not add timestamps, source_refs, helper fields, or new footage.",
+        "</narrative_structure_repair>",
     ])
     return "\n".join(lines)
 
@@ -447,6 +770,9 @@ def build_narrative_writer_prompt(
     constraints: list[str],
     content_brief: str | None = None,
     pacing_feedback: list[dict] | None = None,
+    duplicate_feedback: list[dict] | None = None,
+    verbatim_feedback: list[dict] | None = None,
+    structure_feedback: list[dict] | None = None,
 ) -> tuple[str, str]:
     if not allocated_sections:
         raise ValueError("NARRATIVE_REVIEW writer requires allocated sections")
@@ -460,9 +786,19 @@ def build_narrative_writer_prompt(
     pacing_block = _narrative_pacing_feedback_block(pacing_feedback)
     if pacing_block:
         parts.append(pacing_block)
+    duplicate_block = _narrative_duplicate_feedback_block(duplicate_feedback)
+    if duplicate_block:
+        parts.append(duplicate_block)
+    verbatim_block = _narrative_verbatim_feedback_block(verbatim_feedback)
+    if verbatim_block:
+        parts.append(verbatim_block)
+    structure_block = _narrative_structure_feedback_block(structure_feedback)
+    if structure_block:
+        parts.append(structure_block)
     lines = [
         "<locked_footage>",
-        "Footage is final. Return exactly one written section for each section_id in this order.",
+        "Footage is final. These are the final small presentation beats (already split, "
+        "ordered, coverage-preserving). Return exactly one written section for each section_id in this order.",
     ]
     for section in allocated_sections:
         title = section.get("title") or ""
@@ -522,16 +858,25 @@ NARRATIVE_MULTIMODAL_WRITER_SYSTEM = (
     "subsequent sections. You MUST be able to describe visual actions even when "
     "the transcript is sparse — e.g. 'at 00:42 two people start fighting' when VLM saw it but transcript did not. "
     "Structure as hook → context → key events → conclusion (HOOK/CONTEXT/RISING_ACTION/CLIMAX/TURNING_POINT/RESOLUTION/PAYOFF/CTA). "
-    "RECAP STYLE (sentence-level captions): third-person past-tense narration in the target narration "
-    "language, structured into distinct short sentences (approximately 4-8 short sentences per section; "
-    "pace the narration to naturally fill the section footage duration at ~13-16 characters per second "
-    "or ~2.5-3 words per second without leaving long dead silence); never one huge paragraph; avoid "
-    "comma-chained sentences and repetition. Do NOT reproduce long verbatim dialogue (no verbatim span "
-    "longer than 15 words); do NOT copy long Chinese/Han-script or romaji chant material — summarize or "
-    "translate its meaning instead. Keep the CTA as a separate final sentence. "
+    "Write every narration script in the source language declared by <language> and put it in the "
+    "script_source_lang field; target_langs are downstream translation destinations, not the language "
+    "for this writer. RECAP STYLE (sentence-level captions): third-person past-tense narration in the "
+    "declared source language, structured into distinct short sentences (approximately 4-8 short sentences per section; "
+    "pace the narration to naturally fill the section footage duration following the per-section "
+    "target_chars estimate without leaving long dead silence); never one huge paragraph; avoid "
+    "comma-chained sentences and repetition. Never duplicate an entire section. Across the complete "
+    "draft, an exact normalized sentence of 20 or more characters may appear at most twice; after "
+    "the second use, rewrite it with section-specific grounded detail. Do not shorten or delete "
+    "narration solely to hide repetition. Do NOT reproduce long verbatim source copy (no exact source run "
+    "of 15 or more words); do NOT copy long CJK/Han-script or romaji chant material from evidence "
+    "unless that material is in the declared source language. When such material is not in the "
+    "declared source language, summarize or translate its meaning into the declared source language "
+    "instead. Keep the CTA as a separate final sentence. "
     "GROUNDING: each section's script must reference an evidence span — cite transcript block text or visual observation timestamp/action. "
     "CONFIDENCE: if a visual observation's confidence < 0.5, hedge the claim ('appears to', 'possibly') — never assert a low-confidence fact strongly. "
-    "Do not hallucinate facts beyond transcript + visual. Do not invent timestamps outside the evidence. Return only the JSON object described in <output_format>."
+    "Do not hallucinate facts beyond transcript + visual. Do not invent timestamps outside the evidence. "
+    "Use only the keys defined by the current <output_format>; do not add helper or commentary "
+    "fields such as beat_type_note. Return only the JSON object described in <output_format>."
 )
 
 
@@ -580,6 +925,9 @@ def build_narrative_multimodal_writer_prompt(
     multimodal_context: dict | None = None,
     beat_visuals: list[dict] | None = None,
     pacing_feedback: list[dict] | None = None,
+    duplicate_feedback: list[dict] | None = None,
+    verbatim_feedback: list[dict] | None = None,
+    structure_feedback: list[dict] | None = None,
 ) -> tuple[str, str]:
     if not allocated_sections:
         raise ValueError("NARRATIVE_REVIEW writer requires allocated sections")
@@ -593,6 +941,15 @@ def build_narrative_multimodal_writer_prompt(
     pacing_block = _narrative_pacing_feedback_block(pacing_feedback)
     if pacing_block:
         parts.append(pacing_block)
+    duplicate_block = _narrative_duplicate_feedback_block(duplicate_feedback)
+    if duplicate_block:
+        parts.append(duplicate_block)
+    verbatim_block = _narrative_verbatim_feedback_block(verbatim_feedback)
+    if verbatim_block:
+        parts.append(verbatim_block)
+    structure_block = _narrative_structure_feedback_block(structure_feedback)
+    if structure_block:
+        parts.append(structure_block)
     # multimodal block after content_brief/user_feedback
     vblock = _visual_context_block(multimodal_context)
     if vblock:
@@ -611,7 +968,8 @@ def build_narrative_multimodal_writer_prompt(
         parts.append("\n".join(glines))
     lines = [
         "<locked_footage>",
-        "Footage is final. Return exactly one written section for each section_id in this order.",
+        "Footage is final. These are the final small presentation beats (already split, "
+        "ordered, coverage-preserving). Return exactly one written section for each section_id in this order.",
         "BEAT GROUNDING: narrate ONLY the <beat> visual event for that section; "
         "never describe a future beat's event early.",
     ]

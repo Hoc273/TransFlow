@@ -59,8 +59,11 @@ class AnthropicAdapter(ProtocolAdapter):
         max_tokens: int = 2048,
         response_format: Optional[dict[str, Any]] = None,
         extra_body: Optional[dict[str, Any]] = None,
+        images: Optional[list[str]] = None,
     ) -> ChatResult:
-        self.require_capability(Capability.TEXT)
+        if images:
+            self.require_provider_capability(provider, Capability.VISION)
+        self.require_provider_capability(provider, Capability.TEXT)
         base = provider.base_url.rstrip("/")
         url = base + ("/messages" if base.endswith("/v1") else "/v1/messages")
         # Anthropic Messages API does not accept OpenAI-style response_format;

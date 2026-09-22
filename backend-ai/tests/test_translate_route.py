@@ -15,8 +15,10 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
+import httpx
+
 from app.api import routes
-from app.schemas.contract import ProviderPayload, TranslateRequest, Usage
+from app.schemas.contract import ProviderPayload, QARequest, TranslateRequest, Usage
 from app.services.protocol import ChatResult
 
 
@@ -38,6 +40,28 @@ def _request() -> TranslateRequest:
         source_text="Hello world",
         provider=_provider(),
     )
+
+
+def _deepseek_request() -> TranslateRequest:
+    req = _request()
+    req.provider = ProviderPayload(
+        protocol="dashscope_native",
+        base_url="https://dashscope.test/compatible-mode/v1",
+        api_key="sk-real-key",
+        model="deepseek-v4.1-flash",
+    )
+    return req
+
+
+def _qwen_omni_request() -> TranslateRequest:
+    req = _request()
+    req.provider = ProviderPayload(
+        protocol="dashscope_native",
+        base_url="https://dashscope.test/compatible-mode/v1",
+        api_key="sk-real-key",
+        model="qwen-omni-turbo",
+    )
+    return req
 
 
 def _usage() -> Usage:
@@ -128,6 +152,129 @@ class TranslateJsonModeTest(unittest.IsolatedAsyncioTestCase):
             _, mock_chat = await self._run_translate(result)
         _args, kwargs = mock_chat.call_args
         self.assertEqual(kwargs.get("max_tokens"), 4096)
+
+    async def test_deepseek_dashscope_translation_uses_normalized_reasoning_control(self):
+        captured: dict = {}
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                captured.update(kwargs)
+                return httpx.Response(200, json={
+                    "choices": [{"message": {"content": json.dumps({
+                        "translation": "Xin chao the gioi",
+                        "applied_glossary": [],
+                    })}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                })
+
+        with (
+            patch.object(routes.settings, "mock_mode", False),
+            patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()),
+        ):
+            response = await routes.translate(_deepseek_request())
+
+        self.assertEqual("COMPLETED", response.status)
+        self.assertEqual("Xin chao the gioi", response.translation)
+        self.assertEqual(False, captured["json"]["enable_thinking"])
+        self.assertNotIn("thinking", captured["json"])
+
+    async def test_deepseek_dashscope_reasoning_json_translation_fallback(self):
+        reasoning_json = json.dumps({
+            "translation": "Xin chao the gioi",
+            "applied_glossary": [],
+        })
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                return httpx.Response(200, json={
+                    "choices": [{"message": {
+                        "content": "",
+                        "reasoning_content": reasoning_json,
+                    }, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                })
+
+        with (
+            patch.object(routes.settings, "mock_mode", False),
+            patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()),
+        ):
+            response = await routes.translate(_deepseek_request())
+
+        self.assertEqual("COMPLETED", response.status)
+        self.assertEqual("Xin chao the gioi", response.translation)
+
+    async def test_qwen_omni_translation_retries_without_unsupported_reasoning_control(self):
+        calls: list[dict] = []
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                calls.append(kwargs["json"])
+                if len(calls) == 1:
+                    return httpx.Response(400, json={
+                        "code": "InvalidParameter",
+                        "message": "qwen-omni-turbo does not support enable_thinking",
+                    })
+                return httpx.Response(200, json={
+                    "choices": [{"message": {"content": json.dumps({
+                        "translation": "Xin chao the gioi",
+                        "applied_glossary": [],
+                    })}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                })
+
+        with (
+            patch.object(routes.settings, "mock_mode", False),
+            patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()),
+        ):
+            response = await routes.translate(_qwen_omni_request())
+
+        self.assertEqual("COMPLETED", response.status)
+        self.assertEqual("Xin chao the gioi", response.translation)
+        self.assertEqual(2, len(calls))
+        self.assertEqual(False, calls[0]["enable_thinking"])
+        self.assertNotIn("enable_thinking", calls[1])
+
+    async def test_qa_uses_same_dashscope_reasoning_control(self):
+        req = QARequest(
+            request_id="qa-1",
+            source_lang="en",
+            target_lang="vi",
+            source_text="Hello world",
+            translated_text="Xin chao the gioi",
+            provider=_deepseek_request().provider,
+            checks=[],
+        )
+        result = ChatResult(
+            text='{"issues":[],"score":1.0}',
+            usage=_usage(),
+            finish_reason="stop",
+        )
+        with patch.object(routes.llm_gateway, "chat", AsyncMock(return_value=result)) as mock_chat:
+            response = await routes.qa(req)
+
+        self.assertEqual("COMPLETED", response.status)
+        self.assertEqual(
+            {"enable_thinking": False},
+            mock_chat.await_args.kwargs["extra_body"],
+        )
 
 
 class TranslateClassificationTest(unittest.TestCase):

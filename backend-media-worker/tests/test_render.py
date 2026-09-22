@@ -1,8 +1,11 @@
+import asyncio
+import threading
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
 from pydantic import ValidationError
 
+from app.api.capabilities import capabilities
 from app.api.render import (
     LayerGeometryRequest,
     PresentationLayerRequest,
@@ -105,6 +108,90 @@ class RenderContractTest(unittest.IsolatedAsyncioTestCase):
 
         legacy.assert_called_once()
         self.assertEqual("INVALID_INPUT", complete.await_args.kwargs["error"]["code"])
+
+    async def test_heavy_render_does_not_block_capabilities(self):
+        storage = Mock()
+        storage.upload.side_effect = lambda _path, key: f"media/{key}"
+        entered = threading.Event()
+        release = threading.Event()
+
+        def blocked_cut(*_args):
+            entered.set()
+            release.wait(timeout=1)
+
+        validation = Mock(passed=True)
+        validation.to_payload.return_value = {}
+        media_probe = Mock()
+        media_probe.to_payload.return_value = {}
+        # The timer only prevents an assertion failure from leaving the worker
+        # thread blocked if this regression ever runs against the old code.
+        release_timer = threading.Timer(0.2, release.set)
+        release_timer.start()
+        started = asyncio.get_running_loop().time()
+        try:
+            with patch("app.api.render.get_storage", return_value=storage), patch(
+                "app.api.render.send_progress", new=AsyncMock()
+            ), patch("app.api.render.send_complete", new=AsyncMock()), patch(
+                "app.api.render.validate_subtitle_format", return_value="srt"
+            ), patch("app.api.render.shutil.copyfile"), patch(
+                "app.api.render.srt_to_vtt"
+            ), patch("app.api.render.cut_and_concat_video", side_effect=blocked_cut), patch(
+                "app.api.render.replace_audio"
+            ), patch("app.api.render.mux_soft_subtitles"), patch(
+                "app.api.render.probe_video", return_value=media_probe
+            ), patch(
+                "app.api.render.RenderValidationRunner.run", return_value=validation
+            ):
+                render_task = asyncio.create_task(process_render(request()))
+                self.assertTrue(await asyncio.to_thread(entered.wait, 1))
+                self.assertFalse(release.is_set())
+                await asyncio.wait_for(capabilities(), timeout=0.05)
+                self.assertLess(asyncio.get_running_loop().time() - started, 0.2)
+                release.set()
+                await render_task
+        finally:
+            release.set()
+            release_timer.cancel()
+
+    async def test_render_slot_keeps_second_render_out_of_heavy_section(self):
+        storage = Mock()
+        storage.upload.side_effect = lambda _path, key: f"media/{key}"
+        first_entered = threading.Event()
+        release_first = threading.Event()
+        calls = []
+
+        def controlled_cut(*_args):
+            calls.append(True)
+            if len(calls) == 1:
+                first_entered.set()
+                release_first.wait(timeout=1)
+
+        validation = Mock(passed=True)
+        validation.to_payload.return_value = {}
+        media_probe = Mock()
+        media_probe.to_payload.return_value = {}
+        with patch("app.api.render.get_storage", return_value=storage), patch(
+            "app.api.render.send_progress", new=AsyncMock()
+        ), patch("app.api.render.send_complete", new=AsyncMock()), patch(
+            "app.api.render.validate_subtitle_format", return_value="srt"
+        ), patch("app.api.render.shutil.copyfile"), patch(
+            "app.api.render.srt_to_vtt"
+        ), patch("app.api.render.cut_and_concat_video", side_effect=controlled_cut), patch(
+            "app.api.render.replace_audio"
+        ), patch("app.api.render.mux_soft_subtitles"), patch(
+            "app.api.render.probe_video", return_value=media_probe
+        ), patch(
+            "app.api.render.RenderValidationRunner.run", return_value=validation
+        ):
+            first = asyncio.create_task(process_render(request(correlation_id="first")))
+            self.assertTrue(await asyncio.to_thread(first_entered.wait, 1))
+            second = asyncio.create_task(process_render(request(correlation_id="second")))
+            await asyncio.sleep(0.05)
+            self.assertEqual(1, len(calls))
+            release_first.set()
+            await asyncio.gather(first, second)
+
+        self.assertEqual(2, len(calls))
 
     # ─── B1.0 styled burn-in (docs/93 §4.6.6, TC-CEP-28) ─────────────────
 

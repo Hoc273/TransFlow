@@ -53,7 +53,17 @@ class RegistryTest(unittest.TestCase):
         self.assertTrue(adapter.supports(Capability.TEXT))
         self.assertTrue(adapter.supports(Capability.STT))
         self.assertTrue(adapter.supports(Capability.TTS))
+        self.assertFalse(adapter.supports(Capability.EMBEDDING))
+        self.assertFalse(adapter.supports(Capability.VISION))
+        self.assertFalse(adapter.supports(Capability.IMAGE))
+        self.assertFalse(adapter.supports(Capability.VIDEO))
         self.assertEqual(adapter.voice_discovery_strategy, VoiceDiscoveryStrategy.STATIC)
+
+    def test_openai_compatible_advertises_vision_not_image_generation(self):
+        adapter = require_adapter("openai_compatible")
+        self.assertTrue(adapter.supports(Capability.VISION))
+        self.assertFalse(adapter.supports(Capability.IMAGE))
+        self.assertFalse(adapter.supports(Capability.VIDEO))
 
     def test_openai_manual_voice_strategy(self):
         adapter = require_adapter("openai_compatible")
@@ -66,6 +76,24 @@ class RegistryTest(unittest.TestCase):
     def test_require_capability_gate(self):
         with self.assertRaises(ProviderException):
             require_adapter("anthropic", capability="TTS")
+
+    def test_provider_capability_gate_is_authoritative_when_declared(self):
+        adapter = OpenAICompatibleAdapter()
+        with self.assertRaises(ProviderException) as ctx:
+            adapter.require_provider_capability(
+                _provider("openai_compatible", capabilities={"TEXT"}),
+                Capability.VISION,
+            )
+        self.assertEqual(ProviderErrorCode.PROVIDER_UNSUPPORTED_CAPABILITY, ctx.exception.code)
+
+        adapter.require_provider_capability(
+            _provider("openai_compatible", capabilities={"VISION"}),
+            Capability.VISION,
+        )
+        adapter.require_provider_capability(
+            _provider("openai_compatible"),
+            Capability.VISION,
+        )
 
 
 class OpenAICompatibleAdapterTest(unittest.IsolatedAsyncioTestCase):
@@ -202,6 +230,13 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
         audio_part = next(p for p in content if p.get("type") == "input_audio")
         self.assertEqual("https://storage.example/audio.wav", audio_part["input_audio"]["data"])
         self.assertEqual("wav", audio_part["input_audio"]["format"])
+        prompt = next(p for p in content if p.get("type") == "text")["text"].lower()
+        self.assertIn("complete supplied audio through the end", prompt)
+        self.assertIn("music", prompt)
+        self.assertIn("ending theme", prompt)
+        self.assertIn("credits", prompt)
+        self.assertIn("speech resumes later", prompt)
+        self.assertIn("do not fabricate speech", prompt)
 
     async def test_transcribe_bytes_uses_data_uri_prefix(self):
         """Raw base64 is rejected by DashScope as invalid URL — must use data:;base64,."""
@@ -516,12 +551,11 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([1000, 2100], [s.start_ms for s in result.segments])
         self.assertEqual(2600, result.segments[-1].end_ms)
 
-    async def _run_transcribe(self, payload_text):
+    async def _run_transcribe(self, payload_text, terminal_line="data: [DONE]"):
         """Shared harness: stream one transcript JSON payload through transcribe."""
-        lines = [
-            f'data: {json.dumps({"choices": [{"delta": {"content": payload_text}}]})}',
-            "data: [DONE]",
-        ]
+        lines = [f'data: {json.dumps({"choices": [{"delta": {"content": payload_text}}]})}']
+        if terminal_line is not None:
+            lines.append(terminal_line)
 
         class _StreamResponse:
             status_code = 200
@@ -556,16 +590,15 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
     async def test_transcribe_empty_segments_is_no_speech_not_malformed(self):
         """A valid JSON transcript with an explicit empty segments array is the
         model's "no speech" verdict (LLM-based ASR, e.g. a tone probe) — it must
-        raise PROVIDER_EMPTY_RESPONSE with a clear message, never the misleading
+        return a successful empty TranscribeResult, never the misleading
         "requires detected_lang and non-empty timed segments" malformed error."""
-        with self.assertRaises(ProviderValidation) as ctx:
-            await self._run_transcribe(json.dumps({
-                "detected_lang": "en",
-                "segments": [],
-            }))
-        self.assertEqual(
-            ProviderErrorCode.PROVIDER_EMPTY_RESPONSE, ctx.exception.code)
-        self.assertIn("no speech", str(ctx.exception))
+        result = await self._run_transcribe(json.dumps({
+            "detected_lang": "en",
+            "segments": [],
+        }))
+        self.assertEqual([], result.segments)
+        self.assertEqual("en", result.detected_lang)
+        self.assertEqual(0.0, result.audio_seconds)
 
     async def test_transcribe_missing_detected_lang_still_malformed(self):
         """Missing detected_lang (invalid shape) stays PROVIDER_RESPONSE_MALFORMED."""
@@ -577,6 +610,12 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
             ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
         self.assertIn("requires detected_lang", str(ctx.exception))
 
+    async def test_transcribe_raw_empty_response_remains_provider_empty(self):
+        with self.assertRaises(ProviderValidation) as ctx:
+            await self._run_transcribe("")
+        self.assertEqual(
+            ProviderErrorCode.PROVIDER_EMPTY_RESPONSE, ctx.exception.code)
+
     async def test_transcribe_segments_not_a_list_still_malformed(self):
         """segments as a non-list (invalid shape) stays PROVIDER_RESPONSE_MALFORMED."""
         with self.assertRaises(ProviderValidation) as ctx:
@@ -584,6 +623,125 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
                 "detected_lang": "en",
                 "segments": "no-speech",
             }))
+        self.assertEqual(
+            ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
+
+    async def test_transcribe_wrong_shape_reports_received_keys(self):
+        """A wrong-shape transcript reports the received keys and length so a
+        misconfigured STT model (e.g. text-only) is diagnosable from the error."""
+        with self.assertRaises(ProviderValidation) as ctx:
+            await self._run_transcribe(json.dumps({
+                "detected_lang": "en",
+                "transcript": "hello world",
+            }))
+        self.assertEqual(
+            ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
+        self.assertIn("requires detected_lang", str(ctx.exception))
+        self.assertIn("detected_lang", str(ctx.exception))
+        self.assertIn("transcript", str(ctx.exception))
+        self.assertIn("response_len=", str(ctx.exception))
+
+    async def test_transcribe_non_json_reports_response_len(self):
+        """Prose output (no JSON at all) reports the response length."""
+        with self.assertRaises(ProviderValidation) as ctx:
+            await self._run_transcribe("Sorry, I cannot process audio.")
+        self.assertEqual(
+            ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
+        self.assertIn("timed JSON transcript", str(ctx.exception))
+        self.assertIn("response_len=", str(ctx.exception))
+
+    async def test_decode_bare_segment_array_uses_source_lang(self):
+        """qwen-omni variants may return a bare top-level segment array
+        (observed live: fenced ```json [...] without the envelope)."""
+        from app.schemas.contract import ProviderPayload
+
+        adapter = DashScopeNativeAdapter()
+        provider = _provider("dashscope_native", "qwen3.5-omni-flash")
+        text = "```json\n" + json.dumps([
+            {"text": "hello world", "start_ms": 2506, "end_ms": 9314},
+            {"text": "second line", "start_ms": 10075, "end_ms": 13425},
+        ]) + "\n```"
+        segments, detected = adapter._decode_timed_transcript(
+            text, source_lang="vi", provider=provider)
+        self.assertEqual("vi", detected)
+        self.assertEqual(["hello world", "second line"], [s.text for s in segments])
+        self.assertEqual([(2506, 9314), (10075, 13425)],
+                         [(s.start_ms, s.end_ms) for s in segments])
+
+    async def test_decode_truncated_array_rejects_recoverable_prefix(self):
+        """Complete objects inside truncated JSON are diagnostic-only."""
+        adapter = DashScopeNativeAdapter()
+        provider = _provider("dashscope_native", "qwen3.5-omni-flash")
+        text = (
+            '[{"text": "first", "start_ms": 0, "end_ms": 1250}, '
+            '{"text": "second", "start_ms": 1300, "end_ms": 2600}, '
+            '{"text": "cut off", "start_ms": 2700'
+        )
+        with self.assertRaises(ProviderValidation) as ctx:
+            adapter._decode_timed_transcript(
+                text, source_lang="vi", provider=provider)
+        self.assertEqual(ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
+        self.assertTrue(ctx.exception.retryable)
+        self.assertIn("partial_segments_detected=2", str(ctx.exception))
+
+    async def test_transcribe_clean_eof_without_terminal_is_retryable_malformed(self):
+        payload = json.dumps({
+            "detected_lang": "en",
+            "segments": [{"text": "partial", "start_ms": 0, "end_ms": 1_000}],
+        })
+        with self.assertRaises(ProviderValidation) as ctx:
+            await self._run_transcribe(payload, terminal_line=None)
+        self.assertEqual(ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
+        self.assertTrue(ctx.exception.retryable)
+        self.assertIn("terminal_seen=False", str(ctx.exception))
+
+    async def test_transcribe_finish_reason_length_is_retryable_malformed(self):
+        payload = json.dumps({
+            "detected_lang": "en",
+            "segments": [{"text": "partial", "start_ms": 0, "end_ms": 1_000}],
+        })
+        terminal = "data: " + json.dumps({
+            "choices": [{"delta": {}, "finish_reason": "length"}],
+        })
+        with self.assertRaises(ProviderValidation) as ctx:
+            await self._run_transcribe(payload, terminal_line=terminal)
+        self.assertEqual(ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
+        self.assertIn("finish_reason=length", str(ctx.exception))
+
+    async def test_transcribe_finish_reason_stop_is_successful_terminal(self):
+        payload = json.dumps({
+            "detected_lang": "en",
+            "segments": [{"text": "complete", "start_ms": 0, "end_ms": 1_000}],
+        })
+        terminal = "data: " + json.dumps({
+            "choices": [{"delta": {}, "finish_reason": "stop"}],
+        })
+        result = await self._run_transcribe(payload, terminal_line=terminal)
+        self.assertEqual("complete", result.segments[0].text)
+
+    async def test_transcribe_production_shape_partial_prefix_without_terminal_fails(self):
+        segments = [
+            {"text": f"segment {index}", "start_ms": index * 6_000,
+             "end_ms": min(170_000, (index + 1) * 6_000)}
+            for index in range(28)
+        ]
+        payload = json.dumps({"detected_lang": "en", "segments": segments})
+        with self.assertRaises(ProviderValidation) as ctx:
+            await self._run_transcribe(payload, terminal_line=None)
+        self.assertEqual(ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
+        self.assertIn("last_segment_end_ms=168000", str(ctx.exception))
+
+    async def test_decode_bare_array_without_lang_still_malformed(self):
+        """A bare array with no source_lang and no envelope lang cannot supply
+        detected_lang — still malformed, never guessed."""
+        from app.services.provider_errors import ProviderValidation as PV
+
+        adapter = DashScopeNativeAdapter()
+        provider = _provider("dashscope_native", "qwen3.5-omni-flash")
+        with self.assertRaises(PV) as ctx:
+            adapter._decode_timed_transcript(
+                json.dumps([{"text": "x", "start_ms": 0, "end_ms": 100}]),
+                source_lang=None, provider=provider)
         self.assertEqual(
             ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
 
@@ -671,6 +829,161 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("OK", result.text)
         self.assertTrue(client.url.endswith("/chat/completions"))
+
+    async def test_deepseek_dashscope_reasoning_control_and_fallback(self):
+        captured: dict = {}
+        payload = {
+            "choices": [{"message": {
+                "content": "",
+                "reasoning_content": '{"translation":"Xin chao","applied_glossary":[]}',
+            }}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2},
+        }
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                captured.update(kwargs)
+                return httpx.Response(200, json=payload)
+
+        adapter = DashScopeNativeAdapter()
+        provider = _provider("dashscope_native", "deepseek-v4.1-flash")
+        extra = adapter.text_reasoning_extra(provider, disabled=True)
+        with patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()):
+            result = await adapter.chat(
+                provider,
+                system="sys",
+                user="translate",
+                extra_body=extra,
+            )
+
+        self.assertEqual(False, captured["json"]["enable_thinking"])
+        self.assertNotIn("thinking", captured["json"])
+        self.assertEqual(payload["choices"][0]["message"]["reasoning_content"], result.text)
+
+    async def test_qwen_plus_accepts_dashscope_reasoning_control_without_retry(self):
+        calls: list[dict] = []
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                calls.append(kwargs["json"])
+                return httpx.Response(200, json={
+                    "choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+                })
+
+        adapter = DashScopeNativeAdapter()
+        provider = _provider("dashscope_native", "qwen-plus")
+        with patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()):
+            result = await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                extra_body=adapter.text_reasoning_extra(provider, disabled=True),
+            )
+
+        self.assertEqual("OK", result.text)
+        self.assertEqual(1, len(calls))
+        self.assertEqual(False, calls[0]["enable_thinking"])
+
+    async def test_qwen_omni_retries_once_without_unsupported_reasoning_control(self):
+        calls: list[dict] = []
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                calls.append(kwargs["json"])
+                if len(calls) == 1:
+                    return httpx.Response(400, json={
+                        "code": "InvalidParameter",
+                        "message": "qwen-omni-turbo does not support enable_thinking",
+                    })
+                return httpx.Response(200, json={
+                    "choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+                })
+
+        adapter = DashScopeNativeAdapter()
+        provider = _provider("dashscope_native", "qwen-omni-turbo")
+        with patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()):
+            result = await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                extra_body=adapter.text_reasoning_extra(provider, disabled=True),
+            )
+
+        self.assertEqual("OK", result.text)
+        self.assertEqual(2, len(calls))
+        self.assertEqual(False, calls[0]["enable_thinking"])
+        self.assertNotIn("enable_thinking", calls[1])
+
+    async def test_dashscope_arbitrary_bad_request_does_not_retry_without_control(self):
+        calls: list[dict] = []
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                calls.append(kwargs["json"])
+                return httpx.Response(400, json={
+                    "code": "InvalidParameter",
+                    "message": "messages must not be empty",
+                })
+
+        adapter = DashScopeNativeAdapter()
+        provider = _provider("dashscope_native", "qwen-omni-turbo")
+        with (
+            patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()),
+            self.assertRaises(ProviderException),
+        ):
+            await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                extra_body=adapter.text_reasoning_extra(provider, disabled=True),
+            )
+
+        self.assertEqual(1, len(calls))
+
+    def test_dashscope_text_extraction_prefers_content_and_preserves_empty(self):
+        adapter = DashScopeNativeAdapter()
+        self.assertEqual(
+            "answer",
+            adapter._extract_text({"choices": [{"message": {
+                "content": "answer", "reasoning_content": "reasoning",
+            }}]}),
+        )
+        self.assertEqual(
+            "native reasoning",
+            adapter._extract_text({"output": {"text": "", "choices": [{"message": {
+                "content": "", "reasoning_content": "native reasoning",
+            }}]}}),
+        )
+        self.assertEqual(
+            "",
+            adapter._extract_text({"choices": [{"message": {
+                "content": "", "reasoning_content": "",
+            }}]}),
+        )
 
 
 class GatewayNoProtocolBranchTest(unittest.TestCase):
@@ -791,6 +1104,434 @@ class OpenAIChatFallbackTest(unittest.IsolatedAsyncioTestCase):
                 user="hi",
             )
         self.assertEqual("hello", result.text)
+
+
+class OpenAIThinkingCompatibilityTest(unittest.IsolatedAsyncioTestCase):
+    def _client_for_responses(self, responses: list[httpx.Response]):
+        calls: list[dict] = []
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                calls.append(kwargs["json"])
+                return responses[len(calls) - 1]
+
+        return _Client(), calls
+
+    @staticmethod
+    def _ok_response(text: str = "OK") -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": text}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            },
+        )
+
+    async def test_supported_thinking_control_uses_one_call(self):
+        adapter = OpenAICompatibleAdapter()
+        provider = _provider("openai_compatible", "supported-model")
+        client, calls = self._client_for_responses([self._ok_response()])
+
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            result = await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                extra_body=adapter.text_reasoning_extra(provider, disabled=True),
+            )
+
+        self.assertEqual("OK", result.text)
+        self.assertEqual(1, len(calls))
+        self.assertEqual({"type": "disabled"}, calls[0]["thinking"])
+
+    async def test_unsupported_thinking_retries_once_preserving_request_fields(self):
+        adapter = OpenAICompatibleAdapter()
+        provider = _provider("openai_compatible", "fallback-model")
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="unknown parameter: thinking"),
+            self._ok_response(),
+        ])
+
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            result = await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                max_tokens=4096,
+                extra_body=adapter.text_reasoning_extra(provider, disabled=True),
+            )
+
+        self.assertEqual("OK", result.text)
+        self.assertEqual(2, len(calls))
+        self.assertEqual({"type": "disabled"}, calls[0]["thinking"])
+        self.assertNotIn("thinking", calls[1])
+        for field in ("model", "temperature", "max_tokens", "messages"):
+            self.assertEqual(calls[0][field], calls[1][field])
+
+    async def test_thinking_fallback_preserves_response_format(self):
+        adapter = OpenAICompatibleAdapter()
+        provider = _provider("openai_compatible", "json-model")
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="unsupported parameter: thinking"),
+            self._ok_response('{"ok":true}'),
+        ])
+
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                response_format={"type": "json_object"},
+                extra_body=adapter.text_reasoning_extra(provider, disabled=True),
+            )
+
+        self.assertEqual(2, len(calls))
+        self.assertNotIn("thinking", calls[1])
+
+        self.assertEqual({"type": "json_object"}, calls[1]["response_format"])
+
+    async def test_arbitrary_400_does_not_retry(self):
+        adapter = OpenAICompatibleAdapter()
+        provider = _provider("openai_compatible", "bad-request-model")
+        client, calls = self._client_for_responses([
+            httpx.Response(400, json={"error": {"message": "messages must not be empty"}}),
+        ])
+
+        with (
+            patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client),
+            self.assertRaises(ProviderException),
+        ):
+            await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                extra_body=adapter.text_reasoning_extra(provider, disabled=True),
+            )
+
+        self.assertEqual(1, len(calls))
+
+    async def test_thinking_error_without_unsupported_signal_does_not_retry(self):
+        adapter = OpenAICompatibleAdapter()
+        provider = _provider("openai_compatible", "configured-thinking-model")
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="thinking configuration requires type=enabled"),
+        ])
+
+        with (
+            patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client),
+            self.assertRaises(ProviderException),
+        ):
+            await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                extra_body=adapter.text_reasoning_extra(provider, disabled=True),
+            )
+
+        self.assertEqual(1, len(calls))
+
+    async def test_non_disabled_thinking_configuration_is_not_stripped(self):
+        adapter = OpenAICompatibleAdapter()
+        provider = _provider("openai_compatible", "arbitrary-thinking-model")
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="unknown parameter: thinking"),
+        ])
+
+        with (
+            patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client),
+            self.assertRaises(ProviderException),
+        ):
+            await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                extra_body={"thinking": {"type": "enabled"}},
+            )
+
+        self.assertEqual(1, len(calls))
+        self.assertEqual({"type": "enabled"}, calls[0]["thinking"])
+
+    async def test_strict_proxy_error_retries_without_thinking(self):
+        adapter = OpenAICompatibleAdapter()
+        provider = _provider("openai_compatible", "strict-proxy-model")
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="thinking: Extra inputs are not permitted"),
+            self._ok_response(),
+        ])
+
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            result = await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                extra_body=adapter.text_reasoning_extra(provider, disabled=True),
+            )
+
+        self.assertEqual("OK", result.text)
+        self.assertEqual(2, len(calls))
+        self.assertNotIn("thinking", calls[1])
+
+
+class OpenAIVisionCompatibilityTest(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _ok_response(text: str = "OK") -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": text}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            },
+        )
+
+    def _client_for_responses(self, responses: list[httpx.Response]):
+        calls: list[dict] = []
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                calls.append(kwargs["json"])
+                return responses[len(calls) - 1]
+
+        return _Client(), calls
+
+    async def test_vision_sends_real_image_url_content(self):
+        client, calls = self._client_for_responses([self._ok_response("seen")])
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            result = await OpenAICompatibleAdapter().chat(
+                _provider("openai_compatible", capabilities={"VISION"}),
+                system="sys",
+                user="describe",
+                images=["data:image/png;base64,AAAA"],
+            )
+
+        self.assertEqual("seen", result.text)
+        self.assertEqual(1, len(calls))
+        content = calls[0]["messages"][1]["content"]
+        self.assertEqual({"type": "text", "text": "describe"}, content[0])
+        self.assertEqual("image_url", content[1]["type"])
+        self.assertEqual("data:image/png;base64,AAAA", content[1]["image_url"]["url"])
+
+    async def test_text_only_provider_is_rejected_before_vision_call(self):
+        client, calls = self._client_for_responses([self._ok_response()])
+        with (
+            patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client),
+            self.assertRaises(ProviderException) as ctx,
+        ):
+            await OpenAICompatibleAdapter().chat(
+                _provider("openai_compatible", capabilities={"TEXT"}),
+                system="sys",
+                user="describe",
+                images=["data:image/png;base64,AAAA"],
+            )
+
+        self.assertEqual(ProviderErrorCode.PROVIDER_UNSUPPORTED_CAPABILITY, ctx.exception.code)
+        self.assertEqual(0, len(calls))
+
+    async def test_legacy_capabilities_none_keeps_vision_behavior(self):
+        client, calls = self._client_for_responses([self._ok_response()])
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            await OpenAICompatibleAdapter().chat(
+                _provider("openai_compatible"),
+                system="sys",
+                user="describe",
+                images=["https://images.example/frame.jpg"],
+            )
+        self.assertEqual(1, len(calls))
+
+    async def test_arbitrary_vision_400_does_not_retry(self):
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="image dimensions are too large"),
+        ])
+        with (
+            patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client),
+            self.assertRaises(ProviderException),
+        ):
+            await OpenAICompatibleAdapter().chat(
+                _provider("openai_compatible", capabilities={"VISION"}),
+                system="sys",
+                user="describe",
+                response_format={"type": "json_object"},
+                images=["data:image/png;base64,AAAA"],
+            )
+        self.assertEqual(1, len(calls))
+
+
+class OpenAISttCompatibilityTest(unittest.IsolatedAsyncioTestCase):
+    def _client_for_responses(self, responses: list[httpx.Response]):
+        calls: list[dict] = []
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                calls.append({"url": url, **kwargs})
+                return responses[len(calls) - 1]
+
+        return _Client(), calls
+
+    @staticmethod
+    def _provider():
+        return _provider("openai_compatible", "stt-model", capabilities={"STT"})
+
+    @staticmethod
+    def _ok_response(segments):
+        return httpx.Response(200, json={"duration": 3.0, "segments": segments})
+
+    async def test_verbose_json_is_one_call_and_normalizes_seconds(self):
+        client, calls = self._client_for_responses([
+            self._ok_response([{"text": " hello ", "start": 1.25, "end": 2.5}]),
+        ])
+        audio = AudioInput.from_bytes(b"wav-bytes", filename="clip.wav", mime_type="audio/wav")
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            result = await OpenAICompatibleAdapter().transcribe(
+                self._provider(), audio, source_lang="vi",
+            )
+        self.assertEqual(1, len(calls))
+        self.assertEqual("/audio/transcriptions", calls[0]["url"].rsplit("/v1", 1)[-1])
+        self.assertEqual("verbose_json", calls[0]["data"]["response_format"])
+        self.assertEqual("stt-model", calls[0]["data"]["model"])
+        self.assertEqual("vi", calls[0]["data"]["language"])
+        self.assertEqual([("hello", 1250, 2500)], [
+            (s.text, s.start_ms, s.end_ms) for s in result.segments
+        ])
+
+    async def test_millisecond_segments_are_preserved(self):
+        client, _ = self._client_for_responses([
+            self._ok_response([{"text": "hello", "start_ms": 1250, "end_ms": 2500}]),
+        ])
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            result = await OpenAICompatibleAdapter().transcribe(
+                self._provider(), AudioInput.from_bytes(b"wav"),
+            )
+        self.assertEqual((1250, 2500), (result.segments[0].start_ms, result.segments[0].end_ms))
+
+    async def test_unsupported_response_format_retries_once_with_same_multipart_fields(self):
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="unknown response_format field"),
+            self._ok_response([{"text": "hello", "start": 0, "end": 1}]),
+        ])
+        audio = AudioInput.from_bytes(b"same-audio", filename="clip.mp3", mime_type="audio/mpeg")
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            await OpenAICompatibleAdapter().transcribe(self._provider(), audio, source_lang="en")
+        self.assertEqual(2, len(calls))
+        self.assertIn("response_format", calls[0]["data"])
+        self.assertNotIn("response_format", calls[1]["data"])
+        self.assertEqual(calls[0]["data"]["model"], calls[1]["data"]["model"])
+        self.assertEqual(calls[0]["data"]["language"], calls[1]["data"]["language"])
+        self.assertEqual(calls[0]["files"]["file"][0], calls[1]["files"]["file"][0])
+        self.assertEqual(calls[0]["files"]["file"][1].read(), calls[1]["files"]["file"][1].read())
+
+    async def test_arbitrary_stt_400_does_not_retry(self):
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="audio is too long"),
+        ])
+        with (
+            patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client),
+            self.assertRaises(ProviderException),
+        ):
+            await OpenAICompatibleAdapter().transcribe(self._provider(), AudioInput.from_bytes(b"wav"))
+        self.assertEqual(1, len(calls))
+
+    async def test_missing_timestamps_is_structured_malformed_response(self):
+        client, _ = self._client_for_responses([
+            self._ok_response([{"text": "hello"}]),
+        ])
+        with (
+            patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client),
+            self.assertRaises(ProviderException) as ctx,
+        ):
+            await OpenAICompatibleAdapter().transcribe(self._provider(), AudioInput.from_bytes(b"wav"))
+        self.assertEqual(ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
+
+
+class OpenAITtsCompatibilityTest(unittest.IsolatedAsyncioTestCase):
+    def _client_for_responses(self, responses: list[httpx.Response]):
+        calls: list[dict] = []
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                calls.append({"url": url, **kwargs})
+                return responses[len(calls) - 1]
+
+        return _Client(), calls
+
+    @staticmethod
+    def _provider():
+        return _provider("openai_compatible", "tts-model", capabilities={"TTS"})
+
+    @staticmethod
+    def _audio_response(content=b"mp3"):
+        return httpx.Response(200, content=content, headers={"content-type": "audio/mpeg"})
+
+    async def test_speech_endpoint_is_one_call_and_preserves_voice(self):
+        client, calls = self._client_for_responses([self._audio_response()])
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            result = await OpenAICompatibleAdapter().synthesize(self._provider(), "hello", "nova")
+        self.assertEqual(b"mp3", result.audio_bytes)
+        self.assertEqual(1, len(calls))
+        self.assertTrue(calls[0]["url"].endswith("/audio/speech"))
+        self.assertEqual("tts-model", calls[0]["json"]["model"])
+        self.assertEqual("hello", calls[0]["json"]["input"])
+        self.assertEqual("nova", calls[0]["json"]["voice"])
+
+    async def test_unsupported_speech_response_format_retries_once_without_only_that_field(self):
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="response_format is not supported"),
+            self._audio_response(b"fallback-mp3"),
+        ])
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            result = await OpenAICompatibleAdapter().synthesize(self._provider(), "hello", "nova")
+        self.assertEqual(b"fallback-mp3", result.audio_bytes)
+        self.assertEqual(2, len(calls))
+        self.assertIn("response_format", calls[0]["json"])
+        self.assertNotIn("response_format", calls[1]["json"])
+        self.assertEqual("nova", calls[1]["json"]["voice"])
+        self.assertEqual("tts-model", calls[1]["json"]["model"])
+        self.assertEqual("hello", calls[1]["json"]["input"])
+
+    async def test_arbitrary_speech_400_does_not_retry(self):
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="voice is invalid"),
+        ])
+        with (
+            patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client),
+            self.assertRaises(ProviderException),
+        ):
+            await OpenAICompatibleAdapter().synthesize(self._provider(), "hello", "nova")
+        self.assertEqual(1, len(calls))
+
+    async def test_non_mp3_fallback_response_is_rejected(self):
+        client, _ = self._client_for_responses([
+            httpx.Response(400, text="response_format unsupported"),
+            httpx.Response(200, content=b"wav", headers={"content-type": "audio/wav"}),
+        ])
+        with (
+            patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client),
+            self.assertRaises(ProviderException) as ctx,
+        ):
+            await OpenAICompatibleAdapter().synthesize(self._provider(), "hello", "nova")
+        self.assertEqual(ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
 
 
 if __name__ == "__main__":

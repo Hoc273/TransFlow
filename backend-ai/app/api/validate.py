@@ -17,6 +17,8 @@ from app.schemas.validate import (
     SttProbeResponse,
     TtsProbeRequest,
     TtsProbeResponse,
+    VisionProbeRequest,
+    VisionProbeResponse,
 )
 from app.services import validate_gateway
 from app.services.provider_errors import ProviderException
@@ -49,6 +51,12 @@ async def stt_capability_probe(req: SttProbeRequest) -> SttProbeResponse:
 async def tts_capability_probe(req: TtsProbeRequest) -> TtsProbeResponse:
     """Phase 3 TTS — tiny synthesis probe."""
     return await validate_gateway.probe_tts_capability(req)
+
+
+@validate_router.post("/vision-probe", response_model=VisionProbeResponse)
+async def vision_capability_probe(req: VisionProbeRequest) -> VisionProbeResponse:
+    """Phase 3 VISION - tiny real image-input probe."""
+    return await validate_gateway.probe_vision_capability(req)
 
 
 @validate_router.post("/features", response_model=FeaturesProbeResponse)

@@ -17,12 +17,14 @@ from app.services.validate_gateway import (
     probe_auth,
     _probe_voice_discovery,
     _probe_model_discovery,
+    probe_vision_capability,
 )
 from app.schemas.validate import (
     ConnectionProbeRequest,
     AuthProbeRequest,
     OptionalFeatureResult,
     TtsProbeRequest,
+    VisionProbeRequest,
 )
 from app.schemas.contract import ProviderPayload
 from app.services.protocol.static_voices import default_probe_voice_for_protocol
@@ -228,7 +230,7 @@ class TestValidateRouter:
         from app.api.validate import validate_router
         assert validate_router.prefix == "/ai/validate"
 
-    def test_router_has_all_5_endpoints(self):
+    def test_router_has_all_6_endpoints(self):
         from app.api.validate import validate_router
         routes = [r.path for r in validate_router.routes]
         # FastAPI includes the router prefix in route paths
@@ -237,7 +239,78 @@ class TestValidateRouter:
         assert f"{prefix}/auth" in routes
         assert f"{prefix}/stt-probe" in routes
         assert f"{prefix}/tts-probe" in routes
+        assert f"{prefix}/vision-probe" in routes
         assert f"{prefix}/features" in routes
+
+
+class TestVisionProbe(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _provider(capabilities=None):
+        return ProviderPayload(
+            protocol="openai_compatible",
+            base_url="https://provider.test/v1",
+            api_key="sk-test",
+            model="opaque-model",
+            capabilities=capabilities,
+        )
+
+    async def test_successful_probe_sends_real_image_data_url(self):
+        import app.services.validate_gateway as vg
+
+        class _Adapter:
+            def __init__(self):
+                self.images = None
+
+            async def chat(self, provider, system, user, **kwargs):
+                self.images = kwargs.get("images")
+                return SimpleNamespace(text="OK")
+
+        adapter = _Adapter()
+        with patch("app.services.validate_gateway.require_adapter", return_value=adapter), \
+                patch.object(vg.settings, "mock_mode", False):
+            result = await probe_vision_capability(
+                VisionProbeRequest(provider=self._provider({"VISION"}))
+            )
+
+        assert result.ok is True
+        assert result.detected_text == "OK"
+        assert adapter.images and adapter.images[0].startswith("data:image/")
+
+    async def test_provider_rejecting_image_input_fails(self):
+        import app.services.validate_gateway as vg
+        from app.services.provider_errors import ProviderErrorCode, ProviderException
+
+        class _Adapter:
+            async def chat(self, provider, system, user, **kwargs):
+                raise ProviderException(
+                    ProviderErrorCode.PROVIDER_BAD_REQUEST,
+                    "image input is not supported",
+                    provider=provider.base_url,
+                    protocol=provider.protocol,
+                    capability="VISION",
+                )
+
+        with patch("app.services.validate_gateway.require_adapter", return_value=_Adapter()), \
+                patch.object(vg.settings, "mock_mode", False):
+            result = await probe_vision_capability(
+                VisionProbeRequest(provider=self._provider({"VISION"}))
+            )
+
+        assert result.ok is False
+        assert "image input" in result.message
+
+    async def test_declared_text_only_provider_fails_before_image_call(self):
+        import app.services.validate_gateway as vg
+        from app.services.protocol.openai_compatible import OpenAICompatibleAdapter
+
+        with patch("app.services.validate_gateway.require_adapter", return_value=OpenAICompatibleAdapter()), \
+                patch.object(vg.settings, "mock_mode", False):
+            result = await probe_vision_capability(
+                VisionProbeRequest(provider=self._provider({"TEXT"}))
+            )
+
+        assert result.ok is False
+        assert "capability VISION" in result.message
 
 # -- Phase D P2: zero-key TTS probe gate -------------------------------------
 
