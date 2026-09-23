@@ -76,6 +76,7 @@ export type PlatformUserItem = {
   isPlatformAdmin: boolean
   createdAt: string
   workspaceCount: number
+  avatarUrl?: string | null
 }
 
 export type PlatformUser = PlatformUserItem

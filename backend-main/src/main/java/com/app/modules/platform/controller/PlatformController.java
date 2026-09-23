@@ -244,6 +244,7 @@ public class PlatformController {
                     item.put("isPlatformAdmin", u.isPlatformAdmin());
                     item.put("createdAt", u.getCreatedAt() != null ? u.getCreatedAt().toString() : Instant.now().toString());
                     item.put("workspaceCount", workspaceMemberRepository.countByUserId(u.getId()));
+                    item.put("avatarUrl", u.getAvatarUrl());
                     return item;
                 })
                 .collect(Collectors.toList());
