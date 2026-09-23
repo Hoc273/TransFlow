@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   IconCoin,
   IconCrown,
@@ -469,7 +470,7 @@ function UserRow({
 }: {
   user: PlatformUserItem
   language: string
-  t: (k: string, fallback?: string) => string
+  t: TFunction<'platform', undefined>
   onGrantCredit: () => void
 }) {
   const name = u.fullName || u.email
