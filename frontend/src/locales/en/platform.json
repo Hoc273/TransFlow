@@ -93,10 +93,12 @@
     "viewDetails": "View details"
   },
   "ops": {
-    "translate": "Translate",
+    "translate": "Translation",
+    "stt": "Speech-to-Text (STT)",
+    "tts": "Voiceover (TTS)",
+    "summary": "Summarization",
     "qa": "QA",
-    "embed": "Embed",
-    "summary": "Summary"
+    "embed": "Embed"
   },
   "status": {
     "title": "System Status",

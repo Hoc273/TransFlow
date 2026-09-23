@@ -52,8 +52,8 @@ const WS_AVATAR_TONES = [
 
 const CHART_SERIES = [
   { op: 'TRANSLATE', color: '#714ffc', labelKey: 'ops.translate' },
-  { op: 'QA', color: '#38bdf8', labelKey: 'ops.qa' },
-  { op: 'EMBED', color: '#ec4899', labelKey: 'ops.embed' },
+  { op: 'STT', color: '#38bdf8', labelKey: 'ops.stt' },
+  { op: 'TTS', color: '#ec4899', labelKey: 'ops.tts' },
   { op: 'SUMMARY', color: '#10b981', labelKey: 'ops.summary' },
 ] as const
 
@@ -94,11 +94,11 @@ function barWidths(counts: ReturnType<typeof statusParts>) {
   }
 }
 
-type TokenTrendPoint = { label: string; TRANSLATE: number; QA: number; EMBED: number; SUMMARY: number }
+type TokenTrendPoint = { label: string; TRANSLATE: number; STT: number; TTS: number; SUMMARY: number }
 
 /**
  * Build a realistic time-series for the Token trend chart.
- * Uses real telemetry when available, or provides rich, multi-operation mock curves.
+ * Uses real telemetry when available, or returns an empty array to trigger empty state.
  */
 function buildTokenTimeseries(
   byOp: Record<string, { inputTokens: number; outputTokens: number }>,
@@ -108,77 +108,22 @@ function buildTokenTimeseries(
     (tok) => (tok?.inputTokens ?? 0) + (tok?.outputTokens ?? 0) > 0,
   )
 
-  if (hasRealData) {
-    const pointCount = Math.min(rangeDays, 7)
-    const labels = buildRangeLabels(rangeDays, pointCount)
-    const distribution = [0.12, 0.16, 0.14, 0.18, 0.15, 0.13, 0.12]
-    return labels.map((label, i) => {
-      const weight = distribution[i % distribution.length] ?? 0.14
-      const row: TokenTrendPoint = { label, TRANSLATE: 0, QA: 0, EMBED: 0, SUMMARY: 0 }
-      for (const { op } of CHART_SERIES) {
-        const tok = byOp[op]
-        const sum = tok ? (tok.inputTokens ?? 0) + (tok.outputTokens ?? 0) : 0
-        row[op] = Math.round(sum * weight)
-      }
-      return row
-    })
+  if (!hasRealData) {
+    return []
   }
 
-  // Realistic mock data across operation categories
-  if (rangeDays <= 1) {
-    const hours = ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00']
-    const mults = [0.28, 0.16, 0.12, 0.38, 0.85, 1.34, 1.45, 1.38, 1.26, 0.95, 0.65, 0.42]
-    return hours.map((label, i) => {
-      const m = mults[i] ?? 1.0
-      return {
-        label,
-        TRANSLATE: Math.round(m * 28500),
-        QA: Math.round(m * 11200),
-        EMBED: Math.round(m * 6800),
-        SUMMARY: Math.round(m * 4200),
-      }
-    })
-  }
-
-  if (rangeDays <= 7) {
-    const days = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN']
-    const mults = [1.22, 1.36, 1.48, 1.32, 1.15, 0.62, 0.54]
-    return days.map((label, i) => {
-      const m = mults[i] ?? 1.0
-      return {
-        label,
-        TRANSLATE: Math.round(m * 245000),
-        QA: Math.round(m * 98000),
-        EMBED: Math.round(m * 56000),
-        SUMMARY: Math.round(m * 34000),
-      }
-    })
-  }
-
-  if (rangeDays <= 30) {
-    const dates = ['01/09', '04/09', '07/09', '10/09', '13/09', '16/09', '19/09', '22/09', '25/09', '28/09']
-    return dates.map((label, i) => {
-      const growth = 1 + i * 0.045 + Math.sin(i * 1.2) * 0.12
-      return {
-        label,
-        TRANSLATE: Math.round(growth * 210000),
-        QA: Math.round(growth * 84000),
-        EMBED: Math.round(growth * 48000),
-        SUMMARY: Math.round(growth * 29000),
-      }
-    })
-  }
-
-  // 90 days
-  return Array.from({ length: 12 }, (_, i) => {
-    const growth = 1 + i * 0.07 + Math.cos(i * 0.8) * 0.1
-    return {
-      label: `Tuần ${i + 1}`,
-      TRANSLATE: Math.round(growth * 880000),
-      QA: Math.round(growth * 350000),
-      EMBED: Math.round(growth * 210000),
-      SUMMARY: Math.round(growth * 130000),
+  const pointCount = Math.min(rangeDays, 7)
+  const labels = buildRangeLabels(rangeDays, pointCount)
+  const distribution = [0.12, 0.16, 0.14, 0.18, 0.15, 0.13, 0.12]
+  return labels.map((label, i) => {
+    const weight = distribution[i % distribution.length] ?? 0.14
+    const row: TokenTrendPoint = { label, TRANSLATE: 0, STT: 0, TTS: 0, SUMMARY: 0 }
+    for (const { op } of CHART_SERIES) {
+      const tok = byOp[op] ?? (op === 'SUMMARY' ? byOp['SUMMARIZE_SCRIPT'] : undefined)
+      const sum = tok ? (tok.inputTokens ?? 0) + (tok.outputTokens ?? 0) : 0
+      row[op] = Math.round(sum * weight)
     }
+    return row
   })
 }
 

@@ -93,10 +93,12 @@
     "viewDetails": "Xem chi tiết"
   },
   "ops": {
-    "translate": "Dịch",
+    "translate": "Dịch thuật",
+    "stt": "Nhận diện giọng nói (STT)",
+    "tts": "Lồng tiếng AI (TTS)",
+    "summary": "Tóm tắt kịch bản",
     "qa": "QA",
-    "embed": "Embed",
-    "summary": "Tóm tắt"
+    "embed": "Embed"
   },
   "status": {
     "title": "Trạng thái hệ thống",
