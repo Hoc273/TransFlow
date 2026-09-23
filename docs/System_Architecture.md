@@ -366,6 +366,17 @@ mở §14). Số dư không đủ → mặc định thiết kế `BLOCK_UPFRONT`
   danh bạ user, danh sách Workspace và audit log.
 - Platform Admin không tự động có membership hoặc quyền mutation trong Workspace. Mọi thao tác nghiệp vụ
   vẫn phải qua RBAC, Project assignment và job ownership tương ứng.
+- **Kiểm tra quyền ở tầng service**: `PlatformAdminAccessService.requirePlatformAdmin` đọc cờ
+  `is_platform_admin` từ DB mỗi request (thu hồi quyền có hiệu lực ngay, không phụ thuộc claim JWT cũ).
+- **Audit**: `PlatformAdminAuditFilter` (sau `JwtAuthFilter`, chỉ `/api/platform/**`) ghi append-only vào
+  `platform_admin_audit_logs` sau khi request hoàn tất — status ≥ 400 → action `DENIED`; ghi ở transaction
+  `REQUIRES_NEW`, lỗi audit chỉ log warn không làm hỏng request. Filter là audit-only — không chặn request.
+- **Seed**: `PlatformAdminSeedRunner` chạy lúc startup khi `app.platform-admin.seed-on-startup=true`,
+  grant `is_platform_admin` cho các email trong `PLATFORM_ADMIN_EMAILS` (CSV) đã tồn tại — grant-only,
+  không tạo user, không revoke; mỗi grant ghi audit `SEED_GRANT`.
+- Health `/api/platform/status` probe song song 6 service: PostgreSQL (`SELECT 1`), Redis (`PING`),
+  RabbitMQ (mở connection), MinIO (`bucketExists`), backend-ai + media-worker (`GET /health` qua
+  `ServiceHealthProbe`); `overall = UP|DEGRADED`, message đã lọc chuỗi nhạy cảm.
 
 ---
 

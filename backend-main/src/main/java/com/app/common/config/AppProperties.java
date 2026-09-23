@@ -17,7 +17,8 @@ public record AppProperties(
         Storage storage,
         MediaWorker mediaWorker,
         Crypto crypto,
-        Ai ai
+        Ai ai,
+        PlatformAdmin platformAdmin
 ) {
     @org.springframework.boot.context.properties.bind.ConstructorBinding
     public AppProperties {
@@ -48,18 +49,25 @@ public record AppProperties(
         if (ai == null) {
             ai = new Ai(null, 5000, 30000, 3);
         }
+        if (platformAdmin == null) {
+            platformAdmin = new PlatformAdmin(false, null);
+        }
     }
 
     public AppProperties(Cors cors, Jwt jwt, String feOrigin, Oauth oauth, Credit credit, Storage storage) {
-        this(cors, jwt, feOrigin, oauth, credit, storage, null, null, null);
+        this(cors, jwt, feOrigin, oauth, credit, storage, null, null, null, null);
     }
 
     public AppProperties(Cors cors, Jwt jwt, String feOrigin, Oauth oauth, Credit credit, Storage storage, MediaWorker mediaWorker) {
-        this(cors, jwt, feOrigin, oauth, credit, storage, mediaWorker, null, null);
+        this(cors, jwt, feOrigin, oauth, credit, storage, mediaWorker, null, null, null);
     }
 
     public AppProperties(Cors cors, Jwt jwt, String feOrigin, Oauth oauth, Credit credit, Storage storage, Crypto crypto, Ai ai) {
-        this(cors, jwt, feOrigin, oauth, credit, storage, null, crypto, ai);
+        this(cors, jwt, feOrigin, oauth, credit, storage, null, crypto, ai, null);
+    }
+
+    public AppProperties(Cors cors, Jwt jwt, String feOrigin, Oauth oauth, Credit credit, Storage storage, MediaWorker mediaWorker, Crypto crypto, Ai ai) {
+        this(cors, jwt, feOrigin, oauth, credit, storage, mediaWorker, crypto, ai, null);
     }
 
     public record Cors(String allowedOrigin) {
@@ -175,6 +183,14 @@ public record AppProperties(
                         && clientSecret != null && !clientSecret.isBlank();
             }
         }
+    }
+
+    /**
+     * Super Admin bootstrap (SRS §5.8): {@code emails} is a comma-separated allowlist
+     * granted {@code users.is_platform_admin} on startup when {@code seedOnStartup}
+     * is true. Grant-only — never creates users, never revokes.
+     */
+    public record PlatformAdmin(boolean seedOnStartup, String emails) {
     }
 
     public record Crypto(String providerKeySecret) {

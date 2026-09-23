@@ -47,5 +47,16 @@ public interface AuthService {
 
     OtpMessageResponse resetPasswordWithOtp(ResetPasswordOtpRequest req);
 
+    /**
+     * Grant {@code users.is_platform_admin} by email — used by the platform seed runner
+     * (SRS §5.8). Idempotent: never creates users, never revokes.
+     */
+    PlatformAdminGrantOutcome grantPlatformAdminByEmail(String email);
+
     record WorkspaceProjectInit(UUID workspaceId, UUID projectId) {}
+
+    /** {@code userId} is null when {@code result} is USER_NOT_FOUND. */
+    record PlatformAdminGrantOutcome(UUID userId, Result result) {
+        public enum Result { GRANTED, ALREADY_ADMIN, USER_NOT_FOUND }
+    }
 }

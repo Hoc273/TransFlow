@@ -337,4 +337,27 @@ public class AuthServiceImpl implements AuthService {
 
         return new OtpMessageResponse("Mật khẩu đã được cập nhật thành công.");
     }
+
+    @Override
+    @Transactional
+    public PlatformAdminGrantOutcome grantPlatformAdminByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return new PlatformAdminGrantOutcome(null,
+                    PlatformAdminGrantOutcome.Result.USER_NOT_FOUND);
+        }
+        Optional<User> found = userRepository.findByEmailIgnoreCase(email.trim());
+        if (found.isEmpty()) {
+            return new PlatformAdminGrantOutcome(null,
+                    PlatformAdminGrantOutcome.Result.USER_NOT_FOUND);
+        }
+        User user = found.get();
+        if (user.isPlatformAdmin()) {
+            return new PlatformAdminGrantOutcome(user.getId(),
+                    PlatformAdminGrantOutcome.Result.ALREADY_ADMIN);
+        }
+        user.setPlatformAdmin(true);
+        userRepository.save(user);
+        return new PlatformAdminGrantOutcome(user.getId(),
+                PlatformAdminGrantOutcome.Result.GRANTED);
+    }
 }

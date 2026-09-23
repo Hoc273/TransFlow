@@ -138,3 +138,6 @@ app:
     forgot-password-otp:
       max-requests: ${FORGOT_OTP_RATE_LIMIT_MAX_REQUESTS:5}
       window-seconds: ${FORGOT_OTP_RATE_LIMIT_WINDOW_SECONDS:600}
+  platform-admin:
+    seed-on-startup: ${PLATFORM_ADMIN_SEED_ON_STARTUP:false}
+    emails: ${PLATFORM_ADMIN_EMAILS:}

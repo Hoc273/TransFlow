@@ -296,7 +296,8 @@ Mỗi nhánh = 1 PR nhỏ.
 
 - **Nhánh:** `feature/platform-admin-api`
 - **Ưu tiên:** thấp nhất, phạm vi lớn nhất.
-- **Phạm vi hiện hành:** Platform Admin đã được chốt trong MVP tại `AGENTS.md` §2.1 và `SRS.md` §5.8;
+- **Phạm vi hiện hành:** Platform Admin đã được chốt trong MVP tại `SRS.md` §5.8 và
+  `System_Architecture.md` §11.1 (file `AGENTS.md` không tồn tại trong repo — sửa tham chiếu);
   đây là cờ quyền cấp hệ thống, không phải role Workspace.
 - **Endpoint (chỉ user có `isPlatformAdmin = true`):**
   1. `GET /api/platform/overview?from=&to=&topLimit=` — 6 KPI: số User, Workspace, phân loại Job, token AI theo tác vụ,
@@ -314,12 +315,20 @@ Mỗi nhánh = 1 PR nhỏ.
 3. `PlatformController` + `PlatformService`, guard `@PreAuthorize`/kiểm tra ở tầng service (không chỉ ẩn UI).
 4. Truy vấn tổng hợp dùng `ai_usage_logs`, `media_jobs`; **bắt buộc phân trang và có index**, tránh full scan.
 5. Tham khảo `PlatformController` ở `../transflow` (chỉ lấy phần khớp).
-6. Giữ `SRS.md`, `System_Architecture.md`, `Database_Design.md`, `API_Contract.md`, `AGENTS.md` nhất quán.
+6. Giữ `SRS.md`, `System_Architecture.md`, `Database_Design.md`, `API_Contract.md`, `CLAUDE.md` nhất quán.
 
 **Cách kiểm tra:**
 - Test: user thường gọi → 403; admin gọi → 200; phân trang/`q` hoạt động; `failRate` tính đúng trên dữ liệu mẫu;
   `status` báo DOWN khi tắt thử Redis/RabbitMQ.
 - Thủ công: đăng nhập tài khoản admin, mở `/platform/*` trên FE với BE thật, các số liệu khớp truy vấn SQL tay.
+
+**Đã triển khai (nhánh `feature/backend-java/platform-admin-api` — xem chi tiết trong
+`BACKEND_MISSING_TASKS_MEMBER_A.md` mục 9):** module `com.app.modules.platform` đầy đủ (service/impl,
+entity `@Immutable` đọc chéo, audit filter sau `JwtAuthFilter`, seed runner `PLATFORM_ADMIN_EMAILS`),
+migration `V4__platform_admin_audit_logs.sql`, `/overview` jobs = `mediaJobs`+`batchJobs` (+ marker
+`{"available": false}` cho `textJobs`/`productionJobs`), `/status` probe 6 service song song.
+Đã cập nhật `API_Contract.md` §13.1, `Database_Design.md` §3.1/§13, `System_Architecture.md` §11.1,
+`CLAUDE.md` §3/§4.2/§4.8.
 
 ---
 
@@ -459,7 +468,7 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 | 6 | `feature/media-job-override-source-lang` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 7 | `feature/tts-voice-preview` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 8 | `feature/auth-forgot-password-otp` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
-| 9 | `feature/platform-admin-api` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 9 | `feature/backend-java/platform-admin-api` | [x] | [x] | [ ] | [x] |     [ ]     |
 | 10 | `feature/transformation-capabilities` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 | 11 | `feature/media-job-output-publish-package` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
 
