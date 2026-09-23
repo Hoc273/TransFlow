@@ -13,6 +13,7 @@ import enNotification from '@/locales/en/notification.json'
 import enGlossary from '@/locales/en/glossary.json'
 import enJob from '@/locales/en/job.json'
 import enAccount from '@/locales/en/account.json'
+import enPlatform from '@/locales/en/platform.json'
 import enMedia from '@/locales/en/media.json'
 import enPlatform from '@/locales/en/platform.json'
 import viCommon from '@/locales/vi/common.json'
@@ -26,6 +27,7 @@ import viNotification from '@/locales/vi/notification.json'
 import viGlossary from '@/locales/vi/glossary.json'
 import viJob from '@/locales/vi/job.json'
 import viAccount from '@/locales/vi/account.json'
+import viPlatform from '@/locales/vi/platform.json'
 import viMedia from '@/locales/vi/media.json'
 import viPlatform from '@/locales/vi/platform.json'
 
@@ -48,6 +50,7 @@ void i18n
         glossary: enGlossary,
         job: enJob,
         account: enAccount,
+        platform: enPlatform,
         media: enMedia,
         platform: enPlatform,
       },
@@ -63,6 +66,7 @@ void i18n
         glossary: viGlossary,
         job: viJob,
         account: viAccount,
+        platform: viPlatform,
         media: viMedia,
         platform: viPlatform,
       },
@@ -81,6 +85,7 @@ void i18n
       'glossary',
       'job',
       'account',
+      'platform',
       'media',
       'platform',
     ],

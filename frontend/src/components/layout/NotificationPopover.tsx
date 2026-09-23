@@ -85,9 +85,6 @@ export function NotificationPopover() {
                 <div className="text-xs font-medium text-[var(--color-text-secondary)]">
                   {t('dashboard:widget.notifications.emptyTitle')}
                 </div>
-                <div className="mt-0.5 text-[11px] text-[var(--color-text-tertiary)]">
-                  {t('dashboard:widget.notifications.emptyDesc')}
-                </div>
               </div>
             )}
 

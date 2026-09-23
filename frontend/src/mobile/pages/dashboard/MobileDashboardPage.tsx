@@ -116,19 +116,6 @@ export function MobileDashboardPage() {
             </div>
           </Link>
 
-          <Link
-            to={`/w/${workspaceId}/batches`}
-            aria-label="Lô dịch"
-            className="flex min-h-[56px] min-w-0 items-center gap-2.5 rounded-xl border border-neutral-200/80 bg-white p-3 text-neutral-800 shadow-xs transition-all active:scale-95 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
-              <IconLayersLinked size={18} />
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col text-left">
-              <span className="truncate text-xs font-semibold">Lô dịch</span>
-              <span className="truncate text-[10px] text-neutral-400">Tiến độ batch</span>
-            </div>
-          </Link>
 
           <Link
             to={`/w/${workspaceId}/media`}

@@ -1,15 +1,19 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
+  changePasswordApi,
+  deleteAvatarApi,
+  getMeApi,
   loginApi,
   registerApi,
   resetPasswordWithOtpApi,
   sendPasswordResetOtpApi,
+  updateProfileApi,
   verifyPasswordResetOtpApi,
 } from '@/api/auth'
 import { listWorkspacesApi } from '@/api/workspaces'
 import { getLastWorkspaceId, useAuthStore } from '@/store/authStore'
-import { queryKeys } from '@/lib/queryClient'
+import { queryKeys, STALE } from '@/lib/queryClient'
 import { ApiError } from '@/types/api'
 import type { LoginRequest, RegisterRequest } from '@/types/auth'
 
@@ -150,3 +154,63 @@ export function useResetPasswordWithOtp() {
     },
   })
 }
+
+export function useUpdateProfile() {
+  return useMutation({
+    mutationFn: (body: { fullName: string; avatarUrl?: string | null }) => updateProfileApi(body),
+    onSuccess: (updatedUser, variables) => {
+      const currentUser = useAuthStore.getState().user
+      if (currentUser) {
+        const effectiveAvatar =
+          updatedUser.avatarUrl !== undefined
+            ? updatedUser.avatarUrl
+            : variables.avatarUrl !== undefined
+              ? variables.avatarUrl
+              : currentUser.avatarUrl
+        useAuthStore.getState().setUser({
+          ...currentUser,
+          ...updatedUser,
+          avatarUrl: effectiveAvatar,
+        })
+      }
+    },
+  })
+}
+
+export function useDeleteAvatar() {
+  return useMutation({
+    mutationFn: deleteAvatarApi,
+    onSuccess: (updatedUser) => {
+      const currentUser = useAuthStore.getState().user
+      if (currentUser) {
+        useAuthStore.getState().setUser({
+          ...currentUser,
+          ...updatedUser,
+          avatarUrl: null,
+        })
+      }
+    },
+  })
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (body: { currentPassword?: string; newPassword: string }) => changePasswordApi(body),
+  })
+}
+
+/** Fetch fresh profile from DB and keep auth store in sync (09b / docs/34). */
+export function useMe(enabled = true) {
+  const setUser = useAuthStore((s) => s.setUser)
+  return useQuery({
+    queryKey: queryKeys.me,
+    queryFn: async () => {
+      const me = await getMeApi()
+      setUser(me)
+      return me
+    },
+    enabled,
+    staleTime: STALE.realtime,
+  })
+}
+

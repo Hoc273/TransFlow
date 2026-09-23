@@ -11,8 +11,8 @@ import type {
   TransformationPlanStatus,
   MediaSubtitleCue,
   WorkflowCheckpoint,
+  SegmentItem,
 } from '@/types/media'
-import type { SegmentItem } from '@/types/job'
 import type { QaIssue } from '@/types/qa'
 import { issueBlockingActions } from '@/lib/qa'
 import { ApiError } from '@/types/api'

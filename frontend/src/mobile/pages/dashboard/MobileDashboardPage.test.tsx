@@ -88,7 +88,6 @@ describe('MobileDashboardPage', () => {
 
     // Quick launch buttons
     expect(screen.getByRole('link', { name: /dự án/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /lô dịch/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /media/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /thuật ngữ/i })).toBeInTheDocument()
   })

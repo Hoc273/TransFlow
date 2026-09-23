@@ -35,6 +35,7 @@
   "logout": "Logout",
   "buildPhase": "Build phase",
   "buildPhaseValue": "Phase C/D/E · Jobs · QA · Editor",
+  "creditBalance": "Credit balance",
   "actions": {
     "cancel": "Cancel",
     "save": "Save",

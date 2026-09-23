@@ -2,7 +2,6 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthGuard } from '@/components/auth/AuthGuard'
 import { GuestGuard } from '@/components/auth/GuestGuard'
-import { PlatformGuard } from '@/components/platform/PlatformGuard'
 import { getLastWorkspaceId, useAuthStore } from '@/store/authStore'
 import { MobileWorkspaceAdapter } from '@/mobile/routes/MobileWorkspaceAdapter'
 
@@ -13,12 +12,13 @@ const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage').then(m => ({
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })))
 const GoogleAuthDonePage = lazy(() => import('@/pages/auth/GoogleAuthDonePage').then(m => ({ default: m.GoogleAuthDonePage })))
 const NoWorkspacePage = lazy(() => import('@/pages/workspace/NoWorkspacePage').then(m => ({ default: m.NoWorkspacePage })))
-const PlatformLayout = lazy(() => import('@/pages/platform/PlatformLayout').then(m => ({ default: m.PlatformLayout })))
-const PlatformOverviewPage = lazy(() => import('@/pages/platform/OverviewPage').then(m => ({ default: m.OverviewPage })))
-const PlatformStatusPage = lazy(() => import('@/pages/platform/StatusPage').then(m => ({ default: m.StatusPage })))
-const PlatformUsersPage = lazy(() => import('@/pages/platform/UsersPage').then(m => ({ default: m.UsersPage })))
-const PlatformWorkspacesPage = lazy(() => import('@/pages/platform/WorkspacesPage').then(m => ({ default: m.WorkspacesPage })))
-const PlatformAuditPage = lazy(() => import('@/pages/platform/AuditPage').then(m => ({ default: m.AuditPage })))
+const PlatformShell = lazy(() => import('@/components/platform/PlatformShell').then(m => ({ default: m.PlatformShell })))
+const PlatformAdminGuard = lazy(() => import('@/components/platform/PlatformAdminGuard').then(m => ({ default: m.PlatformAdminGuard })))
+const PlatformOverviewPage = lazy(() => import('@/pages/platform/PlatformOverviewPage').then(m => ({ default: m.PlatformOverviewPage })))
+const PlatformStatusPage = lazy(() => import('@/pages/platform/PlatformStatusPage').then(m => ({ default: m.PlatformStatusPage })))
+const PlatformUsersPage = lazy(() => import('@/pages/platform/PlatformUsersPage').then(m => ({ default: m.PlatformUsersPage })))
+const PlatformWorkspacesPage = lazy(() => import('@/pages/platform/PlatformWorkspacesPage').then(m => ({ default: m.PlatformWorkspacesPage })))
+const PlatformAuditPage = lazy(() => import('@/pages/platform/PlatformAuditPage').then(m => ({ default: m.PlatformAuditPage })))
 
 function DashboardRedirect() {
   const current = useAuthStore((s) => s.currentWorkspace?.id)
@@ -73,13 +73,15 @@ export function AppRouter() {
 
         <Route path="/dashboard" element={<DashboardRedirect />} />
 
-        {/* Platform Super Admin — top-level, no workspace scope (API_Contract §13.1) */}
-        <Route path="/platform" element={<PlatformGuard><PlatformLayout /></PlatformGuard>}>
-          <Route index element={<PlatformOverviewPage />} />
-          <Route path="status" element={<PlatformStatusPage />} />
-          <Route path="users" element={<PlatformUsersPage />} />
-          <Route path="workspaces" element={<PlatformWorkspacesPage />} />
-          <Route path="audit" element={<PlatformAuditPage />} />
+        {/* Platform Super Admin */}
+        <Route element={<PlatformAdminGuard />}>
+          <Route path="/platform" element={<PlatformShell />}>
+            <Route index element={<PlatformOverviewPage />} />
+            <Route path="status" element={<PlatformStatusPage />} />
+            <Route path="users" element={<PlatformUsersPage />} />
+            <Route path="workspaces" element={<PlatformWorkspacesPage />} />
+            <Route path="audit" element={<PlatformAuditPage />} />
+          </Route>
         </Route>
 
         {/* Legacy top-level redirects */}

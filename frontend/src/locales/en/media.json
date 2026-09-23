@@ -1,8 +1,6 @@
 {
   "title": "Media Studio",
-  "subtitle": "Video localization & dubbing · 6-stage pipeline",
   "newJob": "New Media Job",
-  "scopeBanner": "Media Localization scope: translate, dub, and subtitle videos you already own. Creative generation lives in Creative Studio (Preview).",
   "partialBanner": "This job finished with partial failures (some segments). Export may still work for successful segments.",
   "error": {
     "NO_AUDIO_STREAM": "This video has no audio track. Translation and summarization require audio."

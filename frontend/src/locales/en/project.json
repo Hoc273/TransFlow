@@ -1,7 +1,6 @@
 {
   "list": {
     "title": "Projects",
-    "subtitle": "Manage workspace translation and localization projects",
     "create": "New project",
     "emptyTitle": "No projects yet",
     "emptyDesc": "Create your first project to organize your videos.",

@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { NavLink, Navigate, useParams } from 'react-router-dom'
 import {
   IconAdjustments,
-  IconAlertOctagon,
   IconBuilding,
   IconChevronRight,
   IconCoins,
@@ -18,10 +17,9 @@ import { ProfileSection } from './sections/ProfileSection'
 import { SecuritySection } from './sections/SecuritySection'
 import { PreferencesSection } from './sections/PreferencesSection'
 import { WorkspacesSection } from './sections/WorkspacesSection'
-import { DangerSection } from './sections/DangerSection'
 import { CreditSection } from './sections/CreditSection'
 
-const SECTIONS = ['profile', 'security', 'preferences', 'credit', 'workspaces', 'danger'] as const
+const SECTIONS = ['profile', 'security', 'preferences', 'credit', 'workspaces'] as const
 export type AccountSection = (typeof SECTIONS)[number]
 
 function isSection(s: string | undefined): s is AccountSection {
@@ -54,8 +52,7 @@ export function AccountSettingsPage() {
           <IconChevronRight size={10} />
           <span>{t('account:nav.settings')}</span>
         </div>
-        <h1 className="page-title mb-1">{t('account:page.title')}</h1>
-        <p className="page-subtitle mb-6">{t('account:page.subtitle')}</p>
+        <h1 className="page-title mb-6">{t('account:page.title')}</h1>
 
         <div className="account-nav-section">
           <div className="account-nav-section-title">{t('account:nav.account')}</div>
@@ -87,16 +84,6 @@ export function AccountSettingsPage() {
             {t('account:nav.myWorkspaces')}
           </AccountNavLink>
         </div>
-
-        <div className="account-nav-section mt-8 pt-4 border-t border-[var(--color-border-subtle)]">
-          <AccountNavLink
-            to={`${base}/danger`}
-            icon={<IconAlertOctagon size={16} />}
-            className="text-[var(--color-text-tertiary)] hover:text-[var(--color-error)]"
-          >
-            {t('account:nav.danger')}
-          </AccountNavLink>
-        </div>
       </aside>
 
       <main className="account-main">
@@ -105,7 +92,6 @@ export function AccountSettingsPage() {
         {section === 'preferences' && <PreferencesSection />}
         {section === 'credit' && <CreditSection />}
         {section === 'workspaces' && <WorkspacesSection />}
-        {section === 'danger' && <DangerSection />}
       </main>
     </div>
   )

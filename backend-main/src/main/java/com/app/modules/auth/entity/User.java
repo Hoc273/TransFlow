@@ -34,4 +34,7 @@ public class User extends BaseEntity {
 
     @Column(name = "is_platform_admin", nullable = false)
     private boolean isPlatformAdmin = false;
+
+    @Column(name = "avatar_url")
+    private String avatarUrl;
 }
