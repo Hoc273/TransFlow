@@ -186,7 +186,59 @@ public interface AiUsageLogReadOnlyRepository extends JpaRepository<AiUsageLog, 
             order by coalesce(sum(u.creditUsed), 0) desc
             """)
     List<UsageByOperation> aggregateProjectsByOperation(@Param("workspaceId") UUID workspaceId,
-                                                       @Param("projectIds") Collection<UUID> projectIds,
-                                                       @Param("from") Instant from,
-                                                       @Param("to") Instant to);
+                                                        @Param("projectIds") Collection<UUID> projectIds,
+                                                        @Param("from") Instant from,
+                                                        @Param("to") Instant to);
+
+    // ── Platform-wide aggregates (SUPER ADMIN) ─────────────────────────────────
+
+    interface WorkspaceTokenUsage {
+        UUID getWorkspaceId();
+        Long getInputTokens();
+        Long getOutputTokens();
+        default Long getTotalTokens() {
+            long in = getInputTokens() != null ? getInputTokens() : 0L;
+            long out = getOutputTokens() != null ? getOutputTokens() : 0L;
+            return in + out;
+        }
+    }
+
+    @Query("""
+            select coalesce(sum(u.inputTokens), 0) as inputTokens,
+                   coalesce(sum(u.outputTokens), 0) as outputTokens,
+                   coalesce(sum(u.creditUsed), 0) as creditUsed,
+                   count(u) as operations
+            from AiUsageLog u
+            where u.createdAt >= :from
+              and u.createdAt <= :to
+            """)
+    UsageTotals aggregatePlatformTotals(@Param("from") Instant from,
+                                        @Param("to") Instant to);
+
+    @Query("""
+            select u.operation as operation,
+                   coalesce(sum(u.inputTokens), 0) as inputTokens,
+                   coalesce(sum(u.outputTokens), 0) as outputTokens,
+                   coalesce(sum(u.creditUsed), 0) as creditUsed,
+                   count(u) as operations
+            from AiUsageLog u
+            where u.createdAt >= :from
+              and u.createdAt <= :to
+            group by u.operation
+            order by coalesce(sum(u.creditUsed), 0) desc
+            """)
+    List<UsageByOperation> aggregatePlatformByOperation(@Param("from") Instant from,
+                                                        @Param("to") Instant to);
+
+    @Query("""
+            select u.workspaceId as workspaceId,
+                   coalesce(sum(u.inputTokens), 0) as inputTokens,
+                   coalesce(sum(u.outputTokens), 0) as outputTokens
+            from AiUsageLog u
+            where u.createdAt >= :from
+              and u.createdAt <= :to
+            group by u.workspaceId
+            """)
+    List<WorkspaceTokenUsage> aggregatePlatformByWorkspace(@Param("from") Instant from,
+                                                          @Param("to") Instant to);
 }

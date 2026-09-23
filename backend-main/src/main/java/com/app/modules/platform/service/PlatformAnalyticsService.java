@@ -1,6 +1,7 @@
 package com.app.modules.platform.service;
 
 import com.app.modules.platform.dto.PlatformOverviewResponse;
+import com.app.modules.platform.dto.PlatformRealtimeResponse;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -17,4 +18,10 @@ public interface PlatformAnalyticsService {
      * @param topLimit top-workspaces limit; null/<=0 defaults to 10, clamped to 50
      */
     PlatformOverviewResponse overview(UUID callerId, Instant from, Instant to, Integer topLimit);
+
+    /**
+     * Live activity snapshot: processing jobs now, completed since UTC midnight,
+     * tokens consumed in the last hour.
+     */
+    PlatformRealtimeResponse realtime(UUID callerId);
 }

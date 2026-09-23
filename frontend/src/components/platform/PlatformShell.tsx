@@ -100,8 +100,12 @@ export function PlatformShell() {
                 <div className="text-xs font-semibold">{name}</div>
                 <div className="text-[10px] text-[var(--color-text-tertiary)]">{t('topbar.role')}</div>
               </div>
-              <div className="platform-avatar" aria-hidden>
-                {initials}
+              <div className="platform-avatar overflow-hidden" aria-hidden>
+                {user?.avatarUrl ? (
+                  <img src={user.avatarUrl} alt={name} className="h-full w-full object-cover" />
+                ) : (
+                  initials
+                )}
               </div>
             </button>
             {menuOpen && (

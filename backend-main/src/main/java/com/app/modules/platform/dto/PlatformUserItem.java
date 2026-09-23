@@ -13,5 +13,6 @@ public record PlatformUserItem(
         String status,
         @JsonProperty("isPlatformAdmin") boolean platformAdmin,
         Instant createdAt,
-        long workspaceCount
+        long workspaceCount,
+        String avatarUrl
 ) {}

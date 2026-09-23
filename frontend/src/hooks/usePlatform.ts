@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   getPlatformAuditLogsApi,
   getPlatformOverviewApi,
+  getPlatformRealtimeApi,
   getPlatformStatusApi,
   getPlatformUsersApi,
   getPlatformWorkspacesApi,
@@ -91,5 +92,19 @@ export function usePlatformAuditLogs(query: PlatformAuditQuery = {}, enabled = t
     queryFn: () => getPlatformAuditLogsApi(query),
     enabled,
     staleTime: STALE.realtime,
+  })
+}
+
+/**
+ * SA-RT — polls GET /api/platform/realtime every 3 seconds.
+ * Returns processingJobs, completedToday, tokensLastHour — all sourced from DB.
+ */
+export function usePlatformRealtime(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.platformRealtime,
+    queryFn: () => getPlatformRealtimeApi(),
+    enabled,
+    staleTime: 0,
+    refetchInterval: 3000,
   })
 }

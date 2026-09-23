@@ -47,8 +47,14 @@ public class PlatformAdminAuditFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path == null
-                || !(path.equals(PLATFORM_PREFIX) || path.startsWith(PLATFORM_PREFIX + "/"));
+        if (path == null) {
+            return true;
+        }
+        if (!(path.equals(PLATFORM_PREFIX) || path.startsWith(PLATFORM_PREFIX + "/"))) {
+            return true;
+        }
+        // Realtime is polled every 3s — skip audit to avoid flooding the log table.
+        return path.equals(PLATFORM_PREFIX + "/realtime");
     }
 
     @Override

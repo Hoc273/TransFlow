@@ -5,6 +5,7 @@ import type {
   PlatformOverview,
   PlatformOverviewQuery,
   PlatformPage,
+  PlatformRealtime,
   PlatformStatus,
   PlatformUserItem,
   PlatformUsersQuery,
@@ -55,6 +56,11 @@ export function getPlatformOverviewApi(query: PlatformOverviewQuery = {}) {
 /** SA2 — 6 core service health. */
 export function getPlatformStatusApi() {
   return apiRequest<PlatformStatus>('/platform/status')
+}
+
+/** SA-RT — live system activity snapshot (processingJobs, completedToday, tokensLastHour). */
+export function getPlatformRealtimeApi() {
+  return apiRequest<PlatformRealtime>('/platform/realtime')
 }
 
 /** SA3 — user directory (metadata only). */

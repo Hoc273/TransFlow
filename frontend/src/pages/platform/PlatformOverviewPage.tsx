@@ -27,7 +27,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import { usePlatformOverview, usePlatformStatus } from '@/hooks/usePlatform'
+import { usePlatformOverview, usePlatformRealtime, usePlatformStatus } from '@/hooks/usePlatform'
 import { formatCompactNumber, formatNumber, initialsFromName } from '@/lib/format'
 import { useUiStore } from '@/store/uiStore'
 import { isUnavailableJob, type JobStatusCounts, type PlatformOverview } from '@/types/platform'
@@ -52,8 +52,8 @@ const WS_AVATAR_TONES = [
 
 const CHART_SERIES = [
   { op: 'TRANSLATE', color: '#714ffc', labelKey: 'ops.translate' },
-  { op: 'QA', color: '#38bdf8', labelKey: 'ops.qa' },
-  { op: 'EMBED', color: '#ec4899', labelKey: 'ops.embed' },
+  { op: 'STT', color: '#38bdf8', labelKey: 'ops.stt' },
+  { op: 'TTS', color: '#ec4899', labelKey: 'ops.tts' },
   { op: 'SUMMARY', color: '#10b981', labelKey: 'ops.summary' },
 ] as const
 
@@ -94,11 +94,11 @@ function barWidths(counts: ReturnType<typeof statusParts>) {
   }
 }
 
-type TokenTrendPoint = { label: string; TRANSLATE: number; QA: number; EMBED: number; SUMMARY: number }
+type TokenTrendPoint = { label: string; TRANSLATE: number; STT: number; TTS: number; SUMMARY: number }
 
 /**
  * Build a realistic time-series for the Token trend chart.
- * Uses real telemetry when available, or provides rich, multi-operation mock curves.
+ * Uses real telemetry when available, or returns an empty array to trigger empty state.
  */
 function buildTokenTimeseries(
   byOp: Record<string, { inputTokens: number; outputTokens: number }>,
@@ -108,77 +108,22 @@ function buildTokenTimeseries(
     (tok) => (tok?.inputTokens ?? 0) + (tok?.outputTokens ?? 0) > 0,
   )
 
-  if (hasRealData) {
-    const pointCount = Math.min(rangeDays, 7)
-    const labels = buildRangeLabels(rangeDays, pointCount)
-    const distribution = [0.12, 0.16, 0.14, 0.18, 0.15, 0.13, 0.12]
-    return labels.map((label, i) => {
-      const weight = distribution[i % distribution.length] ?? 0.14
-      const row: TokenTrendPoint = { label, TRANSLATE: 0, QA: 0, EMBED: 0, SUMMARY: 0 }
-      for (const { op } of CHART_SERIES) {
-        const tok = byOp[op]
-        const sum = tok ? (tok.inputTokens ?? 0) + (tok.outputTokens ?? 0) : 0
-        row[op] = Math.round(sum * weight)
-      }
-      return row
-    })
+  if (!hasRealData) {
+    return []
   }
 
-  // Realistic mock data across operation categories
-  if (rangeDays <= 1) {
-    const hours = ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00']
-    const mults = [0.28, 0.16, 0.12, 0.38, 0.85, 1.34, 1.45, 1.38, 1.26, 0.95, 0.65, 0.42]
-    return hours.map((label, i) => {
-      const m = mults[i] ?? 1.0
-      return {
-        label,
-        TRANSLATE: Math.round(m * 28500),
-        QA: Math.round(m * 11200),
-        EMBED: Math.round(m * 6800),
-        SUMMARY: Math.round(m * 4200),
-      }
-    })
-  }
-
-  if (rangeDays <= 7) {
-    const days = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN']
-    const mults = [1.22, 1.36, 1.48, 1.32, 1.15, 0.62, 0.54]
-    return days.map((label, i) => {
-      const m = mults[i] ?? 1.0
-      return {
-        label,
-        TRANSLATE: Math.round(m * 245000),
-        QA: Math.round(m * 98000),
-        EMBED: Math.round(m * 56000),
-        SUMMARY: Math.round(m * 34000),
-      }
-    })
-  }
-
-  if (rangeDays <= 30) {
-    const dates = ['01/09', '04/09', '07/09', '10/09', '13/09', '16/09', '19/09', '22/09', '25/09', '28/09']
-    return dates.map((label, i) => {
-      const growth = 1 + i * 0.045 + Math.sin(i * 1.2) * 0.12
-      return {
-        label,
-        TRANSLATE: Math.round(growth * 210000),
-        QA: Math.round(growth * 84000),
-        EMBED: Math.round(growth * 48000),
-        SUMMARY: Math.round(growth * 29000),
-      }
-    })
-  }
-
-  // 90 days
-  return Array.from({ length: 12 }, (_, i) => {
-    const growth = 1 + i * 0.07 + Math.cos(i * 0.8) * 0.1
-    return {
-      label: `Tuần ${i + 1}`,
-      TRANSLATE: Math.round(growth * 880000),
-      QA: Math.round(growth * 350000),
-      EMBED: Math.round(growth * 210000),
-      SUMMARY: Math.round(growth * 130000),
+  const pointCount = Math.min(rangeDays, 7)
+  const labels = buildRangeLabels(rangeDays, pointCount)
+  const distribution = [0.12, 0.16, 0.14, 0.18, 0.15, 0.13, 0.12]
+  return labels.map((label, i) => {
+    const weight = distribution[i % distribution.length] ?? 0.14
+    const row: TokenTrendPoint = { label, TRANSLATE: 0, STT: 0, TTS: 0, SUMMARY: 0 }
+    for (const { op } of CHART_SERIES) {
+      const tok = byOp[op] ?? (op === 'SUMMARY' ? byOp['SUMMARIZE_SCRIPT'] : undefined)
+      const sum = tok ? (tok.inputTokens ?? 0) + (tok.outputTokens ?? 0) : 0
+      row[op] = Math.round(sum * weight)
     }
+    return row
   })
 }
 
@@ -952,46 +897,35 @@ function JobTypeRow({
 }
 
 /**
- * Real-time Active Users Component.
- * Live stream of concurrent active sessions with 3s dynamic polling simulation.
+ * Real-time System Activity Card.
+ * Polls GET /api/platform/realtime every 3 s and plots processingJobs over time.
+ * Replaces the previous mock-random "concurrent users" chart.
  */
 function RealtimeActiveUsersCard({ language }: { language: string }) {
-  const [activeData, setActiveData] = useState<Array<{ time: string; users: number; throughput: number }>>(() => {
-    const now = Date.now()
-    const pts = []
-    for (let i = 18; i >= 0; i--) {
-      const d = new Date(now - i * 3000)
-      const base = 254 + Math.floor(Math.sin(i * 0.45) * 26) + Math.floor(Math.random() * 8)
-      pts.push({
-        time: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        users: base,
-        throughput: Math.round(base * 4.2),
-      })
-    }
-    return pts
-  })
+  const { data: snap } = usePlatformRealtime()
+
+  // Rolling 19-point time-series of processingJobs — one point per 3 s poll
+  const [chartData, setChartData] = useState<Array<{ time: string; jobs: number }>>([])
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveData((prev) => {
-        const last = prev[prev.length - 1]?.users ?? 250
-        const delta = Math.floor(Math.random() * 11) - 5
-        const nextUsers = Math.max(185, Math.min(365, last + delta))
-        const now = new Date()
-        const nextPoint = {
-          time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          users: nextUsers,
-          throughput: Math.round(nextUsers * 4.2 + (Math.random() * 16 - 8)),
-        }
-        return [...prev.slice(1), nextPoint]
-      })
-    }, 3000)
-    return () => clearInterval(interval)
-  }, [])
+    if (snap == null) return
+    const point = {
+      time: new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+      jobs: snap.processingJobs ?? 0,
+    }
+    setChartData((prev) => {
+      const next = [...prev, point]
+      return next.length > 19 ? next.slice(next.length - 19) : next
+    })
+  }, [snap])
 
-  const currentUsers = activeData[activeData.length - 1]?.users ?? 250
-  const peakUsers = useMemo(() => Math.max(...activeData.map((d) => d.users), 285), [activeData])
-  const currentThroughput = activeData[activeData.length - 1]?.throughput ?? 1080
+  const processingJobs  = snap?.processingJobs  ?? 0
+  const completedToday  = snap?.completedToday   ?? 0
+  const tokensLastHour  = snap?.tokensLastHour   ?? 0
 
   return (
     <div className="platform-card platform-card-soft p-6">
@@ -1004,7 +938,7 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
-                  {language === 'vi' ? 'Lượng người dùng truy cập theo thời gian thực' : 'Real-time Active Users'}
+                  {language === 'vi' ? 'Hoạt động hệ thống theo thời gian thực' : 'Real-time System Activity'}
                 </h3>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">
                   <span className="relative flex h-2 w-2">
@@ -1016,8 +950,8 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
               </div>
               <p className="text-[11px] text-[var(--color-text-tertiary)] mt-0.5">
                 {language === 'vi'
-                  ? 'Theo dõi phiên truy cập đồng thời (Concurrent Sessions) · Tự động làm mới mỗi 3 giây'
-                  : 'Concurrent user sessions across all workspaces · Auto-refreshes every 3 seconds'}
+                  ? 'Theo dõi job đang xử lý · Tự động làm mới mỗi 3 giây'
+                  : 'Active processing jobs across all workspaces · Auto-refreshes every 3 seconds'}
               </p>
             </div>
           </div>
@@ -1026,68 +960,84 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
         <div className="flex items-center gap-5 self-start sm:self-center">
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-              {language === 'vi' ? 'Đang trực tuyến' : 'Online Now'}
+              {language === 'vi' ? 'Đang xử lý' : 'Processing'}
             </div>
             <div className="text-xl font-bold font-mono text-emerald-400 tabular-nums">
-              {currentUsers} <span className="text-xs font-normal text-[var(--color-text-secondary)]">users</span>
+              {processingJobs}{' '}
+              <span className="text-xs font-normal text-[var(--color-text-secondary)]">
+                {language === 'vi' ? 'job' : 'jobs'}
+              </span>
             </div>
           </div>
           <div className="h-8 w-px bg-[var(--color-border)]" />
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-              {language === 'vi' ? 'Đỉnh điểm' : 'Peak Today'}
+              {language === 'vi' ? 'Hoàn thành hôm nay' : 'Done Today'}
             </div>
             <div className="text-xl font-bold font-mono text-[var(--color-text-primary)] tabular-nums">
-              {peakUsers} <span className="text-xs font-normal text-[var(--color-text-secondary)]">users</span>
+              {completedToday}{' '}
+              <span className="text-xs font-normal text-[var(--color-text-secondary)]">
+                {language === 'vi' ? 'job' : 'jobs'}
+              </span>
             </div>
           </div>
           <div className="h-8 w-px bg-[var(--color-border)]" />
           <div className="text-right hidden sm:block">
             <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-              {language === 'vi' ? 'Lưu lượng xử lý' : 'Throughput'}
+              {language === 'vi' ? 'Token/giờ qua' : 'Tokens/last hr'}
             </div>
             <div className="text-xl font-bold font-mono text-[var(--color-accent)] tabular-nums">
-              {currentThroughput} <span className="text-xs font-normal text-[var(--color-text-secondary)]">req/s</span>
+              {formatCompactNumber(tokensLastHour, language)}
             </div>
           </div>
         </div>
       </div>
 
       <div className="h-60 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={activeData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-            <defs>
-              <linearGradient id="realtimeActiveUsersGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
-                <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} opacity={0.6} />
-            <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} axisLine={false} tickLine={false} />
-            <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} axisLine={false} tickLine={false} width={45} />
-            <Tooltip
-              contentStyle={{
-                background: 'var(--color-bg-surface-2)',
-                border: '1px solid var(--color-border)',
-                borderRadius: '0.5rem',
-                boxShadow: '0 12px 32px -12px rgba(0,0,0,0.5)',
-                fontSize: '12px',
-              }}
-              labelStyle={{ color: 'var(--color-text-primary)', fontWeight: 600 }}
-              formatter={(val) => [`${val ?? 0} active users`, language === 'vi' ? 'Đang truy cập' : 'Active users']}
-            />
-            <Area
-              type="monotone"
-              dataKey="users"
-              stroke="#10b981"
-              strokeWidth={2.5}
-              fill="url(#realtimeActiveUsersGrad)"
-              isAnimationActive={false}
-              dot={false}
-              activeDot={{ r: 5, fill: '#10b981', stroke: '#ffffff', strokeWidth: 2 }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        {chartData.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-xs text-[var(--color-text-tertiary)]">
+            <IconClock size={14} className="mr-1.5 opacity-60" />
+            {language === 'vi' ? 'Đang thu thập dữ liệu…' : 'Collecting data…'}
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+              <defs>
+                <linearGradient id="realtimeJobsGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} opacity={0.6} />
+              <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, 'auto']} allowDecimals={false} tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} axisLine={false} tickLine={false} width={45} />
+              <Tooltip
+                contentStyle={{
+                  background: 'var(--color-bg-surface-2)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '0.5rem',
+                  boxShadow: '0 12px 32px -12px rgba(0,0,0,0.5)',
+                  fontSize: '12px',
+                }}
+                labelStyle={{ color: 'var(--color-text-primary)', fontWeight: 600 }}
+                formatter={(val) => [
+                  `${val ?? 0} ${language === 'vi' ? 'job' : 'jobs'}`,
+                  language === 'vi' ? 'Đang xử lý' : 'Processing jobs',
+                ]}
+              />
+              <Area
+                type="monotone"
+                dataKey="jobs"
+                stroke="#10b981"
+                strokeWidth={2.5}
+                fill="url(#realtimeJobsGrad)"
+                isAnimationActive={false}
+                dot={false}
+                activeDot={{ r: 5, fill: '#10b981', stroke: '#ffffff', strokeWidth: 2 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   )

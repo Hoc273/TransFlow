@@ -37,6 +37,9 @@ public class PlatformUserView {
     @Column(name = "is_platform_admin", nullable = false, updatable = false)
     private boolean platformAdmin;
 
+    @Column(name = "avatar_url", updatable = false)
+    private String avatarUrl;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 }

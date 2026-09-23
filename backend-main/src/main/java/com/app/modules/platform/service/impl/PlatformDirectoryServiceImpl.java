@@ -48,7 +48,8 @@ public class PlatformDirectoryServiceImpl implements PlatformDirectoryService {
                 r.getStatus(),
                 Boolean.TRUE.equals(r.getPlatformAdmin()),
                 r.getCreatedAt(),
-                r.getWorkspaceCount() != null ? r.getWorkspaceCount() : 0L)));
+                r.getWorkspaceCount() != null ? r.getWorkspaceCount() : 0L,
+                r.getAvatarUrl())));
     }
 
     @Override

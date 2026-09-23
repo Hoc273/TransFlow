@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { IconSearch, IconUser, IconX } from '@tabler/icons-react'
+import { IconArrowRight, IconSearch, IconUser, IconX } from '@tabler/icons-react'
 import {
   SortableTh,
   avatarGradient,
@@ -363,6 +364,17 @@ export function PlatformWorkspacesPage() {
             <p className="rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 text-[11px] text-[var(--color-text-tertiary)]">
               {t('workspaces.detail.privacy')}
             </p>
+
+            <div className="flex justify-end pt-2">
+              <Link
+                to={`/w/${selected.id}`}
+                className="btn-primary text-xs py-2 px-3.5 inline-flex items-center gap-1.5"
+                onClick={() => setSelected(null)}
+              >
+                <span>{t('workspaces.goToWorkspace', { defaultValue: 'Vào workspace này' })}</span>
+                <IconArrowRight size={14} />
+              </Link>
+            </div>
           </div>
         )}
       </Modal>

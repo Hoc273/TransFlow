@@ -132,7 +132,7 @@ export function MobileWorkspaceAdapter() {
             }
           />
           <Route path="settings/members" element={<MembersPage />} />
-          <Route path="settings/provider" element={<Navigate to="../account/security" replace />} />
+          <Route path="settings/provider" element={<Navigate to="../account/api-keys" replace />} />
           <Route path="settings/media-presets" element={<Navigate to="../media/presets" replace />} />
           <Route path="account/:section" element={<AccountSettingsPage />} />
           <Route path="account" element={<Navigate to="profile" replace />} />

@@ -16,7 +16,8 @@
     "sessions": "Phiên đang hoạt động",
     "dangerZone": "Vùng nguy hiểm",
     "danger": "Xóa tài khoản",
-    "phase2Hint": "Phase 2 — backend chưa có preference API ở MVP"
+    "phase2Hint": "Phase 2 — backend chưa có preference API ở MVP",
+    "apiKeys": "API key (BYOK)"
   },
   "common": {
     "save": "Lưu thay đổi",
@@ -188,5 +189,18 @@
     "wrongText": "Vui lòng gõ chính xác DELETE để xác nhận",
     "pending": "API xóa tài khoản chưa có. Không có dữ liệu nào bị xóa.",
     "gdprNote": "Nếu muốn xuất dữ liệu cá nhân trước khi xóa, liên hệ support@transflow.io. Xuất JSON trong 30 ngày (khi API export ship)."
+  },
+  "apiKeys": {
+    "title": "API key cá nhân (BYOK)",
+    "subtitle": "Dùng API key của nhà cung cấp AI riêng — job của bạn sẽ dùng key này thay vì credit nền tảng.",
+    "onboardingTitle": "Cách API key cá nhân hoạt động",
+    "onboardingDesc": "Key thuộc về tài khoản của bạn, không thuộc workspace. Thêm key và chọn mọi capability mà endpoint phục vụ (TEXT cho dịch/QA, STT cho chuyển giọng nói thành văn bản, TTS cho lồng tiếng, VISION cho nhận dạng hình ảnh/frame). Key được mã hóa phía server — chỉ trả về masked hint.",
+    "add": "Thêm API key",
+    "addTitle": "API key mới",
+    "editTitle": "Sửa API key",
+    "emptyTitle": "Chưa có key {{capability}}",
+    "emptyDesc": "Thêm key cá nhân để dùng provider riêng cho capability này.",
+    "modelRequired": "Base URL và model là bắt buộc",
+    "capabilitiesHelp": "Chọn mọi capability mà endpoint này phục vụ. Một gateway OpenAI-compatible có thể vừa TEXT, VISION, STT và TTS."
   }
 }

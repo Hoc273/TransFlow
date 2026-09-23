@@ -28,10 +28,10 @@ export type PlatformOverview = {
   users: CountInRange
   workspaces: CountInRange
   jobs: {
-    textJobs: JobStatusCounts
+    mediaJobs: JobStatusCounts
     batchJobs: JobStatusCounts
-    mediaJobs: JobStatusCounts | UnavailableJobType
-    productionJobs: JobStatusCounts | UnavailableJobType
+    textJobs: UnavailableJobType
+    productionJobs: UnavailableJobType
   }
   tokens: {
     inputTokens: number
@@ -76,6 +76,7 @@ export type PlatformUserItem = {
   isPlatformAdmin: boolean
   createdAt: string
   workspaceCount: number
+  avatarUrl?: string | null
 }
 
 export type PlatformUser = PlatformUserItem
@@ -147,4 +148,16 @@ export function isUnavailableJob(
   value: JobStatusCounts | UnavailableJobType | undefined,
 ): value is UnavailableJobType {
   return !!value && 'available' in value && value.available === false
+}
+
+/** SA-RT — realtime system activity snapshot polled every 3s. */
+export type PlatformRealtime = {
+  /** Number of MediaJobs currently in PROCESSING status right now. */
+  processingJobs: number
+  /** Number of MediaJobs completed since midnight UTC today. */
+  completedToday: number
+  /** Sum of input + output tokens consumed in the last hour. */
+  tokensLastHour: number
+  /** ISO-8601 timestamp of when the snapshot was taken on the server. */
+  checkedAt: string
 }
