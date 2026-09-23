@@ -37,7 +37,7 @@ export type PlatformOverview = {
     inputTokens: number
     outputTokens: number
     totalTokens: number
-    byOperation: Record<string, OperationTokens | number>
+    byOperation: Record<string, OperationTokens>
   }
   failRate: {
     rate: number | null
