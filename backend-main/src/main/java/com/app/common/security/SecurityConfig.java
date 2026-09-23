@@ -40,7 +40,8 @@ public class SecurityConfig {
             "/actuator/health/**",
             "/v3/api-docs/**",
             "/swagger-ui/**",
-            "/swagger-ui.html"
+            "/swagger-ui.html",
+            "/api/guides/**"
     };
 
     private static final String[] HMAC_AUTHENTICATED_PATHS = {

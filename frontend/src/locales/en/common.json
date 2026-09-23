@@ -31,6 +31,7 @@
     "shortcutHint": "ESC to close"
   },
   "profile": "Profile",
+  "guide": "Guide",
   "settings": "Settings",
   "logout": "Logout",
   "buildPhase": "Build phase",

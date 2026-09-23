@@ -117,6 +117,13 @@ public enum ErrorCode {
     // 33xx - qa (Member B)
     QA_BLOCKED(3300, "Blocking QA issues must be resolved or overridden first", HttpStatus.FORBIDDEN),
     OVERRIDE_NOT_ALLOWED(3301, "This issue type can never be overridden", HttpStatus.FORBIDDEN),
+
+    // 34xx - guide
+    GUIDE_CATEGORY_NOT_FOUND(3400, "Guide category not found", HttpStatus.NOT_FOUND),
+    GUIDE_CATEGORY_HAS_ARTICLES(3401, "Cannot delete category with existing articles", HttpStatus.BAD_REQUEST),
+    GUIDE_SLUG_ALREADY_EXISTS(3402, "Guide slug already exists", HttpStatus.CONFLICT),
+    GUIDE_ARTICLE_NOT_FOUND(3403, "Guide article not found", HttpStatus.NOT_FOUND),
+    INVALID_SLUG_FORMAT(3404, "Invalid slug format. Must contain only lowercase letters, numbers, and hyphens", HttpStatus.BAD_REQUEST),
     ;
 
     private final Integer code;

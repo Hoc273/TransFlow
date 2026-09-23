@@ -7,6 +7,7 @@ import { MobileWorkspaceAdapter } from '@/mobile/routes/MobileWorkspaceAdapter'
 
 const LandingPage = lazy(() => import('@/pages/landing/LandingPage').then(m => ({ default: m.LandingPage })))
 const LegacyLandingPage = lazy(() => import('@/pages/landing/LegacyLandingPage').then(m => ({ default: m.LegacyLandingPage })))
+const GuidePage = lazy(() => import('@/pages/guide/GuidePage').then(m => ({ default: m.GuidePage })))
 const LoginPage = lazy(() => import('@/pages/auth/LoginPage').then(m => ({ default: m.LoginPage })))
 const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage').then(m => ({ default: m.RegisterPage })))
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })))
@@ -19,6 +20,7 @@ const PlatformStatusPage = lazy(() => import('@/pages/platform/PlatformStatusPag
 const PlatformUsersPage = lazy(() => import('@/pages/platform/PlatformUsersPage').then(m => ({ default: m.PlatformUsersPage })))
 const PlatformWorkspacesPage = lazy(() => import('@/pages/platform/PlatformWorkspacesPage').then(m => ({ default: m.PlatformWorkspacesPage })))
 const PlatformAuditPage = lazy(() => import('@/pages/platform/PlatformAuditPage').then(m => ({ default: m.PlatformAuditPage })))
+const GuideAdminPage = lazy(() => import('@/pages/platform/GuideAdminPage').then(m => ({ default: m.GuideAdminPage })))
 
 function DashboardRedirect() {
   const current = useAuthStore((s) => s.currentWorkspace?.id)
@@ -46,6 +48,8 @@ export function AppRouter() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/qwencloud" element={<Navigate to="/" replace />} />
         <Route path="/legacy-landing" element={<LegacyLandingPage />} />
+        <Route path="/guide" element={<GuidePage />} />
+        <Route path="/guide/:slug" element={<GuidePage />} />
 
         <Route element={<GuestGuard />}>
           <Route path="/login" element={<LoginPage />} />
@@ -81,6 +85,7 @@ export function AppRouter() {
             <Route path="users" element={<PlatformUsersPage />} />
             <Route path="workspaces" element={<PlatformWorkspacesPage />} />
             <Route path="audit" element={<PlatformAuditPage />} />
+            <Route path="guides" element={<GuideAdminPage />} />
           </Route>
         </Route>
 

@@ -12,6 +12,7 @@ import {
   IconShieldCheck,
   IconUsers,
   IconArrowLeft,
+  IconBook2,
 } from '@tabler/icons-react'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
@@ -27,6 +28,7 @@ const NAV = [
   { to: '/platform/users', end: false, icon: IconUsers, key: 'users' as const },
   { to: '/platform/workspaces', end: false, icon: IconBuilding, key: 'workspaces' as const },
   { to: '/platform/audit', end: false, icon: IconClipboardList, key: 'audit' as const },
+  { to: '/platform/guides', end: false, icon: IconBook2, key: 'guides' as const },
 ]
 
 /** Separate shell for Super Admin — no workspace switcher (09b P.0 / docs/34 §5.3).

@@ -81,6 +81,12 @@ export function LandingNavbar() {
           >
             {t('nav.pricing')}
           </a>
+          <Link
+            to="/guide"
+            className="text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white transition-colors"
+          >
+            {t('nav.guide')}
+          </Link>
         </nav>
 
         {/* Right Actions: Switchers & Auth */}
@@ -149,6 +155,13 @@ export function LandingNavbar() {
           >
             {t('nav.pricing')}
           </a>
+          <Link
+            to="/guide"
+            onClick={() => setMobileOpen(false)}
+            className="text-sm font-medium text-neutral-800 dark:text-neutral-200 py-1"
+          >
+            {t('nav.guide')}
+          </Link>
 
           <div className="pt-3 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
