@@ -24,6 +24,18 @@ interface GlobalSearchModalProps {
   open: boolean
   onClose: () => void
   workspaceId: string
+  /**
+   * 'overlay' (default) = fixed centered modal for mobile / global hotkey.
+   * 'anchor' = borderless dropdown anchored under the header search box (desktop).
+   */
+  layout?: 'overlay' | 'anchor'
+  /** Controlled query (used with the header search input). Falls back to internal state. */
+  query?: string
+  onQueryChange?: (q: string) => void
+  /** Hide the modal's own search input row (the header input is used instead). */
+  hideSearchInput?: boolean
+  /** Lets an external input forward ArrowDown/Up/Enter key handling to the palette. */
+  registerKeyHandler?: (handler: (e: KeyboardEvent<HTMLInputElement>) => void) => void
 }
 
 interface SearchItem {
@@ -39,12 +51,24 @@ interface SearchItem {
   path: string
 }
 
-export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchModalProps) {
+export function GlobalSearchModal({
+  open,
+  onClose,
+  workspaceId,
+  layout = 'overlay',
+  query: controlledQuery,
+  onQueryChange,
+  hideSearchInput = false,
+  registerKeyHandler,
+}: GlobalSearchModalProps) {
   const { t } = useTranslation(['common', 'project', 'batch', 'glossary'])
   const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const [query, setQuery] = useState('')
+  const [innerQuery, setInnerQuery] = useState('')
+  // Controlled by the header search input when provided, otherwise internal state.
+  const query = controlledQuery ?? innerQuery
+  const setQuery = onQueryChange ?? setInnerQuery
   const [activeCategory, setActiveCategory] = useState<string>('all')
   const [selectedIndex, setSelectedIndex] = useState(0)
 
@@ -52,10 +76,10 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
   const { data: projects = [] } = useProjects(workspaceId)
   const { data: batches = [] } = useBatches(workspaceId)
 
-  // Focus input when modal opens & reset state
+  // Focus input when modal opens & reset state (don't clear a controlled query)
   useEffect(() => {
     if (open) {
-      setQuery('')
+      if (!onQueryChange) setInnerQuery('')
       setActiveCategory('all')
       setSelectedIndex(0)
       setTimeout(() => inputRef.current?.focus(), 50)
@@ -240,6 +264,12 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
     }
   }
 
+  // Expose palette key handling (ArrowDown/Up/Enter/Escape) to an
+  // external input (e.g. the header search box in anchor mode).
+  useEffect(() => {
+    registerKeyHandler?.(handleKeyDown)
+  })
+
   // Auto-scroll the selected element into view
   useEffect(() => {
     const list = listRef.current
@@ -257,26 +287,24 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
     filteredProjects.length +
     filteredBatches.length
 
-  return (
+  const card = (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-x-clip bg-black/60 p-3 pt-[4vh] backdrop-blur-md animate-in fade-in duration-150 sm:p-6 sm:pt-[12vh] dark:bg-black/75"
-      onClick={onClose}
+      className={cn(
+        'flex max-h-[70dvh] w-full min-w-0 flex-col overflow-hidden rounded-2xl select-none sm:max-h-[70vh]',
+        'bg-white/95 dark:bg-[#12141c]/95 backdrop-blur-2xl',
+        'border border-neutral-200/90 dark:border-white/10',
+        'shadow-[0_25px_70px_rgba(0,0,0,0.22),0_0_1px_1px_rgba(0,0,0,0.06)] dark:shadow-[0_30px_80px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.1)]',
+        layout === 'anchor'
+          ? 'animate-in fade-in-0 slide-in-from-top-2 duration-150'
+          : 'animate-in fade-in-0 zoom-in-95 duration-150',
+      )}
+      onClick={(e) => e.stopPropagation()}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('common:commandPalette.placeholder')}
     >
-      {/* Modal Dialog Card */}
-      <div
-        className={cn(
-          'flex max-h-[90dvh] w-full min-w-0 max-w-2xl flex-col overflow-hidden rounded-2xl select-none sm:max-h-[82vh]',
-          'bg-white/95 dark:bg-[#12141c]/95 backdrop-blur-2xl',
-          'border border-neutral-200/90 dark:border-white/10',
-          'shadow-[0_25px_70px_rgba(0,0,0,0.22),0_0_1px_1px_rgba(0,0,0,0.06)] dark:shadow-[0_30px_80px_rgba(0,0,0,0.85),0_0_1px_1px_rgba(255,255,255,0.1)]',
-          'animate-in fade-in-0 zoom-in-95 duration-150',
-        )}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('common:commandPalette.placeholder')}
-      >
-        {/* Top Search Bar */}
+        {/* Top Search Bar (hidden in anchor mode — the header input is used) */}
+        {!hideSearchInput && (
         <div className="flex items-center gap-3 px-4 sm:px-5 h-14 sm:h-16 border-b border-neutral-200/80 dark:border-white/[0.08] bg-transparent">
           <div className="w-8 h-8 rounded-xl bg-[#714ffc]/10 dark:bg-[#714ffc]/20 text-[#714ffc] dark:text-[#a78bff] flex items-center justify-center shrink-0">
             <IconSearch size={18} stroke={2.4} />
@@ -310,6 +338,7 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
             </kbd>
           )}
         </div>
+        )}
 
         {/* Category Tabs (shown when searching with results) */}
         {q && totalMatches > 0 && (
@@ -593,7 +622,27 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
             <span>TransFlow Command</span>
           </div>
         </div>
-      </div>
+    </div>
+  )
+
+  if (layout === 'anchor') {
+    return (
+      <>
+        {/* Transparent click-catcher (no dim) so it feels like a dropdown */}
+        <div className="fixed inset-0 z-40 cursor-default" onClick={onClose} />
+        <div className="absolute left-1/2 top-[calc(100%+8px)] z-50 w-full max-w-md -translate-x-1/2">
+          {card}
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-x-clip bg-black/60 p-3 pt-[4vh] backdrop-blur-md animate-in fade-in duration-150 sm:p-6 sm:pt-[12vh] dark:bg-black/75"
+      onClick={onClose}
+    >
+      <div className="w-full max-w-2xl">{card}</div>
     </div>
   )
 }
