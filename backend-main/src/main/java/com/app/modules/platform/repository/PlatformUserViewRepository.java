@@ -32,6 +32,7 @@ public interface PlatformUserViewRepository extends JpaRepository<PlatformUserVi
                    u.status as status,
                    u.platformAdmin as platformAdmin,
                    u.createdAt as createdAt,
+                   u.avatarUrl as avatarUrl,
                    count(m.id) as workspaceCount
             from PlatformUserView u
             left join PlatformWorkspaceMemberView m on m.userId = u.id
@@ -39,7 +40,7 @@ public interface PlatformUserViewRepository extends JpaRepository<PlatformUserVi
                    or locate(lower(:q), lower(u.email)) > 0
                    or locate(lower(:q), lower(u.fullName)) > 0)
               and (:isPlatformAdmin is null or u.platformAdmin = :isPlatformAdmin)
-            group by u.id, u.email, u.fullName, u.status, u.platformAdmin, u.createdAt
+            group by u.id, u.email, u.fullName, u.status, u.platformAdmin, u.createdAt, u.avatarUrl
             order by u.createdAt desc
             """,
             countQuery = """
@@ -61,6 +62,7 @@ public interface PlatformUserViewRepository extends JpaRepository<PlatformUserVi
         String getStatus();
         Boolean getPlatformAdmin();
         Instant getCreatedAt();
+        String getAvatarUrl();
         Long getWorkspaceCount();
     }
 }

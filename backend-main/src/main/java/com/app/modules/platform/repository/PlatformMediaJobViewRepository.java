@@ -22,6 +22,10 @@ public interface PlatformMediaJobViewRepository extends JpaRepository<PlatformMe
             """)
     List<StatusCount> countByStatusInRange(@Param("from") Instant from, @Param("to") Instant to);
 
+    long countByStatus(String status);
+
+    long countByStatusAndCreatedAtGreaterThanEqual(String status, Instant from);
+
     interface StatusCount {
         String getStatus();
         long getCnt();

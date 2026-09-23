@@ -28,10 +28,10 @@ export type PlatformOverview = {
   users: CountInRange
   workspaces: CountInRange
   jobs: {
-    textJobs: JobStatusCounts
+    mediaJobs: JobStatusCounts
     batchJobs: JobStatusCounts
-    mediaJobs: JobStatusCounts | UnavailableJobType
-    productionJobs: JobStatusCounts | UnavailableJobType
+    textJobs: UnavailableJobType
+    productionJobs: UnavailableJobType
   }
   tokens: {
     inputTokens: number

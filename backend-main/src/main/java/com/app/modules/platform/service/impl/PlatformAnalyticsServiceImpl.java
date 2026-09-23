@@ -5,6 +5,7 @@ import com.app.common.exception.ErrorCode;
 import com.app.modules.platform.dto.JobStatusCounts;
 import com.app.modules.platform.dto.PlatformOverviewResponse;
 import com.app.modules.platform.dto.PlatformOverviewResponse.*;
+import com.app.modules.platform.dto.PlatformRealtimeResponse;
 import com.app.modules.platform.dto.UnavailableJobType;
 import com.app.modules.platform.repository.PlatformAiUsageLogViewRepository;
 import com.app.modules.platform.repository.PlatformLocalizationBatchViewRepository;
@@ -18,6 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -88,6 +91,10 @@ public class PlatformAnalyticsServiceImpl implements PlatformAnalyticsService {
                             row.getInputTokens() != null ? row.getInputTokens() : 0,
                             row.getOutputTokens() != null ? row.getOutputTokens() : 0));
         }
+        // Alias SUMMARIZE_SCRIPT -> SUMMARY for frontend chart series (backward compat).
+        if (byOp.containsKey("SUMMARIZE_SCRIPT") && !byOp.containsKey("SUMMARY")) {
+            byOp.put("SUMMARY", byOp.get("SUMMARIZE_SCRIPT"));
+        }
         TokensBlock tokens = new TokensBlock(input, output, input + output, byOp);
 
         // failRate covers both job types: media_jobs + localization_batches (PARTIALLY_FAILED counts as failed).
@@ -109,6 +116,29 @@ public class PlatformAnalyticsServiceImpl implements PlatformAnalyticsService {
 
         return new PlatformOverviewResponse(
                 effectiveFrom, effectiveTo, users, workspaces, jobs, tokens, failRate, top);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PlatformRealtimeResponse realtime(UUID callerId) {
+        accessService.requirePlatformAdmin(callerId);
+
+        long processingJobs = mediaJobViewRepository.countByStatus("PROCESSING");
+
+        Instant todayStart = LocalDate.now(ZoneOffset.UTC).atStartOfDay(ZoneOffset.UTC).toInstant();
+        long completedToday =
+                mediaJobViewRepository.countByStatusAndCreatedAtGreaterThanEqual("COMPLETED", todayStart);
+
+        Instant now = Instant.now();
+        var hourTotals = usageLogViewRepository.aggregatePlatformRange(now.minus(3600, ChronoUnit.SECONDS), now);
+        long tokensLastHour = 0L;
+        if (hourTotals != null) {
+            long in = hourTotals.getInputTokens() != null ? hourTotals.getInputTokens() : 0L;
+            long out = hourTotals.getOutputTokens() != null ? hourTotals.getOutputTokens() : 0L;
+            tokensLastHour = in + out;
+        }
+
+        return new PlatformRealtimeResponse(processingJobs, completedToday, tokensLastHour, now);
     }
 
     private static int clampTop(Integer topLimit) {

@@ -5,6 +5,7 @@ import com.app.common.security.AuthenticatedUser;
 import com.app.modules.platform.dto.PlatformAuditLogItem;
 import com.app.modules.platform.dto.PlatformOverviewResponse;
 import com.app.modules.platform.dto.PlatformPageResponse;
+import com.app.modules.platform.dto.PlatformRealtimeResponse;
 import com.app.modules.platform.dto.PlatformStatusResponse;
 import com.app.modules.platform.dto.PlatformUserItem;
 import com.app.modules.platform.dto.PlatformWorkspaceItem;
@@ -63,6 +64,14 @@ public class PlatformController {
     public ApiResponse<PlatformStatusResponse> status(@AuthenticationPrincipal AuthenticatedUser user) {
         return ApiResponse.<PlatformStatusResponse>builder()
                 .data(statusService.status(user.id()))
+                .build();
+    }
+
+    /** Live activity snapshot polled every 3s by the frontend. */
+    @GetMapping("/realtime")
+    public ApiResponse<PlatformRealtimeResponse> realtime(@AuthenticationPrincipal AuthenticatedUser user) {
+        return ApiResponse.<PlatformRealtimeResponse>builder()
+                .data(analyticsService.realtime(user.id()))
                 .build();
     }
 
