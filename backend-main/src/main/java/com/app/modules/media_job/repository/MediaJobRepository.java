@@ -69,5 +69,13 @@ public interface MediaJobRepository extends JpaRepository<MediaJob, UUID> {
             """)
     List<WorkspaceJobCount> countJobsByWorkspaceInRange(@Param("from") Instant from,
                                                         @Param("to") Instant to);
+
+    // ── Realtime polling queries ──────────────────────────────────────────────
+
+    /** Count all jobs currently in the given status (live snapshot). */
+    long countByStatus(MediaJob.JobStatus status);
+
+    /** Count jobs in the given status created on or after the given instant. */
+    long countByStatusAndCreatedAtAfter(MediaJob.JobStatus status, Instant after);
 }
 

@@ -93,4 +93,5 @@ export const queryKeys = {
     ['platform', 'workspaces', params] as const,
   platformAudit: (params: Record<string, string | number | undefined>) =>
     ['platform', 'audit', params] as const,
+  platformRealtime: ['platform', 'realtime'] as const,
 }

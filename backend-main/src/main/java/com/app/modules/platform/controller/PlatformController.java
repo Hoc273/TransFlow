@@ -304,6 +304,44 @@ public class PlatformController {
     }
 
 
+    /**
+     * SA-RT — Realtime system activity snapshot (poll every 3 s from Frontend).
+     * Returns live job counts and token consumption — no mock values.
+     */
+    @GetMapping("/realtime")
+    public ApiResponse<Map<String, Object>> getRealtime(@AuthenticationPrincipal AuthenticatedUser user) {
+        assertPlatformAdmin(user);
+
+        // 1. Jobs currently being processed right now
+        long processingJobs = mediaJobRepository.countByStatus(MediaJob.JobStatus.PROCESSING);
+
+        // 2. Jobs completed since midnight UTC today
+        Instant todayStart = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+                .atStartOfDay(java.time.ZoneOffset.UTC)
+                .toInstant();
+        long completedToday = mediaJobRepository.countByStatusAndCreatedAtAfter(
+                MediaJob.JobStatus.COMPLETED, todayStart);
+
+        // 3. Total tokens consumed in the last hour
+        Instant oneHourAgo = Instant.now().minusSeconds(3600);
+        AiUsageLogReadOnlyRepository.UsageTotals hourTotals =
+                aiUsageLogReadOnlyRepository.aggregatePlatformTotals(oneHourAgo, Instant.now());
+        long tokensLastHour = 0L;
+        if (hourTotals != null) {
+            long in  = hourTotals.getInputTokens()  != null ? hourTotals.getInputTokens()  : 0L;
+            long out = hourTotals.getOutputTokens() != null ? hourTotals.getOutputTokens() : 0L;
+            tokensLastHour = in + out;
+        }
+
+        Map<String, Object> res = new HashMap<>();
+        res.put("processingJobs",  processingJobs);
+        res.put("completedToday",  completedToday);
+        res.put("tokensLastHour",  tokensLastHour);
+        res.put("checkedAt", Instant.now().toString());
+
+        return ApiResponse.<Map<String, Object>>builder().data(res).build();
+    }
+
     @GetMapping("/status")
     public ApiResponse<Map<String, Object>> getStatus(@AuthenticationPrincipal AuthenticatedUser user) {
         assertPlatformAdmin(user);

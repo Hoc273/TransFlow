@@ -27,7 +27,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import { usePlatformOverview, usePlatformStatus } from '@/hooks/usePlatform'
+import { usePlatformOverview, usePlatformRealtime, usePlatformStatus } from '@/hooks/usePlatform'
 import { formatCompactNumber, formatNumber, initialsFromName } from '@/lib/format'
 import { useUiStore } from '@/store/uiStore'
 import { isUnavailableJob, type JobStatusCounts, type PlatformOverview } from '@/types/platform'
@@ -897,46 +897,35 @@ function JobTypeRow({
 }
 
 /**
- * Real-time Active Users Component.
- * Live stream of concurrent active sessions with 3s dynamic polling simulation.
+ * Real-time System Activity Card.
+ * Polls GET /api/platform/realtime every 3 s and plots processingJobs over time.
+ * Replaces the previous mock-random "concurrent users" chart.
  */
 function RealtimeActiveUsersCard({ language }: { language: string }) {
-  const [activeData, setActiveData] = useState<Array<{ time: string; users: number; throughput: number }>>(() => {
-    const now = Date.now()
-    const pts = []
-    for (let i = 18; i >= 0; i--) {
-      const d = new Date(now - i * 3000)
-      const base = 254 + Math.floor(Math.sin(i * 0.45) * 26) + Math.floor(Math.random() * 8)
-      pts.push({
-        time: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        users: base,
-        throughput: Math.round(base * 4.2),
-      })
-    }
-    return pts
-  })
+  const { data: snap } = usePlatformRealtime()
+
+  // Rolling 19-point time-series of processingJobs — one point per 3 s poll
+  const [chartData, setChartData] = useState<Array<{ time: string; jobs: number }>>([])
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveData((prev) => {
-        const last = prev[prev.length - 1]?.users ?? 250
-        const delta = Math.floor(Math.random() * 11) - 5
-        const nextUsers = Math.max(185, Math.min(365, last + delta))
-        const now = new Date()
-        const nextPoint = {
-          time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          users: nextUsers,
-          throughput: Math.round(nextUsers * 4.2 + (Math.random() * 16 - 8)),
-        }
-        return [...prev.slice(1), nextPoint]
-      })
-    }, 3000)
-    return () => clearInterval(interval)
-  }, [])
+    if (snap == null) return
+    const point = {
+      time: new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+      jobs: snap.processingJobs ?? 0,
+    }
+    setChartData((prev) => {
+      const next = [...prev, point]
+      return next.length > 19 ? next.slice(next.length - 19) : next
+    })
+  }, [snap])
 
-  const currentUsers = activeData[activeData.length - 1]?.users ?? 250
-  const peakUsers = useMemo(() => Math.max(...activeData.map((d) => d.users), 285), [activeData])
-  const currentThroughput = activeData[activeData.length - 1]?.throughput ?? 1080
+  const processingJobs  = snap?.processingJobs  ?? 0
+  const completedToday  = snap?.completedToday   ?? 0
+  const tokensLastHour  = snap?.tokensLastHour   ?? 0
 
   return (
     <div className="platform-card platform-card-soft p-6">
@@ -949,7 +938,7 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
-                  {language === 'vi' ? 'Lượng người dùng truy cập theo thời gian thực' : 'Real-time Active Users'}
+                  {language === 'vi' ? 'Hoạt động hệ thống theo thời gian thực' : 'Real-time System Activity'}
                 </h3>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">
                   <span className="relative flex h-2 w-2">
@@ -961,8 +950,8 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
               </div>
               <p className="text-[11px] text-[var(--color-text-tertiary)] mt-0.5">
                 {language === 'vi'
-                  ? 'Theo dõi phiên truy cập đồng thời (Concurrent Sessions) · Tự động làm mới mỗi 3 giây'
-                  : 'Concurrent user sessions across all workspaces · Auto-refreshes every 3 seconds'}
+                  ? 'Theo dõi job đang xử lý · Tự động làm mới mỗi 3 giây'
+                  : 'Active processing jobs across all workspaces · Auto-refreshes every 3 seconds'}
               </p>
             </div>
           </div>
@@ -971,68 +960,84 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
         <div className="flex items-center gap-5 self-start sm:self-center">
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-              {language === 'vi' ? 'Đang trực tuyến' : 'Online Now'}
+              {language === 'vi' ? 'Đang xử lý' : 'Processing'}
             </div>
             <div className="text-xl font-bold font-mono text-emerald-400 tabular-nums">
-              {currentUsers} <span className="text-xs font-normal text-[var(--color-text-secondary)]">users</span>
+              {processingJobs}{' '}
+              <span className="text-xs font-normal text-[var(--color-text-secondary)]">
+                {language === 'vi' ? 'job' : 'jobs'}
+              </span>
             </div>
           </div>
           <div className="h-8 w-px bg-[var(--color-border)]" />
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-              {language === 'vi' ? 'Đỉnh điểm' : 'Peak Today'}
+              {language === 'vi' ? 'Hoàn thành hôm nay' : 'Done Today'}
             </div>
             <div className="text-xl font-bold font-mono text-[var(--color-text-primary)] tabular-nums">
-              {peakUsers} <span className="text-xs font-normal text-[var(--color-text-secondary)]">users</span>
+              {completedToday}{' '}
+              <span className="text-xs font-normal text-[var(--color-text-secondary)]">
+                {language === 'vi' ? 'job' : 'jobs'}
+              </span>
             </div>
           </div>
           <div className="h-8 w-px bg-[var(--color-border)]" />
           <div className="text-right hidden sm:block">
             <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-              {language === 'vi' ? 'Lưu lượng xử lý' : 'Throughput'}
+              {language === 'vi' ? 'Token/giờ qua' : 'Tokens/last hr'}
             </div>
             <div className="text-xl font-bold font-mono text-[var(--color-accent)] tabular-nums">
-              {currentThroughput} <span className="text-xs font-normal text-[var(--color-text-secondary)]">req/s</span>
+              {formatCompactNumber(tokensLastHour, language)}
             </div>
           </div>
         </div>
       </div>
 
       <div className="h-60 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={activeData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-            <defs>
-              <linearGradient id="realtimeActiveUsersGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
-                <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} opacity={0.6} />
-            <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} axisLine={false} tickLine={false} />
-            <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} axisLine={false} tickLine={false} width={45} />
-            <Tooltip
-              contentStyle={{
-                background: 'var(--color-bg-surface-2)',
-                border: '1px solid var(--color-border)',
-                borderRadius: '0.5rem',
-                boxShadow: '0 12px 32px -12px rgba(0,0,0,0.5)',
-                fontSize: '12px',
-              }}
-              labelStyle={{ color: 'var(--color-text-primary)', fontWeight: 600 }}
-              formatter={(val) => [`${val ?? 0} active users`, language === 'vi' ? 'Đang truy cập' : 'Active users']}
-            />
-            <Area
-              type="monotone"
-              dataKey="users"
-              stroke="#10b981"
-              strokeWidth={2.5}
-              fill="url(#realtimeActiveUsersGrad)"
-              isAnimationActive={false}
-              dot={false}
-              activeDot={{ r: 5, fill: '#10b981', stroke: '#ffffff', strokeWidth: 2 }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        {chartData.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-xs text-[var(--color-text-tertiary)]">
+            <IconClock size={14} className="mr-1.5 opacity-60" />
+            {language === 'vi' ? 'Đang thu thập dữ liệu…' : 'Collecting data…'}
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+              <defs>
+                <linearGradient id="realtimeJobsGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} opacity={0.6} />
+              <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, 'auto']} allowDecimals={false} tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} axisLine={false} tickLine={false} width={45} />
+              <Tooltip
+                contentStyle={{
+                  background: 'var(--color-bg-surface-2)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '0.5rem',
+                  boxShadow: '0 12px 32px -12px rgba(0,0,0,0.5)',
+                  fontSize: '12px',
+                }}
+                labelStyle={{ color: 'var(--color-text-primary)', fontWeight: 600 }}
+                formatter={(val) => [
+                  `${val ?? 0} ${language === 'vi' ? 'job' : 'jobs'}`,
+                  language === 'vi' ? 'Đang xử lý' : 'Processing jobs',
+                ]}
+              />
+              <Area
+                type="monotone"
+                dataKey="jobs"
+                stroke="#10b981"
+                strokeWidth={2.5}
+                fill="url(#realtimeJobsGrad)"
+                isAnimationActive={false}
+                dot={false}
+                activeDot={{ r: 5, fill: '#10b981', stroke: '#ffffff', strokeWidth: 2 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   )
