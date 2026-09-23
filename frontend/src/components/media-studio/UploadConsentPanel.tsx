@@ -500,10 +500,15 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     if (pending.length === 0 || !consentChecked) return
     setError(null)
     setConsenting(true)
+    const activeTermsVersion =
+      termsQuery.data?.termsVersion || (termsVersion !== '…' ? termsVersion : undefined)
     try {
       await mapWithConcurrency(pending, BATCH_CONCURRENCY, async (s) => {
         try {
-          await consent.mutateAsync(s.assetId as string)
+          await consent.mutateAsync({
+            assetId: s.assetId as string,
+            termsVersion: activeTermsVersion,
+          })
           patchStaged(s.key, { consented: true, error: null })
         } catch (e) {
           patchStaged(s.key, {

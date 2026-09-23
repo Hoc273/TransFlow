@@ -182,7 +182,7 @@ export function consentTransformationAssetApi(
     buildWorkspacePath(workspaceId, `/media/assets/${assetId}/consent`),
     {
       method: 'POST',
-      body: termsVersion ? { termsVersion } : { termsVersion: 'v1.0' },
+      body: { termsVersion: termsVersion?.trim() || 'v1' },
     },
   )
 }

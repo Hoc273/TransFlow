@@ -512,12 +512,12 @@ sequenceDiagram
     FE->>BE: GET /api/transformation/capabilities
     BE-->>FE: 200 OK (FAST/STUDIO online)
     FE->>BE: GET /api/workspaces/{wsId}/media/terms-version
-    BE-->>FE: 200 OK (termsVersion = "v1.0")
+    BE-->>FE: 200 OK (termsVersion = "v1")
     FE->>BE: POST .../projects/{pid}/media/assets (Multipart form)
     BE->>S3: Lưu trữ stream video gốc
     BE-->>FE: 201 Created (AssetResponse id="uuid", size, duration)
     User->>FE: Bấm checkbox xác nhận quyền tác giả
-    FE->>BE: POST .../media/assets/{assetId}/consent {"termsVersion": "v1.0"}
+    FE->>BE: POST .../media/assets/{assetId}/consent {"termsVersion": "v1"}
     BE-->>FE: 201 Created (Ký consent thành công)
 ```
 
@@ -533,7 +533,7 @@ sequenceDiagram
   {
     "code": 200,
     "message": "OK",
-    "data": { "termsVersion": "v1.0" }
+    "data": { "termsVersion": "v1" }
   }
   ```
 
@@ -565,7 +565,7 @@ sequenceDiagram
 #### 2.4 Ký Cam kết Bản quyền (Asset Consent)
 * **Endpoint:** `POST /api/workspaces/{workspaceId}/media/assets/{assetId}/consent`
 * **Headers:** `Content-Type: application/json`
-* **Request Body:** `{ "termsVersion": "v1.0" }`
+* **Request Body:** `{ "termsVersion": "v1" }`
 * **Response (201 Created):**
   ```json
   {
@@ -574,7 +574,7 @@ sequenceDiagram
     "data": {
       "id": "c0n5-0001-0002-0003-000000000000",
       "assetId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "termsVersion": "v1.0",
+      "termsVersion": "v1",
       "consentedAt": "2026-09-21T08:01:00Z"
     }
   }
