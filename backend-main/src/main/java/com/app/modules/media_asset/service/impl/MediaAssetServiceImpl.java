@@ -144,17 +144,18 @@ public class MediaAssetServiceImpl implements MediaAssetService {
         if (asset.getParentAssetId() != null) {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
-        if (!termsVersion.equals(currentTermsVersion())) {
+        String trimmedVersion = termsVersion != null ? termsVersion.trim() : "";
+        if (!trimmedVersion.equals(currentTermsVersion())) {
             throw new AppException(ErrorCode.TERMS_VERSION_MISMATCH);
         }
 
-        return mediaConsentRepository.findByRootAssetIdAndTermsVersion(assetId, termsVersion)
+        return mediaConsentRepository.findByRootAssetIdAndTermsVersion(assetId, trimmedVersion)
                 .orElseGet(() -> {
                     MediaConsent consent = new MediaConsent();
                     consent.setWorkspaceId(workspaceId);
                     consent.setRootAssetId(assetId);
                     consent.setUserId(userId);
-                    consent.setTermsVersion(termsVersion);
+                    consent.setTermsVersion(trimmedVersion);
                     consent.setConsentedAt(Instant.now());
                     return mediaConsentRepository.save(consent);
                 });

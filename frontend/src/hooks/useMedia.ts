@@ -34,6 +34,7 @@ import {
   listProjectMediaAssetsApi,
   getMediaAssetApi,
   type EditMediaSegmentBody,
+  type TermsVersionResponse,
 } from '@/api/media'
 import { listMediaJobQaIssuesApi, overrideQaIssueApi, resolveQaIssueApi } from '@/api/segments'
 import type { OverrideQaIssueBody, ResolveIssueBody } from '@/types/qa'
@@ -205,10 +206,15 @@ export function useMediaTermsVersion(workspaceId: string) {
 }
 
 export function useConsentMedia(workspaceId: string) {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (arg: string | { assetId: string; termsVersion?: string }) => {
       const assetId = typeof arg === 'string' ? arg : arg.assetId
-      const termsVersion = typeof arg === 'string' ? undefined : arg.termsVersion
+      const cachedTerms = qc.getQueryData<TermsVersionResponse>(queryKeys.mediaTermsVersion(workspaceId))
+      const termsVersion =
+        typeof arg === 'object' && arg.termsVersion
+          ? arg.termsVersion
+          : cachedTerms?.termsVersion
       return consentTransformationAssetApi(workspaceId, assetId, termsVersion)
     },
   })
