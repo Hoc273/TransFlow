@@ -131,14 +131,6 @@ export function SecuritySection() {
   const { hasLen, hasUpper, hasNum } = scorePassword(newPw)
   const matches = Boolean(newPw && confirmPw && newPw === confirmPw)
 
-  const onResetForm = () => {
-    setCurrentPw('')
-    setNewPw('')
-    setConfirmPw('')
-    setErrors({})
-    setInfo(null)
-  }
-
   const onPasswordSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setInfo(null)
