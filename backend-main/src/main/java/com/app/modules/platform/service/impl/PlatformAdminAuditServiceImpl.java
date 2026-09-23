@@ -106,6 +106,12 @@ public class PlatformAdminAuditServiceImpl implements PlatformAdminAuditService 
         if (path.contains("/workspaces")) {
             return PlatformAdminAuditAction.LIST_WORKSPACES;
         }
+        if (path.contains("/users/") && path.endsWith("/credit/adjust")) {
+            return PlatformAdminAuditAction.ADJUST_USER_CREDIT;
+        }
+        if (path.contains("/users/") && path.endsWith("/credit/balance")) {
+            return PlatformAdminAuditAction.VIEW_USER_CREDIT;
+        }
         if (path.contains("/users")) {
             return PlatformAdminAuditAction.LIST_USERS;
         }

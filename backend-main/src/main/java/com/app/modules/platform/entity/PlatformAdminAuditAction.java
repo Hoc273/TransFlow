@@ -9,6 +9,8 @@ public enum PlatformAdminAuditAction {
     LIST_USERS,
     LIST_WORKSPACES,
     LIST_AUDIT,
+    VIEW_USER_CREDIT,
+    ADJUST_USER_CREDIT,
     SEED_GRANT,
     /** Request was rejected by auth (401 unauthenticated / 403 non-admin). */
     DENIED,

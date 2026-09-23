@@ -4,6 +4,8 @@ import com.app.common.security.AuthenticatedUser;
 import com.app.modules.auth.entity.User;
 import com.app.modules.auth.entity.UserStatus;
 import com.app.modules.auth.repository.UserRepository;
+import com.app.modules.credit.repository.CreditAccountRepository;
+import com.app.modules.credit.repository.CreditTransactionRepository;
 import com.app.modules.platform.entity.PlatformAdminAuditAction;
 import com.app.modules.platform.repository.PlatformAdminAuditLogRepository;
 import com.app.modules.workspace.entity.Role;
@@ -17,15 +19,18 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.Collections;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -48,12 +53,20 @@ class PlatformControllerTest {
     @Autowired
     private PlatformAdminAuditLogRepository auditLogRepository;
 
+    @Autowired
+    private CreditTransactionRepository creditTransactionRepository;
+
+    @Autowired
+    private CreditAccountRepository creditAccountRepository;
+
     private User adminUser;
     private User normalUser;
 
     @BeforeEach
     void setup() {
         auditLogRepository.deleteAll();
+        creditTransactionRepository.deleteAll();
+        creditAccountRepository.deleteAll();
         workspaceMemberRepository.deleteAll();
         workspaceRepository.deleteAll();
         userRepository.deleteAll();
@@ -328,6 +341,73 @@ class PlatformControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalElements").value(1))
                 .andExpect(jsonPath("$.data.content[0].email").value("user_a@transflow.com"));
+    }
+
+    @Test
+    void testAdjustUserCredit_GrantThenDeduct() throws Exception {
+        authenticateAs(adminUser);
+        String adjustUrl = "/api/platform/users/" + normalUser.getId() + "/credit/adjust";
+
+        mockMvc.perform(post(adjustUrl)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\": 100, \"reason\": \"support\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.balanceBefore").value(0))
+                .andExpect(jsonPath("$.data.balanceAfter").value(100))
+                .andExpect(jsonPath("$.data.reason").value("support"));
+
+        mockMvc.perform(post(adjustUrl)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\": -40}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.balanceAfter").value(60));
+
+        mockMvc.perform(get("/api/platform/users/" + normalUser.getId() + "/credit/balance"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.balance").value(60));
+
+        assertThat(auditLogRepository.findFiltered(PlatformAdminAuditAction.ADJUST_USER_CREDIT,
+                PageRequest.of(0, 10)).getTotalElements()).isEqualTo(2);
+    }
+
+    @Test
+    void testAdjustUserCredit_DeductBelowZero_Rejected() throws Exception {
+        authenticateAs(adminUser);
+
+        mockMvc.perform(post("/api/platform/users/" + normalUser.getId() + "/credit/adjust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\": -1}"))
+                .andExpect(status().isPaymentRequired());
+    }
+
+    @Test
+    void testAdjustUserCredit_ZeroAmount_BadRequest() throws Exception {
+        authenticateAs(adminUser);
+
+        mockMvc.perform(post("/api/platform/users/" + normalUser.getId() + "/credit/adjust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\": 0}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void testAdjustUserCredit_UnknownUser_NotFound() throws Exception {
+        authenticateAs(adminUser);
+
+        mockMvc.perform(post("/api/platform/users/" + UUID.randomUUID() + "/credit/adjust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\": 10}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testAdjustUserCredit_AsNormalUser_Forbidden() throws Exception {
+        authenticateAs(normalUser);
+
+        mockMvc.perform(post("/api/platform/users/" + normalUser.getId() + "/credit/adjust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\": 1000}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

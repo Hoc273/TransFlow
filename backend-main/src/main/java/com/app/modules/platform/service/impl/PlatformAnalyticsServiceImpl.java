@@ -14,6 +14,7 @@ import com.app.modules.platform.repository.PlatformUserViewRepository;
 import com.app.modules.platform.repository.PlatformWorkspaceViewRepository;
 import com.app.modules.platform.service.PlatformAdminAccessService;
 import com.app.modules.platform.service.PlatformAnalyticsService;
+import com.app.modules.platform.service.UserPresenceService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,19 +41,22 @@ public class PlatformAnalyticsServiceImpl implements PlatformAnalyticsService {
     private final PlatformMediaJobViewRepository mediaJobViewRepository;
     private final PlatformLocalizationBatchViewRepository batchViewRepository;
     private final PlatformAiUsageLogViewRepository usageLogViewRepository;
+    private final UserPresenceService presenceService;
 
     public PlatformAnalyticsServiceImpl(PlatformAdminAccessService accessService,
                                         PlatformUserViewRepository userViewRepository,
                                         PlatformWorkspaceViewRepository workspaceViewRepository,
                                         PlatformMediaJobViewRepository mediaJobViewRepository,
                                         PlatformLocalizationBatchViewRepository batchViewRepository,
-                                        PlatformAiUsageLogViewRepository usageLogViewRepository) {
+                                        PlatformAiUsageLogViewRepository usageLogViewRepository,
+                                        UserPresenceService presenceService) {
         this.accessService = accessService;
         this.userViewRepository = userViewRepository;
         this.workspaceViewRepository = workspaceViewRepository;
         this.mediaJobViewRepository = mediaJobViewRepository;
         this.batchViewRepository = batchViewRepository;
         this.usageLogViewRepository = usageLogViewRepository;
+        this.presenceService = presenceService;
     }
 
     @Override
@@ -138,7 +142,8 @@ public class PlatformAnalyticsServiceImpl implements PlatformAnalyticsService {
             tokensLastHour = in + out;
         }
 
-        return new PlatformRealtimeResponse(processingJobs, completedToday, tokensLastHour, now);
+        return new PlatformRealtimeResponse(processingJobs, completedToday, tokensLastHour,
+                presenceService.countOnline(), now);
     }
 
     private static int clampTop(Integer topLimit) {

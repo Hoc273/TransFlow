@@ -41,4 +41,10 @@ public interface CreditService {
     List<CreditPackageResponse> listActivePackages();
 
     PurchaseCreditPackageResponse purchasePackage(UUID userId, UUID packageId, PurchaseCreditPackageRequest req);
+
+    /**
+     * Admin credit adjustment (grant or deduct) for any user.
+     * amount positive = grant, negative = deduct.
+     */
+    AdminCreditAdjustResponse adminAdjustCredit(UUID adminId, UUID targetUserId, BigDecimal amount, String reason);
 }
