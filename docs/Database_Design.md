@@ -1,6 +1,8 @@
 # Thiết kế CSDL — TransFlow Media
 
-> Phiên bản: **3.3** · Ngày cập nhật: 2026-09-12 · Bám sát SRS v1.4 + bản chỉnh lý 1.4b.
+> Phiên bản: **3.4** · Ngày cập nhật: 2026-09-23 · Bám sát SRS v1.4 + bản chỉnh lý 1.4b.
+> 3.4: thêm bảng Hướng dẫn `guide_categories`/`guide_articles` (§3.2, migration V5); bổ sung action audit
+> `VIEW_USER_CREDIT`/`ADJUST_USER_CREDIT`/`OTHER` (§3.1); ghi chú presence online dùng Redis (§3.1).
 > Giữ nguyên mô hình RBAC 3 role của 3.2, đồng thời thu gọn phần dịch thuật:
 > 1. **Không có `documents` / Text Translation Job / Batch dịch file**.
 > 2. **Bỏ `translation_memory`** và do đó không còn yêu cầu `pgvector`.
@@ -163,7 +165,7 @@ và bởi seed runner khi grant quyền lúc startup. Thuộc domain Platform �
 platform_admin_audit_logs(
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   actor_user_id UUID NULL REFERENCES users(id),   -- NULL: request không JWT / SEED_GRANT lúc bootstrap
-  action        VARCHAR(40)  NOT NULL,            -- VIEW_OVERVIEW|VIEW_STATUS|LIST_USERS|LIST_WORKSPACES|LIST_AUDIT|SEED_GRANT|DENIED
+  action        VARCHAR(40)  NOT NULL,            -- VIEW_OVERVIEW|VIEW_STATUS|LIST_USERS|LIST_WORKSPACES|LIST_AUDIT|VIEW_USER_CREDIT|ADJUST_USER_CREDIT|SEED_GRANT|DENIED|OTHER (không CHECK — enum ở Java)
   http_method   VARCHAR(10)  NOT NULL,
   path          VARCHAR(512) NOT NULL,
   query_string  VARCHAR(1024) NULL,
@@ -176,6 +178,55 @@ CREATE INDEX ix_platform_audit_created ON platform_admin_audit_logs(created_at D
 CREATE INDEX ix_platform_audit_actor   ON platform_admin_audit_logs(actor_user_id);
 CREATE INDEX ix_platform_audit_action  ON platform_admin_audit_logs(action);
 ```
+
+- Admin điều chỉnh Credit của user (`POST /api/platform/users/{userId}/credit/adjust`) **không** có bảng
+  riêng: ghi `credit_transactions(type='ADJUSTMENT', ref_type='ADMIN_ADJUSTMENT',
+  performed_by_user_id=<admin>)` (§4) + 1 dòng audit `ADJUST_USER_CREDIT` ở bảng này.
+- Trạng thái online của user (`onlineUsers` ở `GET /api/platform/realtime`) **không lưu PostgreSQL**:
+  Redis ZSET `platform:presence:online` (member = `userId`, score = epoch giây heartbeat cuối), prune entry
+  cũ hơn 120s khi đọc — dữ liệu tạm, mất khi Redis restart là chấp nhận được.
+
+### 3.2 `guide_categories` / `guide_articles` — trang Hướng dẫn (migration V5)
+
+Nội dung tĩnh song ngữ vi/en do Platform Super Admin quản trị; không thuộc Workspace (không có
+`workspace_id`), đọc công khai không cần đăng nhập. `content_*` là Markdown.
+
+```sql
+guide_categories(
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug         VARCHAR(120) NOT NULL UNIQUE,
+  title_vi     VARCHAR(200) NOT NULL,
+  title_en     VARCHAR(200) NOT NULL,
+  order_index  INT          NOT NULL DEFAULT 0,
+  is_published BOOLEAN      NOT NULL DEFAULT true,
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+)
+CREATE INDEX ix_guide_categories_order     ON guide_categories(order_index);
+CREATE INDEX ix_guide_categories_published ON guide_categories(is_published);
+
+guide_articles(
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id     UUID NOT NULL REFERENCES guide_categories(id) ON DELETE RESTRICT,
+  slug            VARCHAR(160)  NOT NULL UNIQUE,
+  title_vi        VARCHAR(300)  NOT NULL,
+  title_en        VARCHAR(300)  NOT NULL,
+  excerpt_vi      VARCHAR(500)  NULL,
+  excerpt_en      VARCHAR(500)  NULL,
+  content_vi      TEXT          NOT NULL,
+  content_en      TEXT          NOT NULL,
+  status          VARCHAR(20)   NOT NULL DEFAULT 'DRAFT',   -- DRAFT|PUBLISHED (enum ở Java, không CHECK)
+  order_index     INT           NOT NULL DEFAULT 0,
+  cover_image_url VARCHAR(1000) NULL,
+  created_at      TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ   NOT NULL DEFAULT now()
+)
+CREATE INDEX ix_guide_articles_category_order ON guide_articles(category_id, order_index);
+CREATE INDEX ix_guide_articles_status         ON guide_articles(status);
+```
+
+- `ON DELETE RESTRICT` + kiểm tra ở service (`GUIDE_CATEGORY_HAS_ARTICLES`) — không xoá Category còn Article.
+- V5 seed sẵn vài Category và Article `PUBLISHED` mẫu.
 
 ## 4. Credit & Thanh toán (không đổi so với thiết kế trước)
 
@@ -716,7 +767,7 @@ CREATE INDEX ix_ai_usage_logs_user ON ai_usage_logs(performed_by_user_id, create
   và `flyway_schema_history` trước khi dùng baseline này; không chồng baseline mới lên history cũ.
 - Migration kể từ baseline: `V3__user_avatar.sql` (cột avatar user),
   `V4__platform_admin_audit_logs.sql` (bảng audit Super Admin ở §3.1 — `users.is_platform_admin` đã có
-  trong V1 nên V4 không `ALTER users`).
+  trong V1 nên V4 không `ALTER users`), `V5__guide.sql` (bảng Hướng dẫn ở §3.2 + seed nội dung mẫu).
 - **Thứ tự tạo bảng chính (do FK chéo):**
   1. `users` → `workspaces` → `workspace_members` → `projects` → `project_members`.
   2. `terms_versions`, `credit_packages`, `platform_ai_providers` (độc lập).
