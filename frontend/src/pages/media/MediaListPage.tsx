@@ -58,7 +58,8 @@ export function MediaListPage() {
   const language = useUiStore((s) => s.language)
 
   const { data: projects = [] } = useProjects(workspaceId)
-  const projectFromUrl = searchParams.get('project') || ''
+  // Accept both ?project= (canonical) and ?projectId= (links from dashboard / project list).
+  const projectFromUrl = searchParams.get('project') || searchParams.get('projectId') || ''
   const [projectId, setProjectId] = useState(projectFromUrl)
 
   const hashPanel = location.hash.replace(/^#/, '')
@@ -92,9 +93,9 @@ export function MediaListPage() {
     setPage(0)
   }, [projectId, jobs.length])
 
-  // Sync projectId with URL search parameter (?project=...)
+  // Sync projectId with URL search parameter (?project=... or ?projectId=...)
   useEffect(() => {
-    const urlProj = searchParams.get('project') || ''
+    const urlProj = searchParams.get('project') || searchParams.get('projectId') || ''
     if (urlProj !== projectId) {
       setProjectId(urlProj)
     }
