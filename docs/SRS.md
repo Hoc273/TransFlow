@@ -10,6 +10,16 @@
 
 ---
 
+## Ghi chú cập nhật — 2026-09-23 (bổ sung trên nền 1.4b)
+
+Không đổi phạm vi hay RBAC của 1.4b; chỉ ghi nhận các năng lực đã triển khai:
+
+- **Dự án gần đây & ghim dự án** trên thanh điều hướng (§5.1).
+- **Quản trị nền tảng** (§5.8): thêm theo dõi hoạt động trực tiếp (số người dùng đang online), điều chỉnh
+  Credit của người dùng, và quản trị nội dung trang **Hướng dẫn** công khai.
+
+---
+
 ## Ghi chú cập nhật — Bản chỉnh lý 1.4b: thu gọn nền tảng dịch thuật, 2026-09-12
 
 Bản 1.4b **giữ nguyên cấu trúc và phần lớn nghiệp vụ của SRS 1.4/1.4a**, chỉ chốt thêm phạm vi cho bản
@@ -318,6 +328,18 @@ quyền xem Project/job**.
   - Member: đầy đủ quyền nghiệp vụ trong Project được gán.
   - Client: chỉ xem trong Project được gán.
 
+**Dự án gần đây & ghim dự án [bổ sung 2026-09-23]**
+- Thanh điều hướng bên trái có mục **"Gần đây"**, liệt kê các Project mà người dùng vừa mở trong Workspace
+  hiện tại. Một Project được tính là "đã mở" khi người dùng chọn Project đó trong Media Studio hoặc mở một
+  job thuộc Project đó.
+- Người dùng có thể **ghim** một Project để nó luôn nằm ở đầu danh sách, và bỏ ghim bất kỳ lúc nào. Các
+  Project đã ghim hiển thị trước (theo thứ tự ghim), sau đó là tối đa 5 Project mở gần nhất chưa ghim.
+- Bấm vào một Project trong danh sách sẽ mở Media Studio của Project đó.
+- Danh sách là **riêng của từng người dùng và từng Workspace**. Project đã bị xoá hoặc người dùng không còn
+  được gán sẽ tự ẩn khỏi danh sách — mục này không cấp thêm quyền truy cập nào.
+- Danh sách và trạng thái ghim được lưu trên trình duyệt của người dùng, **không đồng bộ** giữa các thiết bị
+  hoặc trình duyệt khác nhau. Hiện chỉ có trên giao diện desktop.
+
 ### 5.2 Tải video lên & Đồng ý điều khoản
 - Người dùng tải lên 1 video (tối đa 500MB, tối đa 30 phút) vào một Project cụ thể. Hệ thống kiểm tra định
   dạng và thời lượng hợp lệ.
@@ -598,11 +620,22 @@ trạng thái "cần chạy lại".
   `users.is_platform_admin`; đây **không phải** role thứ tư của Workspace và không thay đổi mô hình
   `LEAD/MEMBER/CLIENT`.
 - Chỉ tài khoản có cờ này mới được truy cập khu vực `/platform` và API `/api/platform/*`.
-- Khu vực quản trị cung cấp: tổng quan KPI, sức khỏe PostgreSQL/Redis/RabbitMQ/MinIO/AI Worker, danh bạ
-  người dùng, danh sách Workspace và nhật ký kiểm toán.
+- Khu vực quản trị cung cấp: tổng quan KPI, hoạt động trực tiếp (job đang xử lý, job hoàn thành trong
+  ngày, token AI trong 1 giờ qua, số người dùng đang online), sức khỏe PostgreSQL/Redis/RabbitMQ/MinIO/AI
+  Worker, danh bạ người dùng, danh sách Workspace và nhật ký kiểm toán.
+- "Đang online" = người dùng đã đăng nhập và còn mở ứng dụng trong khoảng 2 phút gần nhất; nhiều tab của
+  cùng một người chỉ tính 1.
+- **Điều chỉnh Credit [bổ sung 2026-09-23]:** Super Admin xem số dư và cộng/trừ Credit cho bất kỳ người dùng
+  nào (ví dụ hoàn Credit cho job lỗi), kèm lý do. Không được trừ làm số dư âm. Mỗi lần điều chỉnh được ghi
+  vào lịch sử giao dịch Credit của người dùng (loại "Điều chỉnh") và vào nhật ký kiểm toán.
+- **Trang Hướng dẫn [bổ sung 2026-09-23]:** Super Admin quản lý nội dung hướng dẫn song ngữ Việt/Anh theo
+  chuyên mục → bài viết (tạo, sửa, sắp xếp, xoá, chuyển Nháp/Xuất bản, xem trước). Chỉ bài đã xuất bản
+  thuộc chuyên mục đang hiển thị mới xuất hiện ở trang `/guide`; trang này ai cũng xem được, không cần đăng
+  nhập. Không xoá được chuyên mục khi còn bài viết.
 - Người không có cờ Platform Admin phải bị từ chối ở backend, kể cả khi biết URL hoặc tự gọi API.
-- Các API quản trị chỉ phục vụ quan sát/tra cứu trong MVP; không mặc nhiên cấp quyền sửa dữ liệu nghiệp vụ
-  của Workspace hoặc bỏ qua các gate RBAC/ownership hiện hành.
+- Ngoài 2 thao tác trên, các API quản trị chỉ phục vụ quan sát/tra cứu trong MVP; không cấp quyền sửa dữ
+  liệu nghiệp vụ của Workspace (Project, Media Job, thành viên…) hoặc bỏ qua các gate RBAC/ownership hiện
+  hành.
 
 ---
 
