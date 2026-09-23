@@ -3,7 +3,6 @@ import { Link, NavLink, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   IconBook2,
-  IconChartBar,
   IconCoins,
   IconFolder,
   IconLayoutGrid,
@@ -73,18 +72,6 @@ function buildGroups(workspaceId: string, isPlatformAdmin: boolean): NavGroup[] 
           labelKey: 'nav.media',
           icon: IconVideo,
           path: `${base}/media`,
-        },
-      ],
-    },
-    {
-      titleKey: 'nav.system',
-      items: [
-        {
-          key: 'usage',
-          labelKey: 'nav.usage',
-          icon: IconChartBar,
-          path: `${base}/dashboard/usage`,
-          permission: 'dashboard.usage',
         },
       ],
     },
