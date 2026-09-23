@@ -60,6 +60,8 @@ export type ServiceStatus = {
   message: string | null
 }
 
+export type PlatformServiceStatus = ServiceStatus
+
 export type PlatformStatus = {
   checkedAt: string
   overall: 'UP' | 'DEGRADED' | 'DOWN' | string
@@ -76,6 +78,8 @@ export type PlatformUserItem = {
   workspaceCount: number
 }
 
+export type PlatformUser = PlatformUserItem
+
 export type PlatformWorkspaceItem = {
   id: string
   name: string
@@ -85,6 +89,8 @@ export type PlatformWorkspaceItem = {
   memberCount: number
   createdAt: string
 }
+
+export type PlatformWorkspace = PlatformWorkspaceItem
 
 export type PlatformAuditLogItem = {
   id: string
@@ -97,13 +103,18 @@ export type PlatformAuditLogItem = {
   userAgent: string | null
   statusCode: number
   createdAt: string
+  [k: string]: unknown
 }
+
+export type AuditLog = PlatformAuditLogItem
 
 export type PlatformPage<T> = {
   content: T[]
+  items?: T[]
   page: number
   size: number
   totalElements: number
+  totalItems?: number
   totalPages: number
 }
 

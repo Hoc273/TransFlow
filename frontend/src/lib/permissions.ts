@@ -30,6 +30,7 @@ export type PermissionAction =
   | 'tm.crud'
   | 'dashboard.usage'
   | 'workspace.view'
+  | 'platform.view'
 
 const ALL_ROLES: Role[] = ['ADMIN', 'PM', 'TRANSLATOR', 'PROOFREADER', 'CLIENT', 'LEAD', 'MEMBER']
 const ADMIN_PM: Role[] = ['ADMIN', 'PM', 'LEAD']
@@ -55,6 +56,9 @@ const MATRIX: Record<PermissionAction, Role[]> = {
   'glossary.crud': ['ADMIN', 'PM', 'LEAD'],
   'tm.crud': ['ADMIN', 'PM', 'LEAD'],
   'dashboard.usage': ['ADMIN', 'PM', 'LEAD'],
+  // platform.view chỉ dùng để ẩn/hiện link. Bảo mật thật là BE assertPlatformAdmin
+  // + PlatformGuard check isPlatformAdmin. ADMIN giữ như alias của LEAD (deprecated).
+  'platform.view': ['ADMIN', 'LEAD'],
 }
 
 export function can(role: Role | null | undefined, action: PermissionAction): boolean {

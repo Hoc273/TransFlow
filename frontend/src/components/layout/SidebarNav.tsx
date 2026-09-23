@@ -7,12 +7,13 @@ import {
   IconCoins,
   IconFolder,
   IconLayoutGrid,
+  IconShieldCheck,
   IconUsers,
   IconVideo,
 } from '@tabler/icons-react'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
-import { useUiStore } from '@/store/uiStore'
 import { useAuthStore } from '@/store/authStore'
+import { useUiStore } from '@/store/uiStore'
 import { usePermission } from '@/hooks/usePermission'
 import { useUserCredit } from '@/hooks/useCredit'
 import { formatNumber } from '@/lib/format'
@@ -101,6 +102,7 @@ export function SidebarNav({ mobileOpen, className }: SidebarNavProps) {
   const language = useUiStore((s) => s.language)
   const currentWorkspace = useAuthStore((s) => s.currentWorkspace)
   const canUsage = usePermission('dashboard.usage')
+  const isPlatformAdmin = useAuthStore((s) => s.user?.isPlatformAdmin === true)
   const { data: creditData, isLoading: isCreditLoading } = useUserCredit()
   const groups = buildGroups(workspaceId)
 
@@ -165,6 +167,15 @@ export function SidebarNav({ mobileOpen, className }: SidebarNavProps) {
           </div>
         ))}
       </nav>
+
+      {isPlatformAdmin && (
+        <div className="px-4 pb-2">
+          <NavLink to="/platform" className={({ isActive }) => cn('nav-item', isActive && 'active')}>
+            <IconShieldCheck size={18} stroke={1.75} className="shrink-0" />
+            <span className="nav-label">Platform Admin</span>
+          </NavLink>
+        </div>
+      )}
 
       <Link
         to={creditPath}

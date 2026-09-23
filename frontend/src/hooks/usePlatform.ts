@@ -31,7 +31,7 @@ export function usePlatformMe(enabled = true) {
   })
 }
 
-export function usePlatformOverview(query: PlatformOverviewQuery, enabled = true) {
+export function usePlatformOverview(query: PlatformOverviewQuery = {}, enabled = true) {
   return useQuery({
     queryKey: queryKeys.platformOverview({
       from: query.from,
@@ -54,7 +54,7 @@ export function usePlatformStatus(enabled = true) {
   })
 }
 
-export function usePlatformUsers(query: PlatformUsersQuery, enabled = true) {
+export function usePlatformUsers(query: PlatformUsersQuery = {}, enabled = true) {
   return useQuery({
     queryKey: queryKeys.platformUsers({
       q: query.q,
@@ -68,7 +68,7 @@ export function usePlatformUsers(query: PlatformUsersQuery, enabled = true) {
   })
 }
 
-export function usePlatformWorkspaces(query: PlatformWorkspacesQuery, enabled = true) {
+export function usePlatformWorkspaces(query: PlatformWorkspacesQuery = {}, enabled = true) {
   return useQuery({
     queryKey: queryKeys.platformWorkspaces({
       q: query.q,
@@ -81,7 +81,7 @@ export function usePlatformWorkspaces(query: PlatformWorkspacesQuery, enabled = 
   })
 }
 
-export function usePlatformAuditLogs(query: PlatformAuditQuery, enabled = true) {
+export function usePlatformAuditLogs(query: PlatformAuditQuery = {}, enabled = true) {
   return useQuery({
     queryKey: queryKeys.platformAudit({
       action: query.action,

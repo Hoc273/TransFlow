@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createProviderApi,
   deleteProviderApi,
-  listPresetsApi,
   listProvidersApi,
   listTtsVoiceLanguagesApi,
   listTtsVoicesApi,
@@ -19,88 +18,94 @@ import { STALE, queryKeys } from '@/lib/queryClient'
 import type {
   CreateProviderRequest,
   ProviderCapability,
+  ProviderPreset,
   ProviderPresetCategory,
   ProviderTestResult,
   UpsertTtsVoiceRequest,
   UpdateProviderRequest,
 } from '@/types/provider'
 
-export function usePresets(workspaceId: string | undefined, category?: ProviderPresetCategory) {
+/** @deprecated No backend endpoint — always empty. Kept so unmounted ProvidersPage still compiles. */
+export function usePresets(_workspaceId: string | undefined, _category?: ProviderPresetCategory) {
   return useQuery({
-    queryKey: queryKeys.providerPresets(workspaceId ?? '', category),
-    queryFn: () => listPresetsApi(workspaceId!, category),
-    enabled: !!workspaceId,
+    queryKey: queryKeys.providerPresets('me', _category),
+    queryFn: (): Promise<ProviderPreset[]> => Promise.resolve([]),
+    enabled: false,
     staleTime: STALE.static,
+    initialData: [] as ProviderPreset[],
   })
 }
 
-export function useProviders(workspaceId: string | undefined) {
+export function useProviders(_workspaceId?: string | undefined) {
+  void _workspaceId
   return useQuery({
-    queryKey: queryKeys.providers(workspaceId ?? ''),
-    queryFn: () => listProvidersApi(workspaceId!),
-    enabled: !!workspaceId,
+    queryKey: queryKeys.providers('me'),
+    queryFn: () => listProvidersApi(),
     staleTime: STALE.static,
   })
 }
 
 export function useTtsVoices(
-  workspaceId: string | undefined,
-  providerId: string | undefined,
+  workspaceIdOrProviderId: string | undefined,
+  providerId?: string | undefined,
 ) {
+  // Old style: (workspaceId, providerId). New style: (providerId).
+  const resolvedProviderId = providerId ?? workspaceIdOrProviderId
   return useQuery({
-    queryKey: queryKeys.ttsVoices(workspaceId ?? '', providerId ?? ''),
-    queryFn: () => listTtsVoicesApi(workspaceId!, providerId!),
-    enabled: !!workspaceId && !!providerId,
+    queryKey: queryKeys.ttsVoices('me', resolvedProviderId ?? ''),
+    queryFn: () => listTtsVoicesApi(resolvedProviderId!),
+    enabled: !!resolvedProviderId,
   })
 }
 
 /**
  * Languages available in a provider's ACTIVE cached voice catalog
- * (aggregated from tts_voices.languages). Read-only cache view — a stale
- * EN-only catalog reports only EN until an explicit refresh.
+ * (aggregated client-side from the voice list — no dedicated backend endpoint).
  */
 export function useTtsVoiceLanguages(
-  workspaceId: string | undefined,
-  providerId: string | undefined,
+  workspaceIdOrProviderId: string | undefined,
+  providerId?: string | undefined,
 ) {
+  const resolvedProviderId = providerId ?? workspaceIdOrProviderId
   return useQuery({
-    queryKey: queryKeys.ttsVoiceLanguages(workspaceId ?? '', providerId ?? ''),
+    queryKey: queryKeys.ttsVoiceLanguages('me', resolvedProviderId ?? ''),
     queryFn: async () => {
-      const response = await listTtsVoiceLanguagesApi(workspaceId!, providerId!)
+      const response = await listTtsVoiceLanguagesApi(resolvedProviderId!)
       return response.languages
     },
-    enabled: !!workspaceId && !!providerId,
+    enabled: !!resolvedProviderId,
     placeholderData: [],
   })
 }
 
 function invalidateTtsVoices(
   qc: ReturnType<typeof useQueryClient>,
-  workspaceId?: string,
+  _workspaceId?: string,
   providerId?: string,
 ) {
-  if (workspaceId && providerId) {
-    void qc.invalidateQueries({ queryKey: queryKeys.ttsVoices(workspaceId, providerId) })
+  if (providerId) {
+    void qc.invalidateQueries({ queryKey: queryKeys.ttsVoices('me', providerId) })
     // Refresh/upsert changes the catalog → the language aggregation follows.
-    void qc.invalidateQueries({ queryKey: queryKeys.ttsVoiceLanguages(workspaceId, providerId) })
+    void qc.invalidateQueries({ queryKey: queryKeys.ttsVoiceLanguages('me', providerId) })
   }
 }
 
-export function useRefreshTtsVoices(workspaceId: string | undefined) {
+export function useRefreshTtsVoices(_workspaceId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (providerId: string) => refreshTtsVoicesApi(workspaceId!, providerId),
-    onSuccess: (_voices, providerId) => invalidateTtsVoices(qc, workspaceId, providerId),
+    mutationFn: (providerId: string) => refreshTtsVoicesApi(providerId),
+    onSuccess: (_voices, providerId) => invalidateTtsVoices(qc, undefined, providerId),
   })
 }
 
-export function useUpsertTtsVoice(workspaceId: string | undefined) {
+/** @deprecated No backend endpoint — always fails. Kept for compilation. */
+export function useUpsertTtsVoice(_workspaceId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ providerId, body }: { providerId: string; body: UpsertTtsVoiceRequest }) =>
-      upsertTtsVoiceApi(workspaceId!, providerId, body),
+      upsertTtsVoiceApi('me', providerId, body),
     onSuccess: (_voice, variables) =>
-      invalidateTtsVoices(qc, workspaceId, variables.providerId),
+      invalidateTtsVoices(qc, undefined, variables.providerId),
   })
 }
 
@@ -112,7 +117,8 @@ export function defaultVoicePreviewText(language?: string | null) {
     : 'Hello, this is a sample voice preview.'
 }
 
-export function useVoicePreview(workspaceId: string | undefined) {
+export function useVoicePreview(_workspaceId?: string | undefined) {
+  void _workspaceId
   return useMutation({
     mutationFn: async ({
       providerId,
@@ -123,7 +129,8 @@ export function useVoicePreview(workspaceId: string | undefined) {
       voiceId: string
       language?: string | null
     }) => {
-      const result = await previewTtsVoiceApi(workspaceId!, providerId, {
+      void providerId
+      const result = await previewTtsVoiceApi({
         voiceId,
         text: defaultVoicePreviewText(language),
       })
@@ -139,28 +146,29 @@ export function useVoicePreview(workspaceId: string | undefined) {
   })
 }
 
-function invalidateProviders(qc: ReturnType<typeof useQueryClient>, workspaceId?: string) {
-  if (workspaceId) void qc.invalidateQueries({ queryKey: queryKeys.providers(workspaceId) })
+function invalidateProviders(qc: ReturnType<typeof useQueryClient>, _workspaceId?: string) {
+  void qc.invalidateQueries({ queryKey: queryKeys.providers('me') })
 }
 
-export function useCreateProvider(workspaceId: string | undefined) {
+export function useCreateProvider(_workspaceId?: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: CreateProviderRequest) => createProviderApi(workspaceId!, body),
-    onSuccess: () => invalidateProviders(qc, workspaceId),
+    mutationFn: (body: CreateProviderRequest) => createProviderApi(body),
+    onSuccess: () => invalidateProviders(qc),
   })
 }
 
-export function useUpdateProvider(workspaceId: string | undefined) {
+export function useUpdateProvider(_workspaceId?: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ providerId, body }: { providerId: string; body: UpdateProviderRequest }) =>
-      updateProviderApi(workspaceId!, providerId, body),
-    onSuccess: () => invalidateProviders(qc, workspaceId),
+      updateProviderApi(providerId, body),
+    onSuccess: () => invalidateProviders(qc),
   })
 }
 
-export function useSetDefaultProvider(workspaceId: string | undefined) {
+/** @deprecated No backend endpoint — always fails. Kept for compilation. */
+export function useSetDefaultProvider(_workspaceId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({
@@ -169,12 +177,13 @@ export function useSetDefaultProvider(workspaceId: string | undefined) {
     }: {
       providerId: string
       capability: ProviderCapability
-    }) => setDefaultProviderApi(workspaceId!, providerId, { capability }),
-    onSuccess: () => invalidateProviders(qc, workspaceId),
+    }) => setDefaultProviderApi('me', providerId, { capability }),
+    onSuccess: () => invalidateProviders(qc),
   })
 }
 
-export function useUnsetDefaultProvider(workspaceId: string | undefined) {
+/** @deprecated No backend endpoint — always fails. Kept for compilation. */
+export function useUnsetDefaultProvider(_workspaceId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({
@@ -183,12 +192,12 @@ export function useUnsetDefaultProvider(workspaceId: string | undefined) {
     }: {
       providerId: string
       capability: ProviderCapability
-    }) => unsetDefaultProviderApi(workspaceId!, providerId, { capability }),
-    onSuccess: () => invalidateProviders(qc, workspaceId),
+    }) => unsetDefaultProviderApi('me', providerId, { capability }),
+    onSuccess: () => invalidateProviders(qc),
   })
 }
 
-export function useTestProvider(workspaceId: string | undefined) {
+export function useTestProvider(_workspaceId?: string | undefined) {
   return useMutation({
     mutationFn: ({
       providerId,
@@ -196,12 +205,12 @@ export function useTestProvider(workspaceId: string | undefined) {
     }: {
       providerId: string
       capability?: ProviderCapability
-    }) => testProviderApi(workspaceId!, providerId, capability),
+    }) => testProviderApi(providerId, capability),
   })
 }
 
-/** 4-phase provider validation hook (docs/07 §L, Q-PV-12). */
-export function useValidateProvider(workspaceId: string | undefined) {
+/** @deprecated No backend endpoint — always fails. Kept for compilation. */
+export function useValidateProvider(_workspaceId: string | undefined) {
   return useMutation({
     mutationFn: ({
       providerId,
@@ -210,14 +219,14 @@ export function useValidateProvider(workspaceId: string | undefined) {
       providerId: string
       capability?: ProviderCapability
     }): Promise<ProviderTestResult> =>
-      validateProviderApi(workspaceId!, providerId, capability),
+      validateProviderApi('me', providerId, capability),
   })
 }
 
-export function useDeleteProvider(workspaceId: string | undefined) {
+export function useDeleteProvider(_workspaceId?: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (providerId: string) => deleteProviderApi(workspaceId!, providerId),
-    onSuccess: () => invalidateProviders(qc, workspaceId),
+    mutationFn: (providerId: string) => deleteProviderApi(providerId),
+    onSuccess: () => invalidateProviders(qc),
   })
 }

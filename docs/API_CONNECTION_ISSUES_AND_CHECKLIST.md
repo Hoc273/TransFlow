@@ -57,11 +57,13 @@
 - [x] `GET/POST /api/workspaces/{id}/members`: Danh sách và mời thành viên (Chuẩn RESTful duy nhất).
 - [x] `PUT/DELETE /api/workspaces/{id}/members/{id}`: Phân quyền và xóa thành viên khỏi Workspace.
 - [x] `GET/POST /api/auth/google/*`: Bộ điều khiển OAuth2 với bảo mật PKCE + OIDC.
-- [x] `GET /api/platform/overview`: Tổng quan 6 chỉ số KPI dành riêng cho Super Admin.
-- [x] `GET /api/platform/status`: Kiểm tra trạng thái sống của 6 dịch vụ hạ tầng (DB, Redis, RabbitMQ, MinIO, Gateway, Workers).
-- [x] `GET /api/platform/users`: Danh bạ người dùng toàn hệ thống (phân trang, tìm kiếm, lọc admin).
-- [x] `GET /api/platform/workspaces`: Danh bạ workspace toàn hệ thống (phân trang, số thành viên, số dự án).
-- [x] `GET /api/platform/audit-logs`: Xem lịch sử kiểm toán của Super Admin.
+- [x] `GET /api/platform/overview`: Tổng quan 6 chỉ số KPI dành riêng cho Super Admin. `users/workspaces.total` + `newInRange` đếm thật (22/09/2026); `jobs/tokens/failRate/topWorkspaces` vẫn mock 0 — chờ aggregate `media_jobs`/`ai_usage_logs` (Phase P2).
+- [x] `GET /api/platform/status`: Kiểm tra trung thực 5 dịch vụ (DB check connection thật; Redis/RabbitMQ check TCP; MinIO/AI Worker check HTTP). `overall` = `UP` khi tất cả UP, ngược lại `DEGRADED`.
+- [x] `GET /api/platform/users`: Danh bạ người dùng toàn hệ thống — `q` (email/tên) và `isPlatformAdmin` đã có tác dụng thật (22/09/2026); `size` clamp tối đa 100.
+- [x] `GET /api/platform/workspaces`: Danh bạ workspace toàn hệ thống — `q` (tên/slug) đã có tác dụng thật (22/09/2026); `size` clamp tối đa 100.
+- [x] `GET /api/platform/audit-logs`: Stub rỗng có chủ ý (read-only MVP). FE hiển thị banner "chưa triển khai".
+- [x] UI Platform Super Admin (22/09/2026): route top-level `/platform/*` (Tổng quan/Trạng thái/Người dùng/Workspace/Audit) + `PlatformGuard` (chưa login → `/login`, không phải admin → `/dashboard`) + link Sidebar điều kiện theo `user.isPlatformAdmin`.
+- [x] Providers FE về đúng contract user-scoped (22/09/2026): xóa toàn bộ fallback `/workspaces/*/providers/*` (404); preview qua `POST /tts-voices/preview`. `workspaceId` còn lại trong chữ ký chỉ là @deprecated tương thích.
 
 ---
 
@@ -127,6 +129,12 @@
 Hệ thống không cung cấp tài khoản hoặc mật khẩu Super Admin mặc định. Sau khi tạo một user kiểm thử bằng
 luồng auth bình thường, quản trị viên môi trường cấp `users.is_platform_admin = true` bằng quy trình vận
 hành an toàn. Cờ này độc lập với Workspace Role và số dư Credit.
+
+**Troubleshooting (22/09/2026):** vào `/platform` bị redirect về `/dashboard` → user chưa có
+`is_platform_admin=true` (cấp bằng SQL vận hành, không có tài khoản mặc định). Vào `/platform` bị
+redirect `/login` → chưa đăng nhập hoặc token hết hạn. FE `User` type đã có `isPlatformAdmin?`,
+`PlatformGuard` đọc trực tiếp cờ này — không dùng role `ADMIN` di sản trong `permissions.ts`
+(`ADMIN` chỉ là alias deprecated của `LEAD`).
 
 ---
 
