@@ -157,6 +157,8 @@
       "title": "Choose a credit package",
       "desc": "The selected amount is credited immediately after confirmation.",
       "confirm": "Confirm purchase",
+      "select": "Choose",
+      "selected": "Selected",
       "noPackages": "No credit packages are currently available.",
       "reference": "Payment reference",
       "referencePlaceholder": "e.g. BANK-2026-00125",

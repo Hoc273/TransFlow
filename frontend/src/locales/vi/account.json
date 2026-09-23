@@ -157,6 +157,8 @@
       "title": "Chọn gói credit",
       "desc": "Credit của gói được cộng ngay sau khi xác nhận.",
       "confirm": "Xác nhận mua",
+      "select": "Chọn gói",
+      "selected": "Đã chọn",
       "noPackages": "Hiện không có gói credit khả dụng.",
       "reference": "Mã tham chiếu thanh toán",
       "referencePlaceholder": "Ví dụ: BANK-2026-00125",

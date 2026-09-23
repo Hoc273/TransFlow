@@ -76,57 +76,19 @@
   flex-shrink: 0;
 }
 
-/* Test result row outline: green = ok, red = failed */
-.user-providers-table tr.test-row-success > td {
-  border-top: 2px solid var(--color-success);
-  border-bottom: 2px solid var(--color-success);
+/* Test result row tint: green = ok, red = failed, accent = running */
+.dd-table.user-providers-table tbody tr.test-row-success {
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
 }
 
-.user-providers-table tr.test-row-success > td:first-child {
-  border-left: 2px solid var(--color-success);
+.dd-table.user-providers-table tbody tr.test-row-failed {
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
 }
 
-.user-providers-table tr.test-row-success > td:last-child {
-  border-right: 2px solid var(--color-success);
-}
-
-.user-providers-table tr.test-row-failed > td {
-  border-top: 2px solid var(--color-error);
-  border-bottom: 2px solid var(--color-error);
-  animation: row-border-run-red 1.2s ease-in-out infinite;
-}
-
-.user-providers-table tr.test-row-failed > td:first-child {
-  border-left: 2px solid var(--color-error);
-}
-
-.user-providers-table tr.test-row-failed > td:last-child {
-  border-right: 2px solid var(--color-error);
-}
-
-@keyframes row-border-run-red {
-  0%,
-  100% {
-    border-color: var(--color-error);
-  }
-  50% {
-    border-color: color-mix(in srgb, var(--color-error) 25%, transparent);
-  }
-}
-
-/* Running test: accent border flashing while the check is in flight */
-.user-providers-table tr.test-row-testing > td {
-  border-top: 2px solid var(--color-accent);
-  border-bottom: 2px solid var(--color-accent);
+/* Running test: light accent tint flashing while the check is in flight */
+.dd-table.user-providers-table tbody tr.test-row-testing {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   animation: row-testing-flash 1s ease-in-out infinite;
-}
-
-.user-providers-table tr.test-row-testing > td:first-child {
-  border-left: 2px solid var(--color-accent);
-}
-
-.user-providers-table tr.test-row-testing > td:last-child {
-  border-right: 2px solid var(--color-accent);
 }
 
 @keyframes row-testing-flash {
@@ -140,8 +102,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .user-providers-table tr.test-row-failed > td,
-  .user-providers-table tr.test-row-testing > td {
+  .dd-table.user-providers-table tbody tr.test-row-testing {
     animation: none;
   }
 }

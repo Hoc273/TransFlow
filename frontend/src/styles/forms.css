@@ -229,6 +229,10 @@
 .modal-panel-lg {
   max-width: 560px;
 }
+/* Credit package picker: wide enough for 3 landing-style cards side by side. */
+.credit-packages-modal {
+  max-width: min(980px, 96vw);
+}
 /* PRESET-VIZ (docs/97 §19.16): xl preset editor with the live preview column.
  * FE follow-up: wider (min(1280px, 96vw)) so the preview frame can be larger. */
 .modal-panel-xl {

@@ -11,6 +11,7 @@ import {
 } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { Modal } from '@/components/shared/Modal'
+import { CreditPackageCard, type PackageAccent } from '@/components/credit/CreditPackageCard'
 import {
   useCreditPackages,
   useCreditTransactions,
@@ -330,6 +331,7 @@ function PurchaseCreditModal({
       title={t('account:credit.modal.title')}
       description={t('account:credit.modal.desc')}
       size="lg"
+      className="credit-packages-modal"
       footer={
         <>
           <button type="button" className="btn-secondary" disabled={purchase.isPending} onClick={close}>
@@ -352,42 +354,24 @@ function PurchaseCreditModal({
           <IconLoader2 size={22} className="mx-auto animate-spin" />
         </div>
       ) : packages.length ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {packages.map((creditPackage) => {
-            const active = creditPackage.id === selectedId
+        <div className="grid items-stretch gap-4 sm:grid-cols-3">
+          {packages.map((creditPackage, index) => {
+            const accent: PackageAccent = (['neutral', 'blue', 'emerald'] as const)[index % 3]
             return (
-              <button
+              <CreditPackageCard
                 key={creditPackage.id}
-                type="button"
-                aria-pressed={active}
-                className={`relative rounded-xl border p-4 text-left transition-colors ${
-                  active
-                    ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]'
-                    : 'border-[var(--color-border)] bg-[var(--color-bg-surface-2)] hover:border-[var(--color-border-strong)]'
-                }`}
-                onClick={() => setSelectedId(creditPackage.id)}
-              >
-                {active && (
-                  <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-accent)] text-white">
-                    <IconCheck size={12} />
-                  </span>
-                )}
-                <div className="pr-7 text-sm font-semibold text-[var(--color-text-primary)]">
-                  {creditPackage.name}
-                </div>
-                <div className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-[var(--color-text-primary)]">
-                  {formatNumber(Number(creditPackage.creditAmount), language)}
-                </div>
-                <div className="text-[11px] text-[var(--color-text-tertiary)]">
-                  {t('account:credit.unit')}
-                </div>
-                <div className="mt-4 text-xs font-medium text-[var(--color-accent)]">
-                  {new Intl.NumberFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
-                    style: 'currency',
-                    currency: creditPackage.priceCurrency,
-                  }).format(Number(creditPackage.priceAmount))}
-                </div>
-              </button>
+                name={creditPackage.name}
+                credits={formatNumber(Number(creditPackage.creditAmount), language)}
+                creditsUnit={t('account:credit.unit')}
+                price={new Intl.NumberFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
+                  style: 'currency',
+                  currency: creditPackage.priceCurrency,
+                }).format(Number(creditPackage.priceAmount))}
+                selected={creditPackage.id === selectedId}
+                accent={accent}
+                selectedLabel={t('account:credit.modal.selected')}
+                onSelect={() => setSelectedId(creditPackage.id)}
+              />
             )
           })}
         </div>

@@ -196,7 +196,7 @@ export function SecuritySection() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 items-start">
       {/* Change Password Card */}
       <form
         onSubmit={onPasswordSubmit}
@@ -226,7 +226,7 @@ export function SecuritySection() {
           </div>
         )}
 
-        <div className="max-w-lg space-y-4">
+        <div className="space-y-4">
           <PwField
             id="current-pw"
             label={t('account:security.current')}
@@ -269,15 +269,7 @@ export function SecuritySection() {
             }
           />
 
-          <div className="mt-6 flex items-center justify-between border-t border-[var(--color-border)] pt-4">
-            <button
-              type="button"
-              onClick={onResetForm}
-              className="btn-ghost btn-sm text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] cursor-pointer"
-              disabled={!currentPw && !newPw && !confirmPw}
-            >
-              {t('account:security.resetForm')}
-            </button>
+          <div className="mt-6 flex justify-end border-t border-[var(--color-border)] pt-4">
             <button
               type="submit"
               disabled={changePassword.isPending}
@@ -298,7 +290,7 @@ export function SecuritySection() {
         </div>
       </form>
 
-      {/* Connected Accounts Card */}
+      {/* Connected Accounts Card — right column */}
       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-6 shadow-xs">
         <div className="border-b border-[var(--color-border)] pb-4 mb-5">
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
@@ -319,14 +311,14 @@ export function SecuritySection() {
 
         <div className="divide-y divide-[var(--color-border)]">
           {/* Google */}
-          <div className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0">
+          <div className="flex flex-col gap-3 py-3.5 first:pt-0 last:pb-0">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] shadow-2xs">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] shadow-2xs shrink-0">
                 <GoogleMark />
               </div>
-              <div className="space-y-0.5">
+              <div className="space-y-0.5 min-w-0">
                 <div className="text-xs font-semibold text-[var(--color-text-primary)]">Google</div>
-                <div className="text-[11px] text-[var(--color-text-tertiary)]">
+                <div className="text-[11px] text-[var(--color-text-tertiary)] truncate">
                   {isGoogleLinked
                     ? user?.email
                       ? `${t('account:security.googleLinkedEmail')}: ${user.email}`
@@ -338,14 +330,14 @@ export function SecuritySection() {
               </div>
             </div>
             {isGoogleLinked ? (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 select-none">
+              <span className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 select-none">
                 <IconCheck size={13} stroke={2.5} />
                 <span>{t('account:security.googleConnected')}</span>
               </span>
             ) : (
               <button
                 type="button"
-                className="btn-secondary btn-sm text-xs cursor-pointer"
+                className="btn-secondary btn-sm w-full text-xs cursor-pointer"
                 onClick={onGoogleConnect}
               >
                 {t('account:common.connect')}
