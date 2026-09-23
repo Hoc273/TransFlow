@@ -26,6 +26,7 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useMediaJobs, useProjectMediaAssets } from '@/hooks/useMedia'
 import { useProjects } from '@/hooks/useProjects'
+import { useRecordProjectVisit } from '@/hooks/useRecentProjects'
 import { exportTransformationJobApi, rerunTransformationStageApi } from '@/api/transformation'
 import {
   currentStage,
@@ -82,6 +83,8 @@ export function MediaListPage() {
     () => projects.find((p) => p.id === projectId) ?? null,
     [projects, projectId],
   )
+
+  useRecordProjectVisit(workspaceId, selectedProject?.id, selectedProject?.name)
 
   const activeCount = useMemo(
     () => jobs.filter((j) => isActiveMediaJobStatus(j.status)).length,

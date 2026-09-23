@@ -165,6 +165,66 @@
   color: var(--color-text-secondary);
 }
 
+/* Sidebar "Recent" projects: link + hover pin toggle. */
+.nav-recent-row {
+  position: relative;
+}
+
+.nav-recent-row .nav-item {
+  padding-right: 30px;
+  min-width: 0;
+}
+
+.nav-recent-pin {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+
+.nav-recent-row:hover .nav-recent-pin,
+.nav-recent-pin:focus-visible {
+  opacity: 1;
+}
+
+.nav-recent-pin:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.nav-recent-empty {
+  padding: 4px 14px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.app-sidebar.collapsed .nav-recent-pin,
+.app-sidebar.collapsed .nav-recent-empty {
+  display: none;
+}
+
+.app-sidebar.collapsed .nav-recent-row .nav-item {
+  padding: 8px;
+}
+
+@media (hover: none) {
+  .nav-recent-pin {
+    opacity: 1;
+  }
+}
+
 .phase-badge {
   font-size: 9px;
   font-weight: 700;

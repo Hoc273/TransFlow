@@ -68,7 +68,12 @@
     "members": "Members",
     "providers": "AI Providers",
     "mediaPresets": "Workflow presets",
-    "platformAdmin": "Platform Admin"
+    "platformAdmin": "Platform Admin",
+    "recent": "Recent",
+    "recentEmpty": "No recent projects",
+    "pinProject": "Pin project",
+    "unpinProject": "Unpin",
+    "untitledProject": "Project"
   },
   "roles": {
     "owner": "Owner",

@@ -9,6 +9,7 @@ import {
   IconShieldCheck,
   IconVideo,
 } from '@tabler/icons-react'
+import { SidebarRecentProjects } from './SidebarRecentProjects'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
@@ -155,6 +156,7 @@ export function SidebarNav({ mobileOpen, className }: SidebarNavProps) {
             })}
           </div>
         ))}
+        {workspaceId && <SidebarRecentProjects workspaceId={workspaceId} />}
       </nav>
 
       <Link

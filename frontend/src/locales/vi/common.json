@@ -68,7 +68,12 @@
     "members": "Thành viên",
     "providers": "Nhà cung cấp AI",
     "mediaPresets": "Preset quy trình",
-    "platformAdmin": "Quản trị hệ thống"
+    "platformAdmin": "Quản trị hệ thống",
+    "recent": "Gần đây",
+    "recentEmpty": "Chưa mở dự án nào",
+    "pinProject": "Ghim dự án",
+    "unpinProject": "Bỏ ghim",
+    "untitledProject": "Dự án"
   },
   "roles": {
     "owner": "Chủ sở hữu",
