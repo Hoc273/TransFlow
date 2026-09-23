@@ -169,6 +169,11 @@
   border-right: 1px solid var(--color-border);
   background: var(--sidebar);
   backdrop-filter: blur(8px);
+  /* Stay fixed while the page content scrolls (below the sticky topbar) */
+  position: sticky;
+  top: 3.5rem;
+  height: calc(100vh - 3.5rem);
+  overflow-y: auto;
 }
 @media (min-width: 1024px) {
   .platform-sidebar { display: flex; }

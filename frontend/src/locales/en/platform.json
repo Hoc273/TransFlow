@@ -147,7 +147,26 @@
       "status": "Status",
       "platformAdmin": "Platform Admin",
       "workspaces": "Workspaces",
-      "joined": "Joined"
+      "joined": "Joined",
+      "actions": "Actions"
+    },
+    "creditBtn": "Credit",
+    "creditModal": {
+      "title": "Adjust Credit",
+      "target": "User",
+      "modeLabel": "Adjustment type",
+      "grant": "Grant",
+      "deduct": "Deduct",
+      "amount": "Credit amount",
+      "reason": "Reason (optional)",
+      "reasonPlaceholder": "e.g. Support compensation, reward…",
+      "confirmGrant": "Grant credit",
+      "confirmDeduct": "Deduct",
+      "success": "Credit adjusted successfully!",
+      "balanceBefore": "Balance before",
+      "balanceAfter": "Balance after",
+      "error": "Something went wrong. Please try again.",
+      "insufficient": "Deduction exceeds the user's current balance."
     },
     "email": "Email",
     "fullName": "Name",
@@ -203,6 +222,8 @@
     "listUsers": "List Users",
     "listWs": "List Workspaces",
     "listAudit": "List Audit",
+    "viewUserCredit": "View User Credit",
+    "adjustUserCredit": "Adjust User Credit",
     "seedGrant": "Seed Grant",
     "denied": "Denied",
     "immutable": "Immutable",
@@ -233,6 +254,9 @@
   },
   "common": {
     "retry": "Retry",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "close": "Close",
+    "cancel": "Cancel",
+    "clear": "Clear"
   }
 }

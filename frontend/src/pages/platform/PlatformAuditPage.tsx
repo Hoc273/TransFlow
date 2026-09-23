@@ -17,6 +17,8 @@ const ACTION_FILTERS = [
   { value: 'LIST_USERS', labelKey: 'audit.listUsers' as const },
   { value: 'LIST_WORKSPACES', labelKey: 'audit.listWs' as const },
   { value: 'LIST_AUDIT', labelKey: 'audit.listAudit' as const },
+  { value: 'VIEW_USER_CREDIT', labelKey: 'audit.viewUserCredit' as const },
+  { value: 'ADJUST_USER_CREDIT', labelKey: 'audit.adjustUserCredit' as const },
   { value: 'SEED_GRANT', labelKey: 'audit.seedGrant' as const },
   { value: 'DENIED', labelKey: 'audit.denied' as const },
 ] as const
@@ -35,6 +37,8 @@ function actionBadgeClass(action: string) {
       return 'platform-action-badge platform-action-cyan'
     case 'LIST_AUDIT':
       return 'platform-action-badge platform-action-slate'
+    case 'ADJUST_USER_CREDIT':
+      return 'platform-action-badge platform-action-amber'
     case 'SEED_GRANT':
       return 'platform-action-badge platform-action-success'
     case 'DENIED':
@@ -111,7 +115,6 @@ export function PlatformAuditPage() {
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{t('audit.title')}</h1>
-          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{t('audit.subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <div className="inline-flex items-center gap-1.5 rounded-lg platform-immutable-badge px-3 py-1.5 font-medium">

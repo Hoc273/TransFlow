@@ -9,7 +9,6 @@ import {
   IconFileText,
   IconPlayerPlay,
   IconRefresh,
-  IconSparkles,
   IconStack2,
   IconUsers,
   IconVideo,
@@ -224,14 +223,7 @@ export function PlatformOverviewPage() {
         {/* Header */}
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="mb-2 flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
-              <IconSparkles size={14} className="text-[var(--color-accent)]" />
-              <span>{t('overview.kpiHeader')}</span>
-              <span className="h-1 w-1 rounded-full bg-[var(--color-border-strong)]" />
-              <span>{t('overview.live')}</span>
-            </div>
             <h1 className="text-3xl font-bold tracking-tight">{t('overview.title')}</h1>
-            <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{t('overview.subtitle')}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--card)] p-1 shadow-sm">
@@ -607,6 +599,9 @@ export function PlatformOverviewPage() {
             )}
           </div>
         </div>
+
+        {/* Online users — live presence chart */}
+        <OnlineUsersCard language={language} />
 
         {/* Real-time Active Users Chart */}
         <RealtimeActiveUsersCard language={language} />
@@ -1034,6 +1029,132 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
                 isAnimationActive={false}
                 dot={false}
                 activeDot={{ r: 5, fill: '#10b981', stroke: '#ffffff', strokeWidth: 2 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Online Users Card — live presence visualization.
+ * Reads `onlineUsers` from GET /api/platform/realtime (polled every 3 s)
+ * and plots a rolling 19-point time-series. The frontend sends a presence
+ * heartbeat every 60 s while logged in; a user counts as online within
+ * 2 minutes of their last heartbeat.
+ */
+function OnlineUsersCard({ language }: { language: string }) {
+  const { data: snap } = usePlatformRealtime()
+
+  // Rolling 19-point time-series of onlineUsers — one point per 3 s poll
+  const [chartData, setChartData] = useState<Array<{ time: string; users: number }>>([])
+
+  useEffect(() => {
+    if (snap == null) return
+    const point = {
+      time: new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+      users: snap.onlineUsers ?? 0,
+    }
+    setChartData((prev) => {
+      const next = [...prev, point]
+      return next.length > 19 ? next.slice(next.length - 19) : next
+    })
+  }, [snap])
+
+  const onlineUsers = snap?.onlineUsers ?? 0
+
+  return (
+    <div className="platform-card platform-card-soft p-6 mb-6">
+      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400">
+              <IconUsers size={18} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                  {language === 'vi' ? 'Người đang online' : 'Online users'}
+                </h3>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-400 border border-sky-500/20">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-500" />
+                  </span>
+                  <span>LIVE</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--color-text-tertiary)] mt-0.5">
+                {language === 'vi'
+                  ? 'User có tín hiệu trong 2 phút qua · Tự động làm mới mỗi 3 giây'
+                  : 'Users with a heartbeat in the last 2 minutes · Auto-refreshes every 3 seconds'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-5 self-start sm:self-center">
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
+              {language === 'vi' ? 'Đang online' : 'Online'}
+            </div>
+            <div className="text-xl font-bold font-mono text-sky-400 tabular-nums">
+              {onlineUsers}{' '}
+              <span className="text-xs font-normal text-[var(--color-text-secondary)]">
+                {language === 'vi' ? 'user' : 'users'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="h-60 w-full">
+        {chartData.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-xs text-[var(--color-text-tertiary)]">
+            <IconClock size={14} className="mr-1.5 opacity-60" />
+            {language === 'vi' ? 'Đang thu thập dữ liệu…' : 'Collecting data…'}
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+              <defs>
+                <linearGradient id="onlineUsersGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} opacity={0.6} />
+              <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, 'auto']} allowDecimals={false} tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }} axisLine={false} tickLine={false} width={45} />
+              <Tooltip
+                contentStyle={{
+                  background: 'var(--color-bg-surface-2)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '0.5rem',
+                  boxShadow: '0 12px 32px -12px rgba(0,0,0,0.5)',
+                  fontSize: '12px',
+                }}
+                labelStyle={{ color: 'var(--color-text-primary)', fontWeight: 600 }}
+                formatter={(val) => [
+                  `${val ?? 0} ${language === 'vi' ? 'user' : 'users'}`,
+                  language === 'vi' ? 'Đang online' : 'Online users',
+                ]}
+              />
+              <Area
+                type="monotone"
+                dataKey="users"
+                stroke="#38bdf8"
+                strokeWidth={2.5}
+                fill="url(#onlineUsersGrad)"
+                isAnimationActive={false}
+                dot={false}
+                activeDot={{ r: 5, fill: '#38bdf8', stroke: '#ffffff', strokeWidth: 2 }}
               />
             </AreaChart>
           </ResponsiveContainer>

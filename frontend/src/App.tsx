@@ -3,6 +3,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { AppRouter } from '@/app/router'
 import { useThemeSync } from '@/hooks/useThemeSync'
 import { useLanguageSync } from '@/hooks/useLanguageSync'
+import { usePresenceHeartbeat } from '@/hooks/usePresence'
 import { applyThemeToDocument, useUiStore } from '@/store/uiStore'
 import { createAppQueryClient } from '@/lib/queryClient'
 import { GlobalErrorBoundary } from '@/components/error/GlobalErrorBoundary'
@@ -10,6 +11,7 @@ import { GlobalErrorBoundary } from '@/components/error/GlobalErrorBoundary'
 function ThemeBootstrap() {
   useThemeSync()
   useLanguageSync()
+  usePresenceHeartbeat()
 
   useEffect(() => {
     applyThemeToDocument(useUiStore.getState().theme)
