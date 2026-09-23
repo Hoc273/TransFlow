@@ -52,6 +52,9 @@
     "saveSuccess": "Saved successfully!",
     "moveUp": "Move up",
     "moveDown": "Move down",
+    "dragToReorder": "Drag to reorder",
+    "reorderSuccess": "Category order updated.",
+    "reorderError": "Could not update the order.",
     "publishedOnlyNotice": "Public users can only view published categories and articles."
   }
 }

@@ -52,6 +52,9 @@
     "saveSuccess": "Lưu thành công!",
     "moveUp": "Di chuyển lên",
     "moveDown": "Di chuyển xuống",
+    "dragToReorder": "Kéo để sắp xếp lại",
+    "reorderSuccess": "Đã cập nhật thứ tự danh mục.",
+    "reorderError": "Không thể cập nhật thứ tự.",
     "publishedOnlyNotice": "Người dùng chỉ đọc được các danh mục và bài viết Đã xuất bản."
   }
 }
