@@ -104,7 +104,6 @@ export function PlatformWorkspacesPage() {
     <div className="platform-content">
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">{t('workspaces.title')}</h1>
-        <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{t('workspaces.subtitle')}</p>
       </div>
 
       {/* Stats row — design template */}

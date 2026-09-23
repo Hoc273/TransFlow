@@ -4,8 +4,6 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   IconAlertCircle,
-  IconArrowDown,
-  IconArrowUp,
   IconCheck,
   IconEdit,
   IconEye,
@@ -13,6 +11,7 @@ import {
   IconFileText,
   IconFolder,
   IconFolderPlus,
+  IconGripVertical,
   IconPlus,
   IconSearch,
   IconTrash,
@@ -166,14 +165,30 @@ export function GuideAdminPage() {
     }
   }
 
-  const handleMoveCategory = async (cat: GuideCategory, direction: 'UP' | 'DOWN') => {
+  // --- Drag & drop reorder (same pattern as WorkspacesSection) ---
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  const [isReordering, setIsReordering] = useState(false)
+
+  const handleDropReorder = async (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx || isReordering) return
+    const next = [...categories]
+    const [moved] = next.splice(fromIdx, 1)
+    next.splice(toIdx, 0, moved)
+    setIsReordering(true)
     try {
-      await moveCategoryMut.mutateAsync({
-        id: cat.id,
-        data: { direction },
-      })
+      for (let i = 0; i < next.length; i++) {
+        if (next[i].orderIndex !== i) {
+          await moveCategoryMut.mutateAsync({ id: next[i].id, data: { orderIndex: i } })
+        }
+      }
+      showToast(t('admin.reorderSuccess'))
     } catch (err: any) {
-      alert(err?.message || 'Không thể thay đổi thứ tự.')
+      alert(err?.message || t('admin.reorderError'))
+    } finally {
+      setIsReordering(false)
+      setDraggedIdx(null)
+      setDragOverIdx(null)
     }
   }
 
@@ -273,7 +288,7 @@ export function GuideAdminPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="platform-content">
       {/* Toast Notice */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 text-xs font-semibold shadow-xl border border-neutral-700 animate-in fade-in slide-in-from-bottom-2">
@@ -283,16 +298,13 @@ export function GuideAdminPage() {
       )}
 
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--color-border)] pb-4">
+      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">
+          <h1 className="text-3xl font-bold tracking-tight text-[var(--color-text-primary)]">
             {t('admin.title')}
           </h1>
-          <p className="text-xs sm:text-sm text-[var(--color-text-secondary)] mt-0.5">
-            {t('admin.subtitle')}
-          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => handleOpenArticleModal()}
@@ -307,7 +319,7 @@ export function GuideAdminPage() {
       {/* Main Grid: Left Categories, Right Articles */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Categories Panel */}
-        <div className="lg:col-span-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 space-y-4">
+        <div className="lg:col-span-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-4 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border)]">
             <div className="flex items-center gap-2">
               <IconFolder size={18} className="text-primary" />
@@ -341,16 +353,51 @@ export function GuideAdminPage() {
                 return (
                   <div
                     key={cat.id}
-                    className={`p-3 rounded-xl border transition-all ${
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggedIdx(idx)
+                      e.dataTransfer.effectAllowed = 'move'
+                    }}
+                    onDragEnter={() => {
+                      if (draggedIdx !== null && draggedIdx !== idx) {
+                        setDragOverIdx(idx)
+                      }
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      if (draggedIdx !== null && draggedIdx !== idx) {
+                        void handleDropReorder(draggedIdx, idx)
+                      }
+                      setDraggedIdx(null)
+                      setDragOverIdx(null)
+                    }}
+                    onDragEnd={() => {
+                      setDraggedIdx(null)
+                      setDragOverIdx(null)
+                    }}
+                    className={`p-3 rounded-xl border transition-all duration-150 select-none ${
                       isSelected
                         ? 'border-primary/50 bg-primary/5 dark:bg-primary/10'
-                        : 'border-[var(--color-border)] hover:border-[var(--color-border-hover)] bg-[var(--color-surface)]'
-                    }`}
+                        : 'border-[var(--color-border)] hover:border-[var(--color-border-strong)] bg-[var(--color-bg-surface)]'
+                    } ${dragOverIdx === idx ? 'border-dashed border-[var(--color-accent)] bg-[var(--color-accent-soft)]/30' : ''} ${draggedIdx === idx ? 'opacity-40' : ''}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div
+                        className="pt-0.5 shrink-0 cursor-grab active:cursor-grabbing text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] p-1 -ml-1 rounded transition-colors"
+                        title={t('admin.dragToReorder')}
+                      >
+                        <IconGripVertical size={16} />
+                      </div>
+                      <div
                         className="flex-1 min-w-0 cursor-pointer"
-                        onClick={() => setSelectedCatFilter(isSelected ? '' : cat.id)}
+                        onClick={() => {
+                          if (draggedIdx !== null) return
+                          setSelectedCatFilter(isSelected ? '' : cat.id)
+                        }}
                       >
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs font-bold text-[var(--color-text-primary)] truncate">
@@ -372,24 +419,6 @@ export function GuideAdminPage() {
 
                       {/* Category Actions */}
                       <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          disabled={idx === 0}
-                          onClick={() => handleMoveCategory(cat, 'UP')}
-                          className="p-1 rounded-md text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] disabled:opacity-30"
-                          title={t('admin.moveUp')}
-                        >
-                          <IconArrowUp size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={idx === categories.length - 1}
-                          onClick={() => handleMoveCategory(cat, 'DOWN')}
-                          className="p-1 rounded-md text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] disabled:opacity-30"
-                          title={t('admin.moveDown')}
-                        >
-                          <IconArrowDown size={14} />
-                        </button>
                         <button
                           type="button"
                           onClick={() => handleOpenCategoryModal(cat)}
@@ -416,7 +445,7 @@ export function GuideAdminPage() {
         </div>
 
         {/* Right Column: Articles Table & Filters */}
-        <div className="lg:col-span-8 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 space-y-4">
+        <div className="lg:col-span-8 rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-4 space-y-4">
           {/* Filters Bar */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-3 border-b border-[var(--color-border)]">
             <div className="flex items-center gap-2 flex-wrap flex-1">
@@ -424,7 +453,7 @@ export function GuideAdminPage() {
               <select
                 value={selectedCatFilter}
                 onChange={(e) => setSelectedCatFilter(e.target.value)}
-                className="px-2.5 py-1.5 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
+                className="px-2.5 py-1.5 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
               >
                 <option value="">{t('allCategories')}</option>
                 {categories.map((c) => (
@@ -438,7 +467,7 @@ export function GuideAdminPage() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as GuideArticleStatus | '')}
-                className="px-2.5 py-1.5 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
+                className="px-2.5 py-1.5 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
               >
                 <option value="">{t('admin.filterStatus')} (Tất cả)</option>
                 <option value="DRAFT">{t('admin.draft')}</option>
@@ -457,7 +486,7 @@ export function GuideAdminPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('admin.searchPlaceholder')}
-                className="w-full pl-8 pr-7 py-1.5 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-hidden"
+                className="w-full pl-8 pr-7 py-1.5 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-hidden"
               />
               {searchQuery && (
                 <button
@@ -498,7 +527,7 @@ export function GuideAdminPage() {
                     return (
                       <tr
                         key={art.id}
-                        className="hover:bg-[var(--color-surface-hover)] transition-colors"
+                        className="hover:bg-[var(--color-bg-hover)] transition-colors"
                       >
                         <td className="py-3 px-3">
                           <div className="font-semibold text-[var(--color-text-primary)]">
@@ -508,11 +537,11 @@ export function GuideAdminPage() {
                             {art.titleEn} · slug: <code className="font-mono">{art.slug}</code>
                           </div>
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="py-3 px-3 whitespace-nowrap">
                           <button
                             type="button"
                             onClick={() => handleTogglePublish(art)}
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all ${
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap transition-all ${
                               isPublished
                                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400'
                                 : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
@@ -523,13 +552,13 @@ export function GuideAdminPage() {
                             <span>{isPublished ? t('admin.published') : t('admin.draft')}</span>
                           </button>
                         </td>
-                        <td className="py-3 px-3 text-[var(--color-text-secondary)] font-mono">
+                        <td className="py-3 px-3 text-[var(--color-text-secondary)] font-mono whitespace-nowrap">
                           {art.orderIndex}
                         </td>
-                        <td className="py-3 px-3 text-[var(--color-text-tertiary)]">
+                        <td className="py-3 px-3 text-[var(--color-text-tertiary)] whitespace-nowrap">
                           {art.updatedAt ? new Date(art.updatedAt).toLocaleDateString() : '—'}
                         </td>
-                        <td className="py-3 px-3 text-right">
+                        <td className="py-3 px-3 text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-1.5">
                             <button
                               type="button"
@@ -573,8 +602,8 @@ export function GuideAdminPage() {
       {/* Category Modal (Create / Edit) */}
       {categoryModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border)]">
+          <div className="w-full max-w-md flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-6 gap-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border)] shrink-0">
               <h3 className="text-base font-bold text-[var(--color-text-primary)]">
                 {editingCategory ? t('admin.editCategory') : t('admin.newCategory')}
               </h3>
@@ -588,13 +617,13 @@ export function GuideAdminPage() {
             </div>
 
             {categoryError && (
-              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs flex items-center gap-2 shrink-0">
                 <IconAlertCircle size={16} className="shrink-0" />
                 <span>{categoryError}</span>
               </div>
             )}
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-[var(--color-text-secondary)] mb-1">
                   {t('admin.titleVi')} *
@@ -604,7 +633,7 @@ export function GuideAdminPage() {
                   value={categoryForm.titleVi}
                   onChange={(e) => setCategoryForm({ ...categoryForm, titleVi: e.target.value })}
                   placeholder="Ví dụ: Bắt đầu"
-                  className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
+                  className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                 />
               </div>
 
@@ -617,7 +646,7 @@ export function GuideAdminPage() {
                   value={categoryForm.titleEn}
                   onChange={(e) => setCategoryForm({ ...categoryForm, titleEn: e.target.value })}
                   placeholder="Example: Getting Started"
-                  className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
+                  className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                 />
               </div>
 
@@ -630,7 +659,7 @@ export function GuideAdminPage() {
                   value={categoryForm.slug ?? ''}
                   onChange={(e) => setCategoryForm({ ...categoryForm, slug: e.target.value })}
                   placeholder="Tự sinh từ tiêu đề nếu để trống"
-                  className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] font-mono focus:outline-hidden"
+                  className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] font-mono focus:outline-hidden"
                 />
               </div>
 
@@ -649,11 +678,11 @@ export function GuideAdminPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-4 border-t border-[var(--color-border)]">
+            <div className="flex items-center justify-end gap-2 pt-4 border-t border-[var(--color-border)] shrink-0">
               <button
                 type="button"
                 onClick={() => setCategoryModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
               >
                 {t('admin.cancel')}
               </button>
@@ -673,7 +702,7 @@ export function GuideAdminPage() {
       {/* Article Editor Modal (Create / Edit) */}
       {articleModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-2xl overflow-hidden">
+          <div className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-6 shadow-2xl overflow-hidden">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border)] shrink-0">
               <h3 className="text-base font-bold text-[var(--color-text-primary)]">
@@ -708,7 +737,7 @@ export function GuideAdminPage() {
                     onChange={(e) =>
                       setArticleForm({ ...articleForm, categoryId: e.target.value })
                     }
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                   >
                     <option value="">-- Chọn danh mục --</option>
                     {categories.map((c) => (
@@ -731,7 +760,7 @@ export function GuideAdminPage() {
                         status: e.target.value as GuideArticleStatus,
                       })
                     }
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                   >
                     <option value="DRAFT">{t('admin.draft')}</option>
                     <option value="PUBLISHED">{t('admin.published')}</option>
@@ -748,7 +777,7 @@ export function GuideAdminPage() {
                     onChange={(e) =>
                       setArticleForm({ ...articleForm, orderIndex: Number(e.target.value) })
                     }
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] font-mono focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] font-mono focus:outline-hidden"
                   />
                 </div>
               </div>
@@ -764,7 +793,7 @@ export function GuideAdminPage() {
                     value={articleForm.titleVi}
                     onChange={(e) => setArticleForm({ ...articleForm, titleVi: e.target.value })}
                     placeholder="Tiêu đề tiếng Việt"
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                   />
                 </div>
 
@@ -777,7 +806,7 @@ export function GuideAdminPage() {
                     value={articleForm.titleEn}
                     onChange={(e) => setArticleForm({ ...articleForm, titleEn: e.target.value })}
                     placeholder="English title"
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                   />
                 </div>
               </div>
@@ -793,7 +822,7 @@ export function GuideAdminPage() {
                     value={articleForm.slug ?? ''}
                     onChange={(e) => setArticleForm({ ...articleForm, slug: e.target.value })}
                     placeholder="Tự sinh từ tiêu đề tiếng Việt nếu để trống"
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] font-mono focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] font-mono focus:outline-hidden"
                   />
                 </div>
 
@@ -808,7 +837,7 @@ export function GuideAdminPage() {
                       setArticleForm({ ...articleForm, coverImageUrl: e.target.value })
                     }
                     placeholder="https://..."
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                   />
                 </div>
               </div>
@@ -826,7 +855,7 @@ export function GuideAdminPage() {
                       setArticleForm({ ...articleForm, excerptVi: e.target.value })
                     }
                     placeholder="Tóm tắt ngắn gọn bài viết..."
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                   />
                 </div>
 
@@ -841,7 +870,7 @@ export function GuideAdminPage() {
                       setArticleForm({ ...articleForm, excerptEn: e.target.value })
                     }
                     placeholder="Brief summary of the article..."
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                   />
                 </div>
               </div>
@@ -860,7 +889,7 @@ export function GuideAdminPage() {
 
                   <div className="flex items-center gap-2">
                     {/* Write / Preview Tab */}
-                    <div className="flex items-center p-0.5 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)]">
+                    <div className="flex items-center p-0.5 rounded-lg bg-[var(--color-bg-hover)] border border-[var(--color-border)]">
                       <button
                         type="button"
                         onClick={() => setArticleEditorTab('write')}
@@ -886,11 +915,11 @@ export function GuideAdminPage() {
                     </div>
 
                     {/* Language Switcher for Content */}
-                    <div className="flex items-center p-0.5 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)]">
+                    <div className="flex items-center p-0.5 rounded-lg bg-[var(--color-bg-hover)] border border-[var(--color-border)]">
                       <button
                         type="button"
                         onClick={() => setArticleContentLang('vi')}
-                        className={`px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
                           articleContentLang === 'vi'
                             ? 'bg-primary text-white shadow-xs'
                             : 'text-[var(--color-text-tertiary)]'
@@ -901,7 +930,7 @@ export function GuideAdminPage() {
                       <button
                         type="button"
                         onClick={() => setArticleContentLang('en')}
-                        className={`px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
                           articleContentLang === 'en'
                             ? 'bg-primary text-white shadow-xs'
                             : 'text-[var(--color-text-tertiary)]'
@@ -922,7 +951,7 @@ export function GuideAdminPage() {
                         setArticleForm({ ...articleForm, contentVi: e.target.value })
                       }
                       placeholder="# Tiêu đề bài viết\n\nNội dung Markdown tiếng Việt..."
-                      className="w-full p-3 rounded-xl text-xs font-mono bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden leading-relaxed"
+                      className="w-full p-3 rounded-xl text-xs font-mono bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden leading-relaxed"
                     />
                   ) : (
                     <textarea
@@ -932,11 +961,11 @@ export function GuideAdminPage() {
                         setArticleForm({ ...articleForm, contentEn: e.target.value })
                       }
                       placeholder="# Article Title\n\nEnglish markdown content..."
-                      className="w-full p-3 rounded-xl text-xs font-mono bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden leading-relaxed"
+                      className="w-full p-3 rounded-xl text-xs font-mono bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden leading-relaxed"
                     />
                   )
                 ) : (
-                  <div className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] min-h-[300px] overflow-y-auto prose prose-neutral dark:prose-invert max-w-none text-xs">
+                  <div className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-hover)] min-h-[300px] overflow-y-auto prose prose-neutral dark:prose-invert max-w-none text-xs">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {articleContentLang === 'vi'
                         ? articleForm.contentVi || '*Chưa có nội dung Tiếng Việt*'
@@ -952,7 +981,7 @@ export function GuideAdminPage() {
               <button
                 type="button"
                 onClick={() => setArticleModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
               >
                 {t('admin.cancel')}
               </button>
@@ -972,17 +1001,17 @@ export function GuideAdminPage() {
       {/* Standalone Preview Modal */}
       {previewArticleItem && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-2xl overflow-hidden">
+          <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-6 shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border)] shrink-0">
               <div className="flex items-center gap-3">
                 <span className="text-base font-bold text-[var(--color-text-primary)]">
                   {t('admin.preview')}
                 </span>
-                <div className="flex items-center p-0.5 rounded-lg bg-[var(--color-surface-hover)] border border-[var(--color-border)]">
+                <div className="flex items-center p-0.5 rounded-lg bg-[var(--color-bg-hover)] border border-[var(--color-border)]">
                   <button
                     type="button"
                     onClick={() => setPreviewLang('vi')}
-                    className={`px-2 py-0.5 rounded-md text-xs font-semibold ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
                       previewLang === 'vi'
                         ? 'bg-primary text-white'
                         : 'text-[var(--color-text-tertiary)]'
@@ -993,7 +1022,7 @@ export function GuideAdminPage() {
                   <button
                     type="button"
                     onClick={() => setPreviewLang('en')}
-                    className={`px-2 py-0.5 rounded-md text-xs font-semibold ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
                       previewLang === 'en'
                         ? 'bg-primary text-white'
                         : 'text-[var(--color-text-tertiary)]'
@@ -1040,7 +1069,7 @@ export function GuideAdminPage() {
               <button
                 type="button"
                 onClick={() => setPreviewArticleItem(null)}
-                className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-[var(--color-surface-hover)] text-[var(--color-text-primary)]"
+                className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-[var(--color-bg-hover)] text-[var(--color-text-primary)]"
               >
                 {t('admin.cancel')}
               </button>

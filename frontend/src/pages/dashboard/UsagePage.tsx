@@ -3,9 +3,11 @@ import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   IconActivity,
+  IconArrowLeft,
   IconCoins,
   IconRefresh,
 } from '@tabler/icons-react'
+import { Link } from 'react-router-dom'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useUsage } from '@/hooks/useUsage'
@@ -55,15 +57,24 @@ export function UsagePage() {
           <h1 className="page-title">{t('dashboard:usage.title')}</h1>
           <div className="page-subtitle">{t('dashboard:usage.subtitle')}</div>
         </div>
-        <button
-          type="button"
-          className="btn-secondary"
-          disabled={isFetching}
-          onClick={() => void refetch()}
-        >
-          <IconRefresh size={16} className={isFetching ? 'animate-spin' : undefined} />
-          {t('dashboard:updatedAt')}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to={`/w/${workspaceId}`}
+            className="btn-secondary"
+          >
+            <IconArrowLeft size={16} />
+            {t('dashboard:usage.backToDashboard')}
+          </Link>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={isFetching}
+            onClick={() => void refetch()}
+          >
+            <IconRefresh size={16} className={isFetching ? 'animate-spin' : undefined} />
+            {t('dashboard:updatedAt')}
+          </button>
+        </div>
       </div>
 
       {isError && (

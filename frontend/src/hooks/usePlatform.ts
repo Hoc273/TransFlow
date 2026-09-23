@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  adminAdjustUserCreditApi,
   getPlatformAuditLogsApi,
   getPlatformOverviewApi,
   getPlatformRealtimeApi,
@@ -11,6 +12,7 @@ import { getMeApi } from '@/api/auth'
 import { queryKeys, STALE } from '@/lib/queryClient'
 import { useAuthStore } from '@/store/authStore'
 import type {
+  AdminCreditAdjustRequest,
   PlatformAuditQuery,
   PlatformOverviewQuery,
   PlatformUsersQuery,
@@ -106,5 +108,20 @@ export function usePlatformRealtime(enabled = true) {
     enabled,
     staleTime: 0,
     refetchInterval: 3000,
+  })
+}
+
+/**
+ * SA — adjust credit balance for any user (grant or deduct).
+ * Invalidates the platform users list on success so balance data refreshes.
+ */
+export function useAdminAdjustUserCredit() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, req }: { userId: string; req: AdminCreditAdjustRequest }) =>
+      adminAdjustUserCreditApi(userId, req),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['platform', 'users'] })
+    },
   })
 }

@@ -3,13 +3,13 @@ import { Link, NavLink, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   IconBook2,
-  IconChartBar,
   IconCoins,
   IconFolder,
   IconLayoutGrid,
   IconShieldCheck,
   IconVideo,
 } from '@tabler/icons-react'
+import { SidebarRecentProjects } from './SidebarRecentProjects'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
@@ -73,18 +73,6 @@ function buildGroups(workspaceId: string, isPlatformAdmin: boolean): NavGroup[] 
           labelKey: 'nav.media',
           icon: IconVideo,
           path: `${base}/media`,
-        },
-      ],
-    },
-    {
-      titleKey: 'nav.system',
-      items: [
-        {
-          key: 'usage',
-          labelKey: 'nav.usage',
-          icon: IconChartBar,
-          path: `${base}/dashboard/usage`,
-          permission: 'dashboard.usage',
         },
       ],
     },
@@ -168,6 +156,7 @@ export function SidebarNav({ mobileOpen, className }: SidebarNavProps) {
             })}
           </div>
         ))}
+        {workspaceId && <SidebarRecentProjects workspaceId={workspaceId} />}
       </nav>
 
       <Link

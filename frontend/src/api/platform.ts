@@ -1,5 +1,7 @@
 import { apiRequest } from '@/lib/api/client'
 import type {
+  AdminCreditAdjustRequest,
+  AdminCreditAdjustResponse,
   PlatformAuditLogItem,
   PlatformAuditQuery,
   PlatformOverview,
@@ -104,4 +106,20 @@ export async function getPlatformAuditLogsApi(
     })}`,
   )
   return normalizePage<PlatformAuditLogItem>(res)
+}
+
+/** SA — get credit balance of any user. */
+export function getAdminUserCreditBalanceApi(userId: string): Promise<{ userId: string; balance: number }> {
+  return apiRequest<{ userId: string; balance: number }>(`/platform/users/${userId}/credit/balance`)
+}
+
+/** SA — grant or deduct credit for any user (amount positive = grant, negative = deduct). */
+export function adminAdjustUserCreditApi(
+  userId: string,
+  req: AdminCreditAdjustRequest,
+): Promise<AdminCreditAdjustResponse> {
+  return apiRequest<AdminCreditAdjustResponse>(`/platform/users/${userId}/credit/adjust`, {
+    method: 'POST',
+    body: req,
+  })
 }

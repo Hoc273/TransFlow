@@ -219,7 +219,6 @@ export function selectTransformationVoiceApi(
   // Both null = deselect (requires `outputAudioMode == ORIGINAL_ONLY` BE-side).
   // NOTE (backend gap B1): `ttsProviderId` is currently ignored by
   // `VoiceRequest(ttsVoiceId)` — kept for forward-compat, see
-  // `docs/PHASE3_BACKEND_GAPS_NOTE.md`.
   return apiRequest<MediaJob | void>(
     buildWorkspacePath(workspaceId, `/media/jobs/${jobId}/voice`),
     {

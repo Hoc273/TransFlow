@@ -26,6 +26,7 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useMediaJobs, useProjectMediaAssets } from '@/hooks/useMedia'
 import { useProjects } from '@/hooks/useProjects'
+import { useRecordProjectVisit } from '@/hooks/useRecentProjects'
 import { exportTransformationJobApi, rerunTransformationStageApi } from '@/api/transformation'
 import {
   currentStage,
@@ -58,7 +59,8 @@ export function MediaListPage() {
   const language = useUiStore((s) => s.language)
 
   const { data: projects = [] } = useProjects(workspaceId)
-  const projectFromUrl = searchParams.get('project') || ''
+  // Accept both ?project= (canonical) and ?projectId= (links from dashboard / project list).
+  const projectFromUrl = searchParams.get('project') || searchParams.get('projectId') || ''
   const [projectId, setProjectId] = useState(projectFromUrl)
 
   const hashPanel = location.hash.replace(/^#/, '')
@@ -82,6 +84,8 @@ export function MediaListPage() {
     [projects, projectId],
   )
 
+  useRecordProjectVisit(workspaceId, selectedProject?.id, selectedProject?.name)
+
   const activeCount = useMemo(
     () => jobs.filter((j) => isActiveMediaJobStatus(j.status)).length,
     [jobs],
@@ -92,9 +96,9 @@ export function MediaListPage() {
     setPage(0)
   }, [projectId, jobs.length])
 
-  // Sync projectId with URL search parameter (?project=...)
+  // Sync projectId with URL search parameter (?project=... or ?projectId=...)
   useEffect(() => {
-    const urlProj = searchParams.get('project') || ''
+    const urlProj = searchParams.get('project') || searchParams.get('projectId') || ''
     if (urlProj !== projectId) {
       setProjectId(urlProj)
     }

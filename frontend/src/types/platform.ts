@@ -158,6 +158,26 @@ export type PlatformRealtime = {
   completedToday: number
   /** Sum of input + output tokens consumed in the last hour. */
   tokensLastHour: number
+  /** Distinct users with a presence heartbeat inside the online window. */
+  onlineUsers: number
   /** ISO-8601 timestamp of when the snapshot was taken on the server. */
   checkedAt: string
+}
+
+/** SA — request body for admin credit adjustment (grant or deduct). */
+export type AdminCreditAdjustRequest = {
+  /** Positive = grant credit, negative = deduct credit. */
+  amount: number
+  /** Optional reason / note for audit trail. */
+  reason?: string
+}
+
+/** SA — response from admin credit adjustment. */
+export type AdminCreditAdjustResponse = {
+  userId: string
+  amount: number
+  balanceBefore: number
+  balanceAfter: number
+  reason: string | null
+  adjustedAt: string
 }

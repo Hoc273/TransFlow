@@ -362,8 +362,14 @@ mở §14). Số dư không đủ → mặc định thiết kế `BLOCK_UPFRONT`
   `LEAD/MEMBER/CLIENT` trong Workspace.
 - Mọi endpoint `/api/platform/*` phải đọc lại cờ quyền từ PostgreSQL và từ chối bằng `UNAUTHORIZED` nếu
   tài khoản không phải Platform Admin; không chỉ tin vào route guard phía frontend.
-- Bề mặt read-only của MVP gồm: KPI toàn hệ thống, health của PostgreSQL/Redis/RabbitMQ/MinIO/AI Worker,
-  danh bạ user, danh sách Workspace và audit log.
+- Bề mặt read-only của MVP gồm: KPI toàn hệ thống, snapshot realtime (job đang chạy, token 1 giờ qua, user
+  online), health của PostgreSQL/Redis/RabbitMQ/MinIO/AI Worker, danh bạ user, danh sách Workspace và audit log.
+- Mutation duy nhất được phép ở cấp nền tảng: **điều chỉnh Credit của user** (cộng/trừ, ghi
+  `credit_transactions(type=ADJUSTMENT)` + audit `ADJUST_USER_CREDIT`) và **quản trị nội dung trang Hướng dẫn**
+  (`guide_categories`/`guide_articles`, không thuộc Workspace nào).
+- **Presence online**: mọi user đã đăng nhập gửi `POST /api/presence/heartbeat` mỗi ~60s; server ghi Redis
+  ZSET `platform:presence:online` và đếm user có heartbeat trong 120s (fallback bộ nhớ trong process nếu
+  Redis lỗi — chỉ chính xác khi chạy 1 instance).
 - Platform Admin không tự động có membership hoặc quyền mutation trong Workspace. Mọi thao tác nghiệp vụ
   vẫn phải qua RBAC, Project assignment và job ownership tương ứng.
 - **Kiểm tra quyền ở tầng service**: `PlatformAdminAccessService.requirePlatformAdmin` đọc cờ

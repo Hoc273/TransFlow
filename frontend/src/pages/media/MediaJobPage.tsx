@@ -36,6 +36,7 @@ import {
 } from '@/hooks/useMedia'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { usePermission } from '@/hooks/usePermission'
+import { useRecordProjectVisit } from '@/hooks/useRecentProjects'
 import { useProviders, useTtsVoices } from '@/hooks/useProviders'
 import { useWorkflowPresets } from '@/hooks/useWorkflowPresets'
 import {
@@ -116,6 +117,9 @@ export function MediaJobPage() {
 
   const { data: providers = [] } = useProviders(workspaceId)
   const ttsProviders = providers.filter(isTtsProvider)
+
+  // Opening a job counts as visiting its project (sidebar "Recent").
+  useRecordProjectVisit(workspaceId, job?.projectId)
 
   // Preset badge (admin milestone): resolve the frozen preset name for display.
   // The preset id is reference metadata only — never mutates job behavior.

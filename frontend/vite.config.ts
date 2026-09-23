@@ -1,32 +1,15 @@
 import { defineConfig } from 'vitest/config'
-import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
-import { createMockMiddleware } from './mock/index.cjs'
 
-function mockApiPlugin(): Plugin {
-  const mw = createMockMiddleware()
-  return {
-    name: 'transflow-mock-api',
-    apply: 'serve',
-    configureServer(server) {
-      server.middlewares.use('/api', (req, res, next) => {
-        mw(req as any, res, next)
-      })
-    },
-  }
-}
-
-// Set VITE_USE_MOCK=true to fallback to internal mock; otherwise proxy to real Spring Boot backend
-const useMock = process.env.VITE_USE_MOCK === 'true'
+// Frontend always proxies /api to the real Spring Boot backend
 const backendUrl = process.env.VITE_BACKEND_URL || 'http://localhost:8080'
 
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    ...(useMock ? [mockApiPlugin()] : []),
   ],
   resolve: {
     alias: {
@@ -35,15 +18,13 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: useMock
-      ? undefined
-      : {
-          '/api': {
-            target: backendUrl,
-            changeOrigin: true,
-            secure: false,
-          },
-        },
+    proxy: {
+      '/api': {
+        target: backendUrl,
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   test: {
     // React.act only exists in the non-production React build. Vitest does not

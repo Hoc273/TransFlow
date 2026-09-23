@@ -6,10 +6,8 @@ import {
   IconBuilding,
   IconClipboardList,
   IconInfoCircle,
-  IconLanguage,
   IconLayoutDashboard,
   IconLogout,
-  IconShieldCheck,
   IconUsers,
   IconArrowLeft,
   IconBook2,
@@ -65,25 +63,13 @@ export function PlatformShell() {
       {/* Top bar — design template header; logo aligned with dashboard TopNav */}
       <header className="platform-topbar">
         <div className="flex min-w-0 items-center gap-4">
-          <div className="flex items-center gap-2 text-[var(--color-accent)]">
-            <IconLanguage size={20} stroke={1.75} aria-hidden />
+          <div className="flex items-center gap-2">
+            <img src="/favicon.svg" alt="TransFlow" className="h-7 w-7 object-contain drop-shadow-[0_0_8px_rgba(0,192,255,0.45)]" />
             <div className="leading-tight">
               <div className="text-[15px] font-bold tracking-tight text-[var(--color-text-primary)]">
                 TransFlow
               </div>
-              <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-                {t('brand.subtitle')}
-              </div>
             </div>
-          </div>
-
-          <div className="hidden items-center gap-1.5 border-l border-[var(--color-border)] pl-4 text-xs text-[var(--color-text-secondary)] md:flex">
-            <IconShieldCheck size={14} className="text-[var(--color-accent)]" />
-            <span className="font-medium text-[var(--color-text-primary)]">Platform</span>
-            <span>·</span>
-            <span>{t('topbar.superAdmin')}</span>
-            <span>·</span>
-            <span className="platform-badge-readonly">{t('topbar.readonly')}</span>
           </div>
         </div>
 
@@ -153,9 +139,6 @@ export function PlatformShell() {
         {/* Sidebar */}
         <aside className="platform-sidebar">
           <div className="flex flex-1 flex-col p-4">
-            <div className="mb-3 px-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-text-tertiary)]">
-              {t('sidebar.console')}
-            </div>
             <nav className="flex flex-col gap-0.5">
               {NAV.map((item) => (
                 <NavLink
@@ -174,9 +157,6 @@ export function PlatformShell() {
 
             {/* Live health insight — real probe data only (no fake uptime %) */}
             <div className="mt-6">
-              <div className="mb-3 px-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-text-tertiary)]">
-                {t('sidebar.insights')}
-              </div>
               <div className="rounded-lg platform-health-insight px-3 py-3">
                 <div className="mb-1.5 flex items-center gap-2">
                   <span

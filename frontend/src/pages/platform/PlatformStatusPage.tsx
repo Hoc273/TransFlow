@@ -200,17 +200,7 @@ export function PlatformStatusPage() {
       {/* Header */}
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="mb-2 flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-            </span>
-            <span className="font-semibold uppercase tracking-wider text-emerald-500">Live Health</span>
-            <span className="h-1 w-1 rounded-full bg-[var(--color-border-strong)]" />
-            <span>{total} core services</span>
-          </div>
           <h1 className="text-3xl font-bold tracking-tight">{t('status.title')}</h1>
-          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">{t('status.subtitle')}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -287,11 +277,11 @@ export function PlatformStatusPage() {
             <h2 className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)] sm:text-3xl">
               {isAllUp ? t('status.allOperational') : t('status.issuesDetected')}
             </h2>
-            <p className="mt-2 text-sm text-[var(--color-text-secondary)] leading-relaxed">
-              {isAllUp
-                ? t('status.allOperationalSub', { count: total })
-                : t('status.issuesDetectedSub', { count: issueCount })}
-            </p>
+            {!isAllUp && (
+              <p className="mt-2 text-sm text-[var(--color-text-secondary)] leading-relaxed">
+                {t('status.issuesDetectedSub', { count: issueCount })}
+              </p>
+            )}
           </div>
 
           {/* Quick Metrics Cluster */}

@@ -147,7 +147,26 @@
       "status": "Trạng thái",
       "platformAdmin": "Platform Admin",
       "workspaces": "Workspace",
-      "joined": "Tham gia"
+      "joined": "Tham gia",
+      "actions": "Thao tác"
+    },
+    "creditBtn": "Credit",
+    "creditModal": {
+      "title": "Điều chỉnh Credit",
+      "target": "Người dùng",
+      "modeLabel": "Loại điều chỉnh",
+      "grant": "Cấp thêm",
+      "deduct": "Khấu trừ",
+      "amount": "Số lượng credit",
+      "reason": "Lý do (tuỳ chọn)",
+      "reasonPlaceholder": "Ví dụ: Hỗ trợ kỹ thuật, tặng thưởng...",
+      "confirmGrant": "Cấp credit",
+      "confirmDeduct": "Khấu trừ",
+      "success": "Điều chỉnh credit thành công!",
+      "balanceBefore": "Số dư trước",
+      "balanceAfter": "Số dư sau",
+      "error": "Có lỗi xảy ra. Vui lòng thử lại.",
+      "insufficient": "Số credit khấu trừ vượt quá số dư hiện tại."
     },
     "email": "Email",
     "fullName": "Tên",
@@ -203,6 +222,8 @@
     "listUsers": "List Users",
     "listWs": "List Workspaces",
     "listAudit": "List Audit",
+    "viewUserCredit": "Xem credit user",
+    "adjustUserCredit": "Điều chỉnh credit user",
     "seedGrant": "Seed Grant",
     "denied": "Denied",
     "immutable": "Bất biến",
@@ -233,6 +254,9 @@
   },
   "common": {
     "retry": "Thử lại",
-    "loading": "Đang tải…"
+    "loading": "Đang tải…",
+    "close": "Đóng",
+    "cancel": "Huỷ",
+    "clear": "Xoá"
   }
 }

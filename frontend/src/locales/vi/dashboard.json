@@ -40,6 +40,7 @@
   "usage": {
     "title": "Tài nguyên AI",
     "subtitle": "Tiêu thụ token theo thao tác AI và model (PM / Admin)",
+    "backToDashboard": "Về Bảng điều khiển",
     "empty": "Không có dữ liệu usage cho phạm vi này",
     "summary": {
       "input": "Token đầu vào",
@@ -120,6 +121,7 @@
     "quickNewBatch": "Dịch hàng loạt",
     "quickMedia": "Media Studio",
     "quickGlossary": "Bộ thuật ngữ",
+    "quickUsage": "Tài nguyên AI",
     "successRate": "Tỷ lệ thành công",
     "pipelineTitle": "Hàng đợi & Tiến độ xử lý thời gian thực"
   }

@@ -40,6 +40,7 @@
   "usage": {
     "title": "AI Resource Usage",
     "subtitle": "Token consumption by AI operations and model (PM / Admin)",
+    "backToDashboard": "Back to dashboard",
     "empty": "No usage data for this scope",
     "summary": {
       "input": "Input tokens",
@@ -120,6 +121,7 @@
     "quickNewBatch": "Batch Process",
     "quickMedia": "Media Studio",
     "quickGlossary": "Glossary",
+    "quickUsage": "AI Resources",
     "successRate": "Success Rate",
     "pipelineTitle": "Active Queue & Processing Pipeline"
   }

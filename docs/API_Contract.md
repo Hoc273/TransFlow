@@ -1,6 +1,6 @@
 # API Contract — TransFlow Media (transflow_mini)
 
-> Phiên bản: **1.1** · Bám sát `SRS.md` 1.4b, `System_Architecture.md` 3.3, `Database_Design.md` 3.3,
+> Phiên bản: **1.2** · Bám sát `SRS.md` 1.4b, `System_Architecture.md` 3.3, `Database_Design.md` 3.4,
 > `api-response-convention.md`. Chỉ mô tả API của `backend-main` (Spring Boot) — nguồn sự thật duy nhất chạm
 > PostgreSQL. FastAPI (`backend-ai`) và `backend-media-worker` không có API public, chỉ được Spring gọi nội bộ.
 > Không có endpoint nào cho Document/Translation Job/Text Editor/Translation Memory/Batch dịch file hoặc
@@ -11,6 +11,13 @@
 > `{status,error,message,path,code:string,details}` không còn dùng. Mã lỗi HTTP trước đây nằm trong body
 > (`status`) nay chỉ còn ở HTTP status code thật của response; `code` trong body chuyển từ string sang số
 > nguyên tra theo `ErrorCode` (§15).
+>
+> **Ghi chú cập nhật — 1.2 (23/09/2026):** bổ sung các endpoint đã có trong code nhưng chưa được mô tả:
+> Auth `PUT /api/auth/me`, `DELETE /api/auth/avatar`, `PUT /api/auth/password` (§1); Platform
+> `GET /api/platform/realtime` và điều chỉnh Credit của user `GET|POST /api/platform/users/{userId}/credit/*`
+> (§13.1 — nhóm Platform không còn read-only hoàn toàn); presence heartbeat `POST /api/presence/heartbeat`
+> (§13.1); module Hướng dẫn — public `/api/guides/*` và quản trị `/api/platform/guides/*` (§13.2); mã lỗi
+> Guide 3400–3404 (§15).
 
 ---
 
@@ -19,7 +26,8 @@
 - **Base path**: mọi API người dùng nằm dưới `/api/...`; callback nội bộ từ Worker nằm dưới `/internal/...`
   (không đi qua JWT, xác thực bằng HMAC — xem §14).
 - **Auth**: Bearer JWT (`Authorization: Bearer <accessToken>`) cho toàn bộ `/api/...`, trừ
-  `/api/auth/register/**|login|refresh|forgot-password/**|google/*`.
+  `/api/auth/register/**|login|refresh|forgot-password/**|google/*` và `/api/guides/**` (trang Hướng dẫn
+  công khai, §13.2).
 - **Định dạng**: JSON, field JSON dùng `camelCase`. UUID dạng string chuẩn. Thời gian ISO-8601 UTC
   (`instant`, ví dụ `2026-09-15T08:00:00Z`).
 - **Phân trang**: query `page` (0-based, mặc định 0), `size` (mặc định 20, tối đa 100) cho mọi endpoint
@@ -65,7 +73,10 @@
 | POST | `/api/auth/register/otp` | không | `{email}` → gửi OTP 6 số xác thực email đăng ký (Redis `auth:otp:register:<email>`, TTL 5 phút, lưu plain). Trả `{message}`. Email đã tồn tại → `EMAIL_ALREADY_EXISTS`. |
 | POST | `/api/auth/login` | không | `{email,password}` → cùng response shape như trên. |
 | POST | `/api/auth/refresh` | không (refresh token) | `{refreshToken}` → `{accessToken,refreshToken}`. Refresh token cũ **không** bị thu hồi sau reset mật khẩu (JWT stateless, chưa có cơ chế revocation). |
-| GET | `/api/auth/me` | JWT | Thông tin user hiện tại: `{id,email,fullName,googleLinked,isPlatformAdmin}`. |
+| GET | `/api/auth/me` | JWT | Thông tin user hiện tại (`UserResponse`): `{id,email,fullName,googleLinked,isPlatformAdmin,avatarUrl}`. |
+| PUT | `/api/auth/me` | JWT | `{fullName, avatarUrl?}` → cập nhật hồ sơ (`fullName` bắt buộc, tối đa 200 ký tự). Trả `UserResponse`. |
+| DELETE | `/api/auth/avatar` | JWT | Xoá avatar của user hiện tại (`users.avatar_url = null`). Trả `UserResponse`. |
+| PUT | `/api/auth/password` | JWT | `{currentPassword?, newPassword}` → đổi mật khẩu (`newPassword` ≥ 8 ký tự). Nếu user đã có mật khẩu thì `currentPassword` bắt buộc và phải khớp, sai → `INVALID_CREDENTIALS`; tài khoản Google-only (chưa có `password_hash`) được đặt mật khẩu mới mà không cần `currentPassword`. `data` rỗng. |
 | GET | `/api/auth/google/start` | không | Redirect sang Google OAuth2 consent screen. |
 | GET | `/api/auth/google/callback` | không | Google redirect về; set cookie/state tạm, FE gọi `exchange` tiếp theo. |
 | POST | `/api/auth/google/exchange` | không | `{code}` → cùng response shape `register/login`; nếu `google_sub` chưa gắn user nào thì chạy auto-init như lần đầu (Arch §3). |
@@ -348,11 +359,17 @@ Workspace; tài khoản thường nhận `UNAUTHORIZED` (HTTP 403). Response v�
 |---|---|---|
 | GET | `/api/platform/overview?from=&to=&topLimit=10` | KPI toàn hệ thống trong khoảng thời gian: user, Workspace, Media Job theo trạng thái, token AI, tỉ lệ lỗi và top Workspace. |
 | GET | `/api/platform/status` | Trạng thái và độ trễ của PostgreSQL, Redis, RabbitMQ, MinIO và AI/Media Worker tại `checkedAt`, kèm trạng thái tổng hợp. |
+| GET | `/api/platform/realtime` | Snapshot hoạt động trực tiếp (job đang chạy, job hoàn thành hôm nay, token 1 giờ qua, user đang online). FE polling mỗi ~3s. |
 | GET | `/api/platform/users?page=0&size=20&q=&isPlatformAdmin=` | Danh bạ user có phân trang; hỗ trợ tìm kiếm và lọc theo cờ Platform Admin. Không trả dữ liệu bí mật. |
+| GET | `/api/platform/users/{userId}/credit/balance` | Số dư Credit hiện tại của một user bất kỳ. |
+| POST | `/api/platform/users/{userId}/credit/adjust` | Cộng (`amount > 0`) hoặc trừ (`amount < 0`) Credit của một user bất kỳ, có ghi `credit_transactions`. |
 | GET | `/api/platform/workspaces?page=0&size=20&q=` | Danh sách Workspace có phân trang, owner và số thành viên. |
 | GET | `/api/platform/audit-logs?page=0&size=20&action=` | Nhật ký kiểm toán cấp nền tảng có phân trang, lọc theo action. |
 
-Nhóm API này là read-only trong MVP; không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.
+Ngoài ra, quản trị nội dung trang Hướng dẫn nằm dưới `/api/platform/guides/*` — xem §13.2.
+
+Nhóm API này read-only trong MVP, **trừ** điều chỉnh Credit của user (`POST .../credit/adjust`) và quản
+trị Hướng dẫn (§13.2); không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.
 
 Quy tắc chung cho nhóm:
 
@@ -421,6 +438,26 @@ Response `data`:
   `app.media-worker.base-url`, timeout `app.health-probe.timeout-ms`).
 - `overall = UP` khi cả 6 `UP`, ngược lại `DEGRADED`. `message` đã lọc — không lộ connection string/credential.
 
+**`GET /api/platform/realtime`**
+
+```json
+{ "processingJobs": 3, "completedToday": 12, "tokensLastHour": 4500, "onlineUsers": 7, "checkedAt": "..." }
+```
+
+- `processingJobs`: số `media_jobs` đang `PROCESSING` (chỉ Media Job, không tính batch).
+- `completedToday`: `media_jobs` `COMPLETED` có `created_at` ≥ 00:00 UTC hôm nay.
+- `tokensLastHour`: tổng `input_tokens + output_tokens` của `ai_usage_logs` trong 3600 giây gần nhất.
+- `onlineUsers`: số user khác nhau có presence heartbeat trong cửa sổ **120 giây** gần nhất (xem
+  `POST /api/presence/heartbeat` bên dưới). Nhiều tab của cùng user chỉ tính 1.
+- FE (`PlatformOverviewPage`) polling mỗi ~3s. Endpoint này được audit với action `OTHER`.
+
+**`POST /api/presence/heartbeat`** — không thuộc nhóm `/api/platform/*`
+
+- Auth: JWT bất kỳ (không yêu cầu `isPlatformAdmin`). Body rỗng. Trả `{"recorded": true}`.
+- FE gọi mỗi ~60s khi user đang đăng nhập (`usePresence`). Server lưu `userId → epoch giây` vào Redis ZSET
+  `platform:presence:online`; entry cũ hơn 120s bị prune khi đọc. Redis lỗi → fallback bộ nhớ trong
+  process (chỉ đúng khi chạy 1 instance). Không ghi `platform_admin_audit_logs`.
+
 **`GET /api/platform/users`**
 
 `data` = `PlatformPageResponse<PlatformUserItem>`; item:
@@ -432,6 +469,37 @@ Response `data`:
 
 - `q` tìm `email` + `full_name` (LIKE, case-insensitive); `isPlatformAdmin=true|false` lọc theo cờ.
 - Không trả `password_hash`, `google_sub`, hay thông tin provider.
+
+**`GET /api/platform/users/{userId}/credit/balance`**
+
+```json
+{ "userId": "...", "balance": 120.5000 }
+```
+
+- User không tồn tại → `RESOURCE_NOT_FOUND` (404). Audit action `VIEW_USER_CREDIT`.
+
+**`POST /api/platform/users/{userId}/credit/adjust`**
+
+Request:
+
+```json
+{ "amount": -20.5, "reason": "Hoàn tiền job lỗi" }
+```
+
+Response `data`:
+
+```json
+{ "userId": "...", "amount": -20.5000, "balanceBefore": 120.5000, "balanceAfter": 100.0000,
+  "reason": "Hoàn tiền job lỗi", "adjustedAt": "..." }
+```
+
+- `amount` bắt buộc, khác 0 (`amount = 0` hoặc thiếu → `VALIDATION_ERROR` 400); làm tròn 4 chữ số
+  (`HALF_UP`). `reason` tuỳ chọn, tối đa 255 ký tự, trim; chuỗi rỗng → `null`.
+- User không tồn tại → `RESOURCE_NOT_FOUND` (404). Số dư sau điều chỉnh < 0 → `INSUFFICIENT_CREDIT`.
+- Khoá `credit_accounts` bằng `SELECT ... FOR UPDATE`; user chưa có `credit_accounts` thì tạo mới với số dư 0.
+- Ghi `credit_transactions(type=ADJUSTMENT, user_id=<target>, performed_by_user_id=<admin>,
+  ref_type='ADMIN_ADJUSTMENT', balance_after=...)`. `reason` hiện **chỉ được log server-side**, chưa lưu
+  vào DB. Audit action `ADJUST_USER_CREDIT`.
 
 **`GET /api/platform/workspaces`**
 
@@ -455,8 +523,9 @@ Response `data`:
 ```
 
 - Sort `createdAt DESC`. `action` ∈ `VIEW_OVERVIEW, VIEW_STATUS, LIST_USERS, LIST_WORKSPACES,
-  LIST_AUDIT, SEED_GRANT, DENIED, OTHER` (case-insensitive); giá trị lạ → `VALIDATION_ERROR` (400).
-  `DENIED` = request bị từ chối 401/403; `OTHER` = path `/api/platform/*` không map được.
+  LIST_AUDIT, VIEW_USER_CREDIT, ADJUST_USER_CREDIT, SEED_GRANT, DENIED, OTHER` (case-insensitive); giá trị
+  lạ → `VALIDATION_ERROR` (400). `DENIED` = request bị từ chối 401/403; `OTHER` = path `/api/platform/*`
+  không map được (hiện gồm `/realtime` và toàn bộ `/guides/*`).
   `actorUserId` null cho request không JWT và `SEED_GRANT` ghi lúc bootstrap.
 
 **Seed Super Admin (startup)**: khi `app.platform-admin.seed-on-startup=true`, runner đọc
@@ -466,6 +535,85 @@ không tạo user mới, không revoke; mỗi grant ghi audit `SEED_GRANT`.
 > Frontend (22/09/2026): route top-level `/platform/*` (Tổng quan/Trạng thái/Người dùng/Workspace/Audit),
 > gate bởi `PlatformGuard` đọc `user.isPlatformAdmin` (lấy từ `GET /api/auth/me`). Link Sidebar chỉ hiện
 > khi `isPlatformAdmin === true`.
+
+### 13.2 Trang Hướng dẫn — Guide (DB §3.2)
+
+Nội dung song ngữ vi/en gồm 2 cấp: **Category** → **Article**. Không phân trang (dữ liệu nhỏ), sort theo
+`orderIndex ASC`.
+
+**Public — không cần JWT** (`/api/guides/**` nằm trong `PUBLIC_PATHS`):
+
+| Method | Path | Mô tả |
+|---|---|---|
+| GET | `/api/guides/categories?lang=vi` | List Category `isPublished=true`; `articleCount` chỉ đếm Article `PUBLISHED`. |
+| GET | `/api/guides/articles?categoryId=&q=&lang=vi` | List Article `PUBLISHED`, lọc theo Category và/hoặc từ khoá `q` (LIKE không phân biệt hoa thường trên title/excerpt/content cả vi lẫn en). |
+| GET | `/api/guides/articles/{slug}?lang=vi` | Chi tiết Article theo `slug`. Article không `PUBLISHED` hoặc Category chưa publish → `GUIDE_ARTICLE_NOT_FOUND` (404). |
+
+- `lang` = `vi` (mặc định) | `en`. Các field `title`/`excerpt`/`content` (và `categoryTitle`) trả theo
+  `lang`, fallback về bản `vi` khi bản `en` rỗng; các field `*Vi`/`*En` gốc luôn được trả kèm.
+- Lưu ý: `GET /api/guides/articles` hiện **không** lọc theo `isPublished` của Category (khác với endpoint
+  chi tiết theo slug).
+
+**Quản trị — Platform Super Admin** (JWT + `isPlatformAdmin=true`, audit action `OTHER`):
+
+| Method | Path | Mô tả |
+|---|---|---|
+| GET | `/api/platform/guides/categories` | List toàn bộ Category (kể cả chưa publish); `articleCount` đếm mọi trạng thái. |
+| GET | `/api/platform/guides/categories/{id}` | Chi tiết Category. |
+| POST | `/api/platform/guides/categories` | Tạo Category (HTTP 201). Body `GuideCategoryRequest`. |
+| PUT | `/api/platform/guides/categories/{id}` | Sửa Category. Field `null` được giữ nguyên. |
+| DELETE | `/api/platform/guides/categories/{id}` | Xoá Category; còn Article → `GUIDE_CATEGORY_HAS_ARTICLES` (400). |
+| PATCH | `/api/platform/guides/categories/{id}/move` | `{orderIndex}` đặt thứ tự tuyệt đối, **hoặc** `{direction:"UP"\|"DOWN"}` hoán đổi `orderIndex` với Category liền kề (đang ở đầu/cuối thì không đổi). |
+| GET | `/api/platform/guides/articles?categoryId=&q=&status=` | List Article mọi trạng thái; `status` = `DRAFT`\|`PUBLISHED`. |
+| GET | `/api/platform/guides/articles/{id}` | Chi tiết Article (theo `id`, không theo slug). |
+| POST | `/api/platform/guides/articles` | Tạo Article (HTTP 201). Body `GuideArticleRequest`. |
+| PUT | `/api/platform/guides/articles/{id}` | Sửa Article. `slug`/`categoryId`/`status`/`orderIndex`/`content*` `null` được giữ nguyên; riêng `excerptVi`/`excerptEn`/`coverImageUrl` luôn bị ghi đè (gửi `null` = xoá). |
+| DELETE | `/api/platform/guides/articles/{id}` | Xoá Article. |
+| PATCH | `/api/platform/guides/articles/{id}/publish` | `{status: "DRAFT"\|"PUBLISHED"}` (bắt buộc). |
+| GET | `/api/platform/guides/articles/{id}/preview?lang=vi` | Xem trước Article theo `lang` bất kể trạng thái. |
+
+`GuideCategoryRequest`:
+
+```json
+{ "slug": "bat-dau", "titleVi": "Bắt đầu", "titleEn": "Getting started", "orderIndex": 0, "published": true }
+```
+
+- `titleVi`/`titleEn` bắt buộc (≤ 200). `slug` tuỳ chọn (≤ 120, `^[a-z0-9-]+$`) — bỏ trống thì sinh từ
+  `titleVi`. `orderIndex` mặc định = số Category hiện có; `published` mặc định `true`.
+
+`GuideArticleRequest`:
+
+```json
+{ "slug": "tao-job-dau-tien", "categoryId": "uuid", "titleVi": "...", "titleEn": "...",
+  "excerptVi": "...", "excerptEn": "...", "contentVi": "# Markdown", "contentEn": "# Markdown",
+  "orderIndex": 0, "coverImageUrl": "https://...", "status": "DRAFT" }
+```
+
+- Bắt buộc: `categoryId`, `titleVi`/`titleEn` (≤ 300), `contentVi`/`contentEn` (Markdown, ≤ 100 000 ký tự).
+  Tuỳ chọn: `slug` (≤ 160, `^[a-z0-9-]+$`, bỏ trống thì sinh từ `titleVi`), `excerptVi`/`excerptEn` (≤ 500),
+  `coverImageUrl` (≤ 1000), `orderIndex` (mặc định 0), `status` (mặc định `DRAFT`).
+- `categoryId` không tồn tại → `GUIDE_CATEGORY_NOT_FOUND` (404).
+
+Response:
+
+```json
+// GuideCategoryDto
+{ "id": "...", "slug": "...", "title": "...", "titleVi": "...", "titleEn": "...", "orderIndex": 0,
+  "published": true, "articleCount": 3, "createdAt": "...", "updatedAt": "..." }
+
+// GuideArticleDto
+{ "id": "...", "categoryId": "...", "categorySlug": "...", "categoryTitle": "...", "slug": "...",
+  "title": "...", "titleVi": "...", "titleEn": "...", "excerpt": "...", "excerptVi": "...", "excerptEn": "...",
+  "content": "...", "contentVi": "...", "contentEn": "...", "status": "PUBLISHED", "orderIndex": 0,
+  "coverImageUrl": null, "createdAt": "...", "updatedAt": "..." }
+```
+
+- Slug (Category và Article, mỗi loại unique riêng) trùng → `GUIDE_SLUG_ALREADY_EXISTS` (409); sai định
+  dạng → `INVALID_SLUG_FORMAT` (400) hoặc `VALIDATION_ERROR` (400) nếu bị `@Pattern` chặn trước.
+- Endpoint admin trả các field đã localize theo `vi` (trừ `preview`).
+
+> Frontend: trang công khai `/guide` và `/guide/:slug` (`GuidePage`), trang quản trị `/platform/guides`
+> (`GuideAdminPage`).
 
 ---
 
@@ -528,7 +676,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100, `BATCH_RATE_LIMIT_EXCEEDED` = 3101 |
 | `glossary` | 3200–3299 | — |
 | `qa` | 3300–3399 | `QA_BLOCKED` = 3300, `OVERRIDE_NOT_ALLOWED` = 3301 |
-| `platform` | 3400–3499 | — (dự phòng; hiện dùng mã chung `VALIDATION_ERROR`/`UNAUTHORIZED`/`USER_NOT_FOUND`) |
+| `platform` (gồm `guide`) | 3400–3499 | `GUIDE_CATEGORY_NOT_FOUND` = 3400, `GUIDE_CATEGORY_HAS_ARTICLES` = 3401, `GUIDE_SLUG_ALREADY_EXISTS` = 3402, `GUIDE_ARTICLE_NOT_FOUND` = 3403, `INVALID_SLUG_FORMAT` = 3404 (các API Platform khác vẫn dùng mã chung `VALIDATION_ERROR`/`UNAUTHORIZED`/`RESOURCE_NOT_FOUND`/`INSUFFICIENT_CREDIT`) |
 
 ### 15.3 Mã nghiệp vụ đã xác định (đối chiếu 1:1 với bản `code` string cũ trước bản 1.1)
 
@@ -600,6 +748,11 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `NOTIFICATION_TYPE_INVALID` | 2601 | 400 | Loại thông báo không hợp lệ. |
 | `DASHBOARD_DATE_RANGE_INVALID` | 2700 | 400 | Khoảng thời gian không hợp lệ: 'from' phải trước hoặc bằng 'to'. |
 | `DASHBOARD_GROUP_BY_INVALID` | 2701 | 400 | Tham số groupBy không hợp lệ (chỉ hỗ trợ 'project', 'user', 'operation'). |
+| `GUIDE_CATEGORY_NOT_FOUND` | 3400 | 404 | Không tìm thấy Category Hướng dẫn (theo `id` hoặc `categoryId` trong body Article). |
+| `GUIDE_CATEGORY_HAS_ARTICLES` | 3401 | 400 | Xoá Category khi vẫn còn Article thuộc nó. |
+| `GUIDE_SLUG_ALREADY_EXISTS` | 3402 | 409 | Slug Category/Article đã tồn tại. |
+| `GUIDE_ARTICLE_NOT_FOUND` | 3403 | 404 | Không tìm thấy Article, hoặc (API public) Article chưa `PUBLISHED`/Category chưa publish. |
+| `INVALID_SLUG_FORMAT` | 3404 | 400 | Slug sau khi chuẩn hoá không khớp `^[a-z0-9-]+$` (ví dụ tiêu đề không sinh được slug hợp lệ). |
 
 Thêm mã mới: phụ trách module nào tự thêm `ErrorCode` trong đúng dải của mình (§15.2), cập nhật bảng §15.3
 trong cùng PR — không để `ErrorCode` trong code lệch với bảng ở đây.

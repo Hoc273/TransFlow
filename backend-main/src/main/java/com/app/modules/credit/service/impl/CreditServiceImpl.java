@@ -302,4 +302,45 @@ public class CreditServiceImpl implements CreditService {
                 savedPurchase.getPurchasedAt()
         );
     }
+
+    @Override
+    @Transactional
+    public AdminCreditAdjustResponse adminAdjustCredit(
+            UUID adminId, UUID targetUserId, BigDecimal amount, String reason) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) == 0) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        CreditAccount account = creditAccountRepository.findByUserIdForUpdate(targetUserId)
+                .orElseGet(() -> {
+                    CreditAccount newAcc = new CreditAccount();
+                    newAcc.setUserId(targetUserId);
+                    newAcc.setBalance(BigDecimal.ZERO);
+                    return creditAccountRepository.save(newAcc);
+                });
+
+        BigDecimal balanceBefore = account.getBalance();
+        BigDecimal newBalance = balanceBefore.add(amount).setScale(4, RoundingMode.HALF_UP);
+        if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
+            throw new AppException(ErrorCode.INSUFFICIENT_CREDIT);
+        }
+        account.setBalance(newBalance);
+        creditAccountRepository.save(account);
+
+        CreditTransaction tx = new CreditTransaction();
+        tx.setUserId(targetUserId);
+        tx.setAmount(amount.setScale(4, RoundingMode.HALF_UP));
+        tx.setBalanceAfter(newBalance);
+        tx.setType(CreditTransactionType.ADJUSTMENT);
+        tx.setPerformedByUserId(adminId);
+        tx.setRefType("ADMIN_ADJUSTMENT");
+        creditTransactionRepository.save(tx);
+
+        Instant now = Instant.now();
+        log.info("Admin {} adjusted credit for user {}: amount={}, reason='{}'",
+                adminId, targetUserId, amount, reason);
+
+        return new AdminCreditAdjustResponse(
+                targetUserId, amount, balanceBefore, newBalance, reason, now);
+    }
 }
