@@ -40,7 +40,7 @@ public record AppProperties(
             storage = new Storage("http://localhost:9000", "minioadmin", "minioadmin", "transflow-media");
         }
         if (mediaWorker == null) {
-            mediaWorker = new MediaWorker(null);
+            mediaWorker = new MediaWorker(null, null, null);
         }
         if (crypto == null) {
             crypto = new Crypto(null);
@@ -125,10 +125,16 @@ public record AppProperties(
     }
 
     /** Shared secret for HMAC-signed callbacks from backend-media-worker (API_Contract.md §14). */
-    public record MediaWorker(String hmacSecret) {
+    public record MediaWorker(String baseUrl, String callbackBaseUrl, String hmacSecret) {
         public MediaWorker {
+            if (baseUrl == null || baseUrl.isBlank()) {
+                baseUrl = "http://localhost:8001";
+            }
+            if (callbackBaseUrl == null || callbackBaseUrl.isBlank()) {
+                callbackBaseUrl = "http://localhost:8080";
+            }
             if (hmacSecret == null || hmacSecret.isBlank()) {
-                hmacSecret = "dev-only-media-worker-hmac-secret-change-me";
+                hmacSecret = "change-me";
             }
         }
     }

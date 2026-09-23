@@ -46,9 +46,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-  # RabbitMQ — pipeline media.stage.* (System_Architecture.md §2). Chưa có listener/
-  # publisher nào ở iteration này (chỉ khởi tạo ConnectionFactory + health indicator),
-  # dispatch thật sẽ nối vào MediaJobService khi worker queue được bật.
+  # RabbitMQ transport reserved for the media.stage.* pipeline.
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
@@ -86,6 +84,8 @@ logging:
 # Namespace app.* — bind vào com.app.common.config.AppProperties.
 # Không hard-code giá trị nhạy cảm ở đây — mọi secret đọc qua biến môi trường (CLAUDE.md §7).
 app:
+  pipeline:
+    enabled: ${MEDIA_PIPELINE_ENABLED:true}
   cors:
     allowed-origin: ${FE_ORIGIN:http://localhost:5173}
   fe-origin: ${FE_ORIGIN:http://localhost:5173}
@@ -117,8 +117,9 @@ app:
     max-bulk-download: ${MEDIA_MAX_BULK_DOWNLOAD:20}
     supported-source-langs: ${MEDIA_SUPPORTED_SOURCE_LANGS:vi,en,zh,ja,ko,fr,de,es,th,id,ru}
   media-worker:
-    hmac-secret: ${MEDIA_WORKER_HMAC_SECRET:}
     base-url: ${MEDIA_WORKER_URL:http://localhost:8001}
+    callback-base-url: ${MEDIA_CALLBACK_BASE_URL:http://localhost:8080}
+    hmac-secret: ${MEDIA_WORKER_CALLBACK_SECRET:${MEDIA_WORKER_HMAC_SECRET:change-me}}
   health-probe:
     timeout-ms: ${HEALTH_PROBE_TIMEOUT_MS:2000}
   transformation:

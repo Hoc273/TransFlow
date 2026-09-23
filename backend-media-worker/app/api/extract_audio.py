@@ -3,7 +3,7 @@ import os
 import tempfile
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 from app.core.async_utils import blocking as _blocking
@@ -19,41 +19,55 @@ router = APIRouter()
 class ExtractAudioRequest(BaseModel):
     correlation_id: str
     media_job_id: str
+    stage_id: str | None = None
     source_video_ref: str
 
 
 class ExtractAudioResponse(BaseModel):
     correlation_id: str
     status: str
-    audio_ref: str | None = None
-    duration_ms: int | None = None
-    error: dict | None = None
 
 
-@router.post("/extract-audio", response_model=ExtractAudioResponse)
-async def extract_audio_endpoint(req: ExtractAudioRequest) -> ExtractAudioResponse:
+@router.post("/extract-audio", response_model=ExtractAudioResponse, status_code=202)
+async def extract_audio_endpoint(
+    req: ExtractAudioRequest,
+    background_tasks: BackgroundTasks,
+) -> ExtractAudioResponse:
     logger.info("Extract audio request: correlation=%s job=%s", req.correlation_id, req.media_job_id)
+    background_tasks.add_task(process_extract_audio, req)
+    return ExtractAudioResponse(correlation_id=req.correlation_id, status="ACCEPTED")
+
+
+async def process_extract_audio(req: ExtractAudioRequest) -> None:
     temp_dir = tempfile.mkdtemp(prefix="extract_")
     try:
         audio_ref, duration_ms = await _blocking(_extract_audio_sync, req, temp_dir)
-
-        return ExtractAudioResponse(
+        await send_complete(
+            media_job_id=req.media_job_id,
             correlation_id=req.correlation_id,
+            stage_id=req.stage_id,
+            stage_path="extract-audio",
             status="COMPLETED",
-            audio_ref=audio_ref,
-            duration_ms=duration_ms,
+            output_ref=audio_ref,
+            media_probe={"durationMs": duration_ms},
         )
     except FFmpegError as exc:
         logger.exception("Extract audio failed: %s", exc.code)
-        return ExtractAudioResponse(
+        await send_complete(
+            media_job_id=req.media_job_id,
             correlation_id=req.correlation_id,
+            stage_id=req.stage_id,
+            stage_path="extract-audio",
             status="FAILED",
             error={"code": exc.code, "message": str(exc), "retryable": exc.retryable},
         )
     except Exception as exc:
         logger.exception("Extract audio failed")
-        return ExtractAudioResponse(
+        await send_complete(
+            media_job_id=req.media_job_id,
             correlation_id=req.correlation_id,
+            stage_id=req.stage_id,
+            stage_path="extract-audio",
             status="FAILED",
             error={"code": "FFMPEG_FAILED", "message": str(exc)},
         )

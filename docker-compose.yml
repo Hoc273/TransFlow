@@ -85,6 +85,7 @@ services:
       SEPARATION_ENGINE_ID: ${SEPARATION_ENGINE_ID:-local_demucs}
       SEPARATION_MODEL_ID: ${SEPARATION_MODEL_ID:-htdemucs}
       SEPARATION_DEMUCS_EXECUTABLE: python
+      SEPARATION_CPU_FALLBACK: ${SEPARATION_CPU_FALLBACK:-true}
       SEPARATION_MAX_CONCURRENT_JOBS: 1
       MOCK_MODE: "false"
     depends_on:
@@ -151,6 +152,10 @@ services:
   #     RABBITMQ_PORT: 5672
   #     RABBITMQ_USER: ${RABBITMQ_USER:-transflow}
   #     RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-transflow}
+  #     AI_SERVICE_URL: http://backend-ai:8000
+  #     MEDIA_WORKER_URL: http://media-worker:8000
+  #     MEDIA_CALLBACK_BASE_URL: http://backend-main:8080
+  #     MEDIA_WORKER_CALLBACK_SECRET: ${MEDIA_WORKER_CALLBACK_SECRET:-change-me}
   #     MEDIA_STORAGE_ENDPOINT: http://minio:9000
   #     MEDIA_STORAGE_PUBLIC_ENDPOINT: ${MEDIA_STORAGE_PUBLIC_ENDPOINT:-http://localhost:9000}
   #     MEDIA_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}

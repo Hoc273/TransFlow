@@ -28,14 +28,16 @@ public interface SummarizationService {
 
     SummaryProposal refine(UUID workspaceId, UUID userId, UUID jobId, String feedbackText);
 
-    /**
-     * Generates round-1 AI proposal for a SUMMARIZE stage. Not wired to any HTTP endpoint yet — meant to
-     * be called by the (not-yet-built) stage executor when it reaches SUMMARIZE.
-     */
+    /** Generates and persists a round-1 AI proposal for a SUMMARIZE stage. */
     SummaryProposal generateAiProposal(UUID mediaJobStageId, String transcript, String visualContext,
                                         int requestedDurationSeconds, String targetLang);
 
     /** Arch §7.7 — "tóm tắt thêm ngôn ngữ", only when the source job's selected proposal is AI-generated. */
     MediaJob createSummaryLanguageJob(UUID workspaceId, UUID userId, UUID jobId, String targetLang,
                                       UUID ttsProviderId, UUID ttsVoiceId);
+
+    SummaryProposal getProposalById(UUID proposalId);
+
+    SummaryProposal persistAiProposalResult(UUID stageId, short round, SummaryAiClient.ScriptProposalResult result,
+                                           String feedbackText, int requestedDurationSeconds);
 }

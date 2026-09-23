@@ -30,12 +30,12 @@ import {
 import {
   editMediaSegmentApi,
   getMediaTermsVersionApi,
+  listMediaJobSubtitlesApi,
   listProjectMediaAssetsApi,
   getMediaAssetApi,
-  listMediaJobSubtitlesApi,
   type EditMediaSegmentBody,
 } from '@/api/media'
-import { overrideQaIssueApi, resolveQaIssueApi, listMediaJobQaIssuesApi } from '@/api/segments'
+import { listMediaJobQaIssuesApi, overrideQaIssueApi, resolveQaIssueApi } from '@/api/segments'
 import type { OverrideQaIssueBody, ResolveIssueBody } from '@/types/qa'
 import { hasActiveMediaStages, isActiveMediaJobStatus } from '@/lib/media'
 import { STALE, queryKeys } from '@/lib/queryClient'

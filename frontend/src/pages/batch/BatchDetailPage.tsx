@@ -35,7 +35,8 @@ export function BatchDetailPage() {
   const completedJobIds = (data?.documents ?? [])
     .flatMap((d) => d.jobs)
     .filter((j) => String(j.status).toUpperCase() === 'COMPLETED')
-    .map((j) => (j as any).jobId || j.id)
+    .map((j) => (j as { id?: string; jobId?: string }).id || (j as { id?: string; jobId?: string }).jobId || '')
+    .filter(Boolean)
 
   const handleDownload = () => {
     setDownloadError(false)
