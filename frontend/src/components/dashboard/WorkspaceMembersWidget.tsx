@@ -1,10 +1,9 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { IconTrash, IconUserPlus, IconUsers } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
+import { IconTrash, IconUserPlus, IconUsers } from '@tabler/icons-react'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Modal } from '@/components/shared/Modal'
-import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
   useAddMember,
   useMembers,
@@ -18,13 +17,12 @@ import { ApiError } from '@/types/api'
 
 const INVITE_ROLES: Role[] = ['MEMBER', 'CLIENT']
 
-/** B.3 Member Management — GET/POST/PUT/DELETE /workspaces/{ws}/members */
-export function MembersPage() {
+/** Workspace members — dashboard widget shown below Batch + Recent Projects. */
+export function WorkspaceMembersWidget() {
   const { t } = useTranslation(['settings', 'common'])
   const { workspaceId = '' } = useParams()
   const currentUserId = useAuthStore((s) => s.user?.id)
   const canManage = usePermission('workspace.manage_members')
-  useDocumentTitle(t('settings:members.title'))
 
   const { data: members = [], isLoading, isError, error, refetch } = useMembers(workspaceId)
   const addMember = useAddMember(workspaceId)
@@ -71,13 +69,7 @@ export function MembersPage() {
   const onRoleChange = (memberId: string, next: Role, current: Role, userId: string) => {
     setRowError(null)
     if (next === current) return
-    // FE guard: last Admin cannot demote self (BE also protects owner remove).
-    if (
-      current === 'ADMIN' &&
-      next !== 'ADMIN' &&
-      userId === currentUserId &&
-      adminCount <= 1
-    ) {
+    if (current === 'ADMIN' && next !== 'ADMIN' && userId === currentUserId && adminCount <= 1) {
       setRowError(t('settings:members.lastAdminGuard'))
       return
     }
@@ -106,39 +98,52 @@ export function MembersPage() {
   }
 
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">{t('settings:members.title')}</h1>
-          <div className="page-subtitle">{t('settings:members.subtitle')}</div>
+    <div className="app-card flex flex-col" aria-busy={isLoading}>
+      {/* Header — same style as QueueBatch / RecentProjects widgets */}
+      <div className="app-card-header flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3 bg-[var(--color-bg-surface-2)]/30">
+        <div className="flex items-center gap-2">
+          <IconUsers size={16} className="text-[var(--color-accent)]" />
+          <h3 className="font-semibold text-xs text-[var(--color-text-primary)]">
+            {t('settings:members.title')}
+          </h3>
+          {!isLoading && !isError && members.length > 0 && (
+            <span className="rounded-full bg-[var(--color-bg-surface-3)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-text-secondary)] tabular-nums">
+              {members.length}
+            </span>
+          )}
         </div>
         {canManage && (
-          <button type="button" className="btn-primary" onClick={openInvite}>
-            <IconUserPlus size={16} />
-            {t('settings:members.invite')}
+          <button type="button" onClick={openInvite} className="btn-ghost-sm no-underline flex items-center gap-1 text-[11px] py-1 px-2">
+            <IconUserPlus size={13} />
+            <span>{t('settings:members.invite')}</span>
           </button>
         )}
       </div>
 
-      {rowError && (
-        <div className="mb-3 rounded-lg border border-[var(--color-error)] bg-[var(--color-error-bg)] px-3 py-2 text-xs text-[var(--color-error)]">
-          {rowError}
+      {/* Content */}
+      <div className="p-3 flex-1 flex flex-col">
+        <div className="text-[11px] text-[var(--color-text-tertiary)] px-1 pb-2">
+          {t('settings:members.subtitle')}
         </div>
-      )}
 
-      <div className="app-card overflow-hidden">
+        {rowError && (
+          <div className="mb-3 rounded-lg border border-[var(--color-error)] bg-[var(--color-error-bg)] px-3 py-2 text-xs text-[var(--color-error)]">
+            {rowError}
+          </div>
+        )}
+
         {isLoading && (
-          <div className="py-12 text-center text-sm text-[var(--color-text-tertiary)]">
+          <div className="py-8 text-center text-xs text-[var(--color-text-tertiary)]">
             {t('common:loading')}
           </div>
         )}
 
         {isError && !isLoading && (
           <EmptyState
-            icon={<IconUsers size={40} stroke={1.25} />}
+            icon={<IconUsers size={32} stroke={1.25} />}
             title={t('common:error.loadFailed')}
             description={error instanceof ApiError ? error.message : undefined}
-            className="py-12"
+            className="py-6"
           >
             <button type="button" className="btn-secondary mt-4" onClick={() => void refetch()}>
               {t('common:retry')}
@@ -147,7 +152,7 @@ export function MembersPage() {
         )}
 
         {!isLoading && !isError && (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-lg border border-[var(--color-border)]/80">
             <table className="dd-table">
               <thead>
                 <tr>
@@ -160,8 +165,7 @@ export function MembersPage() {
               <tbody>
                 {members.map((m) => {
                   const isSelf = m.userId === currentUserId
-                  const disableDemote =
-                    m.role === 'ADMIN' && isSelf && adminCount <= 1
+                  const disableDemote = m.role === 'ADMIN' && isSelf && adminCount <= 1
                   return (
                     <tr key={m.memberId}>
                       <td className="font-medium">
@@ -186,9 +190,7 @@ export function MembersPage() {
                             onChange={(e) =>
                               onRoleChange(m.memberId, e.target.value as Role, m.role, m.userId)
                             }
-                            title={
-                              disableDemote ? t('settings:members.lastAdminGuard') : undefined
-                            }
+                            title={disableDemote ? t('settings:members.lastAdminGuard') : undefined}
                           >
                             {['MEMBER', 'CLIENT'].map((r) => (
                               <option key={r} value={r}>
@@ -197,7 +199,9 @@ export function MembersPage() {
                             ))}
                           </select>
                         ) : (
-                          <span className="role-pill">{t(`settings:roles.${m.role}`, { defaultValue: m.role })}</span>
+                          <span className="role-pill">
+                            {t(`settings:roles.${m.role}`, { defaultValue: m.role })}
+                          </span>
                         )}
                       </td>
                       {canManage && (
@@ -239,7 +243,7 @@ export function MembersPage() {
             </button>
             <button
               type="submit"
-              form="invite-member-form"
+              form="invite-member-form-dashboard"
               className="btn-primary"
               disabled={addMember.isPending}
             >
@@ -248,7 +252,7 @@ export function MembersPage() {
           </>
         }
       >
-        <form id="invite-member-form" onSubmit={onInvite} className="space-y-3">
+        <form id="invite-member-form-dashboard" onSubmit={onInvite} className="space-y-3">
           <label className="field-label">
             <span>{t('settings:members.emailLabel')}</span>
             <input

@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   IconArrowRight,
-  IconChevronRight,
   IconPlus,
   IconRefresh,
   IconStack2,
@@ -18,7 +17,6 @@ import { usePermission } from '@/hooks/usePermission'
 import { useProjects } from '@/hooks/useProjects'
 import { formatDateTime } from '@/lib/format'
 import { asJobStatus, progressVariant } from '@/lib/status'
-import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
 
@@ -30,7 +28,6 @@ export function BatchListPage() {
   const { t } = useTranslation(['batch', 'common', 'dashboard'])
   const { workspaceId = '' } = useParams()
   const navigate = useNavigate()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const language = useUiStore((s) => s.language)
   const canCreate = usePermission('batch.create')
   useDocumentTitle(t('batch:list.title'))
@@ -62,13 +59,6 @@ export function BatchListPage() {
 
   return (
     <div className="space-y-4">
-      {/* Breadcrumb */}
-      <div className="breadcrumb">
-        <span>{workspaceName || t('common:workspace.demoName')}</span>
-        <IconChevronRight size={10} />
-        <span>{t('batch:list.title')}</span>
-      </div>
-
       {/* Header: Title + Action */}
       <div className="page-header flex-wrap gap-4">
         <div>

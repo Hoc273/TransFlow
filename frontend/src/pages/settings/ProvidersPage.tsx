@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import {
-  IconChevronRight,
   IconExternalLink,
   IconInfoCircle,
   IconMicrophone2,
@@ -39,7 +38,6 @@ import {
   voiceMatchesTargetLang,
 } from '@/lib/media/voiceSelection'
 import { validateProviderBaseUrl } from '@/lib/providerBaseUrl'
-import { useAuthStore } from '@/store/authStore'
 import { ApiError } from '@/types/api'
 import type {
   ProviderCapability,
@@ -257,7 +255,6 @@ function FieldExample({ children }: { children: ReactNode }) {
 export function ProvidersPageInner() {
   const { t } = useTranslation(['settings', 'common'])
   const { workspaceId = '' } = useParams()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   useDocumentTitle(t('settings:providers.title'))
 
   const { data: providers = [], isLoading, isError, error, refetch } = useProviders(workspaceId)
@@ -799,12 +796,6 @@ export function ProvidersPageInner() {
 
   return (
     <div className="providers-page">
-      <div className="breadcrumb">
-        <span>{workspaceName || t('common:workspace.demoName')}</span>
-        <IconChevronRight size={10} />
-        <span>{t('settings:providers.title')}</span>
-      </div>
-
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('settings:providers.title')}</h1>

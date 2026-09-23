@@ -8,7 +8,6 @@ import {
   IconFolder,
   IconLayoutGrid,
   IconShieldCheck,
-  IconUsers,
   IconVideo,
 } from '@tabler/icons-react'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
@@ -30,6 +29,8 @@ type NavItem = {
   tooltipKey?: string
   /** When set, item is hidden unless permission grants (09b A.5.3). */
   permission?: PermissionAction
+  /** When set, item is only shown to platform admins. */
+  adminOnly?: boolean
 }
 
 type NavGroup = {
@@ -37,13 +38,24 @@ type NavGroup = {
   items: NavItem[]
 }
 
-function buildGroups(workspaceId: string): NavGroup[] {
+function buildGroups(workspaceId: string, isPlatformAdmin: boolean): NavGroup[] {
   const base = `/w/${workspaceId}`
   return [
     {
       titleKey: 'nav.overview',
       items: [
         { key: 'dashboard', labelKey: 'nav.dashboard', icon: IconLayoutGrid, path: base },
+        ...(isPlatformAdmin
+          ? [
+              {
+                key: 'platform',
+                labelKey: 'nav.platformAdmin',
+                icon: IconShieldCheck,
+                path: '/platform',
+                adminOnly: true,
+              } as NavItem,
+            ]
+          : []),
       ],
     },
     {
@@ -56,11 +68,6 @@ function buildGroups(workspaceId: string): NavGroup[] {
           icon: IconBook2,
           path: `${base}/glossaries`,
         },
-      ],
-    },
-    {
-      titleKey: 'nav.studios',
-      items: [
         {
           key: 'media',
           labelKey: 'nav.media',
@@ -78,12 +85,6 @@ function buildGroups(workspaceId: string): NavGroup[] {
           icon: IconChartBar,
           path: `${base}/dashboard/usage`,
           permission: 'dashboard.usage',
-        },
-        {
-          key: 'members',
-          labelKey: 'nav.members',
-          icon: IconUsers,
-          path: `${base}/settings/members`,
         },
       ],
     },
@@ -104,13 +105,14 @@ export function SidebarNav({ mobileOpen, className }: SidebarNavProps) {
   const canUsage = usePermission('dashboard.usage')
   const isPlatformAdmin = useAuthStore((s) => s.user?.isPlatformAdmin === true)
   const { data: creditData, isLoading: isCreditLoading } = useUserCredit()
-  const groups = buildGroups(workspaceId)
+  const groups = buildGroups(workspaceId, isPlatformAdmin)
 
   const balanceValue = Number(creditData?.balance ?? 0)
   const activeWsId = workspaceId || currentWorkspace?.id || ''
   const creditPath = activeWsId ? `/w/${activeWsId}/account/credit` : '/dashboard'
 
   const allowed = (item: NavItem) => {
+    if (item.adminOnly && !isPlatformAdmin) return false
     if (!item.permission) return true
     if (item.permission === 'dashboard.usage') return canUsage
     return true
@@ -167,15 +169,6 @@ export function SidebarNav({ mobileOpen, className }: SidebarNavProps) {
           </div>
         ))}
       </nav>
-
-      {isPlatformAdmin && (
-        <div className="px-4 pb-2">
-          <NavLink to="/platform" className={({ isActive }) => cn('nav-item', isActive && 'active')}>
-            <IconShieldCheck size={18} stroke={1.75} className="shrink-0" />
-            <span className="nav-label">Platform Admin</span>
-          </NavLink>
-        </div>
-      )}
 
       <Link
         to={creditPath}

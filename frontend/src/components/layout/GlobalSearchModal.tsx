@@ -100,7 +100,7 @@ export function GlobalSearchModal({ open, onClose, workspaceId }: GlobalSearchMo
         id: 'page-media',
         category: 'pages',
         categoryLabel: t('common:commandPalette.pages', { defaultValue: 'Trang & Công cụ' }),
-        title: t('common:nav.media', { defaultValue: 'Video' }),
+        title: t('common:nav.media', { defaultValue: 'Media Studio' }),
         subtitle: 'Dịch video, lồng tiếng AI giọng đọc & phụ đề',
         badge: 'Media',
         badgeColor: 'bg-[#714ffc]/15 text-[#8c67ff]',

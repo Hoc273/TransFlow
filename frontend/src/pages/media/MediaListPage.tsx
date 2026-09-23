@@ -40,7 +40,6 @@ import {
 import { formatRelativeTime } from '@/lib/format'
 import { formatLanguageOption } from '@/lib/languages'
 import { asJobStatus } from '@/lib/status'
-import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 import type { MediaAsset, MediaJob } from '@/types/media'
 
@@ -56,7 +55,6 @@ export function MediaListPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const language = useUiStore((s) => s.language)
 
   const { data: projects = [] } = useProjects(workspaceId)
@@ -196,12 +194,6 @@ export function MediaListPage() {
 
   return (
     <div className="media-studio-page">
-      <div className="breadcrumb">
-        <span>{workspaceName || t('common:workspace.demoName')}</span>
-        <IconChevronRight size={10} />
-        <span className="text-[var(--color-media)]">{t('media:title')}</span>
-      </div>
-
       <div className="page-header">
         <div>
           <h1 className="page-title">

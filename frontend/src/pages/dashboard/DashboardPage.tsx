@@ -1,6 +1,5 @@
 import {
   IconBook2,
-  IconChevronRight,
   IconFolder,
   IconRefresh,
   IconVideo,
@@ -10,8 +9,8 @@ import { Link, useParams } from 'react-router-dom'
 import { AiUsageLiveChartsWidget } from '@/components/dashboard/AiUsageLiveChartsWidget'
 import { QueueBatchStatusWidget } from '@/components/dashboard/QueueBatchStatusWidget'
 import { RecentProjectsTable } from '@/components/dashboard/RecentProjectsTable'
+import { WorkspaceMembersWidget } from '@/components/dashboard/WorkspaceMembersWidget'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import { useAuthStore } from '@/store/authStore'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryClient'
 
@@ -19,7 +18,6 @@ import { queryKeys } from '@/lib/queryClient'
 export function DashboardPage() {
   const { t } = useTranslation(['dashboard', 'common'])
   const { workspaceId = '' } = useParams()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const qc = useQueryClient()
   useDocumentTitle(t('dashboard:title'))
 
@@ -30,16 +28,11 @@ export function DashboardPage() {
     void qc.invalidateQueries({ queryKey: queryKeys.batches(workspaceId) })
     void qc.invalidateQueries({ queryKey: ['notifications', workspaceId] })
     void qc.invalidateQueries({ queryKey: queryKeys.projects(workspaceId) })
+    void qc.invalidateQueries({ queryKey: queryKeys.members(workspaceId) })
   }
 
   return (
     <div>
-      <div className="breadcrumb">
-        <span>{workspaceName || t('common:workspace.demoName')}</span>
-        <IconChevronRight size={10} />
-        <span>{t('common:nav.dashboard')}</span>
-      </div>
-
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('dashboard:title')}</h1>
@@ -86,6 +79,11 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <QueueBatchStatusWidget />
         <RecentProjectsTable />
+      </div>
+
+      {/* Row 3: Workspace members below the 2 boards above */}
+      <div className="mt-6">
+        <WorkspaceMembersWidget />
       </div>
     </div>
   )

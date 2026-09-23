@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { IconAlertTriangle, IconChevronRight, IconDeviceDesktop, IconRefresh, IconStack2 } from '@tabler/icons-react'
+import { IconAlertTriangle, IconDeviceDesktop, IconRefresh, IconStack2 } from '@tabler/icons-react'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
@@ -10,7 +10,6 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { usePermission } from '@/hooks/usePermission'
 import { formatDateTime, formatRelativeTime } from '@/lib/format'
 import { asJobStatus, progressVariant } from '@/lib/status'
-import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
 
@@ -18,7 +17,6 @@ import { ApiError } from '@/types/api'
 export function BatchDetailPage() {
   const { t } = useTranslation(['batch', 'common', 'dashboard'])
   const { workspaceId = '', batchId = '' } = useParams()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const language = useUiStore((s) => s.language)
   const canRetry = usePermission('batch.retry')
   const canDownload = usePermission('batch.download')
@@ -68,16 +66,6 @@ export function BatchDetailPage() {
       <div className="batch-mobile-banner md:hidden">
         <IconDeviceDesktop size={18} />
         {t('batch:detail.mobileBanner')}
-      </div>
-
-      <div className="breadcrumb">
-        <span>{workspaceName || t('common:workspace.demoName')}</span>
-        <IconChevronRight size={10} />
-        <Link to={`/w/${workspaceId}/batches`} className="btn-link">
-          {t('batch:list.title')}
-        </Link>
-        <IconChevronRight size={10} />
-        <span>{data?.name || batchId.slice(0, 8)}</span>
       </div>
 
       <div className="page-header">

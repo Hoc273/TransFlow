@@ -5,14 +5,12 @@ import {
   IconAlertTriangle,
   IconBell,
   IconCheck,
-  IconChevronRight,
   IconX,
 } from '@tabler/icons-react'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useNotificationsInfinite } from '@/hooks/useNotifications'
 import { formatDateTime, formatRelativeTime } from '@/lib/format'
-import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
 import type { NotificationItem } from '@/types/notification'
@@ -42,7 +40,6 @@ function batchDetailPath(workspaceId: string, n: NotificationItem): string | nul
 export function NotificationCenterPage() {
   const { t } = useTranslation(['notification', 'common'])
   const { workspaceId = '' } = useParams()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const language = useUiStore((s) => s.language)
   useDocumentTitle(t('notification:title'))
 
@@ -64,12 +61,6 @@ export function NotificationCenterPage() {
 
   return (
     <div>
-      <div className="breadcrumb">
-        <span>{workspaceName || t('common:workspace.demoName')}</span>
-        <IconChevronRight size={10} />
-        <span>{t('notification:title')}</span>
-      </div>
-
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('notification:title')}</h1>
