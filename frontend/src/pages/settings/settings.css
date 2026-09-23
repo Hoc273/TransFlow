@@ -36,6 +36,116 @@
   width: 18%;
 }
 
+/* Personal BYOK table (5 cols: Protocol/Model/Capabilities/Key/Actions) —
+   own geometry so the action buttons stay on one line. */
+.user-providers-table .providers-col-name {
+  width: 30%;
+}
+
+.user-providers-table .providers-col-model {
+  width: 17%;
+}
+
+.user-providers-table .providers-col-capabilities {
+  width: 15%;
+}
+
+.user-providers-table .providers-col-default {
+  width: 10%;
+}
+
+.user-providers-table .providers-col-actions {
+  width: 28%;
+}
+
+.user-providers-table td:last-child > div {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
+.user-providers-table thead th:last-child {
+  text-align: center;
+}
+
+/* Test group vs manage group divider + status badge */
+.user-providers-table .test-actions-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+
+/* Test result row outline: green = ok, red = failed */
+.user-providers-table tr.test-row-success > td {
+  border-top: 2px solid var(--color-success);
+  border-bottom: 2px solid var(--color-success);
+}
+
+.user-providers-table tr.test-row-success > td:first-child {
+  border-left: 2px solid var(--color-success);
+}
+
+.user-providers-table tr.test-row-success > td:last-child {
+  border-right: 2px solid var(--color-success);
+}
+
+.user-providers-table tr.test-row-failed > td {
+  border-top: 2px solid var(--color-error);
+  border-bottom: 2px solid var(--color-error);
+  animation: row-border-run-red 1.2s ease-in-out infinite;
+}
+
+.user-providers-table tr.test-row-failed > td:first-child {
+  border-left: 2px solid var(--color-error);
+}
+
+.user-providers-table tr.test-row-failed > td:last-child {
+  border-right: 2px solid var(--color-error);
+}
+
+@keyframes row-border-run-red {
+  0%,
+  100% {
+    border-color: var(--color-error);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--color-error) 25%, transparent);
+  }
+}
+
+/* Running test: accent border flashing while the check is in flight */
+.user-providers-table tr.test-row-testing > td {
+  border-top: 2px solid var(--color-accent);
+  border-bottom: 2px solid var(--color-accent);
+  animation: row-testing-flash 1s ease-in-out infinite;
+}
+
+.user-providers-table tr.test-row-testing > td:first-child {
+  border-left: 2px solid var(--color-accent);
+}
+
+.user-providers-table tr.test-row-testing > td:last-child {
+  border-right: 2px solid var(--color-accent);
+}
+
+@keyframes row-testing-flash {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-providers-table tr.test-row-failed > td,
+  .user-providers-table tr.test-row-testing > td {
+    animation: none;
+  }
+}
+
 .providers-table td {
   overflow: hidden;
   vertical-align: top;
@@ -799,8 +909,8 @@
 /* -- Account Settings (user profile) -- */
 .account-layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
-  max-width: 1200px;
+  grid-template-columns: 220px 1fr;
+  max-width: 1320px;
   margin: 0 auto;
   gap: 32px;
 }

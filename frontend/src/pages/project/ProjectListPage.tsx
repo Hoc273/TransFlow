@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   IconArrowRight,
-  IconChevronRight,
   IconFolder,
   IconPlus,
   IconVideo,
@@ -14,7 +13,6 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { usePermission } from '@/hooks/usePermission'
 import { useProjects } from '@/hooks/useProjects'
 import { formatLanguageOption } from '@/lib/languages'
-import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
 
@@ -26,7 +24,6 @@ export function ProjectListPage() {
   const { t } = useTranslation(['project', 'common'])
   const { workspaceId = '' } = useParams()
   const navigate = useNavigate()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const language = useUiStore((state) => state.language)
   const canCreate = usePermission('project.create')
   useDocumentTitle(t('project:list.title'))
@@ -36,13 +33,6 @@ export function ProjectListPage() {
 
   return (
     <div className="space-y-4">
-      {/* Breadcrumb */}
-      <div className="breadcrumb">
-        <span>{workspaceName || t('common:workspace.demoName')}</span>
-        <IconChevronRight size={10} />
-        <span>{t('project:list.title')}</span>
-      </div>
-
       {/* Header: Title + Action */}
       <div className="page-header flex-wrap gap-4">
         <div>

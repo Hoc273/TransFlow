@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  IconChevronRight,
   IconDownload,
   IconGitBranch,
   IconListDetails,
@@ -67,7 +66,6 @@ import {
 import { formatRelativeTime } from '@/lib/format'
 import { formatLanguageOption, LANG_OPTIONS } from '@/lib/languages'
 import { asJobStatus } from '@/lib/status'
-import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
 
@@ -78,7 +76,6 @@ import { ApiError } from '@/types/api'
 export function MediaJobPage() {
   const { t } = useTranslation(['media', 'common'])
   const { workspaceId = '', jobId = '' } = useParams()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const language = useUiStore((s) => s.language)
   const canCancel = usePermission('job.start')
   const canEdit = usePermission('job.start')
@@ -566,16 +563,6 @@ export function MediaJobPage() {
 
   return (
     <div className="media-studio-page">
-      <div className="breadcrumb">
-        <span>{workspaceName || t('common:workspace.demoName')}</span>
-        <IconChevronRight size={10} />
-        <Link to={`/w/${workspaceId}/media`} className="btn-link">
-          {t('media:title')}
-        </Link>
-        <IconChevronRight size={10} />
-        <span className="font-mono text-xs">{jobId.slice(0, 8)}</span>
-      </div>
-
       <div className="page-header">
         <div className="min-w-0 flex-1">
           <h1 className="page-title">

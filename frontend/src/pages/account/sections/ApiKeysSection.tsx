@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import {
   IconEdit,
-  IconInfoCircle,
   IconKey,
   IconLoader2,
   IconMicrophone2,
@@ -354,7 +353,7 @@ export function ApiKeysSection() {
             </EmptyState>
           ) : (
             <div className="overflow-x-auto">
-              <table className="dd-table providers-table">
+              <table className="dd-table providers-table user-providers-table">
                 <colgroup>
                   <col className="providers-col-name" />
                   <col className="providers-col-model" />
@@ -375,7 +374,19 @@ export function ApiKeysSection() {
                   {sectionProviders.map((p) => {
                     const ts = testState[p.id]
                     return (
-                      <tr key={`${section.capability}-${p.id}`}>
+                      <tr
+                        key={`${section.capability}-${p.id}`}
+                        title={ts?.message ?? undefined}
+                        className={
+                          ts?.status === 'success'
+                            ? 'test-row-success'
+                            : ts?.status === 'failed'
+                              ? 'test-row-failed'
+                              : ts?.status === 'testing'
+                                ? 'test-row-testing'
+                                : undefined
+                        }
+                      >
                         <td>
                           <button type="button" className="btn-link font-medium" onClick={() => openEdit(p)}>
                             {protocolLabel(p.protocol)}
@@ -408,62 +419,51 @@ export function ApiKeysSection() {
                         </td>
                         <td>
                           <div className="flex flex-wrap items-center gap-1">
-                            <button
-                              type="button"
-                              className="btn-secondary btn-sm"
-                              disabled={ts?.status === 'testing'}
-                              onClick={() => onTest(p)}
-                            >
-                              {ts?.status === 'testing' ? (
-                                <IconLoader2 size={14} className="animate-spin" />
-                              ) : (
-                                <IconPlugConnected size={14} />
-                              )}
-                              {ts?.status === 'testing' ? tp('testing') : tp('test')}
-                            </button>
-                            {ts?.status === 'success' && (
-                              <span
-                                className="text-[11px] font-medium text-[var(--color-success)]"
-                                title={ts.message ?? undefined}
-                              >
-                                {tp('testOk')}
-                              </span>
-                            )}
-                            {ts?.status === 'failed' && (
-                              <span
-                                className="max-w-[140px] truncate text-[11px] font-medium text-[var(--color-error)]"
-                                title={ts.message ?? undefined}
-                              >
-                                {tp('testFail')}
-                              </span>
-                            )}
-                            {section.capability === 'TTS' && (
+                            <div className="flex items-center gap-1.5">
                               <button
                                 type="button"
                                 className="btn-secondary btn-sm"
-                                onClick={() => openVoiceCatalog(p)}
+                                title={ts?.status === 'testing' ? tp('testing') : tp('test')}
+                                disabled={ts?.status === 'testing'}
+                                onClick={() => onTest(p)}
                               >
-                                <IconMicrophone2 size={14} />
-                                {tp('voices.action')}
+                                {ts?.status === 'testing' ? (
+                                  <IconLoader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <IconPlugConnected size={14} />
+                                )}
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              className="btn-ghost-sm"
-                              title={t('common:actions.edit', { defaultValue: 'Edit' })}
-                              onClick={() => openEdit(p)}
-                            >
-                              <IconEdit size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-icon-danger"
-                              disabled={deleteProvider.isPending}
-                              title={tp('delete')}
-                              onClick={() => onDelete(p)}
-                            >
-                              <IconTrash size={16} />
-                            </button>
+                            </div>
+                            <span className="test-actions-divider" aria-hidden="true" />
+                            <div className="flex items-center gap-1">
+                              {section.capability === 'TTS' && (
+                                <button
+                                  type="button"
+                                  className="btn-ghost-sm"
+                                  title={tp('voices.action')}
+                                  onClick={() => openVoiceCatalog(p)}
+                                >
+                                  <IconMicrophone2 size={16} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="btn-ghost-sm"
+                                title={t('common:actions.edit', { defaultValue: 'Edit' })}
+                                onClick={() => openEdit(p)}
+                              >
+                                <IconEdit size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-icon-danger"
+                                disabled={deleteProvider.isPending}
+                                title={tp('delete')}
+                                onClick={() => onDelete(p)}
+                              >
+                                <IconTrash size={16} />
+                              </button>
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -483,21 +483,6 @@ export function ApiKeysSection() {
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('account:apiKeys.title')}</h1>
-          <div className="page-subtitle">{t('account:apiKeys.subtitle')}</div>
-        </div>
-      </div>
-
-      <div className="providers-onboarding app-card mb-2 px-4 py-3 text-sm text-[var(--color-text-secondary)]">
-        <div className="flex items-start gap-2">
-          <IconInfoCircle size={18} className="mt-0.5 shrink-0 text-[var(--color-accent)]" />
-          <div>
-            <p className="font-medium text-[var(--color-text-primary)]">
-              {t('account:apiKeys.onboardingTitle')}
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-[var(--color-text-tertiary)]">
-              {t('account:apiKeys.onboardingDesc')}
-            </p>
-          </div>
         </div>
       </div>
 

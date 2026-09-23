@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   IconActivity,
-  IconChevronRight,
   IconCoins,
   IconRefresh,
 } from '@tabler/icons-react'
@@ -11,7 +10,6 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useUsage } from '@/hooks/useUsage'
 import { formatCompactNumber, formatNumber } from '@/lib/format'
-import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
 
@@ -19,7 +17,6 @@ import { ApiError } from '@/types/api'
 export function UsagePage() {
   const { t } = useTranslation(['dashboard', 'common'])
   const { workspaceId = '' } = useParams()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const language = useUiStore((s) => s.language)
   const { data, isLoading, isFetching, isError, error, refetch } = useUsage(
     workspaceId,
@@ -53,16 +50,6 @@ export function UsagePage() {
 
   return (
     <div>
-      <div className="breadcrumb">
-        <span>{workspaceName || t('common:workspace.demoName')}</span>
-        <IconChevronRight size={10} />
-        <Link to={`/w/${workspaceId}`} className="btn-link">
-          {t('common:nav.dashboard')}
-        </Link>
-        <IconChevronRight size={10} />
-        <span>{t('dashboard:usage.title')}</span>
-      </div>
-
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('dashboard:usage.title')}</h1>

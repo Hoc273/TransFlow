@@ -217,13 +217,12 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
       .toContain('workflowPresetAdmin.aspectBadge')
   })
 
-  it('renders breadcrumb with link back to Media Studio hub', () => {
+  it('does not render the old breadcrumb hub link (breadcrumb removed)', () => {
     presetsQuery.data = [preset({ id: 'ws-1' })]
 
     renderPage()
 
-    const hubLink = screen.getByRole('link', { name: 'media:title' })
-    expect(hubLink.getAttribute('href')).toBe('/w/ws/media')
+    expect(screen.queryByRole('link', { name: 'media:title' })).toBeNull()
   })
 
   it('system presets never show edit/delete even for managers', () => {

@@ -3,7 +3,6 @@ import { NavLink, Navigate, useParams } from 'react-router-dom'
 import {
   IconAdjustments,
   IconBuilding,
-  IconChevronRight,
   IconCoins,
   IconKey,
   IconShieldLock,
@@ -12,7 +11,6 @@ import {
 import { useTranslation } from 'react-i18next'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useWorkspaces } from '@/hooks/useWorkspaces'
-import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/lib/cn'
 import { ProfileSection } from './sections/ProfileSection'
 import { SecuritySection } from './sections/SecuritySection'
@@ -36,7 +34,6 @@ function isSection(s: string | undefined): s is AccountSection {
 export function AccountSettingsPage() {
   const { t } = useTranslation(['account', 'common'])
   const { workspaceId = '', section } = useParams()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const { data: workspaces = [] } = useWorkspaces()
   useDocumentTitle(t('account:page.title'))
 
@@ -49,11 +46,6 @@ export function AccountSettingsPage() {
   return (
     <div className="account-layout">
       <aside className="account-nav">
-        <div className="breadcrumb">
-          <span>{workspaceName || t('common:workspace.demoName')}</span>
-          <IconChevronRight size={10} />
-          <span>{t('account:nav.settings')}</span>
-        </div>
         <h1 className="page-title mb-6">{t('account:page.title')}</h1>
 
         <div className="account-nav-section">

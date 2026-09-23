@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import {
   IconBook2,
   IconCheck,
-  IconChevronRight,
   IconDownload,
   IconFileSpreadsheet,
   IconPlus,
@@ -25,7 +24,6 @@ import {
 } from '@/hooks/useGlossary'
 import { usePermission } from '@/hooks/usePermission'
 import { useProjects } from '@/hooks/useProjects'
-import { useAuthStore } from '@/store/authStore'
 import { ApiError } from '@/types/api'
 import type { GlossaryTerm, ImportResult } from '@/types/glossary'
 
@@ -33,7 +31,6 @@ import type { GlossaryTerm, ImportResult } from '@/types/glossary'
 export function GlossaryPage() {
   const { t } = useTranslation(['glossary', 'common'])
   const { workspaceId = '' } = useParams()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const canEdit = usePermission('glossary.crud')
   useDocumentTitle(t('glossary:title'))
 
@@ -250,12 +247,6 @@ export function GlossaryPage() {
 
   return (
     <div>
-      <div className="breadcrumb">
-        <span>{workspaceName || t('common:workspace.demoName')}</span>
-        <IconChevronRight size={10} />
-        <span>{t('glossary:title')}</span>
-      </div>
-
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('glossary:title')}</h1>

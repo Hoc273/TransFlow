@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import {
-  IconChevronRight,
   IconClipboardCheck,
   IconEdit,
   IconLoader2,
@@ -42,7 +41,6 @@ import {
   isTtsProvider,
   voiceMatchesTargetLang,
 } from '@/lib/media/voiceSelection'
-import { useAuthStore } from '@/store/authStore'
 import { ApiError } from '@/types/api'
 import type {
   OutputAspectRatio,
@@ -1058,7 +1056,6 @@ function PresetCard({
 export function PresetSettingsPage() {
   const { t } = useTranslation(['media', 'common'])
   const { workspaceId = '' } = useParams()
-  const workspaceName = useAuthStore((s) => s.currentWorkspace?.name)
   const canManage = usePermission('project.manage')
   useDocumentTitle(t('media:workflowPresetAdmin.title'))
 
@@ -1096,15 +1093,6 @@ export function PresetSettingsPage() {
 
   return (
     <div className="media-studio-page">
-      <div className="breadcrumb">
-        <span>{workspaceName || t('common:workspace.demoName')}</span>
-        <IconChevronRight size={10} />
-        <Link to={`/w/${workspaceId}/media`} className="hover:text-[var(--color-media)] transition-colors">
-          {t('media:title')}
-        </Link>
-        <IconChevronRight size={10} />
-        <span className="text-[var(--color-media)]">{t('media:workflowPresetAdmin.title')}</span>
-      </div>
       <div className="page-header">
         <div>
           <h1 className="page-title">
