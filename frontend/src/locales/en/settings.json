@@ -32,6 +32,8 @@
     "sectionSttSubtitle": "Providers used for transcribing audio/video content.",
     "sectionTtsTitle": "Text-to-Speech Providers",
     "sectionTtsSubtitle": "Providers used for generating dubbed audio.",
+    "sectionVisionTitle": "Vision Providers",
+    "sectionVisionSubtitle": "Providers used for understanding images and video frames.",
     "sectionImageTitle": "Image Providers",
     "sectionImageSubtitle": "Providers used for visual understanding (VLM) and image generation.",
     "sectionVideoTitle": "Video Providers",
@@ -141,7 +143,8 @@
       "azure_speech": "Azure Speech",
       "google_speech": "Google Speech",
       "amazon_polly": "Amazon Polly",
-      "whisper_compatible": "Whisper compatible"
+      "whisper_compatible": "Whisper compatible",
+      "dashscope_native": "DashScope (Qwen)"
     },
     "field": {
       "label": "Display name",

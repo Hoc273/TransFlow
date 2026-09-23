@@ -16,7 +16,8 @@
     "sessions": "Active Sessions",
     "dangerZone": "Danger zone",
     "danger": "Delete Account",
-    "phase2Hint": "Phase 2 — backend preference API not in MVP"
+    "phase2Hint": "Phase 2 — backend preference API not in MVP",
+    "apiKeys": "API keys (BYOK)"
   },
   "common": {
     "save": "Save changes",
@@ -188,5 +189,18 @@
     "wrongText": "Please type DELETE exactly to confirm",
     "pending": "Account deletion API is not available yet. No data was deleted.",
     "gdprNote": "If you want to export your personal data before deleting, contact support@transflow.io. A JSON export can be provided within 30 days (when the export API ships)."
+  },
+  "apiKeys": {
+    "title": "Personal API keys (BYOK)",
+    "subtitle": "Bring your own AI provider keys — used for your jobs instead of platform credits.",
+    "onboardingTitle": "How personal keys work",
+    "onboardingDesc": "Keys belong to your account, not a workspace. Add a key and tick every capability the endpoint serves (TEXT for translation/QA, STT for transcription, TTS for dubbing, VISION for image/frame understanding). Keys are encrypted server-side — only a masked hint is ever returned.",
+    "add": "Add API key",
+    "addTitle": "New API key",
+    "editTitle": "Edit API key",
+    "emptyTitle": "No {{capability}} key yet",
+    "emptyDesc": "Add a personal key to use your own provider for this capability.",
+    "modelRequired": "Base URL and model are required",
+    "capabilitiesHelp": "Select every capability this endpoint can serve. One OpenAI-compatible gateway may expose TEXT, VISION, STT and TTS together."
   }
 }

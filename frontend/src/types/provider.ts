@@ -25,6 +25,7 @@ export type ProviderCapability =
   | 'STT'
   | 'TTS'
   | 'EMBEDDING'
+  | 'VISION'
   | 'IMAGE'
   | 'VIDEO'
 

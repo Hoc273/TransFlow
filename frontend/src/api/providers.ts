@@ -33,11 +33,56 @@ export function listPresetsApi(
   return Promise.resolve([])
 }
 
+// ── Wire mapping ──────────────────────────────────────────────────
+// Backend (UserAiProviderResponse) dùng `isActive`, capability `TRANSLATE`
+// và không có displayName/defaultFor. FE dùng vocabulary `TEXT` + `enabled`
+// như ProvidersPage gốc — map tại đây để mọi consumer nhận shape thống nhất.
+
+type UserAiProviderDto = {
+  id: string
+  protocol: ProviderConfig['protocol']
+  capabilities: string[] | null
+  baseUrl: string
+  apiKeyHint: string | null
+  defaultModel: string | null
+  isActive?: boolean
+  enabled?: boolean
+  displayName?: string | null
+  defaultFor?: ProviderCapability[] | null
+}
+
+type TestConnectionDto = { success?: boolean; ok?: boolean; message?: string | null; model?: string | null }
+
+function capabilityFromWire(capability: string): ProviderCapability {
+  const upper = capability.toUpperCase()
+  return (upper === 'TRANSLATE' ? 'TEXT' : upper) as ProviderCapability
+}
+
+function capabilitiesToWire(capabilities: ProviderCapability[]): string[] {
+  return capabilities.map((capability) => (capability === 'TEXT' ? 'TRANSLATE' : capability))
+}
+
+export function normalizeProvider(dto: UserAiProviderDto): ProviderConfig {
+  const defaultModel = dto.defaultModel ?? ''
+  return {
+    id: dto.id,
+    displayName: dto.displayName || defaultModel || dto.protocol,
+    protocol: dto.protocol,
+    capabilities: (dto.capabilities ?? []).map(capabilityFromWire),
+    defaultFor: dto.defaultFor ?? [],
+    baseUrl: dto.baseUrl,
+    apiKeyHint: dto.apiKeyHint,
+    defaultModel,
+    enabled: dto.enabled ?? dto.isActive ?? true,
+  }
+}
+
 // ── CRUD providers ────────────────────────────────────────────────
 
-export function listProvidersApi(workspaceId?: string): Promise<ProviderConfig[]> {
+export async function listProvidersApi(workspaceId?: string): Promise<ProviderConfig[]> {
   void workspaceId
-  return apiRequest<ProviderConfig[]>('/users/me/providers')
+  const rows = await apiRequest<UserAiProviderDto[]>('/users/me/providers')
+  return (rows ?? []).map(normalizeProvider)
 }
 
 export function createProviderApi(body: CreateProviderRequest): Promise<ProviderConfig>
@@ -51,10 +96,16 @@ export function createProviderApi(
   body?: CreateProviderRequest,
 ): Promise<ProviderConfig> {
   const payload = (body ?? workspaceIdOrBody) as CreateProviderRequest
-  return apiRequest<ProviderConfig>('/users/me/providers', {
+  return apiRequest<UserAiProviderDto>('/users/me/providers', {
     method: 'POST',
-    body: payload,
-  })
+    body: {
+      protocol: payload.protocol,
+      capabilities: capabilitiesToWire(payload.capabilities),
+      baseUrl: payload.baseUrl,
+      apiKey: payload.apiKey,
+      defaultModel: payload.defaultModel,
+    },
+  }).then(normalizeProvider)
 }
 
 export function updateProviderApi(
@@ -76,10 +127,17 @@ export function updateProviderApi(
     typeof providerIdOrBody === 'string' ? providerIdOrBody : (workspaceIdOrId as string)
   const payload = (body ?? providerIdOrBody) as UpdateProviderRequest
   void workspaceIdOrId
-  return apiRequest<ProviderConfig>(`/users/me/providers/${providerId}`, {
+  return apiRequest<UserAiProviderDto>(`/users/me/providers/${providerId}`, {
     method: 'PUT',
-    body: payload,
-  })
+    body: {
+      protocol: payload.protocol,
+      capabilities: payload.capabilities ? capabilitiesToWire(payload.capabilities) : undefined,
+      baseUrl: payload.baseUrl,
+      apiKey: payload.apiKey || undefined,
+      defaultModel: payload.defaultModel,
+      isActive: payload.enabled,
+    },
+  }).then(normalizeProvider)
 }
 
 export function deleteProviderApi(providerId: string): Promise<void>
@@ -141,9 +199,13 @@ export function testProviderApi(
       : workspaceIdOrId
   void workspaceIdOrId
   void _capability
-  return apiRequest<TestConnectionResponse>(`/users/me/providers/${providerId}/test`, {
+  return apiRequest<TestConnectionDto>(`/users/me/providers/${providerId}/test`, {
     method: 'POST',
-  })
+  }).then((res) => ({
+    ok: res.ok ?? res.success ?? false,
+    model: res.model ?? null,
+    message: res.message ?? null,
+  }))
 }
 
 // ── TTS voices ──────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import {
   IconBuilding,
   IconChevronRight,
   IconCoins,
+  IconKey,
   IconShieldLock,
   IconUser,
 } from '@tabler/icons-react'
@@ -18,8 +19,9 @@ import { SecuritySection } from './sections/SecuritySection'
 import { PreferencesSection } from './sections/PreferencesSection'
 import { WorkspacesSection } from './sections/WorkspacesSection'
 import { CreditSection } from './sections/CreditSection'
+import { ApiKeysSection } from './sections/ApiKeysSection'
 
-const SECTIONS = ['profile', 'security', 'preferences', 'credit', 'workspaces'] as const
+const SECTIONS = ['profile', 'security', 'api-keys', 'preferences', 'credit', 'workspaces'] as const
 export type AccountSection = (typeof SECTIONS)[number]
 
 function isSection(s: string | undefined): s is AccountSection {
@@ -62,6 +64,9 @@ export function AccountSettingsPage() {
           <AccountNavLink to={`${base}/security`} icon={<IconShieldLock size={17} />}>
             {t('account:nav.security')}
           </AccountNavLink>
+          <AccountNavLink to={`${base}/api-keys`} icon={<IconKey size={17} />}>
+            {t('account:nav.apiKeys')}
+          </AccountNavLink>
           <AccountNavLink to={`${base}/preferences`} icon={<IconAdjustments size={17} />}>
             {t('account:nav.preferences')}
           </AccountNavLink>
@@ -89,6 +94,7 @@ export function AccountSettingsPage() {
       <main className="account-main">
         {section === 'profile' && <ProfileSection />}
         {section === 'security' && <SecuritySection />}
+        {section === 'api-keys' && <ApiKeysSection />}
         {section === 'preferences' && <PreferencesSection />}
         {section === 'credit' && <CreditSection />}
         {section === 'workspaces' && <WorkspacesSection />}

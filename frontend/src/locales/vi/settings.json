@@ -32,6 +32,8 @@
     "sectionSttSubtitle": "Provider dùng cho chuyển đổi audio/video thành văn bản.",
     "sectionTtsTitle": "Text-to-Speech Providers",
     "sectionTtsSubtitle": "Provider dùng cho tạo giọng lồng tiếng.",
+    "sectionVisionTitle": "Vision Providers",
+    "sectionVisionSubtitle": "Provider dùng cho nhận dạng hình ảnh và frame video.",
     "sectionImageTitle": "Image Providers",
     "sectionImageSubtitle": "Provider dùng cho nhận dạng hình ảnh (VLM) và sinh ảnh.",
     "sectionVideoTitle": "Video Providers",
@@ -141,7 +143,8 @@
       "azure_speech": "Azure Speech",
       "google_speech": "Google Speech",
       "amazon_polly": "Amazon Polly",
-      "whisper_compatible": "Whisper compatible"
+      "whisper_compatible": "Whisper compatible",
+      "dashscope_native": "DashScope (Qwen)"
     },
     "field": {
       "label": "Tên hiển thị",
