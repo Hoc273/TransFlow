@@ -22,7 +22,8 @@
     "status": "Trạng thái hệ thống",
     "users": "Người dùng",
     "workspaces": "Workspace",
-    "audit": "Nhật ký audit"
+    "audit": "Nhật ký audit",
+    "guides": "Hướng dẫn"
   },
   "menu": {
     "console": "Bảng điều khiển Platform"

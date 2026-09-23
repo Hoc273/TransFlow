@@ -22,7 +22,8 @@
     "status": "System Status",
     "users": "Users",
     "workspaces": "Workspaces",
-    "audit": "Audit Log"
+    "audit": "Audit Log",
+    "guides": "Guides"
   },
   "menu": {
     "console": "Platform console"

@@ -94,4 +94,14 @@ export const queryKeys = {
   platformAudit: (params: Record<string, string | number | undefined>) =>
     ['platform', 'audit', params] as const,
   platformRealtime: ['platform', 'realtime'] as const,
+  // Guide (Public + Platform Admin)
+  guideCategories: (lang?: string) => ['guide', 'categories', lang ?? 'vi'] as const,
+  guideArticles: (params?: Record<string, string | number | undefined>) =>
+    ['guide', 'articles', params ?? {}] as const,
+  guideArticle: (slug?: string, lang?: string) => ['guide', 'article', slug ?? '', lang ?? 'vi'] as const,
+  adminGuideCategories: ['admin', 'guide', 'categories'] as const,
+  adminGuideCategory: (id?: string) => ['admin', 'guide', 'category', id ?? ''] as const,
+  adminGuideArticles: (params?: Record<string, string | number | undefined>) =>
+    ['admin', 'guide', 'articles', params ?? {}] as const,
+  adminGuideArticle: (id?: string) => ['admin', 'guide', 'article', id ?? ''] as const,
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { IconLogout, IconSettings, IconShieldCheck, IconUser } from '@tabler/icons-react'
+import { IconBook2, IconLogout, IconSettings, IconShieldCheck, IconUser } from '@tabler/icons-react'
 import { useAuthStore, getLastWorkspaceId } from '@/store/authStore'
 import { useLogout } from '@/hooks/useAuth'
 import { initialsFromName } from '@/lib/format'
@@ -72,6 +72,17 @@ export function AvatarMenu() {
                 {t('profile')}
               </Link>
               <Link
+                to="/guide"
+                target="_blank"
+                rel="noreferrer"
+                className="app-dropdown-item"
+                role="menuitem"
+                onClick={close}
+              >
+                <IconBook2 size={15} />
+                {t('guide')}
+              </Link>
+              <Link
                 to={`/w/${wsId}/account/security`}
                 className="app-dropdown-item"
                 role="menuitem"
@@ -87,6 +98,17 @@ export function AvatarMenu() {
                 <IconUser size={15} />
                 {t('profile')}
               </button>
+              <Link
+                to="/guide"
+                target="_blank"
+                rel="noreferrer"
+                className="app-dropdown-item"
+                role="menuitem"
+                onClick={close}
+              >
+                <IconBook2 size={15} />
+                {t('guide')}
+              </Link>
               <button type="button" className="app-dropdown-item" role="menuitem" disabled>
                 <IconSettings size={15} />
                 {t('settings')}
