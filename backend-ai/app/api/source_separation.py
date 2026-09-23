@@ -24,8 +24,14 @@ source_separation_router = APIRouter(prefix="/media")
 def _gateway() -> SourceSeparationGateway:
     from app.core.config import settings
 
+    mock_engine = settings.separation_engine_id.strip().lower() == "mock"
     registry = SeparationEngineRegistry(
-        [DemucsAdapter(executable=settings.separation_demucs_executable)]
+        [
+            DemucsAdapter(
+                executable=settings.separation_demucs_executable,
+                allow_cpu_fallback=settings.separation_cpu_fallback or settings.mock_mode or mock_engine,
+            )
+        ]
     )
     storage = MinioSeparationStorage(
         endpoint=settings.media_storage_endpoint,
@@ -37,7 +43,7 @@ def _gateway() -> SourceSeparationGateway:
     return SourceSeparationGateway(
         registry,
         storage,
-        engine_id=settings.separation_engine_id,
+        engine_id="local_demucs" if mock_engine else settings.separation_engine_id,
         max_input_bytes=settings.separation_max_input_bytes,
         max_input_duration_ms=settings.separation_max_input_duration_ms,
         max_output_size_multiplier=settings.separation_max_output_size_multiplier,

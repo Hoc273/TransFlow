@@ -16,9 +16,13 @@ vi.mock('@/config/featureFlags', () => ({
   featureFlags: {},
 }))
 
-const { batchEditTransformationSegmentsApi, createTransformationJobApi, getTransformationCapabilitiesApi, rerunTransformationRenderApi } = await import(
-  './transformation'
-)
+const {
+  batchEditTransformationSegmentsApi,
+  consentTransformationAssetApi,
+  createTransformationJobApi,
+  getTransformationCapabilitiesApi,
+  rerunTransformationRenderApi,
+} = await import('./transformation')
 
 beforeEach(() => {
   apiRequest.mockReset()
@@ -108,5 +112,23 @@ describe('batchEditTransformationSegmentsApi', () => {
       { method: 'PUT', body: { updates: [{ segmentId: 'seg-1', targetText: 'Chào' }] } },
     )
     expect(Array.isArray(res)).toBe(true)
+  })
+})
+
+describe('consentTransformationAssetApi', () => {
+  it('sends explicit termsVersion when provided', async () => {
+    await consentTransformationAssetApi('ws-1', 'asset-1', 'v2')
+    expect(apiRequest).toHaveBeenCalledWith(
+      '/workspaces/ws-1/media/assets/asset-1/consent',
+      { method: 'POST', body: { termsVersion: 'v2' } },
+    )
+  })
+
+  it('defaults to v1 when termsVersion is omitted or empty', async () => {
+    await consentTransformationAssetApi('ws-1', 'asset-1')
+    expect(apiRequest).toHaveBeenCalledWith(
+      '/workspaces/ws-1/media/assets/asset-1/consent',
+      { method: 'POST', body: { termsVersion: 'v1' } },
+    )
   })
 })

@@ -3,6 +3,7 @@ import type {
   BatchCreateResponse,
   BatchDetail,
   BatchSummary,
+  BulkDownloadResult,
   CreateBatchParams,
 } from '@/types/batch'
 import type { MediaJob } from '@/types/media'
@@ -101,8 +102,12 @@ export function retryBatchJobApi(
 
 export const retryBatchDocumentApi = retryBatchJobApi
 
-export function downloadBulkJobsApi(workspaceId: string, projectId: string, jobIds: string[]) {
-  return apiRequest<import('@/types/batch').BulkDownloadResult>(
+export function downloadBulkJobsApi(
+  workspaceId: string,
+  projectId: string,
+  jobIds: string[],
+) {
+  return apiRequest<BulkDownloadResult>(
     buildWorkspacePath(workspaceId, `/projects/${projectId}/media/jobs/download`),
     { method: 'POST', body: { jobIds } },
   )

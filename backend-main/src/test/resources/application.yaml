@@ -13,6 +13,8 @@ spring:
     enabled: false
 
 app:
+  pipeline:
+    enabled: false
   cors:
     allowed-origin: http://localhost:5173
   fe-origin: http://localhost:5173

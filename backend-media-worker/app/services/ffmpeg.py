@@ -134,6 +134,12 @@ def _classify_ffmpeg_error(stderr: str) -> tuple[str, bool]:
     return "RENDER_FAILED", True
 
 
+def _sanitize_ffmpeg_log(text: str) -> str:
+    if not text:
+        return ""
+    return re.sub(r'([a-zA-Z]:[\\/][^\s"\'<>]+|/(?:[^\s"\'<>]+/)+[^\s"\'<>]*)', '<path>', text)
+
+
 def _run(cmd: List[str], timeout: int = _DEFAULT_TIMEOUT, **kwargs) -> None:
     logger.info("Running ffmpeg operation=%s", cmd[0])
     try:
@@ -144,7 +150,7 @@ def _run(cmd: List[str], timeout: int = _DEFAULT_TIMEOUT, **kwargs) -> None:
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr or ""
         code, retryable = _classify_ffmpeg_error(stderr)
-        logger.error("ffmpeg failed code=%s retryable=%s: %s", code, retryable, stderr.strip())
+        logger.error("ffmpeg failed code=%s retryable=%s: %s", code, retryable, _sanitize_ffmpeg_log(stderr.strip()))
         raise FFmpegError("ffmpeg command failed", code, retryable=retryable) from exc
 
 

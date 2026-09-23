@@ -354,14 +354,118 @@ Workspace; tài khoản thường nhận `UNAUTHORIZED` (HTTP 403). Response v�
 
 Nhóm API này là read-only trong MVP; không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.
 
+Quy tắc chung cho nhóm:
+
+- **AuthZ**: mọi request phải có JWT hợp lệ **và** `users.is_platform_admin = true` — cờ được đọc lại từ
+  DB ở tầng service cho từng request (không tin claim JWT), nên thu hồi quyền có hiệu lực ngay.
+  Thiếu/sai JWT → `UNAUTHENTICATED` (401); user thường → `UNAUTHORIZED` (403).
+- **Audit**: mọi request `/api/platform/*` (kể cả bị từ chối) được ghi vào `platform_admin_audit_logs`
+  bởi `PlatformAdminAuditFilter` (chạy sau `JwtAuthFilter`). `DENIED` chỉ cho 401/403; các lỗi khác
+  (400 validation, 500) vẫn ghi action theo endpoint đã gọi.
+- **Phân trang**: `page` 0-based (mặc định 0), `size` mặc định 20, **clamp tối đa 100** (không báo lỗi).
+  Envelope: `{content, page, size, totalElements, totalPages}`.
+
+**`GET /api/platform/overview?from=&to=&topLimit=`**
+
+- `from`/`to`: ISO-8601 instant. Mặc định `to = now`, `from = to − 7 ngày`. `from ≥ to` → `VALIDATION_ERROR` (400).
+- `topLimit`: mặc định 10, clamp 1–50.
+
+Response `data`:
+
+```json
+{
+  "from": "...", "to": "...",
+  "users":      { "total": 120, "newInRange": 8 },
+  "workspaces": { "total": 34,  "newInRange": 2 },
+  "jobs": {
+    "mediaJobs":      { "created": 40, "completed": 30, "failed": 4, "processing": 3, "other": 3 },
+    "batchJobs":      { "created": 10, "completed": 7,  "failed": 2, "processing": 1, "other": 0 },
+    "textJobs":       { "available": false },
+    "productionJobs": { "available": false }
+  },
+  "tokens": {
+    "inputTokens": 1000, "outputTokens": 500, "totalTokens": 1500,
+    "byOperation": { "TRANSLATE": { "inputTokens": 600, "outputTokens": 300 } }
+  },
+  "failRate": { "rate": 0.16, "failedCount": 6, "terminalCount": 37 },
+  "topWorkspaces": [ { "workspaceId": "...", "workspaceName": "...", "totalTokens": 900, "jobCount": 5 } ]
+}
+```
+
+- `jobs`: chỉ `mediaJobs` (`media_jobs`) và `batchJobs` (`localization_batches`) có số liệu thật —
+  `textJobs`/`productionJobs` là marker `{"available": false}` vì domain đó không tồn tại trong mini
+  (SRS §4.3). `created` = tổng các bucket còn lại; `other` gồm `PENDING`/`CANCELLED`/giá trị lạ;
+  `PARTIALLY_FAILED` của batch tính vào `failed`.
+- `failRate`: gộp cả 2 loại job — `rate = failed / (completed + failed)`, `null` khi `terminalCount = 0`.
+- `tokens`/`topWorkspaces`: aggregate `ai_usage_logs` trong range (sẽ là 0/rỗng cho tới khi pipeline ghi log).
+
+**`GET /api/platform/status`**
+
+```json
+{
+  "checkedAt": "...",
+  "overall": "UP | DEGRADED",
+  "services": [
+    { "id": "postgresql",  "name": "PostgreSQL",          "status": "UP|DOWN", "latencyMs": 3, "message": null },
+    { "id": "redis",       "name": "Redis",               "status": "UP|DOWN", "latencyMs": 2, "message": null },
+    { "id": "rabbitmq",    "name": "RabbitMQ",            "status": "UP|DOWN", "latencyMs": 5, "message": null },
+    { "id": "minio",       "name": "MinIO",               "status": "UP|DOWN", "latencyMs": 8, "message": null },
+    { "id": "ai_gateway",  "name": "AI Gateway (FastAPI)","status": "UP|DOWN", "latencyMs": 4, "message": null },
+    { "id": "worker",      "name": "Media Worker",        "status": "UP|DOWN", "latencyMs": 4, "message": null }
+  ]
+}
+```
+
+- Probe song song (fail-open từng service): PostgreSQL `SELECT 1`; Redis `PING`; RabbitMQ mở connection;
+  MinIO `bucketExists`; `ai_gateway`/`worker` gọi `GET {baseUrl}/health` (`app.ai.base-url`,
+  `app.media-worker.base-url`, timeout `app.health-probe.timeout-ms`).
+- `overall = UP` khi cả 6 `UP`, ngược lại `DEGRADED`. `message` đã lọc — không lộ connection string/credential.
+
+**`GET /api/platform/users`**
+
+`data` = `PlatformPageResponse<PlatformUserItem>`; item:
+
+```json
+{ "id": "...", "email": "...", "fullName": "...", "status": "ACTIVE",
+  "isPlatformAdmin": false, "createdAt": "...", "workspaceCount": 3 }
+```
+
+- `q` tìm `email` + `full_name` (LIKE, case-insensitive); `isPlatformAdmin=true|false` lọc theo cờ.
+- Không trả `password_hash`, `google_sub`, hay thông tin provider.
+
+**`GET /api/platform/workspaces`**
+
+`data` = `PlatformPageResponse<PlatformWorkspaceItem>`; item:
+
+```json
+{ "id": "...", "name": "...", "slug": "...", "ownerUserId": "...",
+  "ownerEmail": "...", "memberCount": 4, "createdAt": "..." }
+```
+
+- `q` tìm `name` + `slug`.
+
+**`GET /api/platform/audit-logs`**
+
+`data` = `PlatformPageResponse<PlatformAuditLogItem>`; item:
+
+```json
+{ "id": "...", "actorUserId": "...|null", "action": "VIEW_OVERVIEW",
+  "httpMethod": "GET", "path": "/api/platform/overview", "queryString": "...|null",
+  "ip": "...", "userAgent": "...", "statusCode": 200, "createdAt": "..." }
+```
+
+- Sort `createdAt DESC`. `action` ∈ `VIEW_OVERVIEW, VIEW_STATUS, LIST_USERS, LIST_WORKSPACES,
+  LIST_AUDIT, SEED_GRANT, DENIED, OTHER` (case-insensitive); giá trị lạ → `VALIDATION_ERROR` (400).
+  `DENIED` = request bị từ chối 401/403; `OTHER` = path `/api/platform/*` không map được.
+  `actorUserId` null cho request không JWT và `SEED_GRANT` ghi lúc bootstrap.
+
+**Seed Super Admin (startup)**: khi `app.platform-admin.seed-on-startup=true`, runner đọc
+`PLATFORM_ADMIN_EMAILS` (CSV) và grant `is_platform_admin=true` cho user đã tồn tại — grant-only,
+không tạo user mới, không revoke; mỗi grant ghi audit `SEED_GRANT`.
+
 > Frontend (22/09/2026): route top-level `/platform/*` (Tổng quan/Trạng thái/Người dùng/Workspace/Audit),
 > gate bởi `PlatformGuard` đọc `user.isPlatformAdmin` (lấy từ `GET /api/auth/me`). Link Sidebar chỉ hiện
 > khi `isPlatformAdmin === true`.
->
-> Ghi chú trung thực: `GET /status` trả `overall: UP|DEGRADED` (không còn hardcode `UP`);
-> `GET /users|/workspaces` clamp `size` tối đa 100; `GET /overview` đếm thật `newInRange`
-> nhưng `jobs/tokens/failRate/topWorkspaces` vẫn là số liệu chờ aggregate (FE gắn badge `Coming soon`).
-> `GET /audit-logs` là stub rỗng có chủ ý trong MVP.
 
 ---
 
@@ -424,6 +528,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100, `BATCH_RATE_LIMIT_EXCEEDED` = 3101 |
 | `glossary` | 3200–3299 | — |
 | `qa` | 3300–3399 | `QA_BLOCKED` = 3300, `OVERRIDE_NOT_ALLOWED` = 3301 |
+| `platform` | 3400–3499 | — (dự phòng; hiện dùng mã chung `VALIDATION_ERROR`/`UNAUTHORIZED`/`USER_NOT_FOUND`) |
 
 ### 15.3 Mã nghiệp vụ đã xác định (đối chiếu 1:1 với bản `code` string cũ trước bản 1.1)
 

@@ -205,8 +205,12 @@ class SummarizeRequest(BaseModel):
     correlation_id: str
     media_job_id: str
     transcript: list[SttSegment] = Field(default_factory=list)
-    requested_duration_seconds: int
-    duration_tolerance: dict[str, int]
+    # Optional for Localization HYBRID. The gateway derives a conservative
+    # target from the transcript when Spring has no user-requested duration.
+    requested_duration_seconds: Optional[int] = Field(default=None, gt=0)
+    duration_tolerance: dict[str, int] = Field(
+        default_factory=lambda: {"lower_seconds": 20, "upper_seconds": 20}
+    )
     provider: ProviderPayload
 
 

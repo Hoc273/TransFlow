@@ -276,7 +276,9 @@ describe('UploadConsentPanel — staged multi-file upload card', () => {
     await vi.waitFor(() => {
       expect(consentHookMock.mutateAsync).toHaveBeenCalledTimes(3)
     })
-    expect(consentHookMock.mutateAsync.mock.calls[2]).toEqual(['asset-a.mp4'])
+    expect(consentHookMock.mutateAsync.mock.calls[2]).toEqual([
+      { assetId: 'asset-a.mp4', termsVersion: '2026-01-01' },
+    ])
     await vi.waitFor(() => {
       expect((screen.getByTestId('create-submit') as HTMLButtonElement).disabled).toBe(false)
     })

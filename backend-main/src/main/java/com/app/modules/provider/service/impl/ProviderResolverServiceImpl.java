@@ -105,6 +105,18 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<String> resolveVoiceIdentifier(UUID userId, UUID ttsProviderId, UUID ttsVoiceId) {
+        if (ttsProviderId == null || ttsVoiceId == null) {
+            return Optional.empty();
+        }
+        return ttsVoiceRepository.findById(ttsVoiceId)
+                .filter(TtsVoice::isActive)
+                .filter(voice -> providerOwnsVoiceAndIsAvailable(userId, ttsProviderId, voice))
+                .map(TtsVoice::getVoiceId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public ResolvedVoice resolveLegacyVoice(UUID userId, String voiceId, String targetLang) {
         if (voiceId == null || voiceId.isBlank()) {
             throw new AppException(ErrorCode.VOICE_LANGUAGE_MISMATCH);

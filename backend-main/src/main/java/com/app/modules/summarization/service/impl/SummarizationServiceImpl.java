@@ -4,6 +4,7 @@ import com.app.common.exception.AppException;
 import com.app.common.exception.ErrorCode;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
+import com.app.modules.media_job.pipeline.MediaPipelineDispatcher;
 import com.app.modules.media_job.service.MediaJobService;
 import com.app.modules.summarization.dto.SegmentRange;
 import com.app.modules.summarization.entity.SummaryProposal;
@@ -12,9 +13,12 @@ import com.app.modules.summarization.repository.SummaryProposalRepository;
 import com.app.modules.summarization.repository.SummaryProposalSegmentRepository;
 import com.app.modules.summarization.service.RefineSessionStore;
 import com.app.modules.summarization.service.SummaryAiClient;
+import com.app.modules.summarization.service.DurationAwareSummaryAiClient;
 import com.app.modules.summarization.service.SummarizationService;
+import com.app.modules.summarization.service.UserAwareDurationSummaryAiClient;
 import com.app.modules.workspace.service.WorkspaceAccessService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,14 +40,17 @@ public class SummarizationServiceImpl implements SummarizationService {
     private final SummaryAiClient aiClient;
     private final RefineSessionStore refineSessionStore;
     private final ObjectMapper objectMapper;
+    private final MediaPipelineDispatcher mediaPipelineDispatcher;
 
+    @Autowired
     public SummarizationServiceImpl(SummaryProposalRepository summaryProposalRepository,
                                      SummaryProposalSegmentRepository summaryProposalSegmentRepository,
                                      WorkspaceAccessService access,
                                      MediaJobService mediaJobService,
                                      SummaryAiClient aiClient,
                                      RefineSessionStore refineSessionStore,
-                                     ObjectMapper objectMapper) {
+                                     ObjectMapper objectMapper,
+                                     MediaPipelineDispatcher mediaPipelineDispatcher) {
         this.summaryProposalRepository = summaryProposalRepository;
         this.summaryProposalSegmentRepository = summaryProposalSegmentRepository;
         this.access = access;
@@ -51,6 +58,19 @@ public class SummarizationServiceImpl implements SummarizationService {
         this.aiClient = aiClient;
         this.refineSessionStore = refineSessionStore;
         this.objectMapper = objectMapper;
+        this.mediaPipelineDispatcher = mediaPipelineDispatcher;
+    }
+
+    /** Compatibility constructor for focused unit tests that do not exercise queue dispatch. */
+    public SummarizationServiceImpl(SummaryProposalRepository summaryProposalRepository,
+                                    SummaryProposalSegmentRepository summaryProposalSegmentRepository,
+                                    WorkspaceAccessService access,
+                                    MediaJobService mediaJobService,
+                                    SummaryAiClient aiClient,
+                                    RefineSessionStore refineSessionStore,
+                                    ObjectMapper objectMapper) {
+        this(summaryProposalRepository, summaryProposalSegmentRepository, access, mediaJobService,
+                aiClient, refineSessionStore, objectMapper, null);
     }
 
     @Override
@@ -126,6 +146,9 @@ public class SummarizationServiceImpl implements SummarizationService {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
         mediaJobService.updateSelectedProposal(workspaceId, userId, jobId, proposalId);
+        if (mediaPipelineDispatcher != null) {
+            mediaPipelineDispatcher.dispatchNext(jobId);
+        }
     }
 
     @Override
@@ -152,8 +175,16 @@ public class SummarizationServiceImpl implements SummarizationService {
             throw new AppException(ErrorCode.REFINE_LIMIT_REACHED);
         }
 
-        SummaryAiClient.ScriptProposalResult result = aiClient.refineScript(
-                current.getScriptContent(), feedbackText, job.getTargetLang());
+        SummaryAiClient.ScriptProposalResult result;
+        if (aiClient instanceof UserAwareDurationSummaryAiClient userAware) {
+            result = userAware.refineScript(current.getScriptContent(), feedbackText, job.getTargetLang(),
+                    job.getRequestedDurationSeconds(), jobId, userId);
+        } else if (aiClient instanceof DurationAwareSummaryAiClient durationAware) {
+            result = durationAware.refineScript(current.getScriptContent(), feedbackText, job.getTargetLang(),
+                    job.getRequestedDurationSeconds());
+        } else {
+            result = aiClient.refineScript(current.getScriptContent(), feedbackText, job.getTargetLang());
+        }
 
         current.setArchivedAt(Instant.now());
         summaryProposalRepository.save(current);
@@ -188,6 +219,20 @@ public class SummarizationServiceImpl implements SummarizationService {
 
         return mediaJobService.createDerivedSummaryJob(
                 workspaceId, userId, jobId, targetLang, ttsProviderId, ttsVoiceId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SummaryProposal getProposalById(UUID proposalId) {
+        return summaryProposalRepository.findById(proposalId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional
+    public SummaryProposal persistAiProposalResult(UUID stageId, short round, SummaryAiClient.ScriptProposalResult result,
+                                                   String feedbackText, int requestedDurationSeconds) {
+        return persistAiProposal(stageId, round, result, feedbackText, requestedDurationSeconds);
     }
 
     // ---- helpers ----
@@ -253,6 +298,19 @@ public class SummarizationServiceImpl implements SummarizationService {
         long upper = (long) (requestedMs * (1 + DURATION_TOLERANCE_RATIO));
         if (totalMs < lower || totalMs > upper) {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
+
+        // Stage reruns re-enter this method with round 1. The database keeps
+        // one AI proposal per (stage, round), so advance and archive the
+        // previous active round before persisting the new result.
+        SummaryProposal previous = summaryProposalRepository
+                .findTopByMediaJobStageIdAndGeneratedByOrderByGenerationRoundDesc(
+                        stageId, SummaryProposal.GeneratedBy.AI)
+                .orElse(null);
+        if (previous != null && round <= previous.getGenerationRound()) {
+            previous.setArchivedAt(Instant.now());
+            summaryProposalRepository.save(previous);
+            round = (short) (previous.getGenerationRound() + 1);
         }
 
         SummaryProposal proposal = new SummaryProposal();

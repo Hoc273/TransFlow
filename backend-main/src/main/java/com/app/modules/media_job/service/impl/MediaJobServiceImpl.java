@@ -13,6 +13,7 @@ import com.app.modules.media_job.entity.Checkpoint;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.entity.SubtitleSegment;
+import com.app.modules.media_job.pipeline.MediaPipelineDispatcher;
 import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.repository.MediaJobStageRepository;
 import com.app.modules.media_job.repository.SubtitleSegmentRepository;
@@ -22,6 +23,7 @@ import com.app.modules.preset.service.PresetResolverService;
 import com.app.modules.provider.service.ProviderResolverService;
 import com.app.modules.workspace.entity.Role;
 import com.app.modules.workspace.service.WorkspaceAccessService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +51,7 @@ public class MediaJobServiceImpl implements MediaJobService {
     private final PresetResolverService presetResolver;
     private final ProviderResolverService providerResolver;
     private final NotificationService notification;
+    private final MediaPipelineDispatcher mediaPipelineDispatcher;
 
     // field-injected (not via constructor) so unit tests keep the default
     @Value("${app.media-job.max-batch-subtitle-updates:200}")
@@ -58,6 +61,7 @@ public class MediaJobServiceImpl implements MediaJobService {
     @Value("${app.media-job.supported-source-langs:vi,en,zh,ja,ko,fr,de,es,th,id,ru}")
     private String supportedSourceLangs = "vi,en,zh,ja,ko,fr,de,es,th,id,ru";
 
+    @Autowired
     public MediaJobServiceImpl(MediaJobRepository mediaJobRepository,
                                 MediaJobStageRepository mediaJobStageRepository,
                                 SubtitleSegmentRepository subtitleSegmentRepository,
@@ -66,7 +70,8 @@ public class MediaJobServiceImpl implements MediaJobService {
                                 CreditService credit,
                                 PresetResolverService presetResolver,
                                 ProviderResolverService providerResolver,
-                                NotificationService notification) {
+                                NotificationService notification,
+                                MediaPipelineDispatcher mediaPipelineDispatcher) {
         this.mediaJobRepository = mediaJobRepository;
         this.mediaJobStageRepository = mediaJobStageRepository;
         this.subtitleSegmentRepository = subtitleSegmentRepository;
@@ -76,6 +81,21 @@ public class MediaJobServiceImpl implements MediaJobService {
         this.presetResolver = presetResolver;
         this.providerResolver = providerResolver;
         this.notification = notification;
+        this.mediaPipelineDispatcher = mediaPipelineDispatcher;
+    }
+
+    /** Compatibility constructor for focused unit tests that do not exercise queue dispatch. */
+    public MediaJobServiceImpl(MediaJobRepository mediaJobRepository,
+                               MediaJobStageRepository mediaJobStageRepository,
+                               SubtitleSegmentRepository subtitleSegmentRepository,
+                               WorkspaceAccessService access,
+                               MediaAssetService mediaAssetService,
+                               CreditService credit,
+                               PresetResolverService presetResolver,
+                               ProviderResolverService providerResolver,
+                               NotificationService notification) {
+        this(mediaJobRepository, mediaJobStageRepository, subtitleSegmentRepository, access,
+                mediaAssetService, credit, presetResolver, providerResolver, notification, null);
     }
 
     // ---- create ----
@@ -195,6 +215,7 @@ public class MediaJobServiceImpl implements MediaJobService {
         job = mediaJobRepository.save(job);
 
         initializeStages(job);
+        dispatchNextIfAvailable(job.getId());
         return job;
     }
 
@@ -308,19 +329,26 @@ public class MediaJobServiceImpl implements MediaJobService {
         job = mediaJobRepository.findWithLockById(jobId).orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
 
         if (job.getStatus() == MediaJob.JobStatus.PENDING || job.getStatus() == MediaJob.JobStatus.PROCESSING) {
-            job.setStatus(MediaJob.JobStatus.CANCELLED);
-            job = mediaJobRepository.save(job);
+            boolean waitingForWorker = false;
 
-            // ponytail: no worker/queue dispatch wired up yet in this iteration, so stages go
-            // straight to CANCELLED instead of CANCEL_REQUESTED -> add the ack round-trip once
-            // the RabbitMQ cancel signal (Arch §1 mục 4) is implemented.
+            // Mark active worker stages for graceful cancellation; the worker is signalled after commit.
+            // Pending stages are cancelled immediately; PROCESSING stages wait for callback.
             for (MediaJobStage stage : mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId)) {
-                if (stage.getStatus() == MediaJobStage.StageStatus.PENDING
-                        || stage.getStatus() == MediaJobStage.StageStatus.PROCESSING) {
+                if (stage.getStatus() == MediaJobStage.StageStatus.PROCESSING) {
+                    stage.setStatus(MediaJobStage.StageStatus.CANCEL_REQUESTED);
+                    mediaJobStageRepository.save(stage);
+                    waitingForWorker = true;
+                } else if (stage.getStatus() == MediaJobStage.StageStatus.CANCEL_REQUESTED) {
+                    waitingForWorker = true;
+                } else if (stage.getStatus() == MediaJobStage.StageStatus.PENDING
+                        || stage.getStatus() == MediaJobStage.StageStatus.STALE) {
                     stage.setStatus(MediaJobStage.StageStatus.CANCELLED);
                     mediaJobStageRepository.save(stage);
                 }
             }
+            job.setStatus(waitingForWorker ? MediaJob.JobStatus.PROCESSING : MediaJob.JobStatus.CANCELLED);
+            job = mediaJobRepository.save(job);
+            requestCancellationAfterCommit(jobId);
         }
         return job;
     }
@@ -375,7 +403,9 @@ public class MediaJobServiceImpl implements MediaJobService {
     @Override
     @Transactional
     public void confirmCheckpoint(UUID workspaceId, UUID userId, UUID jobId, Checkpoint checkpoint) {
-        MediaJob job = requireJobInWorkspace(workspaceId, jobId);
+        MediaJob job = mediaJobRepository.findWithLockById(jobId)
+                .filter(locked -> workspaceId.equals(locked.getWorkspaceId()))
+                .orElseGet(() -> requireJobInWorkspace(workspaceId, jobId));
         requireJobOwnership(workspaceId, userId, job);
 
         if (job.getWorkflowMode() != MediaJob.WorkflowMode.MANUAL) {
@@ -385,6 +415,7 @@ public class MediaJobServiceImpl implements MediaJobService {
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
         stage.setInputRef("{\"checkpoint\":\"" + checkpoint.name() + "\",\"confirmedBy\":\"" + userId + "\"}");
         mediaJobStageRepository.save(stage);
+        dispatchNextIfAvailable(jobId);
     }
 
     @Override
@@ -432,8 +463,19 @@ public class MediaJobServiceImpl implements MediaJobService {
             }
         }
 
+        // A summary rerun creates a new AI proposal round. Clear the previous
+        // selection so MANUAL waits for a fresh choice and AUTO can select the
+        // proposal produced by the rerun.
+        if (stageName == MediaJobStage.StageName.SUMMARIZE
+                && MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(job.getRecipeId())
+                && job.getSourceSummaryJobId() == null) {
+            job.setSelectedProposalId(null);
+        }
+
         job.setStatus(MediaJob.JobStatus.PENDING);
-        return mediaJobRepository.save(job);
+        job = mediaJobRepository.save(job);
+        dispatchNextIfAvailable(jobId);
+        return job;
     }
 
     // ---- subtitles ----
@@ -592,7 +634,9 @@ public class MediaJobServiceImpl implements MediaJobService {
     @Override
     @Transactional
     public MediaJob updateSelectedProposal(UUID workspaceId, UUID userId, UUID jobId, UUID proposalId) {
-        MediaJob job = requireJobInWorkspace(workspaceId, jobId);
+        MediaJob job = mediaJobRepository.findWithLockById(jobId)
+                .filter(locked -> workspaceId.equals(locked.getWorkspaceId()))
+                .orElseGet(() -> requireJobInWorkspace(workspaceId, jobId));
         access.requireProjectWriteAccess(workspaceId, userId, job.getProjectId());
 
         if (proposalId.equals(job.getSelectedProposalId())) {
@@ -651,6 +695,19 @@ public class MediaJobServiceImpl implements MediaJobService {
         job = mediaJobRepository.save(job);
 
         initializeStages(job);
+        dispatchNextIfAvailable(job.getId());
         return job;
+    }
+
+    private void dispatchNextIfAvailable(UUID jobId) {
+        if (mediaPipelineDispatcher != null) {
+            mediaPipelineDispatcher.dispatchNext(jobId);
+        }
+    }
+
+    private void requestCancellationAfterCommit(UUID jobId) {
+        if (mediaPipelineDispatcher != null) {
+            mediaPipelineDispatcher.requestCancellationAfterCommit(jobId);
+        }
     }
 }

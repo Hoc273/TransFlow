@@ -211,7 +211,8 @@ Mỗi nhánh = 1 PR nhỏ.
 
 - **Nhánh:** `feature/platform-admin-api`
 - **Ưu tiên:** thấp nhất, phạm vi lớn nhất.
-- **Phạm vi hiện hành:** Platform Admin đã được chốt trong MVP tại `AGENTS.md` §2.1 và `SRS.md` §5.8;
+- **Phạm vi hiện hành:** Platform Admin đã được chốt trong MVP tại `SRS.md` §5.8 và
+  `System_Architecture.md` §11.1 (file `AGENTS.md` không tồn tại trong repo — sửa tham chiếu);
   đây là cờ quyền cấp hệ thống, không phải role Workspace.
 - **Endpoint (chỉ user có `isPlatformAdmin = true`):**
   1. `GET /api/platform/overview?from=&to=&topLimit=` — 6 KPI: số User, Workspace, phân loại Job, token AI theo tác vụ,
@@ -229,12 +230,38 @@ Mỗi nhánh = 1 PR nhỏ.
 3. `PlatformController` + `PlatformService`, guard `@PreAuthorize`/kiểm tra ở tầng service (không chỉ ẩn UI).
 4. Truy vấn tổng hợp dùng `ai_usage_logs`, `media_jobs`; **bắt buộc phân trang và có index**, tránh full scan.
 5. Tham khảo `PlatformController` ở `../transflow` (chỉ lấy phần khớp).
-6. Giữ `SRS.md`, `System_Architecture.md`, `Database_Design.md`, `API_Contract.md`, `AGENTS.md` nhất quán.
+6. Giữ `SRS.md`, `System_Architecture.md`, `Database_Design.md`, `API_Contract.md`, `CLAUDE.md` nhất quán.
 
 **Cách kiểm tra:**
 - Test: user thường gọi → 403; admin gọi → 200; phân trang/`q` hoạt động; `failRate` tính đúng trên dữ liệu mẫu;
   `status` báo DOWN khi tắt thử Redis/RabbitMQ.
 - Thủ công: đăng nhập tài khoản admin, mở `/platform/*` trên FE với BE thật, các số liệu khớp truy vấn SQL tay.
+
+**Đã triển khai (nhánh `feature/backend-java/platform-admin-api`, theo convention `feature/backend-java/*` của A):**
+- Module `com.app.modules.platform` theo §4.8: controller mỏng + 6 service interface/impl
+  (`PlatformAdminAccessService` — authZ đọc cờ `is_platform_admin` từ DB mỗi request, ở tầng service;
+  `PlatformAnalyticsService`, `PlatformStatusService`, `PlatformDirectoryService`, `PlatformAuditQueryService`,
+  `PlatformAdminAuditService` — ghi audit `REQUIRES_NEW`, không bao giờ throw).
+- Đọc chéo bảng qua entity `@Immutable` riêng của module (`PlatformUserView`, `PlatformWorkspaceView`,
+  `PlatformMediaJobView`, `PlatformLocalizationBatchView`, `PlatformAiUsageLogView`) — không inject repo
+  module khác.
+- `PlatformAdminAuditFilter` (không phải `@Component`, `SecurityConfig` đăng ký sau `JwtAuthFilter`) ghi
+  audit mọi request `/api/platform/**`, status ≥ 400 → `DENIED`.
+- `PlatformAdminSeedRunner` + `app.platform-admin.seed-on-startup` + `PLATFORM_ADMIN_EMAILS` (grant-only,
+  audit `SEED_GRANT`); grant qua `AuthService.grantPlatformAdminByEmail` mới.
+- Migration `V4__platform_admin_audit_logs.sql` (V3 đã là `user_avatar`; `is_platform_admin` đã có trong V1).
+- `/overview` jobs = `mediaJobs` + `batchJobs` thật; `textJobs`/`productionJobs` trả `{"available": false}`
+  (domain không tồn tại — giữ key cho FE). `failRate` gộp cả 2 loại job. Page shape `content/totalElements`,
+  `size` clamp 100. `/status` probe song song 6 service (`postgresql/redis/rabbitmq/minio/ai_gateway/worker`),
+  `overall = UP|DEGRADED`.
+- Điểm lệch plan đã ghi: tên nhánh, số migration V4, tên bảng `platform_admin_audit_logs` (task ghi
+  `audit_logs`), dải `ErrorCode` platform 3400–3499 dự phòng chưa dùng.
+- Đợt sửa sau review (`PLATFORM_ADMIN_REVIEW_ISSUES.md`): probe `/status` giữ service id khi timeout +
+  không chặn `close()` sau ngân sách 8s; filter audit bọc `try-catch` toàn phần (kể cả commit-time
+  failure) và ghi status 500 đúng khi chain throw; `DENIED` chỉ cho 401/403 (thêm action `OTHER`);
+  `countQuery` tường minh cho 2 directory query; tìm kiếm `q` đổi sang `LOCATE()` (substring match —
+  không còn vấn đề escape `%`/`_`); helper `record()` chuyển private (bỏ self-invocation
+  `@Transactional`); `byOperation` gộp key null → `"UNKNOWN"`.
 
 ---
 
@@ -269,5 +296,5 @@ trên FE — kiểm tra riêng ở Phase 1 của checklist tích hợp.
 |---|---|:-:|:-:|:-:|:-:|:-----------:|
 | 7 | `feature/tts-voice-preview` | [x] | [x] | [ ] | [x] |     [ ]     |
 | 8 | `feature/auth-forgot-password-otp` | [x] | [x] | [ ] | [x] |     [ ]     |
-| 9 | `feature/platform-admin-api` | [ ] | [ ] | [ ] | [ ] |     [ ]     |
+| 9 | `feature/backend-java/platform-admin-api` | [x] | [x] | [ ] | [x] |     [ ]     |
 | 10 | `feature/transformation-capabilities` | [x] | [x] | [ ] | [x] |     [ ]     |
