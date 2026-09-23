@@ -3,6 +3,8 @@ package com.app.common.security;
 import com.app.common.config.AppProperties;
 import com.app.common.dto.ApiResponse;
 import com.app.common.exception.ErrorCode;
+import com.app.modules.platform.security.PlatformAdminAuditFilter;
+import com.app.modules.platform.service.PlatformAdminAuditService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -46,9 +48,12 @@ public class SecurityConfig {
     };
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final PlatformAdminAuditService platformAdminAuditService;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter,
+                          PlatformAdminAuditService platformAdminAuditService) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.platformAdminAuditService = platformAdminAuditService;
     }
 
     @Bean
@@ -80,7 +85,11 @@ public class SecurityConfig {
                                     .message(ErrorCode.UNAUTHORIZED.getMessage())
                                     .build());
                         }))
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                // Audit-only: logs every /api/platform/** request incl. denied ones;
+                // runs after JWT auth so the principal is populated when present.
+                .addFilterAfter(new PlatformAdminAuditFilter(platformAdminAuditService),
+                        JwtAuthFilter.class);
 
         return http.build();
     }

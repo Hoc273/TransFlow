@@ -154,6 +154,29 @@ CREATE INDEX ix_project_members_project ON project_members(project_id);
 - `is_platform_admin` độc lập với membership/role Workspace; mọi API `/api/platform/*` kiểm tra cờ này từ
   bản ghi `users`, nhưng cờ không tự cấp quyền mutation vào dữ liệu của Workspace.
 
+### 3.1 `platform_admin_audit_logs` — nhật ký kiểm toán Super Admin (SRS §5.8)
+
+Append-only, ghi bởi `PlatformAdminAuditFilter` cho mọi request `/api/platform/*` (kể cả bị từ chối)
+và bởi seed runner khi grant quyền lúc startup. Thuộc domain Platform — không có `workspace_id`.
+
+```sql
+platform_admin_audit_logs(
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_user_id UUID NULL REFERENCES users(id),   -- NULL: request không JWT / SEED_GRANT lúc bootstrap
+  action        VARCHAR(40)  NOT NULL,            -- VIEW_OVERVIEW|VIEW_STATUS|LIST_USERS|LIST_WORKSPACES|LIST_AUDIT|SEED_GRANT|DENIED
+  http_method   VARCHAR(10)  NOT NULL,
+  path          VARCHAR(512) NOT NULL,
+  query_string  VARCHAR(1024) NULL,
+  ip            VARCHAR(64)  NULL,
+  user_agent    VARCHAR(512) NULL,
+  status_code   INT          NOT NULL,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
+)
+CREATE INDEX ix_platform_audit_created ON platform_admin_audit_logs(created_at DESC);
+CREATE INDEX ix_platform_audit_actor   ON platform_admin_audit_logs(actor_user_id);
+CREATE INDEX ix_platform_audit_action  ON platform_admin_audit_logs(action);
+```
+
 ## 4. Credit & Thanh toán (không đổi so với thiết kế trước)
 
 ```sql
@@ -691,6 +714,9 @@ CREATE INDEX ix_ai_usage_logs_user ON ai_usage_logs(performed_by_user_id, create
 - Flyway được squash còn đúng 2 baseline: `V1__init_tables.sql` tạo schema/constraint và
   `V2__init_indexes.sql` tạo index + seed dữ liệu nền. Database đã chạy chuỗi V1–V12 cũ phải reset schema
   và `flyway_schema_history` trước khi dùng baseline này; không chồng baseline mới lên history cũ.
+- Migration kể từ baseline: `V3__user_avatar.sql` (cột avatar user),
+  `V4__platform_admin_audit_logs.sql` (bảng audit Super Admin ở §3.1 — `users.is_platform_admin` đã có
+  trong V1 nên V4 không `ALTER users`).
 - **Thứ tự tạo bảng chính (do FK chéo):**
   1. `users` → `workspaces` → `workspace_members` → `projects` → `project_members`.
   2. `terms_versions`, `credit_packages`, `platform_ai_providers` (độc lập).
