@@ -88,14 +88,6 @@ export function PlatformShell() {
         <div className="flex shrink-0 items-center gap-2">
           <LanguageSwitcher />
           <ThemeToggle className="h-8 w-8 rounded-lg" />
-          <Link
-            to={workspacePath}
-            className="btn-secondary hidden sm:inline-flex items-center gap-1.5 text-xs py-1.5 px-3"
-            title={t('backToApp')}
-          >
-            <IconArrowLeft size={14} />
-            <span>{t('backToApp')}</span>
-          </Link>
           <div className="relative pl-1" ref={menuRef}>
             <button
               type="button"
@@ -223,14 +215,7 @@ export function PlatformShell() {
             </div>
           </div>
 
-          <div className="border-t border-[var(--color-border)] p-4 space-y-3">
-            <Link
-              to={workspacePath}
-              className="btn-secondary flex items-center justify-center gap-2 w-full text-xs py-2"
-            >
-              <IconArrowLeft size={15} />
-              <span>{t('backToApp')}</span>
-            </Link>
+          <div className="border-t border-[var(--color-border)] p-4">
             <div className="flex items-center gap-2 text-[11px] text-[var(--color-text-tertiary)]">
               <IconInfoCircle size={12} />
               <span>{t('sidebar.privacyNote')}</span>
