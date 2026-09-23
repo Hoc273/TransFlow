@@ -440,7 +440,7 @@ CREATE INDEX ix_media_jobs_created_by ON media_jobs(created_by_user_id);
 - `created_by_user_id` **không được update sau khi tạo** (immutable ở service layer) — là nguồn sự thật duy
   nhất cho quy tắc "Member chỉ duyệt QA/checkpoint job của chính mình" (SRS §3.3, khác `performed_by_user_id`
   vốn chỉ phục vụ công thức Credit).
-- Voice ngôn ngữ khớp `target_lang`: enforce ở service layer (cần join `tts_voices.language`).
+- Voice ngôn ngữ tương thích `target_lang`: enforce ở service layer trên `tts_voices.language` và `languages[]`, so case-insensitive theo primary subtag (`en`, `en-US`, `en_US` → `en`); blank/`und` không tự khớp ngôn ngữ thật.
 
 ### 6.3 `media_job_stages`
 ```sql

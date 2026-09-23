@@ -729,7 +729,7 @@ export function ApiKeysSection() {
                               .mutateAsync({
                                 providerId: voiceProvider.id,
                                 // PreviewTtsVoiceRequest.voiceId is the tts_voices row UUID.
-                                voiceId: voice.id,
+                                voiceRowId: voice.id,
                                 language: voice.language,
                               })
                               .catch((err: unknown) => {
@@ -741,7 +741,7 @@ export function ApiKeysSection() {
                               })
                           }}
                         >
-                          {voicePreview.isPending && voicePreview.variables?.voiceId === voice.id ? (
+                          {voicePreview.isPending && voicePreview.variables?.voiceRowId === voice.id ? (
                             <IconLoader2 size={14} className="animate-spin" />
                           ) : (
                             <IconPlayerPlay size={14} />

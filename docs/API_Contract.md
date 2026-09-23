@@ -124,12 +124,12 @@
 
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
-| POST | `/api/workspaces/{workspaceId}/media/jobs` | LEAD/MEMBER (project của asset) | Tạo job — xem body mẫu dưới. Hỗ trợ recipe `localization.full`, `summary.script_match` (và alias `summary.generative`), `sourceLang`, `ttsProviderId`, `keepOriginalAudio`. Yêu cầu asset đã có consent. |
+| POST | `/api/workspaces/{workspaceId}/media/jobs` | LEAD/MEMBER (project của asset) | Tạo job — xem body mẫu dưới. Hỗ trợ recipe `localization.full`, `summary.script_match` (và alias `summary.generative`), `sourceLang`, `ttsProviderId`, `ttsVoiceId` (UUID row `tts_voices`), `keepOriginalAudio`. Voice active phải thuộc provider active và tương thích `targetLang` theo primary subtag trên `language` + `languages[]`. Yêu cầu asset đã có consent. |
 | GET | `/api/workspaces/{workspaceId}/projects/{projectId}/media/jobs?status=&recipeId=` | LEAD/MEMBER/CLIENT | List job trong Project (không lọc theo `created_by`). |
 | POST | `/api/workspaces/{workspaceId}/projects/{projectId}/media/jobs/download` | LEAD/MEMBER/CLIENT (project) | Tải nhiều video đã hoàn thành do user chọn (thay cho "tải theo Batch"; danh sách lấy từ endpoint trên với `status=COMPLETED`). Body `{jobIds:[uuid]}` (không rỗng, loại trùng, tối đa `app.media-job.max-bulk-download`=20 → `DOWNLOAD_SELECTION_TOO_LARGE`). Mỗi job phải thuộc project, `COMPLETED` và qua quality gate như `/export`; job không đạt vào `skipped` với `reason` `NOT_FOUND` (không tồn tại/khác project) `|` `NOT_COMPLETED` `|` `QA_BLOCKED`. Không job nào đạt → `QA_BLOCKED` (có job bị QA chặn) hoặc `STAGE_NOT_READY`. Trả `{downloadUrl, fileName, expiresAt, includedJobIds[], skipped[{jobId, reason}]}`: zip `<tên gốc>_<lang>_<jobId8>.mp4` được nén tạm rồi upload lên MinIO `tmp/downloads/` (tự hết hạn bằng lifecycle rule), `downloadUrl` là presigned URL. Chạy đồng bộ. |
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}` | LEAD/MEMBER/CLIENT | Chi tiết job + `stages[]` (8 stage kỹ thuật, FE tự ẩn stage `SKIPPED`). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/cancel` | LEAD/MEMBER (project) | Huỷ job đang chạy; gửi cancel xuống Worker sau khi transaction commit (Arch §6.2). Trả `200 OK` kèm `MediaJob` và `stages[]`. |
-| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/voice` | LEAD/MEMBER (project) | `{ttsProviderId,ttsVoiceId}` (cả hai null = bỏ chọn giọng, chỉ hợp lệ nếu `output_audio_mode=ORIGINAL_ONLY`). Hai ID phải được gửi theo cặp; provider phải active, có capability `TTS`, khả dụng với user; voice phải active, thuộc đúng provider và khớp `target_lang`. Trả `200 OK` kèm `MediaJob` và `stages[]`. |
+| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/voice` | LEAD/MEMBER (project) | `{ttsProviderId,ttsVoiceId}` (cả hai null = bỏ chọn giọng, chỉ hợp lệ nếu `output_audio_mode=ORIGINAL_ONLY`). Hai ID phải được gửi theo cặp; provider phải active, có capability `TTS`, khả dụng với user; `ttsVoiceId` là UUID của row `tts_voices`, voice phải active, thuộc đúng provider và tương thích với `target_lang`. Tương thích được so case-insensitive theo primary subtag (`en`, `en-US`, `en_US` → `en`) trên `language` và mọi phần tử `languages[]`; blank/`und` không tự khớp ngôn ngữ thật. Trả `200 OK` kèm `MediaJob` và `stages[]`. |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/checkpoints/{checkpoint}/confirm` | **job-ownership** (Lead mọi job; Member chỉ job `created_by_user_id = mình`; Client bị chặn) | `{checkpoint}` ∈ `CUT_CONFIRMED\|REVIEW_CONFIRMED\|PUBLISH_CONFIRMED`. Chỉ áp dụng khi `workflow_mode=MANUAL` (Arch §5.6). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/stages/{stageName}/rerun` | LEAD/MEMBER (project) | Rerun-from-stage (Arch §5.7). `409` nếu stage trước chưa `COMPLETED/SKIPPED`. Không tính lại Credit cho stage output tái sử dụng. |
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/subtitles` | LEAD/MEMBER/CLIENT | List `subtitle_segments` theo `seq`. |
@@ -189,7 +189,7 @@
 | PUT | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/proposals/{proposalId}` | LEAD/MEMBER (project) | Sửa Custom Proposal (chỉ áp dụng cho `generated_by=HUMAN`). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/proposals/{proposalId}/select` | LEAD/MEMBER (project) | Đặt `media_jobs.selected_proposal_id`. `409` nếu proposal đã dùng để tạo bản dịch và job yêu cầu đổi phương án trước khi refine tiếp (SRS §5.5). |
 | POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/refine` | LEAD/MEMBER (project) | `{feedbackText}` → AI viết lại kịch bản (round mới). Tối đa **5 lần/phiên**; phiên lưu Redis TTL, hết hạn không mất proposal đã lưu (Arch §7.4). `429` khi vượt 5 lần. |
-| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/summary-languages` | LEAD/MEMBER (project) | `{targetLang, ttsProviderId?, ttsVoiceId?}` — hai ID TTS phải cùng có hoặc cùng vắng; chỉ khi phương án đã chọn là AI. Tạo 1 `media_jobs` mới với `source_summary_job_id` trỏ về job gốc, giữ nguyên đoạn đã chọn, `SUMMARIZE` = `SKIPPED` (Arch §7.7). |
+| POST | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/summary-languages` | LEAD/MEMBER (project) | `{targetLang, ttsProviderId?, ttsVoiceId?}` — hai ID TTS phải cùng có hoặc cùng vắng; `ttsVoiceId` là UUID row `tts_voices` và phải tương thích `targetLang` theo primary subtag trên `language` + `languages[]`; chỉ khi phương án đã chọn là AI. Tạo 1 `media_jobs` mới với `source_summary_job_id` trỏ về job gốc, giữ nguyên đoạn đã chọn, `SUMMARIZE` = `SKIPPED` (Arch §7.7). |
 
 ### 5.2 Worker Capabilities & Readiness
 
@@ -316,10 +316,10 @@ QA issue được pipeline tự sinh sau stage `TRANSLATE`/`SUMMARIZE`, không c
 | PUT | `/api/users/me/providers/{id}` | JWT (owner) | Sửa cấu hình. |
 | DELETE | `/api/users/me/providers/{id}` | JWT (owner) | Xoá provider cá nhân. |
 | POST | `/api/users/me/providers/{id}/test` | JWT (owner) | Gọi thử kết nối provider (qua FastAPI), trả kết quả pass/fail. |
-| GET | `/api/users/me/providers/{id}/voices?language=` | JWT (owner) | List `tts_voices(provider_source=USER)` đã cache. |
+| GET | `/api/users/me/providers/{id}/voices?language=` | JWT (owner) | List `tts_voices(provider_source=USER)` đã cache; filter `language` dùng chung primary-subtag compatibility trên cả `language` và `languages[]`. |
 | POST | `/api/users/me/providers/{id}/voices/refresh` | JWT (owner) | Đồng bộ lại danh sách voice từ provider. |
-| GET | `/api/tts-voices?language=&providerSource=PLATFORM` | JWT | Danh mục voice nền tảng (`platform_ai_providers`) dùng khi user không có BYOK phù hợp — phục vụ UI chọn giọng khi tạo job. |
-| POST | `/api/tts-voices/preview` | JWT | `{voiceId, text}` (`text` ≤ 50 ký tự, `@NotBlank`) → `{audioUrl, expiresInSeconds}` — nghe thử giọng: tổng hợp audio ngắn qua `POST /media/tts` của `backend-ai`, upload MinIO (`temp/voice-preview/<userId>/<uuid>.<ext>`), `audioUrl` là presigned GET (TTL `app.storage.presigned-ttl-seconds`, mặc định 3600s). `voiceId` là `tts_voices.id` (UUID). Voice `providerSource=USER` chỉ owner của `user_ai_providers` đó gọi được (không khớp → `404`). **Không trừ Credit** — chỉ rate limit theo user. Lỗi: `404 TTS_VOICE_NOT_FOUND`, `400 PROVIDER_CAPABILITY_NOT_SUPPORTED`, `400 PLATFORM_PROVIDER_NOT_CONFIGURED`, `429 TTS_PREVIEW_RATE_LIMIT_EXCEEDED`, `502 TTS_PREVIEW_FAILED`. |
+| GET | `/api/tts-voices?language=&providerSource=PLATFORM` | JWT | Danh mục voice nền tảng (`platform_ai_providers`) dùng khi user không có BYOK phù hợp — phục vụ UI chọn giọng khi tạo job; filter `language` dùng chung primary-subtag compatibility trên cả `language` và `languages[]`. |
+| POST | `/api/tts-voices/preview` | JWT | `{voiceId, text}` (`text` ≤ 50 ký tự, `@NotBlank`) → `{audioUrl, expiresInSeconds}` — nghe thử giọng: tổng hợp audio ngắn qua `POST /media/tts` của `backend-ai`, upload MinIO (`temp/voice-preview/<userId>/<uuid>.<ext>`), `audioUrl` là presigned GET (TTL `app.storage.presigned-ttl-seconds`, mặc định 3600s). `voiceId` là UUID `tts_voices.id`, không phải `tts_voices.voice_id`. Voice `providerSource=USER` chỉ owner của `user_ai_providers` đó gọi được (không khớp → `404`). **Không trừ Credit** — chỉ rate limit theo user. Lỗi: `404 TTS_VOICE_NOT_FOUND`, `400 PROVIDER_CAPABILITY_NOT_SUPPORTED`, `400 PLATFORM_PROVIDER_NOT_CONFIGURED`, `429 TTS_PREVIEW_RATE_LIMIT_EXCEEDED`, `502 TTS_PREVIEW_FAILED`. |
 
 ---
 
@@ -482,11 +482,12 @@ cùng `dedupeKey` không xử lý 2 lần.
 | POST | `/internal/media/audio-mix/progress` | Cùng shape, stage `AUDIO_MIX`. |
 | POST | `/internal/media/audio-mix/complete` | Cùng shape, stage `AUDIO_MIX`. |
 
-> `EXTRACT_AUDIO`/`SOURCE_SEPARATION` (FFmpeg, cũng do `backend-media-worker` xử lý) dùng đúng cùng hợp đồng
+> `EXTRACT_AUDIO` (FFmpeg), `AUDIO_MIX` và `RENDER` do `backend-media-worker` xử lý và dùng cùng hợp đồng
 > HMAC + shape `{jobId, stageId, dedupeKey, ...}` qua `/internal/media/{stage}/progress|complete` tương ứng
 > — mọi mutation trạng thái job qua callback phải serialize bằng `SELECT ... FOR UPDATE` trên `media_jobs`
-> trong cùng transaction (Arch §12, invariant khoá ghi). `STT`/`TRANSLATE`/`SUMMARIZE`/`TTS`/`VISION` là lời
-> gọi đồng bộ Spring→FastAPI (không qua queue/callback vì FastAPI stateless, trả kết quả ngay trong response).
+> trong cùng transaction (Arch §12, invariant khoá ghi). `SOURCE_SEPARATION` (Demucs), `STT`/`TRANSLATE`/
+> `SUMMARIZE`/`TTS`/`VISION` là lời gọi đồng bộ Spring→FastAPI; pipeline hiện tại không dùng callback cho
+> các stage này. Controller vẫn nhận diện callback path `source-separation` để tương thích.
 
 ---
 
@@ -518,7 +519,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `workspace` | 2100–2199 | `WORKSPACE_NOT_FOUND` = 2100, `WORKSPACE_MEMBER_NOT_FOUND` = 2101, `LEAD_CANNOT_BE_REMOVED` = 2102, `WORKSPACE_MEMBER_ALREADY_EXISTS` = 2103, `CANNOT_ASSIGN_LEAD_ROLE` = 2104, `WORKSPACE_SLUG_ALREADY_EXISTS` = 2105 |
 | `project` | 2200–2299 | `PROJECT_NOT_FOUND` = 2200, `PROJECT_MEMBER_NOT_FOUND` = 2201, `PROJECT_ACCESS_DENIED` = 2202, `USER_NOT_WORKSPACE_MEMBER` = 2203, `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` = 2204, `PROJECT_MEMBER_ALREADY_EXISTS` = 2205 |
 | `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303 |
-| `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406, `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` = 2407, `TTS_PREVIEW_FAILED` = 2408 |
+| `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406, `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` = 2407, `TTS_PREVIEW_FAILED` = 2408, `PROVIDER_KEY_DECRYPTION_FAILED` = 2409 |
 | `preset` | 2500–2599 | `PRESET_NOT_FOUND` = 2500, `PRESET_INACTIVE` = 2501, `PRESET_SCOPE_INVALID` = 2502, `CANNOT_DELETE_ONLY_DEFAULT_PRESET` = 2503, `SYSTEM_PRESET_READ_ONLY` = 2504, `PRESET_DEFAULT_CONFLICT` = 2505, `REPLACEMENT_PRESET_INVALID` = 2506 |
 | `notification` | 2600–2699 | `NOTIFICATION_NOT_FOUND` = 2600, `NOTIFICATION_TYPE_INVALID` = 2601 |
 | `dashboard` | 2700–2799 | `DASHBOARD_DATE_RANGE_INVALID` = 2700, `DASHBOARD_GROUP_BY_INVALID` = 2701 |
@@ -589,6 +590,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `TTS_VOICE_NOT_FOUND` | 2406 | 404 | Giọng đọc TTS không tồn tại. |
 | `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` | 2407 | 429 | Vượt giới hạn nghe thử giọng TTS của user (mặc định 5 lần/60 giây, cấu hình `app.rate-limit.voice-preview.*`). |
 | `TTS_PREVIEW_FAILED` | 2408 | 502 | Provider TTS không trả về audio preview (lỗi gateway/provider hoặc audio rỗng). |
+| `PROVIDER_KEY_DECRYPTION_FAILED` | 2409 | 500 | Decrypt API key lưu trong DB thất bại (`PROVIDER_KEY_ENC_SECRET` đã đổi hoặc data hỏng) — cần re-enter API key cho provider. |
 | `PRESET_NOT_FOUND` | 2500 | 404 | Preset không tồn tại hoặc không thuộc quyền xem của user. |
 | `PRESET_INACTIVE` | 2501 | 400 | Preset đang ở trạng thái ngừng kích hoạt. |
 | `PRESET_SCOPE_INVALID` | 2502 | 400 | Scope hoặc ràng buộc sở hữu workspace/project của preset không hợp lệ. |

@@ -122,16 +122,16 @@ export function useVoicePreview(_workspaceId?: string | undefined) {
   return useMutation({
     mutationFn: async ({
       providerId,
-      voiceId,
+      voiceRowId,
       language,
     }: {
       providerId: string
-      voiceId: string
+      voiceRowId: string
       language?: string | null
     }) => {
       void providerId
       const result = await previewTtsVoiceApi({
-        voiceId,
+        voiceId: voiceRowId,
         text: defaultVoicePreviewText(language),
       })
       activePreviewAudio?.pause()

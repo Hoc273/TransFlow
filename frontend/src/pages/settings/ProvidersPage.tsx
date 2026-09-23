@@ -1283,7 +1283,7 @@ export function ProvidersPageInner() {
                             setVoiceError(null)
                             void voicePreview.mutateAsync({
                               providerId: voiceProvider.id,
-                              voiceId: voice.voiceId,
+                              voiceRowId: voice.id,
                               language: voice.language,
                             }).catch((error: unknown) => {
                               setVoiceError(
@@ -1295,7 +1295,7 @@ export function ProvidersPageInner() {
                           }}
                         >
                           {voicePreview.isPending
-                            && voicePreview.variables?.voiceId === voice.voiceId
+                            && voicePreview.variables?.voiceRowId === voice.id
                             ? <IconLoader2 size={14} className="animate-spin" />
                             : <IconPlayerPlay size={14} />}
                           {t('settings:providers.voices.preview')}

@@ -133,7 +133,7 @@ class MediaJobServiceImplTest {
     void createJob_dubMixWithSourceSeparation_activatesTtsAndAudioMix() {
         stubHappyPathUpToCreditCheck();
         UUID voiceId = UUID.randomUUID();
-        when(providerResolver.resolveVoiceLanguage(userId, providerId, voiceId)).thenReturn(Optional.of("en"));
+        when(providerResolver.isVoiceLanguageCompatible(userId, providerId, voiceId, "en")).thenReturn(true);
 
         service.createJob(workspaceId, userId, localizationRequest("DUB_MIX", true, voiceId));
 
@@ -194,7 +194,7 @@ class MediaJobServiceImplTest {
         when(mediaAssetService.getAsset(workspaceId, userId, rootAssetId)).thenReturn(rootVideoAsset());
         when(mediaAssetService.hasCurrentConsent(rootAssetId)).thenReturn(true);
         UUID voiceId = UUID.randomUUID();
-        when(providerResolver.resolveVoiceLanguage(userId, providerId, voiceId)).thenReturn(Optional.of("fr"));
+        when(providerResolver.isVoiceLanguageCompatible(userId, providerId, voiceId, "en")).thenReturn(false);
 
         AppException ex = assertThrows(AppException.class, () ->
                 service.createJob(workspaceId, userId, localizationRequest("DUB_REPLACE", false, voiceId)));
@@ -462,7 +462,7 @@ class MediaJobServiceImplTest {
         source.setRequestedDurationSeconds(60);
         when(mediaJobRepository.findByIdAndWorkspaceId(sourceJobId, workspaceId)).thenReturn(Optional.of(source));
         UUID voiceId = UUID.randomUUID();
-        when(providerResolver.resolveVoiceLanguage(userId, providerId, voiceId)).thenReturn(Optional.of("vi"));
+        when(providerResolver.isVoiceLanguageCompatible(userId, providerId, voiceId, "vi")).thenReturn(true);
         when(credit.hasSufficientBalance(userId)).thenReturn(true);
         when(mediaJobRepository.save(any(MediaJob.class))).thenAnswer(inv -> {
             MediaJob j = inv.getArgument(0);
@@ -489,7 +489,7 @@ class MediaJobServiceImplTest {
         source.setRequestedDurationSeconds(60);
         when(mediaJobRepository.findByIdAndWorkspaceId(sourceJobId, workspaceId)).thenReturn(Optional.of(source));
         UUID voiceId = UUID.randomUUID();
-        when(providerResolver.resolveVoiceLanguage(userId, providerId, voiceId)).thenReturn(Optional.of("fr"));
+        when(providerResolver.isVoiceLanguageCompatible(userId, providerId, voiceId, "vi")).thenReturn(false);
 
         AppException ex = assertThrows(AppException.class, () ->
                 service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", providerId, voiceId));

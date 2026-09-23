@@ -1,6 +1,5 @@
 package com.app.modules.summarization.service.impl;
 
-import com.app.common.config.AppProperties;
 import com.app.modules.provider.service.ProviderResolverService;
 import com.app.modules.summarization.service.DurationAwareSummaryAiClient;
 import com.app.modules.summarization.service.SummaryAiClient;
@@ -11,15 +10,13 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.web.client.ClientHttpRequestFactories;
-import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,23 +35,7 @@ public class SummaryAiClientImpl implements SummaryAiClient, UserAwareSummaryAiC
     private final ObjectMapper objectMapper;
 
     @Autowired
-    public SummaryAiClientImpl(AppProperties props,
-                               ProviderResolverService providerResolver,
-                               ObjectMapper objectMapper) {
-        AppProperties.Ai ai = props.ai();
-        var settings = ClientHttpRequestFactorySettings.DEFAULTS
-                .withConnectTimeout(Duration.ofMillis(ai.connectTimeoutMs()))
-                .withReadTimeout(Duration.ofMillis(ai.readTimeoutMs()));
-        this.restClient = RestClient.builder()
-                .baseUrl(ai.baseUrl())
-                .requestFactory(ClientHttpRequestFactories.get(settings))
-                .build();
-        this.providerResolver = providerResolver;
-        this.objectMapper = objectMapper;
-    }
-
-    /** Constructor used by HTTP contract tests. */
-    public SummaryAiClientImpl(RestClient restClient,
+    public SummaryAiClientImpl(@Qualifier("aiRestClient") RestClient restClient,
                                ProviderResolverService providerResolver,
                                ObjectMapper objectMapper) {
         this.restClient = restClient;

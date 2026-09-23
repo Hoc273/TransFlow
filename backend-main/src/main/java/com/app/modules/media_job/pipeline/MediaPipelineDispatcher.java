@@ -11,6 +11,7 @@ import com.app.modules.media_job.repository.SubtitleSegmentRepository;
 import com.app.modules.qa.entity.QaIssue;
 import com.app.modules.qa.repository.QaIssueRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,14 +48,14 @@ public class MediaPipelineDispatcher {
     public MediaPipelineDispatcher(MediaJobRepository jobRepository,
                                    MediaJobStageRepository stageRepository,
                                    MediaStageMessagePublisher publisher,
-                                   AppProperties props,
+                                   @Qualifier("mediaWorkerRestClient") RestClient workerClient,
                                    SubtitleSegmentRepository subtitleSegmentRepository,
                                    QaIssueRepository qaIssueRepository,
                                    @Value("${app.pipeline.enabled:true}") boolean enabled) {
         this.jobRepository = jobRepository;
         this.stageRepository = stageRepository;
         this.publisher = publisher;
-        this.workerClient = RestClient.builder().baseUrl(props.mediaWorker().baseUrl()).build();
+        this.workerClient = workerClient;
         this.subtitleSegmentRepository = subtitleSegmentRepository;
         this.qaIssueRepository = qaIssueRepository;
         this.enabled = enabled;
@@ -65,7 +66,8 @@ public class MediaPipelineDispatcher {
                                    MediaJobStageRepository stageRepository,
                                    MediaStageMessagePublisher publisher,
                                    AppProperties props) {
-        this(jobRepository, stageRepository, publisher, props, null, null, true);
+        this(jobRepository, stageRepository, publisher,
+                RestClient.builder().baseUrl(props.mediaWorker().baseUrl()).build(), null, null, true);
     }
 
     /** Claim and publish the first runnable stage, if any. */

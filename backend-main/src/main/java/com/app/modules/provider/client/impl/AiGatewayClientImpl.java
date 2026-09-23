@@ -1,19 +1,16 @@
 package com.app.modules.provider.client.impl;
 
-import com.app.common.config.AppProperties;
 import com.app.common.exception.AppException;
 import com.app.common.exception.ErrorCode;
 import com.app.modules.provider.client.AiGatewayClient;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.web.client.ClientHttpRequestFactories;
-import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -26,20 +23,7 @@ public class AiGatewayClientImpl implements AiGatewayClient {
 
     private final RestClient restClient;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    public AiGatewayClientImpl(AppProperties props) {
-        AppProperties.Ai ai = props.ai();
-        var settings = ClientHttpRequestFactorySettings.DEFAULTS
-                .withConnectTimeout(Duration.ofMillis(ai.connectTimeoutMs()))
-                .withReadTimeout(Duration.ofMillis(ai.readTimeoutMs()));
-
-        this.restClient = RestClient.builder()
-                .baseUrl(ai.baseUrl())
-                .requestFactory(ClientHttpRequestFactories.get(settings))
-                .build();
-    }
-
-    public AiGatewayClientImpl(RestClient restClient) {
+    public AiGatewayClientImpl(@Qualifier("aiRestClient") RestClient restClient) {
         this.restClient = restClient;
     }
 

@@ -13,6 +13,7 @@ import com.app.modules.media_job.callback.service.MediaCallbackService;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.entity.SubtitleSegment;
+import com.app.modules.media_job.pipeline.dto.ExtractAudioRequest;
 import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.repository.MediaJobStageRepository;
 import com.app.modules.media_job.repository.SubtitleSegmentRepository;
@@ -28,12 +29,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.io.ByteArrayInputStream;
 import java.util.Base64;
@@ -82,6 +86,8 @@ public class MediaStageExecutionService {
                                       MediaCallbackService callbackService,
                                       ObjectMapper objectMapper,
                                       AppProperties props,
+                                      @Qualifier("aiRestClient") RestClient aiClient,
+                                      @Qualifier("mediaWorkerRestClient") RestClient workerClient,
                                       SubtitleSegmentRepository subtitleSegmentRepository,
                                       QaService qaService,
                                       CreditService creditService,
@@ -97,8 +103,8 @@ public class MediaStageExecutionService {
         this.callbackService = callbackService;
         this.objectMapper = objectMapper;
         this.props = props;
-        this.aiClient = RestClient.builder().baseUrl(props.ai().baseUrl()).build();
-        this.workerClient = RestClient.builder().baseUrl(props.mediaWorker().baseUrl()).build();
+        this.aiClient = aiClient;
+        this.workerClient = workerClient;
         this.subtitleSegmentRepository = subtitleSegmentRepository;
         this.qaService = qaService;
         this.creditService = creditService;
@@ -119,6 +125,8 @@ public class MediaStageExecutionService {
                                       AppProperties props) {
         this(jobRepository, stageRepository, assetRepository, storage, providerResolver,
                 summaryAiClient, summarizationService, callbackService, objectMapper, props,
+                RestClient.builder().baseUrl(props.ai().baseUrl()).build(),
+                RestClient.builder().baseUrl(props.mediaWorker().baseUrl()).build(),
                 null, null, null, null, null);
     }
 
@@ -140,9 +148,22 @@ public class MediaStageExecutionService {
                 case TTS -> executeTts(job, stage, message);
             }
         } catch (Exception ex) {
-            log.warn("Media stage failed before callback job={} stage={}: {}",
-                    message.jobId(), stage.getStageName(), ex.getMessage());
-            completeFailure(job, stage, message, ex.getMessage());
+            String service = downstreamService(stage.getStageName());
+            String error = friendlyFailure(service, ex);
+            if (ex instanceof RestClientResponseException response) {
+                log.error("Media stage downstream response job={} stage={} service={} status={} errorType={}",
+                        message.jobId(), stage.getStageName(), service,
+                        response.getStatusCode().value(), ex.getClass().getSimpleName(), sanitizedStack(ex));
+            } else if (ex instanceof ResourceAccessException) {
+                log.error("Media stage downstream connection failed job={} stage={} service={} errorType={}",
+                        message.jobId(), stage.getStageName(), service,
+                        ex.getClass().getSimpleName(), sanitizedStack(ex));
+            } else {
+                log.error("Media stage failed before callback job={} stage={} errorType={}",
+                        message.jobId(), stage.getStageName(),
+                        ex.getClass().getSimpleName(), sanitizedStack(ex));
+            }
+            completeFailure(job, stage, message, error);
         }
     }
 
@@ -182,8 +203,42 @@ public class MediaStageExecutionService {
             }
             default -> throw new IllegalStateException("Not a worker stage");
         }
-        workerClient.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(body)
+        Object requestBody = body;
+        if (stage.getStageName() == MediaJobStage.StageName.EXTRACT_AUDIO) {
+            requestBody = new ExtractAudioRequest(
+                    message.correlationId().toString(),
+                    job.getId().toString(),
+                    stage.getId().toString(),
+                    sourceRef);
+        }
+        workerClient.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(requestBody)
                 .retrieve().toBodilessEntity();
+    }
+
+    private String downstreamService(MediaJobStage.StageName stage) {
+        return switch (stage) {
+            case EXTRACT_AUDIO, AUDIO_MIX, RENDER -> "Media worker";
+            default -> "AI gateway";
+        };
+    }
+
+    private String friendlyFailure(String service, Exception ex) {
+        if (ex instanceof RestClientResponseException response) {
+            int status = response.getStatusCode().value();
+            return service + (status >= 500 ? " failed" : " rejected the request")
+                    + " (HTTP " + status + ")";
+        }
+        if (ex instanceof ResourceAccessException) {
+            return service + " is unavailable or timed out";
+        }
+        return "Media stage execution failed";
+    }
+
+    /** Downstream messages may echo request data, so log the stack without the original message. */
+    private Throwable sanitizedStack(Exception ex) {
+        RuntimeException safe = new RuntimeException(ex.getClass().getSimpleName());
+        safe.setStackTrace(ex.getStackTrace());
+        return safe;
     }
 
     private Map<String, Object> defaultMixPlan(MediaJob job) {

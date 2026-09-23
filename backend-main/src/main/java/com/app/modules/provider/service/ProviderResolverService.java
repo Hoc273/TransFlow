@@ -19,6 +19,13 @@ public interface ProviderResolverService {
      */
     Optional<String> resolveVoiceLanguage(UUID userId, UUID ttsProviderId, UUID ttsVoiceId);
 
+    /**
+     * Checks compatibility only for an active voice owned by the requested active,
+     * TTS-capable provider available to the user. Throws VALIDATION_ERROR when that
+     * provider/voice binding cannot be resolved; false means the valid voice is incompatible.
+     */
+    boolean isVoiceLanguageCompatible(UUID userId, UUID ttsProviderId, UUID ttsVoiceId, String targetLang);
+
     Optional<String> resolveVoiceIdentifier(UUID userId, UUID ttsProviderId, UUID ttsVoiceId);
 
     /**

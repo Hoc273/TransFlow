@@ -79,7 +79,7 @@ dải của module đang code, cập nhật đồng thời bảng §15.3: `auth`
 - [x] Entity ánh xạ đầy đủ theo `Database_Design.md` §5: `UserAiProvider`, `PlatformAiProvider`, `TtsVoice` (validate `capabilities` thuộc `STT`, `TRANSLATE`, `TTS`, `VISION`).
 - [x] API key mã hoá AES-256-GCM với IV ngẫu nhiên 12 bytes, auth tag 128 bits, secret key từ `AppProperties` (biến môi trường `PROVIDER_KEY_ENC_SECRET`), tạo hint `sk-...xxxx`, che giấu an toàn, không lộ plain-text.
 - [x] Triển khai `ProviderResolverService.resolveForCapability(userId, capability)` → ưu tiên provider cá nhân active (BYOK), fallback sang `platform_ai_providers`, cung cấp flag `isPersonalApiKey` để B ghi `ai_usage_logs`.
-- [x] Triển khai `ProviderResolverService.resolveVoiceLanguage(ttsVoiceId)` → trả về ngôn ngữ giọng đọc cho Member B (`MediaJobService`).
+- [x] Triển khai `ProviderResolverService.isVoiceLanguageCompatible(userId, providerId, ttsVoiceId, targetLang)` → xác thực voice active, thuộc provider khả dụng và tương thích theo primary language trong `language` + `languages[]` cho Member B (`MediaJobService`); provider/voice binding không hợp lệ trả `VALIDATION_ERROR`.
 - [x] Tích hợp `AiGatewayClient` gọi FastAPI (`/ai/validate/auth` để test connection probe, `/media/tts/voices` để discover/refresh cache TTS voices).
 - [x] Baseline `V2__init_indexes.sql` seed platform provider và danh mục giọng TTS mặc định.
 

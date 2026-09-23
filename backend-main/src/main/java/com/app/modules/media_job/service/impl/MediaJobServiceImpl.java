@@ -258,9 +258,7 @@ public class MediaJobServiceImpl implements MediaJobService {
     }
 
     private void requireVoiceLanguageMatches(UUID userId, UUID ttsProviderId, UUID ttsVoiceId, String targetLang) {
-        String voiceLang = providerResolver.resolveVoiceLanguage(userId, ttsProviderId, ttsVoiceId)
-                .orElseThrow(() -> new AppException(ErrorCode.VALIDATION_ERROR));
-        if (!voiceLang.equalsIgnoreCase(targetLang)) {
+        if (!providerResolver.isVoiceLanguageCompatible(userId, ttsProviderId, ttsVoiceId, targetLang)) {
             throw new AppException(ErrorCode.VOICE_LANGUAGE_MISMATCH);
         }
     }

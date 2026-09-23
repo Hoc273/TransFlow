@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
 // V39 follow-up — AI Provider voice catalog modal:
@@ -9,6 +9,7 @@ import type { ReactNode } from 'react'
 
 afterEach(() => {
   cleanup()
+  vi.clearAllMocks()
 })
 
 const t = (key: string) => key
@@ -34,9 +35,10 @@ vi.mock('@/components/auth/RoleGuard', () => ({
   RoleGuard: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }))
 
-const { voicesData, languagesData } = vi.hoisted(() => ({
+const { voicesData, languagesData, previewMutate } = vi.hoisted(() => ({
   voicesData: new Map<string, unknown[]>(),
   languagesData: new Map<string, unknown[]>(),
+  previewMutate: vi.fn(),
 }))
 
 function makeVoice(partial: Record<string, unknown>) {
@@ -53,7 +55,7 @@ function makeVoice(partial: Record<string, unknown>) {
 
 beforeEach(() => {
   voicesData.set('prov-eleven', [
-    makeVoice({ id: 'v-rachel', voiceId: 'rachel', displayName: 'Rachel', language: 'en', languages: ['en'] }),
+    makeVoice({ id: '11111111-1111-4111-8111-111111111111', voiceId: 'Kai', displayName: 'Rachel', language: 'en', languages: ['en'] }),
     makeVoice({ id: 'v-mai', voiceId: 'mai', displayName: 'Mai', language: 'vi', languages: ['vi'] }),
     makeVoice({
       id: 'v-poly',
@@ -140,7 +142,7 @@ vi.mock('@/hooks/useProviders', () => ({
   useTtsVoiceLanguages: (_ws: string | undefined, providerId: string | undefined) => ({
     data: providerId ? languagesData.get(providerId) ?? [] : [],
   }),
-  useVoicePreview: () => ({ isPending: false, variables: null, mutateAsync: vi.fn() }),
+  useVoicePreview: () => ({ isPending: false, variables: null, mutateAsync: previewMutate }),
 }))
 
 const { ProvidersPageInner } = await import('./ProvidersPage')
@@ -201,6 +203,21 @@ describe('ProvidersPage voice catalog — Provider → Language → Voice', () =
     const emptyState = screen.getByTestId('voices-none-for-language')
     expect(emptyState, emptyState.textContent).toBeTruthy()
     expect(emptyState.textContent).toContain('settings:providers.voices.noneForLanguage')
+  })
+
+  it('previews using the voice row UUID while retaining the provider key Kai', () => {
+    previewMutate.mockResolvedValue({ audioUrl: 'https://example.test/preview.mp3', expiresInSeconds: 60 })
+    renderPage()
+    openVoiceCatalog('ElevenLabs')
+
+    const row = screen.getByText('Rachel').closest('tr')!
+    fireEvent.click(within(row).getByText('settings:providers.voices.preview'))
+
+    expect(previewMutate).toHaveBeenCalledWith({
+      providerId: 'prov-eleven',
+      voiceRowId: '11111111-1111-4111-8111-111111111111',
+      language: 'en',
+    })
   })
 
   it('gates Refresh by the resolved discovery strategy', () => {

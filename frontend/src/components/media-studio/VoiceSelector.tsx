@@ -250,7 +250,7 @@ export function VoiceSelector({
     void preview
       .mutateAsync({
         providerId,
-        voiceId: selectedVoice.voiceId,
+        voiceRowId: selectedVoice.id,
         language: targetLang,
       })
       .catch(() => setPreviewError(t('media:voice.preview.error')))

@@ -24,11 +24,22 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
 }))
 
-const { uploadMutate, consentMutate, permissionMock } = vi.hoisted(() => ({
+const {
+  uploadMutate,
+  consentMutate,
+  permissionMock,
+  previewMutate,
+  createJobApiMock,
+} = vi.hoisted(() => ({
   uploadMutate: vi.fn(),
   consentMutate: vi.fn(),
   permissionMock: vi.fn(() => true),
+  previewMutate: vi.fn(),
+  createJobApiMock: vi.fn(),
 }))
+
+const providerRowId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const voiceRowId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 
 const termsQuery = { data: { termsVersion: '2026-01-01' }, isPending: false, isError: false }
 const capabilitiesQuery = {
@@ -59,11 +70,11 @@ vi.mock('@/hooks/useProviders', () => ({
     data: providerId ? voicesMap.get(providerId) : undefined,
     isPending: false,
   }),
-  useVoicePreview: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useVoicePreview: () => ({ isPending: false, mutateAsync: previewMutate }),
 }))
 
 vi.mock('@/api/transformation', () => ({
-  createTransformationJobApi: (...args: unknown[]) => vi.fn()(...args),
+  createTransformationJobApi: (...args: unknown[]) => createJobApiMock(...args),
   selectTransformationVoiceApi: (...args: unknown[]) => vi.fn()(...args),
 }))
 
@@ -113,10 +124,6 @@ vi.mock('@/components/media-studio/WorkflowPresetPicker', () => ({
   },
 }))
 
-vi.mock('@/components/media-studio/VoiceSelector', () => ({
-  VoiceSelector: () => <div data-testid="voice-selector-stub" />,
-}))
-
 vi.mock('@/config/featureFlags', () => ({
   featureFlags: { narrativeReviewAi: false },
 }))
@@ -133,6 +140,8 @@ const PROJECTION = {
 }
 
 async function setupPanel() {
+  createJobApiMock.mockResolvedValue({ id: 'job-created' })
+  previewMutate.mockResolvedValue({ audioUrl: 'https://example.test/preview.mp3', expiresInSeconds: 60 })
   uploadMutate.mockResolvedValue({
     assetId: 'asset-1',
     documentId: 'doc-1',
@@ -146,7 +155,7 @@ async function setupPanel() {
   capabilitiesQuery.refetch.mockResolvedValue({ data: PROJECTION })
   providersQuery.data = [
     {
-      id: 'p1',
+      id: providerRowId,
       displayName: 'Cloud TTS',
       protocol: 'openai_compatible',
       capabilities: ['TTS'],
@@ -157,11 +166,12 @@ async function setupPanel() {
       enabled: true,
     },
   ]
-  voicesMap.set('p1', [
+  voicesMap.set(providerRowId, [
     {
-      id: 'v1',
-      voiceId: 'voice-1',
+      id: voiceRowId,
+      voiceId: 'Kai',
       language: 'vi',
+      languages: ['vi', 'en'],
       gender: 'FEMALE',
       displayName: 'Vais',
       isActive: true,
@@ -213,14 +223,53 @@ describe('UploadConsentPanel — C2 create-form redesign (docs/19 §1.8.2)', () 
     await setupPanel()
 
     // Before selecting the preset: normal voice selector.
-    expect(screen.getByTestId('voice-selector-stub')).toBeTruthy()
+    expect(screen.getByTestId('voice-selector')).toBeTruthy()
     expect(screen.queryByTestId('preset-voice-note')).toBeNull()
 
     fireEvent.click(screen.getByText('pick preset-1'))
 
     // After selecting the preset (voice pair inside): selector hidden, note shown.
-    expect(screen.queryByTestId('voice-selector-stub')).toBeNull()
+    expect(screen.queryByTestId('voice-selector')).toBeNull()
     expect(screen.getByTestId('preset-voice-note')).toBeTruthy()
     expect(screen.getByText('media:voice.presetVoiceTitle')).toBeTruthy()
+  })
+
+  it('previews Kai by row UUID and creates an English localization job with UUID bindings', async () => {
+    const container = await setupPanel()
+
+    fireEvent.click(screen.getByTestId('target-dropdown-trigger'))
+    fireEvent.click(container.querySelector('[data-testid="target-check-en"]')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove vi' }))
+
+    const providerSelect = screen.getByTestId('voice-provider-select') as HTMLSelectElement
+    if (providerSelect.value !== providerRowId) {
+      fireEvent.change(providerSelect, { target: { value: providerRowId } })
+    }
+    await waitFor(() => expect(providerSelect.value).toBe(providerRowId))
+    const voiceSelect = screen.getByTestId('voice-voice-select') as HTMLSelectElement
+    await waitFor(() => {
+      expect(voiceSelect.value).toBe(voiceRowId)
+    })
+
+    fireEvent.click(screen.getByTestId('voice-preview-button'))
+    expect(previewMutate).toHaveBeenCalledWith({
+      providerId: providerRowId,
+      voiceRowId,
+      language: 'en',
+    })
+
+    const submit = screen.getByTestId('create-submit') as HTMLButtonElement
+    await waitFor(() => expect(submit.disabled).toBe(false))
+    fireEvent.click(submit)
+
+    await waitFor(() => expect(createJobApiMock).toHaveBeenCalledTimes(1))
+    const [, body] = createJobApiMock.mock.calls[0] as [string, Record<string, unknown>]
+    expect(body).toMatchObject({
+      recipeId: 'localization.full',
+      targetLang: 'en',
+      ttsProviderId: providerRowId,
+      ttsVoiceId: voiceRowId,
+    })
+    expect(JSON.stringify(body)).not.toContain('Kai')
   })
 })

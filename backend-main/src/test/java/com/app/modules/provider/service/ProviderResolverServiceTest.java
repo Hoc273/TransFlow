@@ -153,4 +153,78 @@ class ProviderResolverServiceTest {
         assertTrue(service.resolveVoiceLanguage(userId, requestedProviderId, voiceId).isEmpty());
         verifyNoInteractions(userAiProviderRepository, platformAiProviderRepository);
     }
+
+    @Test
+    void isVoiceLanguageCompatibleAcceptsMultilingualVoiceAndRejectsUnsupportedTarget() {
+        UUID providerId = UUID.randomUUID();
+        UUID voiceId = UUID.randomUUID();
+        TtsVoice voice = ownedVoice(providerId, voiceId);
+        voice.setLanguage("vi");
+        voice.setLanguages(List.of("vi", "en-US"));
+        stubOwnedVoice(providerId, voiceId, voice);
+
+        assertTrue(service.isVoiceLanguageCompatible(userId, providerId, voiceId, "en"));
+        assertTrue(service.isVoiceLanguageCompatible(userId, providerId, voiceId, "EN_us"));
+        assertFalse(service.isVoiceLanguageCompatible(userId, providerId, voiceId, "fr"));
+    }
+
+    @Test
+    void isVoiceLanguageCompatibleAcceptsPrimaryLanguageFromVoiceLanguage() {
+        UUID providerId = UUID.randomUUID();
+        UUID voiceId = UUID.randomUUID();
+        TtsVoice voice = ownedVoice(providerId, voiceId);
+        voice.setLanguage("en-US");
+        stubOwnedVoice(providerId, voiceId, voice);
+
+        assertTrue(service.isVoiceLanguageCompatible(userId, providerId, voiceId, "en"));
+    }
+
+    @Test
+    void isVoiceLanguageCompatibleDoesNotTreatUnknownOrBlankTagsAsRealLanguages() {
+        UUID providerId = UUID.randomUUID();
+        UUID voiceId = UUID.randomUUID();
+        TtsVoice voice = ownedVoice(providerId, voiceId);
+        voice.setLanguage("und");
+        voice.setLanguages(List.of("und"));
+        stubOwnedVoice(providerId, voiceId, voice);
+
+        assertFalse(service.isVoiceLanguageCompatible(userId, providerId, voiceId, "en"));
+        assertFalse(service.isVoiceLanguageCompatible(userId, providerId, voiceId, "und"));
+        assertFalse(service.isVoiceLanguageCompatible(userId, providerId, voiceId, "  "));
+        assertFalse(service.isVoiceLanguageCompatible(userId, providerId, voiceId, null));
+    }
+
+    @Test
+    void isVoiceLanguageCompatibleRejectsVoiceFromDifferentProvider() {
+        UUID actualProviderId = UUID.randomUUID();
+        UUID requestedProviderId = UUID.randomUUID();
+        UUID voiceId = UUID.randomUUID();
+        TtsVoice voice = ownedVoice(actualProviderId, voiceId);
+        voice.setLanguage("en");
+        when(ttsVoiceRepository.findById(voiceId)).thenReturn(Optional.of(voice));
+
+        AppException ex = assertThrows(AppException.class, () ->
+                service.isVoiceLanguageCompatible(userId, requestedProviderId, voiceId, "en"));
+        assertEquals(ErrorCode.VALIDATION_ERROR, ex.getErrorCode());
+        verifyNoInteractions(userAiProviderRepository, platformAiProviderRepository);
+    }
+
+    private TtsVoice ownedVoice(UUID providerId, UUID voiceId) {
+        TtsVoice voice = new TtsVoice();
+        voice.setId(voiceId);
+        voice.setProviderSource("USER");
+        voice.setUserProviderId(providerId);
+        voice.setActive(true);
+        return voice;
+    }
+
+    private void stubOwnedVoice(UUID providerId, UUID voiceId, TtsVoice voice) {
+        UserAiProvider provider = new UserAiProvider();
+        provider.setId(providerId);
+        provider.setUserId(userId);
+        provider.setCapabilities(List.of("TTS"));
+        provider.setActive(true);
+        when(ttsVoiceRepository.findById(voiceId)).thenReturn(Optional.of(voice));
+        when(userAiProviderRepository.findByIdAndUserId(providerId, userId)).thenReturn(Optional.of(provider));
+    }
 }

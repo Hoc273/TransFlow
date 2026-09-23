@@ -1,6 +1,8 @@
 package com.app.common.crypto;
 
 import com.app.common.config.AppProperties;
+import com.app.common.exception.AppException;
+import com.app.common.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -47,7 +49,15 @@ class CryptoServiceTest {
         byte[] encrypted = cryptoService.encrypt(plaintext);
         encrypted[encrypted.length - 1] ^= 0x01; // flip last byte
 
-        assertThrows(IllegalStateException.class, () -> cryptoService.decrypt(encrypted));
+        AppException ex = assertThrows(AppException.class, () -> cryptoService.decrypt(encrypted));
+        assertEquals(ErrorCode.PROVIDER_KEY_DECRYPTION_FAILED, ex.getErrorCode());
+    }
+
+    @Test
+    void testDecryptInvalidPayloadThrowsProviderKeyDecryptionFailed() {
+        AppException ex = assertThrows(AppException.class, () -> cryptoService.decrypt(new byte[20]));
+
+        assertEquals(ErrorCode.PROVIDER_KEY_DECRYPTION_FAILED, ex.getErrorCode());
     }
 
     @Test

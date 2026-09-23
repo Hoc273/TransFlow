@@ -74,6 +74,7 @@ public enum ErrorCode {
     TTS_VOICE_NOT_FOUND(2406, "TTS voice not found", HttpStatus.NOT_FOUND),
     TTS_PREVIEW_RATE_LIMIT_EXCEEDED(2407, "Too many voice preview requests; please try again later", HttpStatus.TOO_MANY_REQUESTS),
     TTS_PREVIEW_FAILED(2408, "TTS provider did not return preview audio", HttpStatus.BAD_GATEWAY),
+    PROVIDER_KEY_DECRYPTION_FAILED(2409, "Stored API key cannot be decrypted; re-enter the API key for this provider", HttpStatus.INTERNAL_SERVER_ERROR),
 
     // 25xx - preset (Member A)
     PRESET_NOT_FOUND(2500, "Media preset not found", HttpStatus.NOT_FOUND),

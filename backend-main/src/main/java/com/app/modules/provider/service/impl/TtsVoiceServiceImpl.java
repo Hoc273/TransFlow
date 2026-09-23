@@ -199,12 +199,6 @@ public class TtsVoiceServiceImpl implements TtsVoiceService {
     }
 
     private boolean matchesLanguage(TtsVoice voice, String targetLang) {
-        if (voice.getLanguage() != null && voice.getLanguage().equalsIgnoreCase(targetLang)) {
-            return true;
-        }
-        if (voice.getLanguages() != null) {
-            return voice.getLanguages().stream().anyMatch(l -> l.equalsIgnoreCase(targetLang));
-        }
-        return false;
+        return voice.isLanguageCompatible(targetLang);
     }
 }

@@ -1531,12 +1531,12 @@ export function RenderPreparationPanel({
                     setNotice(null)
                     void preview.mutateAsync({
                       providerId: provider.id,
-                      voiceId: voice.voiceId,
+                      voiceRowId: voice.id,
                       language: job.targetLang,
                     }).catch(fail)
                   }}
                 >
-                  {preview.isPending && preview.variables?.voiceId === voice.voiceId
+                  {preview.isPending && preview.variables?.voiceRowId === voice.id
                     ? <IconLoader2 size={15} className="animate-spin" />
                     : <IconPlayerPlay size={15} />}
                   {t('media:voice.preview.action')}
