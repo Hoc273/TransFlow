@@ -1,15 +1,24 @@
 package com.app.modules.media_job.pipeline;
 
 import com.app.common.config.AppProperties;
+import com.app.common.exception.AppException;
+import com.app.modules.credit.service.CreditService;
+import com.app.modules.credit.service.AiUsageLogService;
+import com.app.modules.glossary.entity.GlossaryTerm;
+import com.app.modules.glossary.service.GlossaryService;
 import com.app.modules.media_asset.entity.MediaAsset;
 import com.app.modules.media_asset.repository.MediaAssetRepository;
 import com.app.modules.media_asset.service.MediaStorageService;
 import com.app.modules.media_job.callback.service.MediaCallbackService;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
+import com.app.modules.media_job.entity.SubtitleSegment;
 import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.repository.MediaJobStageRepository;
+import com.app.modules.media_job.repository.SubtitleSegmentRepository;
 import com.app.modules.provider.service.ProviderResolverService;
+import com.app.modules.qa.entity.QaIssue;
+import com.app.modules.qa.service.QaService;
 import com.app.modules.summarization.service.SummaryAiClient;
 import com.app.modules.summarization.service.SummarizationService;
 import com.app.modules.summarization.entity.SummaryProposal;
@@ -18,6 +27,7 @@ import com.app.modules.summarization.service.UserAwareSummaryAiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -28,9 +38,12 @@ import org.springframework.web.client.RestClient;
 import java.io.ByteArrayInputStream;
 import java.util.Base64;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** Executes a claimed stage and keeps all durable state changes in Spring. */
@@ -52,7 +65,13 @@ public class MediaStageExecutionService {
     private final RestClient aiClient;
     private final RestClient workerClient;
     private final AppProperties props;
+    private final SubtitleSegmentRepository subtitleSegmentRepository;
+    private final QaService qaService;
+    private final CreditService creditService;
+    private final AiUsageLogService aiUsageLogService;
+    private final GlossaryService glossaryService;
 
+    @Autowired
     public MediaStageExecutionService(MediaJobRepository jobRepository,
                                       MediaJobStageRepository stageRepository,
                                       MediaAssetRepository assetRepository,
@@ -62,7 +81,12 @@ public class MediaStageExecutionService {
                                       SummarizationService summarizationService,
                                       MediaCallbackService callbackService,
                                       ObjectMapper objectMapper,
-                                      AppProperties props) {
+                                      AppProperties props,
+                                      SubtitleSegmentRepository subtitleSegmentRepository,
+                                      QaService qaService,
+                                      CreditService creditService,
+                                      AiUsageLogService aiUsageLogService,
+                                      GlossaryService glossaryService) {
         this.jobRepository = jobRepository;
         this.stageRepository = stageRepository;
         this.assetRepository = assetRepository;
@@ -75,6 +99,27 @@ public class MediaStageExecutionService {
         this.props = props;
         this.aiClient = RestClient.builder().baseUrl(props.ai().baseUrl()).build();
         this.workerClient = RestClient.builder().baseUrl(props.mediaWorker().baseUrl()).build();
+        this.subtitleSegmentRepository = subtitleSegmentRepository;
+        this.qaService = qaService;
+        this.creditService = creditService;
+        this.aiUsageLogService = aiUsageLogService;
+        this.glossaryService = glossaryService;
+    }
+
+    /** Compatibility constructor for focused pipeline tests that do not wire QA/credit/glossary. */
+    public MediaStageExecutionService(MediaJobRepository jobRepository,
+                                      MediaJobStageRepository stageRepository,
+                                      MediaAssetRepository assetRepository,
+                                      MediaStorageService storage,
+                                      ProviderResolverService providerResolver,
+                                      SummaryAiClient summaryAiClient,
+                                      SummarizationService summarizationService,
+                                      MediaCallbackService callbackService,
+                                      ObjectMapper objectMapper,
+                                      AppProperties props) {
+        this(jobRepository, stageRepository, assetRepository, storage, providerResolver,
+                summaryAiClient, summarizationService, callbackService, objectMapper, props,
+                null, null, null, null, null);
     }
 
     public void execute(MediaStageMessage message) {
@@ -121,6 +166,7 @@ public class MediaStageExecutionService {
                 if (!(plan instanceof Map<?, ?>)) {
                     body.put("mix_plan", defaultMixPlan(job));
                 }
+                body.put("mix_plan", applyConfiguredAudioMix(job, body.get("mix_plan")));
             }
             case RENDER -> {
                 path = "/internal/media/render";
@@ -130,7 +176,9 @@ public class MediaStageExecutionService {
                 body.putIfAbsent("cut_ranges", defaultCutRanges(job, duration));
                 body.putIfAbsent("audio_input_version", "1");
                 addDefaultRenderAudio(job, body, duration);
-                body.putIfAbsent("subtitle_track", defaultSubtitleTrack(job, duration));
+                body.put("subtitle_track", defaultSubtitleTrack(job, duration));
+                Map<String, Object> renderConfig = jsonObject(job.getRenderConfig());
+                body.put("output_aspect_ratio", stringValue(renderConfig.get("outputAspectRatio"), "ORIGINAL"));
             }
             default -> throw new IllegalStateException("Not a worker stage");
         }
@@ -175,6 +223,48 @@ public class MediaStageExecutionService {
                 "ducking", Map.of("kind", "WHOLE_MIX", "speech_input_ids", List.of("tts-1"),
                         "target_input_id", "music", "duck_gain_db", -12),
                 "output", Map.of("asset_type", "MIXED_AUDIO", "format", "wav")));
+    }
+
+    /** Apply the persisted Render Studio audio controls to the worker MixPlan. */
+    private Map<String, Object> applyConfiguredAudioMix(MediaJob job, Object rawPlan) {
+        Map<String, Object> plan = copyMap(rawPlan);
+        List<Map<String, Object>> inputs = new ArrayList<>();
+        Object rawInputs = plan.get("inputs");
+        if (rawInputs instanceof List<?> list) {
+            for (Object rawInput : list) {
+                inputs.add(copyMap(rawInput));
+            }
+        }
+        plan.put("inputs", inputs);
+
+        Map<String, Object> config = jsonObject(job.getRenderConfig());
+        Map<String, Object> presentation = mapValue(config.get("presentation"));
+        Map<String, Object> audio = mapValue(presentation.get("audio"));
+        Double originalGain = doubleOrNull(audio.get("originalGainDb"));
+        Double ttsGain = doubleOrNull(audio.get("ttsGainDb"));
+        for (Map<String, Object> input : inputs) {
+            String role = stringValue(input.get("role"), "");
+            if (originalGain != null && !"TTS_SEGMENT".equals(role)) {
+                input.put("gain_db", originalGain);
+            }
+            if (ttsGain != null && "TTS_SEGMENT".equals(role)) {
+                input.put("gain_db", ttsGain);
+            }
+        }
+
+        Map<String, Object> configuredDucking = mapValue(audio.get("ducking"));
+        if (!configuredDucking.isEmpty()) {
+            Map<String, Object> ducking = copyMap(plan.get("ducking"));
+            boolean enabled = booleanValue(configuredDucking.get("enabled"), true);
+            ducking.put("kind", enabled ? "WHOLE_MIX" : "NONE");
+            if (enabled) {
+                putIfNotNull(ducking, "duck_gain_db", doubleOrNull(configuredDucking.get("gainDb")));
+                putIfNotNull(ducking, "attack_ms", integerOrNull(configuredDucking.get("attackMs")));
+                putIfNotNull(ducking, "release_ms", integerOrNull(configuredDucking.get("releaseMs")));
+            }
+            plan.put("ducking", ducking);
+        }
+        return plan;
     }
 
     /**
@@ -255,19 +345,99 @@ public class MediaStageExecutionService {
     }
 
     private Map<String, Object> defaultSubtitleTrack(MediaJob job, long duration) {
-        String key = "subtitles/" + job.getId() + "/empty.srt";
-        String text = translatedSubtitleText(job);
-        String end = srtTimestamp(Math.max(1, duration));
-        String content = "1\n00:00:00,000 --> " + end + "\n"
-                + (text == null ? "" : text.replace("\r", "").replace("\n", " ").trim()) + "\n";
+        Map<String, Object> renderConfig = jsonObject(job.getRenderConfig());
+        Map<String, Object> style = jsonObject(job.getSubtitleStyle());
+        List<SubtitleSegment> segments = subtitleSegmentRepository == null
+                ? List.of() : subtitleSegmentRepository.findByMediaJobIdOrderBySeq(job.getId());
+
+        StringBuilder srt = new StringBuilder();
+        int seq = 1;
+        for (SubtitleSegment segment : segments) {
+            if (segment.getTargetText() == null || segment.getTargetText().isBlank()) {
+                continue;
+            }
+            long start = Math.max(0L, segment.getStartMs());
+            long end = Math.max(start + 1L, segment.getEndMs());
+            srt.append(seq++).append('\n')
+                    .append(srtTimestamp(start)).append(" --> ").append(srtTimestamp(end)).append('\n')
+                    .append(segment.getTargetText().replace("\r", "").replace("\n", " ").trim())
+                    .append("\n\n");
+        }
+        // A render request can be replayed from an older job that predates subtitle
+        // materialisation. Keep a valid sidecar for that compatibility case only.
+        if (seq == 1) {
+            String text = translatedSubtitleText(job);
+            String end = srtTimestamp(Math.max(1, duration));
+            srt.append("1\n00:00:00,000 --> ").append(end).append('\n')
+                    .append(text == null ? "" : text.replace("\r", "").replace("\n", " ").trim())
+                    .append("\n");
+        }
+        String key = "subtitles/" + job.getId() + "/" + UUID.randomUUID() + ".srt";
+        String content = srt.toString();
         byte[] subtitle = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         storage.putMediaObject(key, new ByteArrayInputStream(subtitle), subtitle.length, "application/x-subrip");
-        return new LinkedHashMap<>(Map.of(
-                "format", "srt",
-                "content_ref", storage.mediaBucket() + "/" + key,
-                "mode", job.getSubtitleMode() == null ? "SOFT_SUB" : job.getSubtitleMode().name(),
-                "position", "BOTTOM",
-                "background_box", true));
+        Map<String, Object> track = new LinkedHashMap<>();
+        track.put("format", "srt");
+        track.put("content_ref", storage.mediaBucket() + "/" + key);
+        String subtitleMode = stringValue(renderConfig.get("subtitleMode"),
+                job.getSubtitleMode() == null ? "SOFT_SUB" : job.getSubtitleMode().name());
+        track.put("mode", subtitleMode);
+        track.put("position", stringValue(renderConfig.get("subtitlePosition"), "BOTTOM"));
+        track.put("vertical_offset_percent", intValue(renderConfig.get("verticalOffsetPercent"), 0));
+        boolean styleHasBackground = style.get("background") != null && !String.valueOf(style.get("background")).isBlank();
+        track.put("background_box", booleanValue(renderConfig.get("backgroundBox"), styleHasBackground));
+        putIfNotNull(track, "background_color", firstNonBlank(
+                stringValue(renderConfig.get("backgroundColor"), null),
+                stringValue(style.get("background"), null)));
+        putIfNotNull(track, "text_color", firstNonBlank(
+                stringValue(renderConfig.get("textColor"), null),
+                stringValue(style.get("primary_color"), null)));
+        putIfNotNull(track, "font_size", integerOrNull(style.get("font_size")));
+        putIfNotNull(track, "bold", booleanOrNull(style.get("bold")));
+        putIfNotNull(track, "outline_width", integerOrNull(style.get("outline_width")));
+        putIfNotNull(track, "outline_color", stringValue(style.get("outline_color"), null));
+        // Worker presentation layers are burn-time overlays and are rejected
+        // for SOFT_SUB by contract; keep them only for HARD_SUB renders.
+        if ("HARD_SUB".equalsIgnoreCase(subtitleMode)) {
+            track.put("layers", renderPresentationLayers(renderConfig));
+        }
+        return track;
+    }
+
+    private List<Map<String, Object>> renderPresentationLayers(Map<String, Object> renderConfig) {
+        Map<String, Object> presentation = mapValue(renderConfig.get("presentation"));
+        Map<String, Object> subtitle = mapValue(presentation.get("subtitle"));
+        Object rawLayers = subtitle.get("layers");
+        if (!(rawLayers instanceof List<?> list)) {
+            return List.of();
+        }
+        List<Map<String, Object>> layers = new ArrayList<>();
+        int index = 0;
+        for (Object rawLayer : list) {
+            Map<String, Object> layer = mapValue(rawLayer);
+            Map<String, Object> mapped = new LinkedHashMap<>();
+            mapped.put("id", "layer-" + index);
+            // The current worker contract has SOLID/BLUR overlays. COVER_BOX is
+            // the Spring MVP layer; unsupported legacy layer kinds degrade to a
+            // solid cover instead of sending a 422 payload to the worker.
+            mapped.put("type", "SOLID");
+            mapped.put("enabled", true);
+            mapped.put("z_index", index++);
+            mapped.put("anchor", stringValue(layer.get("anchor"), "SUBTITLE"));
+            Map<String, Object> geometry = new LinkedHashMap<>();
+            geometry.put("width_percent", intValue(layer.get("widthPercent"), 100));
+            geometry.put("height_percent", intValue(layer.get("heightPercent"), 12));
+            putIfNotNull(geometry, "x_percent", integerOrNull(layer.get("xPercent")));
+            putIfNotNull(geometry, "y_percent", integerOrNull(layer.get("yPercent")));
+            mapped.put("geometry", geometry);
+            Map<String, Object> style = new LinkedHashMap<>();
+            style.put("color", stringValue(layer.get("colorHex"), "#000000"));
+            double opacity = doubleValue(layer.get("opacity"), 1.0d);
+            style.put("opacity_percent", Math.max(0, Math.min(100, (int) Math.round(opacity * 100.0d))));
+            mapped.put("style", style);
+            layers.add(mapped);
+        }
+        return layers;
     }
 
     private String output(UUID jobId, MediaJobStage.StageName name) {
@@ -308,10 +478,13 @@ public class MediaStageExecutionService {
         if (durationMs != null) {
             body.put("asset_duration_ms", durationMs);
         }
-        body.put("provider", provider(job, "STT"));
+        ProviderContext provider = provider(job, "STT");
+        body.put("provider", provider.payload());
         JsonNode result = aiClient.post().uri("/media/stt").contentType(MediaType.APPLICATION_JSON)
                 .body(body).retrieve().body(JsonNode.class);
         ensureCompleted(result, "STT");
+        chargeAiUsage(job, "STT", usageUnits(result, "STT", durationMs == null ? 0L : durationMs),
+                provider.personalApiKey());
         completeSuccess(job, stage, message, result);
     }
 
@@ -321,18 +494,30 @@ public class MediaStageExecutionService {
         List<Map<String, Object>> segments = transcriptSegments(transcript);
         int duration = job.getRequestedDurationSeconds() != null ? job.getRequestedDurationSeconds()
                 : assetRepository.findById(job.getRootAssetId()).map(MediaAsset::getDurationMs)
-                .map(ms -> Math.max(1, Math.round(ms / 2000f))).orElse(60);
+                .map(ms -> Math.max(1, Math.round(ms / 1000f))).orElse(60);
         if (MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(job.getRecipeId())) {
             String serialized = objectMapper.writeValueAsString(segments);
+            String visualContext = job.isVisualContextEnabled()
+                    ? fetchVisualContext(job, message, segments) : null;
             SummaryAiClient.ScriptProposalResult result;
             if (summaryAiClient instanceof UserAwareSummaryAiClient userAware) {
-                result = userAware.generateScript(serialized, null, duration, job.getTargetLang(),
+                result = userAware.generateScript(serialized, visualContext, duration, job.getTargetLang(),
                         job.getId(), job.getCreatedByUserId());
             } else {
-                result = summaryAiClient.generateScript(serialized, null, duration, job.getTargetLang());
+                result = summaryAiClient.generateScript(serialized, visualContext, duration, job.getTargetLang());
             }
+            chargeAiUsage(job, "SUMMARIZE_SCRIPT",
+                    result == null || result.usageTokens() == 0
+                            ? estimateTokens(serialized + (result == null ? "" : result.scriptContent()))
+                            : result.usageTokens(),
+                    hasPersonalProvider(job, "TRANSLATE"));
             SummaryProposal proposal = summarizationService.persistAiProposalResult(
-                    stage.getId(), (short) 0, result, null, duration);
+                    stage.getId(), (short) 1, result, null, duration);
+            if (job.getWorkflowMode() == MediaJob.WorkflowMode.AUTO
+                    && job.getSelectedProposalId() == null) {
+                job.setSelectedProposalId(proposal.getId());
+                jobRepository.save(job);
+            }
             completeSuccess(job, stage, message, scriptProposalOutput(proposal));
             return;
         }
@@ -342,10 +527,13 @@ public class MediaStageExecutionService {
         body.put("transcript", segments);
         body.put("requested_duration_seconds", duration);
         body.put("duration_tolerance", Map.of("lower_seconds", 20, "upper_seconds", 20));
-        body.put("provider", provider(job, "TRANSLATE"));
+        ProviderContext provider = provider(job, "TRANSLATE");
+        body.put("provider", provider.payload());
         JsonNode result = aiClient.post().uri("/media/summarize").contentType(MediaType.APPLICATION_JSON)
                 .body(body).retrieve().body(JsonNode.class);
         ensureCompleted(result, "SUMMARIZE");
+        chargeAiUsage(job, "SUMMARIZE_SCRIPT", usageUnits(result, "SUMMARIZE", serializedLength(segments)),
+                provider.personalApiKey());
         completeSuccess(job, stage, message, result);
     }
 
@@ -355,10 +543,17 @@ public class MediaStageExecutionService {
         JsonNode summary = parseJson(source == null ? null : source.getOutputRef());
         JsonNode transcript = parseJson(stt == null ? null : stt.getOutputRef());
         String sourceText = authoredScript(summary);
-        if ((sourceText == null || sourceText.isBlank())
-                && job.getSourceSummaryJobId() != null && job.getSelectedProposalId() != null) {
-            SummaryProposal selected = summarizationService.getProposalById(job.getSelectedProposalId());
-            sourceText = selected.getScriptContent();
+        List<SourceSubtitle> sourceSegments = translationSourceSegments(job, summary, transcript);
+        if (MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(job.getRecipeId())
+                && job.getSelectedProposalId() != null) {
+            try {
+                SummaryProposal selected = summarizationService.getProposalById(job.getSelectedProposalId());
+                sourceText = selected.getScriptContent();
+                sourceSegments = proposalSourceSegments(selected);
+            } catch (Exception ignored) {
+                // The selection endpoint validates this relationship. Keep the
+                // stage output fallback for an already persisted legacy job.
+            }
         }
         // Script-first proposals are already authored in target_lang.  They
         // must not be translated a second time; TRANSLATE here is a durable
@@ -370,11 +565,15 @@ public class MediaStageExecutionService {
             authored.put("request_id", message.correlationId().toString());
             authored.put("status", "COMPLETED");
             authored.put("translation", sourceText);
+            persistSubtitleSegments(job, sourceSegments, authored, SubtitleSegment.ContentSource.AUTHORED_SCRIPT);
+            runQualityChecks(job, sourceSegments, authored);
             completeSuccess(job, stage, message, authored);
             return;
         }
         if (sourceText == null || sourceText.isBlank()) {
-            sourceText = transcriptTextForSummary(summary, transcript);
+            sourceText = sourceSegments.stream().map(SourceSubtitle::sourceText)
+                    .filter(text -> text != null && !text.isBlank()).reduce((left, right) -> left + " " + right)
+                    .orElse(null);
         }
         if (sourceText == null || sourceText.isBlank()) {
             Object sourceTextOverride = jsonObject(stage.getInputRef()).get("source_text");
@@ -385,10 +584,16 @@ public class MediaStageExecutionService {
         body.put("source_lang", job.getSourceLanguage() == null ? "auto" : job.getSourceLanguage());
         body.put("target_lang", job.getTargetLang());
         body.put("source_text", sourceText);
-        body.put("provider", provider(job, "TRANSLATE"));
+        body.put("glossary", glossary(job));
+        ProviderContext provider = provider(job, "TRANSLATE");
+        body.put("provider", provider.payload());
         JsonNode result = aiClient.post().uri("/ai/translate").contentType(MediaType.APPLICATION_JSON)
                 .body(body).retrieve().body(JsonNode.class);
         ensureCompleted(result, "TRANSLATE");
+        chargeAiUsage(job, "TRANSLATE", usageUnits(result, "TRANSLATE", sourceText.length()),
+                provider.personalApiKey());
+        persistSubtitleSegments(job, sourceSegments, result, contentSource(job));
+        runQualityChecks(job, sourceSegments, result);
         completeSuccess(job, stage, message, result);
     }
 
@@ -406,10 +611,13 @@ public class MediaStageExecutionService {
                 .orElse(job.getTtsVoiceId().toString());
         body.put("voice_id", voiceId);
         body.put("segments", List.of(segment));
-        body.put("provider", provider(job, "TTS"));
+        ProviderContext provider = provider(job, "TTS");
+        body.put("provider", provider.payload());
         JsonNode result = aiClient.post().uri("/media/tts").contentType(MediaType.APPLICATION_JSON)
                 .body(body).retrieve().body(JsonNode.class);
         ensureCompleted(result, "TTS");
+        chargeAiUsage(job, "TTS", usageUnits(result, "TTS", text == null ? 0L : text.length()),
+                provider.personalApiKey());
         JsonNode persisted = persistTtsAudio(job, result);
         completeSuccess(job, stage, message, persisted);
     }
@@ -439,15 +647,553 @@ public class MediaStageExecutionService {
         return output;
     }
 
-    private Map<String, Object> provider(MediaJob job, String capability) {
+    private ProviderContext provider(MediaJob job, String capability) {
+        Map<String, Object> payload = new LinkedHashMap<>();
         try {
             ProviderResolverService.ProviderResolution p = providerResolver.resolveForCapability(
                     job.getCreatedByUserId(), capability);
-            return Map.of("protocol", p.providerType(), "base_url", p.endpointUrl(),
-                    "api_key", p.apiKey() == null ? "" : p.apiKey(), "model", "");
+            payload.put("protocol", valueOrEmpty(p.providerType()));
+            payload.put("base_url", valueOrEmpty(p.endpointUrl()));
+            payload.put("api_key", valueOrEmpty(p.apiKey()));
+            payload.put("model", "");
+            payload.put("capabilities", List.of(providerCapability(capability)));
+            return new ProviderContext(payload, p.isPersonalApiKey());
         } catch (Exception ignored) {
-            return Map.of("protocol", "openai_compatible", "base_url", props.ai().baseUrl(),
-                    "api_key", "", "model", "");
+            payload.put("protocol", "openai_compatible");
+            payload.put("base_url", props.ai().baseUrl());
+            payload.put("api_key", "");
+            payload.put("model", "");
+            payload.put("capabilities", List.of(providerCapability(capability)));
+            return new ProviderContext(payload, false);
+        }
+    }
+
+    private String providerCapability(String capability) {
+        return switch (capability == null ? "" : capability.toUpperCase(Locale.ROOT)) {
+            case "STT" -> "STT";
+            case "TTS" -> "TTS";
+            case "VISION" -> "VISION";
+            default -> "TEXT";
+        };
+    }
+
+    private boolean hasPersonalProvider(MediaJob job, String capability) {
+        try {
+            return providerResolver.resolveForCapability(job.getCreatedByUserId(), capability).isPersonalApiKey();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /** Charge only after the FastAPI stage has returned COMPLETED. */
+    private void chargeAiUsage(MediaJob job, String capability, long units, boolean personalApiKey) {
+        if (creditService == null) {
+            return;
+        }
+        long billableUnits = Math.max(1L, units);
+        java.math.BigDecimal creditUsed = creditService.chargeUsage(
+                job.getWorkspaceId(), job.getCreatedByUserId(), capability, billableUnits, personalApiKey);
+        if (aiUsageLogService != null) {
+            try {
+                aiUsageLogService.record(job.getWorkspaceId(), job.getProjectId(), job.getId(),
+                        job.getCreatedByUserId(), capability, personalApiKey, billableUnits, creditUsed);
+            } catch (Exception ex) {
+                // Usage logging must not turn a successfully charged/completed AI
+                // stage into a retry (the credit transaction is already durable).
+                log.warn("AI usage log failed for job={} operation={}: {}",
+                        job.getId(), capability, ex.getMessage());
+            }
+        }
+    }
+
+    private long usageUnits(JsonNode result, String operation, long fallbackUnits) {
+        JsonNode usage = result == null ? null : result.get("usage");
+        if (usage != null && usage.isObject()) {
+            long tokenUnits = usage.path("total_tokens").asLong(0L);
+            if (tokenUnits == 0L) {
+                tokenUnits = usage.path("input_tokens").asLong(0L)
+                        + usage.path("output_tokens").asLong(0L);
+            }
+            if (tokenUnits > 0L) {
+                return tokenUnits;
+            }
+            if ("STT".equals(operation)) {
+                double seconds = usage.path("audio_seconds").asDouble(0.0);
+                if (seconds > 0.0) {
+                    return Math.max(1L, Math.round(seconds));
+                }
+            }
+            if ("TTS".equals(operation)) {
+                long characters = usage.path("characters").asLong(0L);
+                if (characters > 0L) {
+                    return characters;
+                }
+            }
+        }
+        long fallback = fallbackUnits;
+        if ("STT".equals(operation) && fallback > 1000L) {
+            fallback = Math.round(fallback / 1000.0d);
+        }
+        return Math.max(1L, fallback);
+    }
+
+    private long estimateTokens(String text) {
+        if (text == null || text.isBlank()) {
+            return 1L;
+        }
+        return Math.max(1L, (text.codePointCount(0, text.length()) + 3L) / 4L);
+    }
+
+    private long serializedLength(List<Map<String, Object>> segments) {
+        if (segments == null || segments.isEmpty()) {
+            return 1L;
+        }
+        return Math.max(1L, segments.stream()
+                .map(segment -> String.valueOf(segment.getOrDefault("text", "")))
+                .mapToLong(String::length)
+                .sum());
+    }
+
+    /**
+     * FastAPI owns frame sampling and VLM calls. Spring only supplies the signed
+     * source URL, transcript context and the resolved VISION provider.
+     */
+    private String fetchVisualContext(MediaJob job, MediaStageMessage message,
+                                      List<Map<String, Object>> transcript) {
+        try {
+            MediaAsset asset = assetRepository.findById(job.getRootAssetId()).orElseThrow();
+            String sourceRef = asset.getBucketName() + "/" + asset.getObjectStorageKey();
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("correlation_id", message.correlationId().toString());
+            body.put("media_job_id", job.getId().toString());
+            body.put("video_ref", sourceRef);
+            body.put("video_url", storage.presignedGetUrl(sourceRef));
+            body.put("sampling_config", Map.of(
+                    "interval_ms", 3_000,
+                    "scene_aware", true,
+                    "max_frames", 12,
+                    "cost_per_image_tokens", 800,
+                    "prompt_version", "v1"));
+            body.put("transcript", transcript == null ? List.of() : transcript);
+            if (asset.getDurationMs() != null) {
+                body.put("video_duration_ms", asset.getDurationMs());
+            }
+            ProviderContext provider = provider(job, "VISION");
+            body.put("provider", provider.payload());
+
+            JsonNode result = aiClient.post().uri("/media/understand/visual")
+                    .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(JsonNode.class);
+            if (result == null || !"COMPLETED".equalsIgnoreCase(result.path("status").asText())) {
+                log.warn("Visual context unavailable for job={}", job.getId());
+                return null;
+            }
+            JsonNode context = result.get("multimodal_context");
+            if (context == null || context.isNull()) {
+                ObjectNode fallback = objectMapper.createObjectNode();
+                fallback.set("visual_observations", result.path("observations"));
+                fallback.set("visual_scenes", result.path("scenes"));
+                context = fallback;
+            }
+            chargeAiUsage(job, "VISION", usageUnits(result, "VISION",
+                    Math.max(1L, result.path("frame_samples").size() * 800L)), provider.personalApiKey());
+            return objectMapper.writeValueAsString(context);
+        } catch (AppException ex) {
+            // Credit failures are business failures, not an optional VLM outage.
+            // Propagate them so the stage cannot continue without charging usage.
+            throw ex;
+        } catch (Exception ex) {
+            // Visual context is explicitly optional. A provider/storage failure
+            // falls back to transcript-only summarisation and is observable here.
+            log.warn("Visual context failed for job={}: {}", job.getId(), ex.getMessage());
+            return null;
+        }
+    }
+
+    private List<Map<String, Object>> glossary(MediaJob job) {
+        if (glossaryService == null) {
+            return List.of();
+        }
+        try {
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (GlossaryTerm term : glossaryService.listTerms(job.getWorkspaceId(), job.getCreatedByUserId(), job.getProjectId())) {
+                if (term.getTargetLang() != null && job.getTargetLang() != null
+                        && !term.getTargetLang().equalsIgnoreCase(job.getTargetLang())) {
+                    continue;
+                }
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("source", term.getSourceTerm());
+                item.put("target", term.getTargetTerm());
+                item.put("case_sensitive", false);
+                item.put("note", term.getTargetLang());
+                result.add(item);
+            }
+            return result;
+        } catch (Exception ex) {
+            log.warn("Glossary unavailable for job={}: {}", job.getId(), ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<SourceSubtitle> translationSourceSegments(MediaJob job, JsonNode summary,
+                                                            JsonNode transcript) {
+        if (MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(job.getRecipeId())) {
+            if (job.getSelectedProposalId() != null) {
+                try {
+                    return proposalSourceSegments(summarizationService.getProposalById(job.getSelectedProposalId()));
+                } catch (Exception ignored) {
+                    // The selected proposal is validated by the service before dispatch.
+                }
+            }
+            if (job.getSourceSummaryJobId() == null) {
+                List<SourceSubtitle> scripted = scriptSourceSegments(summary == null ? null : summary.get("segments"));
+                if (!scripted.isEmpty()) {
+                    return scripted;
+                }
+            }
+        }
+
+        JsonNode source = transcript != null && transcript.path("segments").isArray()
+                ? transcript.path("segments") : transcript;
+        JsonNode ranges = firstCutRanges(summary);
+        List<SourceSubtitle> result = new ArrayList<>();
+        if (source != null && source.isArray()) {
+            for (JsonNode item : source) {
+                long start = longValue(item, "start_ms", "startMs", 0L);
+                long end = longValue(item, "end_ms", "endMs", start + 1L);
+                String text = firstText(item, "text", "source_text", "script_excerpt");
+                if (ranges != null && ranges.isArray() && !ranges.isEmpty()
+                        && !overlapsAny(start, end, ranges)) {
+                    continue;
+                }
+                result.add(new SourceSubtitle(text, Math.max(0L, start), Math.max(start + 1L, end)));
+            }
+        }
+        return result;
+    }
+
+    private List<SourceSubtitle> scriptSourceSegments(JsonNode segments) {
+        List<SourceSubtitle> result = new ArrayList<>();
+        if (segments == null || !segments.isArray()) {
+            return result;
+        }
+        for (JsonNode item : segments) {
+            long start = longValue(item, "start_ms", "startMs", 0L);
+            long end = longValue(item, "end_ms", "endMs", start + 1L);
+            String text = firstText(item, "script_excerpt", "scriptExcerpt", "text");
+            if (text != null && !text.isBlank()) {
+                result.add(new SourceSubtitle(text, Math.max(0L, start), Math.max(start + 1L, end)));
+            }
+        }
+        return result;
+    }
+
+    private List<SourceSubtitle> proposalSourceSegments(SummaryProposal proposal) {
+        List<SourceSubtitle> result = new ArrayList<>();
+        for (SummaryProposalSegment segment : summarizationService.getSegments(proposal.getId())) {
+            String text = segment.getScriptExcerpt();
+            result.add(new SourceSubtitle(text,
+                    Math.max(0L, segment.getStartMs()),
+                    Math.max(segment.getStartMs() + 1L, segment.getEndMs())));
+        }
+        if (result.isEmpty() && proposal.getScriptContent() != null && !proposal.getScriptContent().isBlank()) {
+            result.add(new SourceSubtitle(proposal.getScriptContent(), 0L,
+                    Math.max(1L, proposal.getTotalDurationMs())));
+        }
+        return result;
+    }
+
+    private JsonNode firstCutRanges(JsonNode summary) {
+        if (summary == null || !summary.path("proposals").isArray() || summary.path("proposals").isEmpty()) {
+            return null;
+        }
+        JsonNode first = summary.path("proposals").get(0);
+        JsonNode ranges = first.get("cut_ranges");
+        return ranges != null && ranges.isArray() ? ranges : first.get("cutRanges");
+    }
+
+    private boolean overlapsAny(long start, long end, JsonNode ranges) {
+        for (JsonNode range : ranges) {
+            long rangeStart = longValue(range, "start_ms", "startMs", 0L);
+            long rangeEnd = longValue(range, "end_ms", "endMs", 0L);
+            if (start < rangeEnd && end > rangeStart) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private SubtitleSegment.ContentSource contentSource(MediaJob job) {
+        if (!MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(job.getRecipeId())) {
+            return SubtitleSegment.ContentSource.TRANSLATED_ORIGINAL;
+        }
+        return job.getSourceSummaryJobId() == null
+                ? SubtitleSegment.ContentSource.AUTHORED_SCRIPT
+                : SubtitleSegment.ContentSource.TRANSLATED_SCRIPT;
+    }
+
+    /** Persist the timed subtitle projection consumed by the editor, export and render paths. */
+    private void persistSubtitleSegments(MediaJob job, List<SourceSubtitle> sourceSegments,
+                                         JsonNode translation, SubtitleSegment.ContentSource source) {
+        if (subtitleSegmentRepository == null) {
+            return;
+        }
+        List<SourceSubtitle> sources = sourceSegments == null ? new ArrayList<>() : new ArrayList<>(sourceSegments);
+        String fullTranslation = translatedText(translation);
+        if (sources.isEmpty()) {
+            long duration = assetRepository.findById(job.getRootAssetId()).map(MediaAsset::getDurationMs).orElse(1_000L);
+            sources.add(new SourceSubtitle(
+                    source == SubtitleSegment.ContentSource.AUTHORED_SCRIPT ? fullTranslation : null,
+                    0L, Math.max(1L, duration)));
+        }
+
+        List<TargetSubtitle> responseSegments = translatedSegments(translation);
+        List<String> targetTexts;
+        if (source == SubtitleSegment.ContentSource.AUTHORED_SCRIPT) {
+            targetTexts = sources.stream().map(SourceSubtitle::sourceText).toList();
+        } else if (responseSegments.size() == sources.size()) {
+            targetTexts = responseSegments.stream().map(TargetSubtitle::text).toList();
+        } else {
+            targetTexts = splitText(fullTranslation, sources);
+        }
+
+        subtitleSegmentRepository.deleteByMediaJobId(job.getId());
+        List<SubtitleSegment> persisted = new ArrayList<>();
+        for (int i = 0; i < sources.size(); i++) {
+            SourceSubtitle sourceSegment = sources.get(i);
+            String target = i < targetTexts.size() ? targetTexts.get(i) : "";
+            if (target == null || target.isBlank()) {
+                target = source == SubtitleSegment.ContentSource.AUTHORED_SCRIPT
+                        ? sourceSegment.sourceText() : "";
+            }
+            if (target.isBlank()) {
+                continue;
+            }
+            long start = sourceSegment.startMs();
+            long end = sourceSegment.endMs();
+            if (responseSegments.size() == sources.size()) {
+                start = responseSegments.get(i).startMs() >= 0 ? responseSegments.get(i).startMs() : start;
+                end = responseSegments.get(i).endMs() > start ? responseSegments.get(i).endMs() : end;
+            }
+            SubtitleSegment segment = new SubtitleSegment();
+            segment.setMediaJobId(job.getId());
+            segment.setSeq(i + 1);
+            segment.setContentSource(source);
+            segment.setSourceText(sourceSegment.sourceText());
+            segment.setTargetText(target.trim());
+            segment.setStartMs(Math.max(0L, start));
+            segment.setEndMs(Math.max(Math.max(0L, start) + 1L, end));
+            persisted.add(segment);
+        }
+        subtitleSegmentRepository.saveAll(persisted);
+    }
+
+    private List<TargetSubtitle> translatedSegments(JsonNode result) {
+        List<TargetSubtitle> segments = new ArrayList<>();
+        JsonNode raw = result == null ? null : result.get("segments");
+        if (raw == null || !raw.isArray()) {
+            return segments;
+        }
+        for (JsonNode item : raw) {
+            String text = firstText(item, "translation", "translated_text", "target_text", "text", "script_excerpt");
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+            long start = longValue(item, "start_ms", "startMs", -1L);
+            long end = longValue(item, "end_ms", "endMs", -1L);
+            segments.add(new TargetSubtitle(text, start, end));
+        }
+        return segments;
+    }
+
+    private String translatedText(JsonNode result) {
+        if (result == null || result.isNull()) {
+            return "";
+        }
+        if (result.isTextual()) {
+            return result.asText();
+        }
+        String text = firstText(result, "translation", "translated_text", "target_text",
+                "script_content", "scriptContent", "text");
+        return text == null ? "" : text;
+    }
+
+    private List<String> splitText(String text, List<SourceSubtitle> sources) {
+        if (sources.size() <= 1) {
+            return List.of(text == null ? "" : text.trim());
+        }
+        String normalized = text == null ? "" : text.replaceAll("\\s+", " ").trim();
+        if (normalized.isBlank()) {
+            return sources.stream().map(SourceSubtitle::sourceText).toList();
+        }
+        long totalWeight = sources.stream()
+                .mapToLong(s -> Math.max(1L, s.sourceText() == null ? 1 : s.sourceText().length()))
+                .sum();
+        List<String> result = new ArrayList<>();
+        int cursor = 0;
+        for (int i = 0; i < sources.size(); i++) {
+            if (i == sources.size() - 1) {
+                result.add(normalized.substring(Math.min(cursor, normalized.length())).trim());
+                break;
+            }
+            long weight = Math.max(1L, sources.get(i).sourceText() == null ? 1 : sources.get(i).sourceText().length());
+            int desired = cursor + Math.max(1, (int) Math.round((double) normalized.length() * weight / totalWeight));
+            desired = Math.min(normalized.length(), desired);
+            int boundary = desired;
+            while (boundary < normalized.length() && !Character.isWhitespace(normalized.charAt(boundary))) {
+                boundary++;
+            }
+            if (boundary <= cursor && cursor < normalized.length()) {
+                boundary = Math.min(normalized.length(), cursor + 1);
+            }
+            result.add(normalized.substring(Math.min(cursor, normalized.length()), boundary).trim());
+            cursor = boundary;
+            while (cursor < normalized.length() && Character.isWhitespace(normalized.charAt(cursor))) {
+                cursor++;
+            }
+        }
+        while (result.size() < sources.size()) {
+            result.add("");
+        }
+        return result;
+    }
+
+    private void runQualityChecks(MediaJob job, List<SourceSubtitle> sourceSegments, JsonNode translation) {
+        if (subtitleSegmentRepository == null || qaService == null) {
+            return;
+        }
+        List<SubtitleSegment> segments = subtitleSegmentRepository.findByMediaJobIdOrderBySeq(job.getId());
+        if (segments.isEmpty()) {
+            return;
+        }
+        Set<String> recorded = new HashSet<>();
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("request_id", UUID.randomUUID().toString());
+            body.put("source_lang", job.getSourceLanguage() == null ? "auto" : job.getSourceLanguage());
+            body.put("target_lang", job.getTargetLang());
+            body.put("source_text", joinSegmentText(segments, true));
+            body.put("translated_text", joinSegmentText(segments, false));
+            body.put("glossary", glossary(job));
+            body.put("checks", List.of("accuracy", "fluency", "terminology", "length", "timing"));
+            body.put("provider", provider(job, "TRANSLATE").payload());
+            JsonNode response = aiClient.post().uri("/ai/qa")
+                    .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(JsonNode.class);
+            if (response != null && "COMPLETED".equalsIgnoreCase(response.path("status").asText())
+                    && response.path("issues").isArray()) {
+                for (JsonNode issue : response.path("issues")) {
+                    SubtitleSegment segment = locateQaSegment(segments, issue);
+                    if (segment == null) {
+                        continue;
+                    }
+                    String type = firstText(issue, "type", "issue_type");
+                    type = type == null || type.isBlank() ? "ai_qa_issue" : type;
+                    String key = segment.getId() + ":" + type;
+                    if (recorded.add(key)) {
+                        qaService.recordIssue(segment.getId(), type, qaSeverity(issue.path("severity").asText()),
+                                qaBlockingActions(issue.path("blocking_actions")), writeJson(issue));
+                    }
+                }
+            } else {
+                log.warn("QA service returned no completed result for job={}", job.getId());
+            }
+        } catch (Exception ex) {
+            // QA is a quality gate, but a provider outage must not erase the
+            // already persisted subtitle output. Deterministic checks below
+            // still protect malformed timing from silently reaching RENDER.
+            log.warn("AI QA failed for job={}: {}", job.getId(), ex.getMessage());
+        }
+        recordDeterministicQa(segments, recorded);
+    }
+
+    private String joinSegmentText(List<SubtitleSegment> segments, boolean source) {
+        return segments.stream()
+                .map(segment -> source ? segment.getSourceText() : segment.getTargetText())
+                .filter(text -> text != null && !text.isBlank())
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("");
+    }
+
+    private SubtitleSegment locateQaSegment(List<SubtitleSegment> segments, JsonNode issue) {
+        String sourceSpan = firstText(issue, "source_span", "sourceSpan");
+        String targetSpan = firstText(issue, "target_span", "targetSpan");
+        for (SubtitleSegment segment : segments) {
+            if ((sourceSpan != null && containsIgnoreCase(segment.getSourceText(), sourceSpan))
+                    || (targetSpan != null && containsIgnoreCase(segment.getTargetText(), targetSpan))) {
+                return segment;
+            }
+        }
+        return segments.get(0);
+    }
+
+    private boolean containsIgnoreCase(String value, String needle) {
+        return value != null && needle != null
+                && value.toLowerCase(Locale.ROOT).contains(needle.toLowerCase(Locale.ROOT));
+    }
+
+    private QaIssue.Severity qaSeverity(String raw) {
+        try {
+            return QaIssue.Severity.valueOf(raw == null ? "MEDIUM" : raw.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            return QaIssue.Severity.MEDIUM;
+        }
+    }
+
+    private List<String> qaBlockingActions(JsonNode raw) {
+        List<String> actions = new ArrayList<>();
+        if (raw != null && raw.isArray()) {
+            for (JsonNode action : raw) {
+                String value = action.asText("").toUpperCase(Locale.ROOT);
+                if ("BLOCK_EXPORT".equals(value)) {
+                    value = "BLOCK_PUBLISH";
+                }
+                if (Set.of("BLOCK_APPROVAL", "BLOCK_PUBLISH", "BLOCK_RENDER").contains(value)
+                        && !actions.contains(value)) {
+                    actions.add(value);
+                }
+            }
+        }
+        return actions;
+    }
+
+    private void recordDeterministicQa(List<SubtitleSegment> segments, Set<String> recorded) {
+        for (int i = 0; i < segments.size(); i++) {
+            SubtitleSegment current = segments.get(i);
+            if (current.getEndMs() <= current.getStartMs()) {
+                recordLocalQa(current, "invalid_timing", QaIssue.Severity.CRITICAL,
+                        List.of("BLOCK_RENDER"), "Subtitle end must be after start", recorded);
+            }
+            if (i > 0) {
+                SubtitleSegment previous = segments.get(i - 1);
+                if (current.getStartMs() < previous.getEndMs()) {
+                    recordLocalQa(current, "subtitle_overlap", QaIssue.Severity.CRITICAL,
+                            List.of("BLOCK_RENDER"), "Subtitle timing overlaps the previous segment", recorded);
+                }
+            }
+        }
+    }
+
+    private void recordLocalQa(SubtitleSegment segment, String type, QaIssue.Severity severity,
+                               List<String> blockingActions, String detail, Set<String> recorded) {
+        if (!recorded.add(segment.getId() + ":" + type)) {
+            return;
+        }
+        qaService.recordIssue(segment.getId(), type, severity, blockingActions,
+                "{\"message\":" + quoteJson(detail) + "}");
+    }
+
+    private String quoteJson(String value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception ignored) {
+            return "\"QA issue\"";
+        }
+    }
+
+    private String writeJson(JsonNode node) {
+        try {
+            return objectMapper.writeValueAsString(node);
+        } catch (Exception ignored) {
+            return "{}";
         }
     }
 
@@ -599,6 +1345,133 @@ public class MediaStageExecutionService {
             item.put("reasoning_note", segment.getReasoningNote());
         }
         return output;
+    }
+
+    private Map<String, Object> copyMap(Object value) {
+        return mapValue(value);
+    }
+
+    private Map<String, Object> mapValue(Object value) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (value instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (entry.getKey() != null) {
+                    result.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+            }
+        }
+        return result;
+    }
+
+    private void putIfNotNull(Map<String, Object> target, String key, Object value) {
+        if (value != null) {
+            target.put(key, value);
+        }
+    }
+
+    private String stringValue(Object value, String fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        String text = String.valueOf(value);
+        return text.isBlank() ? fallback : text;
+    }
+
+    private String valueOrEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private String firstNonBlank(String first, String second) {
+        return first != null && !first.isBlank() ? first : second;
+    }
+
+    private boolean booleanValue(Object value, boolean fallback) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return value == null ? fallback : Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private Boolean booleanOrNull(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return value == null ? null : Boolean.valueOf(String.valueOf(value));
+    }
+
+    private int intValue(Object value, int fallback) {
+        Integer parsed = integerOrNull(value);
+        return parsed == null ? fallback : parsed;
+    }
+
+    private Integer integerOrNull(Object value) {
+        if (value instanceof Number number) {
+            return (int) Math.round(number.doubleValue());
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private double doubleValue(Object value, double fallback) {
+        Double parsed = doubleOrNull(value);
+        return parsed == null ? fallback : parsed;
+    }
+
+    private Double doubleOrNull(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Double.valueOf(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private long longValue(JsonNode node, String primary, String secondary, long fallback) {
+        if (node == null) {
+            return fallback;
+        }
+        JsonNode value = node.get(primary);
+        if (value == null || value.isNull()) {
+            value = node.get(secondary);
+        }
+        return value == null || !value.isNumber() && !value.isTextual()
+                ? fallback : value.asLong(fallback);
+    }
+
+    private String firstText(JsonNode node, String... fields) {
+        if (node == null) {
+            return null;
+        }
+        for (String field : fields) {
+            JsonNode value = node.get(field);
+            if (value != null && !value.isNull() && value.isValueNode()) {
+                String text = value.asText();
+                if (text != null && !text.isBlank()) {
+                    return text;
+                }
+            }
+        }
+        return null;
+    }
+
+    private record ProviderContext(Map<String, Object> payload, boolean personalApiKey) {
+    }
+
+    private record SourceSubtitle(String sourceText, long startMs, long endMs) {
+    }
+
+    private record TargetSubtitle(String text, long startMs, long endMs) {
     }
 
     private String srtTimestamp(long milliseconds) {

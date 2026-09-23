@@ -25,7 +25,7 @@ import {
 import { cn } from '@/lib/cn'
 import { formatDurationMs, resolveWorkflowMode, subtitleToSegmentItem } from '@/lib/media'
 import { ApiError } from '@/types/api'
-import type { MediaJob, RenderFailureDiagnostics, SegmentItem } from '@/types/media'
+import type { MediaJob, MediaSubtitleCue, RenderFailureDiagnostics, SegmentItem } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
 
 type Props = {
@@ -177,7 +177,7 @@ export function MediaSubtitleEditor({
     if (linkedJob?.segments && linkedJob.segments.length > 0) {
       return linkedJob.segments
     }
-    return realSubtitles.map((sub) => subtitleToSegmentItem(sub, realQaIssues))
+    return realSubtitles.map((sub: MediaSubtitleCue) => subtitleToSegmentItem(sub, realQaIssues))
   }, [linkedJob, realSubtitles, realQaIssues])
 
   // QA cross-check marker (docs/19 §1.8.2): open issues per segment, tone from

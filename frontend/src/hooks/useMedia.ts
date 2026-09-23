@@ -30,11 +30,12 @@ import {
 import {
   editMediaSegmentApi,
   getMediaTermsVersionApi,
+  listMediaJobSubtitlesApi,
   listProjectMediaAssetsApi,
   getMediaAssetApi,
   type EditMediaSegmentBody,
 } from '@/api/media'
-import { overrideQaIssueApi, resolveQaIssueApi } from '@/api/segments'
+import { listMediaJobQaIssuesApi, overrideQaIssueApi, resolveQaIssueApi } from '@/api/segments'
 import type { OverrideQaIssueBody, ResolveIssueBody } from '@/types/qa'
 import { hasActiveMediaStages, isActiveMediaJobStatus } from '@/lib/media'
 import { STALE, queryKeys } from '@/lib/queryClient'
@@ -476,5 +477,25 @@ export function useMediaAsset(
     queryFn: () => getMediaAssetApi(workspaceId!, assetId!),
     enabled: !!workspaceId && !!assetId,
     staleTime: STALE.semiLive,
+  })
+}
+
+export function useMediaSubtitles(workspaceId: string | undefined, jobId: string | undefined) {
+  return useQuery({
+    queryKey: ['media-job-subtitles', workspaceId, jobId],
+    queryFn: () => listMediaJobSubtitlesApi(workspaceId!, jobId!),
+    enabled: Boolean(workspaceId && jobId),
+  })
+}
+
+export function useMediaJobQaIssues(
+  workspaceId: string | undefined,
+  jobId: string | undefined,
+  includeResolved = true,
+) {
+  return useQuery({
+    queryKey: ['media-job-qa-issues', workspaceId, jobId, includeResolved],
+    queryFn: () => listMediaJobQaIssuesApi(workspaceId!, jobId!, includeResolved),
+    enabled: Boolean(workspaceId && jobId),
   })
 }

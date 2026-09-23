@@ -35,14 +35,15 @@ export function BatchDetailPage() {
   const completedJobIds = (data?.documents ?? [])
     .flatMap((d) => d.jobs)
     .filter((j) => String(j.status).toUpperCase() === 'COMPLETED')
-    .map((j) => j.jobId)
+    .map((j) => (j as { id?: string; jobId?: string }).id || (j as { id?: string; jobId?: string }).jobId || '')
+    .filter(Boolean)
 
   const handleDownload = () => {
     setDownloadError(false)
     setSkippedCount(0)
     void download
       .mutateAsync(completedJobIds)
-      .then((res) => {
+      .then((res: { downloadUrl?: string; skipped?: unknown[] }) => {
         if (res.skipped?.length) setSkippedCount(res.skipped.length)
         if (res.downloadUrl) {
           window.open(res.downloadUrl, '_blank', 'noopener,noreferrer')

@@ -100,3 +100,14 @@ export function retryBatchJobApi(
 }
 
 export const retryBatchDocumentApi = retryBatchJobApi
+
+export function downloadBulkJobsApi(
+  workspaceId: string,
+  projectId: string,
+  jobIds: string[],
+) {
+  return apiRequest<{ downloadUrl: string; fileName: string }>(
+    buildWorkspacePath(workspaceId, `/projects/${projectId}/media/jobs/download`),
+    { method: 'POST', body: { jobIds } },
+  )
+}

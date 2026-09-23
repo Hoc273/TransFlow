@@ -4,12 +4,14 @@ import com.app.common.exception.AppException;
 import com.app.common.exception.ErrorCode;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.SubtitleSegment;
+import com.app.modules.media_job.pipeline.MediaPipelineDispatcher;
 import com.app.modules.media_job.service.MediaJobService;
 import com.app.modules.qa.entity.QaIssue;
 import com.app.modules.qa.entity.QaIssueOverride;
 import com.app.modules.qa.repository.QaIssueOverrideRepository;
 import com.app.modules.qa.repository.QaIssueRepository;
 import com.app.modules.qa.service.QaService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,13 +30,24 @@ public class QaServiceImpl implements QaService {
     private final QaIssueRepository qaIssueRepository;
     private final QaIssueOverrideRepository qaIssueOverrideRepository;
     private final MediaJobService mediaJobService;
+    private final MediaPipelineDispatcher mediaPipelineDispatcher;
 
+    @Autowired
     public QaServiceImpl(QaIssueRepository qaIssueRepository,
                           QaIssueOverrideRepository qaIssueOverrideRepository,
-                          MediaJobService mediaJobService) {
+                          MediaJobService mediaJobService,
+                          MediaPipelineDispatcher mediaPipelineDispatcher) {
         this.qaIssueRepository = qaIssueRepository;
         this.qaIssueOverrideRepository = qaIssueOverrideRepository;
         this.mediaJobService = mediaJobService;
+        this.mediaPipelineDispatcher = mediaPipelineDispatcher;
+    }
+
+    /** Compatibility constructor for focused unit tests that do not exercise pipeline resumption. */
+    public QaServiceImpl(QaIssueRepository qaIssueRepository,
+                         QaIssueOverrideRepository qaIssueOverrideRepository,
+                         MediaJobService mediaJobService) {
+        this(qaIssueRepository, qaIssueOverrideRepository, mediaJobService, null);
     }
 
     @Override
@@ -83,6 +96,10 @@ public class QaServiceImpl implements QaService {
         // resolution path when there's no automatic fix) — resolved_at marks it so gates re-check clean.
         issue.setResolvedAt(Instant.now());
         qaIssueRepository.save(issue);
+
+        if (mediaPipelineDispatcher != null) {
+            mediaPipelineDispatcher.dispatchNext(segment.getMediaJobId());
+        }
 
         return override;
     }

@@ -6,10 +6,12 @@ import com.app.modules.batch.service.BatchService;
 import com.app.modules.media_job.callback.service.MediaCallbackService;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
+import com.app.modules.media_job.pipeline.MediaPipelineDispatcher;
 import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.repository.MediaJobStageRepository;
 import com.app.modules.notification.service.NotificationService;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,15 +26,27 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
     private final MediaJobStageRepository mediaJobStageRepository;
     private final NotificationService notification;
     private final BatchService batchService;
+    private final MediaPipelineDispatcher mediaPipelineDispatcher;
 
+    @Autowired
     public MediaCallbackServiceImpl(MediaJobRepository mediaJobRepository,
                                      MediaJobStageRepository mediaJobStageRepository,
                                      NotificationService notification,
-                                     BatchService batchService) {
+                                     BatchService batchService,
+                                     MediaPipelineDispatcher mediaPipelineDispatcher) {
         this.mediaJobRepository = mediaJobRepository;
         this.mediaJobStageRepository = mediaJobStageRepository;
         this.notification = notification;
         this.batchService = batchService;
+        this.mediaPipelineDispatcher = mediaPipelineDispatcher;
+    }
+
+    /** Compatibility constructor for focused unit tests that do not exercise queue dispatch. */
+    public MediaCallbackServiceImpl(MediaJobRepository mediaJobRepository,
+                                    MediaJobStageRepository mediaJobStageRepository,
+                                    NotificationService notification,
+                                    BatchService batchService) {
+        this(mediaJobRepository, mediaJobStageRepository, notification, batchService, null);
     }
 
     @Override
@@ -40,6 +54,10 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
     public void updateProgress(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage, short progressPercent) {
         MediaJob job = requireJobLocked(jobId);
         MediaJobStage stage = requireStage(jobId, stageId, expectedStage);
+
+        if (isTerminal(stage.getStatus()) || stage.getStatus() == MediaJobStage.StageStatus.CANCEL_REQUESTED) {
+            return;
+        }
 
         stage.setProgressPercent(progressPercent);
         if (stage.getStatus() == MediaJobStage.StageStatus.PENDING) {
@@ -60,6 +78,30 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
                                boolean success, JsonNode outputRef, String errorMessage) {
         MediaJob job = requireJobLocked(jobId);
         MediaJobStage stage = requireStage(jobId, stageId, expectedStage);
+
+        MediaJobStage.StageStatus currentStatus = stage.getStatus();
+        if (isTerminal(currentStatus)) {
+            return;
+        }
+
+        if (currentStatus == MediaJobStage.StageStatus.CANCEL_REQUESTED
+                || job.getStatus() == MediaJob.JobStatus.CANCELLED) {
+            stage.setStatus(MediaJobStage.StageStatus.CANCELLED);
+            stage.setCompletedAt(Instant.now());
+            stage.setErrorMessage(null);
+            mediaJobStageRepository.save(stage);
+
+            List<MediaJobStage> stages = mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId);
+            boolean allTerminal = stages.stream().allMatch(this::isTerminal);
+            if (allTerminal) {
+                job.setStatus(MediaJob.JobStatus.CANCELLED);
+                mediaJobRepository.save(job);
+            }
+            if (job.getBatchId() != null) {
+                batchService.recomputeStatus(job.getBatchId());
+            }
+            return;
+        }
 
         stage.setCompletedAt(Instant.now());
         stage.setOutputRef(outputRef != null ? outputRef.toString() : null);
@@ -90,6 +132,21 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
         if (job.getBatchId() != null) {
             batchService.recomputeStatus(job.getBatchId());
         }
+
+        if (success && mediaPipelineDispatcher != null) {
+            mediaPipelineDispatcher.dispatchNext(jobId);
+        }
+    }
+
+    private boolean isTerminal(MediaJobStage stage) {
+        return isTerminal(stage.getStatus());
+    }
+
+    private boolean isTerminal(MediaJobStage.StageStatus status) {
+        return status == MediaJobStage.StageStatus.COMPLETED
+                || status == MediaJobStage.StageStatus.FAILED
+                || status == MediaJobStage.StageStatus.SKIPPED
+                || status == MediaJobStage.StageStatus.CANCELLED;
     }
 
     private MediaJob requireJobLocked(UUID jobId) {
