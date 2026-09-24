@@ -203,6 +203,8 @@
     "emptyTitle": "Chưa có key {{capability}}",
     "emptyDesc": "Thêm key cá nhân để dùng provider riêng cho capability này.",
     "modelRequired": "Base URL và model là bắt buộc",
-    "capabilitiesHelp": "Chọn mọi capability mà endpoint này phục vụ. Một gateway OpenAI-compatible có thể vừa TEXT, VISION, STT và TTS."
+    "capabilitiesHelp": "Chọn mọi capability mà endpoint này phục vụ. Một gateway OpenAI-compatible có thể vừa TEXT, VISION, STT và TTS.",
+    "defaultRequired": "Có nhiều key {{capability}} đang bật nhưng chưa chọn mặc định — job sẽ báo lỗi PROVIDER_DEFAULT_NOT_CONFIGURED. Hãy bấm \"Đặt mặc định\" cho một key.",
+    "defaultNeedsModel": "Cấu hình model trước khi đặt key này làm mặc định."
   }
 }

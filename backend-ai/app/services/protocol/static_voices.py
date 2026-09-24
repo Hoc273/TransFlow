@@ -160,13 +160,24 @@ DEFAULT_PROBE_VOICES: dict[str, str] = {
 }
 
 
+def is_dashscope_omni_model(model: str | None) -> bool:
+    """True when the model can emit audio via chat-completions (Qwen-Omni family).
+
+    Empty model resolves to the adapter default (``qwen-omni-turbo``). Text-only
+    models (``qwen-plus``, ``qwen-max`` …) reject ``modalities=["audio"]`` with
+    a vendor 400, so TTS must fail fast before the request.
+    """
+    m = (model or "").strip().lower()
+    return not m or "omni" in m
+
+
 def voices_for_dashscope_model(model: str | None) -> list[TtsVoice]:
     """Return the STATIC catalog appropriate for a Qwen-Omni model id."""
     m = (model or "").strip().lower()
     if "3.5" in m:
         return list(DASHSCOPE_QWEN35_VOICES)
-    # qwen3-omni-flash* (not 3.5)
-    if "qwen3-omni" in m or "qwen3_omni" in m:
+    # qwen3-omni-flash* and other versioned omni-flash ids (e.g. qwen3.8-omni-flash)
+    if "qwen3-omni" in m or "qwen3_omni" in m or ("omni" in m and "flash" in m):
         return list(DASHSCOPE_FLASH_VOICES)
     if "turbo" in m or not m:
         return list(DASHSCOPE_TURBO_VOICES)

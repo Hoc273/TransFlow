@@ -165,24 +165,44 @@ export function deleteProviderApi(
   })
 }
 
-// ── Default provider: không có backend ───────────────────────────
+// ── Default provider ──────────────────────────────────────────────
+// Không có endpoint /default riêng: PUT `defaultForCapabilities` thay thế toàn bộ
+// capability default của provider này (API_Contract §11). Backend tự chuyển
+// default (user + capability) từ provider cũ sang provider mới, nên chỉ cần đọc
+// danh sách hiện tại rồi thêm/bớt đúng capability.
 
-/** @deprecated No backend endpoint — provider `defaultFor` is set via create/update `defaultForCapabilities`. */
-export function setDefaultProviderApi(
-  _workspaceId: string,
-  _providerId: string,
-  _body: ProviderDefaultRequest,
+async function replaceProviderDefaults(
+  providerId: string,
+  change: (current: ProviderCapability[]) => ProviderCapability[],
 ): Promise<ProviderConfig> {
-  return Promise.reject(new Error('setDefaultProvider is not supported by the backend (API_Contract §11)'))
+  const current = normalizeProvider(
+    await apiRequest<UserAiProviderDto>(`/users/me/providers/${providerId}`),
+  )
+  return updateProviderApi(providerId, {
+    defaultForCapabilities: change(current.defaultFor),
+  })
 }
 
-/** @deprecated No backend endpoint. */
+/** Make this provider the user's default for `capability`. `workspaceId` is ignored. */
+export function setDefaultProviderApi(
+  _workspaceId: string,
+  providerId: string,
+  body: ProviderDefaultRequest,
+): Promise<ProviderConfig> {
+  return replaceProviderDefaults(providerId, (current) =>
+    current.includes(body.capability) ? current : [...current, body.capability],
+  )
+}
+
+/** Clear this provider's default for `capability`. `workspaceId` is ignored. */
 export function unsetDefaultProviderApi(
   _workspaceId: string,
-  _providerId: string,
-  _body: ProviderDefaultRequest,
+  providerId: string,
+  body: ProviderDefaultRequest,
 ): Promise<ProviderConfig> {
-  return Promise.reject(new Error('unsetDefaultProvider is not supported by the backend (API_Contract §11)'))
+  return replaceProviderDefaults(providerId, (current) =>
+    current.filter((capability) => capability !== body.capability),
+  )
 }
 
 // ── Test connection ─────────────────────────────────────────────

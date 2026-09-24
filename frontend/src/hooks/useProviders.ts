@@ -167,7 +167,7 @@ export function useUpdateProvider(_workspaceId?: string | undefined) {
   })
 }
 
-/** @deprecated No backend endpoint — always fails. Kept for compilation. */
+/** Set the current user's default provider for a capability (via PUT defaultForCapabilities). */
 export function useSetDefaultProvider(_workspaceId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
@@ -182,7 +182,7 @@ export function useSetDefaultProvider(_workspaceId: string | undefined) {
   })
 }
 
-/** @deprecated No backend endpoint — always fails. Kept for compilation. */
+/** Clear the current user's default provider for a capability. */
 export function useUnsetDefaultProvider(_workspaceId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({

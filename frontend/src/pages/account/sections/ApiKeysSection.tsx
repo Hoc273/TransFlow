@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import {
+  IconAlertCircle,
+  IconCircleCheck,
   IconEdit,
   IconKey,
   IconLoader2,
@@ -9,6 +11,7 @@ import {
   IconPlus,
   IconRefresh,
   IconRobot,
+  IconStar,
   IconTrash,
 } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
@@ -19,6 +22,7 @@ import {
   useDeleteProvider,
   useProviders,
   useRefreshTtsVoices,
+  useSetDefaultProvider,
   useTestProvider,
   useTtsVoiceLanguages,
   useTtsVoices,
@@ -34,7 +38,7 @@ import type { ProviderCapability, ProviderConfig, ProviderProtocol, TestConnecti
  * Personal BYOK API keys (user-scoped `/users/me/providers`).
  * UI ported from the workspace ProvidersPage, limited to what the user
  * provider backend supports: no presets, display names or 4-phase validation —
- * only CRUD, per-capability test connection and
+ * only CRUD, per-capability default, per-capability test connection and
  * the TTS voice catalog.
  */
 
@@ -150,6 +154,8 @@ export function ApiKeysSection() {
   const deleteProvider = useDeleteProvider()
   const testProvider = useTestProvider()
   const refreshTtsVoices = useRefreshTtsVoices(undefined)
+  const setDefault = useSetDefaultProvider(undefined)
+  const [defaultError, setDefaultError] = useState<string | null>(null)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<ProviderConfig | null>(null)
@@ -252,7 +258,8 @@ export function ApiKeysSection() {
       defaultModel: form.defaultModel.trim(),
       capabilities: form.capabilities,
       enabled: form.enabled,
-      defaultForCapabilities: editing?.defaultFor ?? [],
+      // Keep existing defaults, but never for a capability this key no longer serves.
+      defaultForCapabilities: (editing?.defaultFor ?? []).filter((c) => form.capabilities.includes(c)),
     }
     const onError = (err: unknown) =>
       setFormError(err instanceof ApiError ? err.message : t('common:error.generic'))
@@ -290,6 +297,17 @@ export function ApiKeysSection() {
     )
   }
 
+  const onSetDefault = (p: ProviderConfig, capability: ProviderCapability) => {
+    setDefaultError(null)
+    setDefault.mutate(
+      { providerId: p.id, capability },
+      {
+        onError: (err) =>
+          setDefaultError(err instanceof ApiError ? err.message : t('common:error.generic')),
+      },
+    )
+  }
+
   const onDelete = (p: ProviderConfig) => {
     const msg =
       p.capabilities.length > 1
@@ -322,6 +340,11 @@ export function ApiKeysSection() {
 
   const renderSection = (section: (typeof CAPABILITY_SECTIONS)[number]) => {
     const sectionProviders = providers.filter((p) => p.capabilities.includes(section.capability))
+    const defaultProvider = sectionProviders.find((p) => p.defaultFor?.includes(section.capability))
+    // Mirrors ProviderResolverServiceImpl: >1 active key for a capability without an
+    // explicit default fails the stage with PROVIDER_DEFAULT_NOT_CONFIGURED.
+    const needsDefault =
+      !defaultProvider && sectionProviders.filter((p) => p.enabled).length > 1
 
     return (
       <section key={section.capability} className="mt-8">
@@ -339,6 +362,12 @@ export function ApiKeysSection() {
             {t('account:apiKeys.add')}
           </button>
         </div>
+
+        {needsDefault && (
+          <p role="alert" className="field-error mb-2">
+            {t('account:apiKeys.defaultRequired', { capability: section.capability })}
+          </p>
+        )}
 
         <div className="app-card overflow-hidden">
           {sectionProviders.length === 0 ? (
@@ -363,6 +392,7 @@ export function ApiKeysSection() {
                   <col className="providers-col-name" />
                   <col className="providers-col-model" />
                   <col className="providers-col-capabilities" />
+                  <col className="providers-col-key" />
                   <col className="providers-col-default" />
                   <col className="providers-col-actions" />
                 </colgroup>
@@ -372,17 +402,28 @@ export function ApiKeysSection() {
                     <th>{tp('col.model')}</th>
                     <th>{tp('col.capabilities')}</th>
                     <th>{tp('col.key')}</th>
+                    <th>{tp('col.default')}</th>
                     <th>{tp('col.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sectionProviders.map((p) => {
+                    const isDefault = defaultProvider?.id === p.id
                     const testKey = `${p.id}:${section.capability}`
                     const ts = testState[testKey]
                     const wireCapability = section.capability === 'TEXT' ? 'TRANSLATE' : section.capability
                     const capabilityResult = ts?.result?.capabilityResults?.find(
                       (result) => result.capability === wireCapability,
                     )
+                    const testDone = ts !== undefined && ts.status !== 'testing'
+                    const testOk = capabilityResult ? capabilityResult.success : ts?.status === 'success'
+                    const testMessage = !testDone
+                      ? null
+                      : testOk
+                        ? `${section.capability}: ${tp('testOk')}`
+                        : capabilityResult?.errorCode
+                          ? `${capabilityResult.errorCode}${capabilityResult.message ? ` — ${capabilityResult.message}` : ''}`
+                          : capabilityResult?.message || ts?.message || tp('testFail')
                     return (
                       <tr
                         key={`${section.capability}-${p.id}`}
@@ -411,14 +452,22 @@ export function ApiKeysSection() {
                               {tp('disabled')}
                             </div>
                           )}
+                          {testDone && !testOk && testMessage && (
+                            <div
+                              className="mt-1 line-clamp-2 break-words text-[11px] font-medium text-[var(--color-error)]"
+                              title={testMessage}
+                            >
+                              {testMessage}
+                            </div>
+                          )}
                         </td>
-                        <td className="font-mono text-xs">
+                        <td className="text-center font-mono text-xs">
                           <span className="block truncate" title={p.defaultModel}>
                             {p.defaultModel || '—'}
                           </span>
                         </td>
                         <td>
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap justify-center gap-1">
                             {p.capabilities.map((c) => (
                               <span key={c} className="role-pill text-[10px]">
                                 {c}
@@ -426,12 +475,42 @@ export function ApiKeysSection() {
                             ))}
                           </div>
                         </td>
-                        <td className="font-mono text-xs text-[var(--color-text-secondary)]">
+                        <td className="text-center font-mono text-xs text-[var(--color-text-secondary)]">
                           {p.apiKeyHint ?? '••••'}
                         </td>
+                        <td className="text-center">
+                          {isDefault ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)]">
+                              <IconStar size={14} />
+                              {tp('default')}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-ghost-sm whitespace-nowrap"
+                              disabled={setDefault.isPending || !p.enabled || !p.defaultModel}
+                              title={
+                                !p.enabled
+                                  ? tp('disabled')
+                                  : !p.defaultModel
+                                    ? t('account:apiKeys.defaultNeedsModel')
+                                    : undefined
+                              }
+                              onClick={() => onSetDefault(p, section.capability)}
+                            >
+                              {setDefault.isPending &&
+                              setDefault.variables?.providerId === p.id &&
+                              setDefault.variables?.capability === section.capability ? (
+                                <IconLoader2 size={14} className="animate-spin" />
+                              ) : (
+                                tp('setDefault')
+                              )}
+                            </button>
+                          )}
+                        </td>
                         <td>
-                          <div className="flex flex-wrap items-center gap-1">
-                            <div className="flex items-center gap-1.5">
+                          <div className="flex items-center justify-center gap-1">
+                            <div className="flex items-center gap-1">
                               <button
                                 type="button"
                                 className="btn-secondary btn-sm"
@@ -445,11 +524,13 @@ export function ApiKeysSection() {
                                   <IconPlugConnected size={14} />
                                 )}
                               </button>
-                              {ts?.status !== 'testing' && capabilityResult && (
-                                <span className={`max-w-[180px] truncate text-[11px] font-medium ${capabilityResult.success ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]'}`}>
-                                  {capabilityResult.success
-                                    ? `${section.capability}: ${tp('testOk')}`
-                                    : `${section.capability}: ${capabilityResult.errorCode ? `${capabilityResult.errorCode}${capabilityResult.message ? ` — ${capabilityResult.message}` : ''}` : capabilityResult.message || tp('testFail')}`}
+                              {testDone && testMessage && (
+                                <span
+                                  className={`inline-flex shrink-0 ${testOk ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]'}`}
+                                  title={testMessage}
+                                  aria-label={testMessage}
+                                >
+                                  {testOk ? <IconCircleCheck size={16} /> : <IconAlertCircle size={16} />}
                                 </span>
                               )}
                             </div>
@@ -522,6 +603,12 @@ export function ApiKeysSection() {
             {t('common:retry')}
           </button>
         </EmptyState>
+      )}
+
+      {defaultError && (
+        <p role="alert" className="field-error mt-4">
+          {defaultError}
+        </p>
       )}
 
       {!isLoading && !isError && CAPABILITY_SECTIONS.map(renderSection)}

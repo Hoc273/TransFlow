@@ -29,7 +29,10 @@ from app.api.structured import parse_json_object
 from app.schemas.contract import ProviderPayload, SttSegment, Usage
 from app.services.protocol.adapter import ProtocolAdapter
 from app.services.protocol.http_utils import join_url, openai_models_path, raise_for_http_status
-from app.services.protocol.static_voices import voices_for_dashscope_model
+from app.services.protocol.static_voices import (
+    is_dashscope_omni_model,
+    voices_for_dashscope_model,
+)
 from app.services.protocol.types import (
     AudioInput,
     AudioInputType,
@@ -846,6 +849,16 @@ class DashScopeNativeAdapter(ProtocolAdapter):
     ) -> SynthesizeResult:
         self.require_provider_capability(provider, Capability.TTS)
         model = provider.model or _DEFAULT_OMNI_MODEL
+        if not is_dashscope_omni_model(model):
+            # Text-only Qwen models cannot emit audio; fail fast instead of a vendor 400.
+            raise ProviderValidation(
+                f"DashScope model '{model}' does not support audio output; "
+                "configure a Qwen-Omni model (e.g. qwen-omni-turbo) for TTS",
+                code=ProviderErrorCode.PROVIDER_UNSUPPORTED_MODEL,
+                provider=provider.base_url,
+                protocol=provider.protocol,
+                capability="TTS",
+            )
         url = join_url(provider.base_url, "/chat/completions")
         payload = {
             "model": model,

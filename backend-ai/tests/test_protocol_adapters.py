@@ -760,6 +760,31 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
             ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
         self.assertIn("no usable timed segments", str(ctx.exception))
 
+    async def test_synthesize_rejects_text_only_model_before_request(self):
+        with patch("app.services.protocol.dashscope_native.httpx.AsyncClient") as client_cls:
+            with self.assertRaises(ProviderValidation) as ctx:
+                await DashScopeNativeAdapter().synthesize(
+                    _provider("dashscope_native", "qwen-plus"),
+                    "Xin chao",
+                    "Serena",
+                )
+        client_cls.assert_not_called()
+        self.assertEqual(ProviderErrorCode.PROVIDER_UNSUPPORTED_MODEL, ctx.exception.code)
+        self.assertIn("qwen-plus", str(ctx.exception))
+
+    def test_voice_catalog_matches_versioned_omni_flash(self):
+        from app.services.protocol.static_voices import (
+            DASHSCOPE_FLASH_VOICES,
+            DASHSCOPE_QWEN35_VOICES,
+            DASHSCOPE_TURBO_VOICES,
+            voices_for_dashscope_model,
+        )
+
+        self.assertEqual(DASHSCOPE_FLASH_VOICES, voices_for_dashscope_model("qwen3.8-omni-flash"))
+        self.assertEqual(DASHSCOPE_FLASH_VOICES, voices_for_dashscope_model("qwen3-omni-flash"))
+        self.assertEqual(DASHSCOPE_QWEN35_VOICES, voices_for_dashscope_model("qwen3.5-omni-flash"))
+        self.assertEqual(DASHSCOPE_TURBO_VOICES, voices_for_dashscope_model("qwen-omni-turbo"))
+
     async def test_synthesize_rejects_conversational_audio_text(self):
         audio = base64.b64encode(b"AAAA").decode()
         lines = [
