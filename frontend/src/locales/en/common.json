@@ -42,7 +42,9 @@
     "save": "Save",
     "saving": "Saving…",
     "remove": "Remove",
-    "close": "Close"
+    "close": "Close",
+    "learnMore": "Learn more",
+    "collapse": "Collapse"
   },
   "error": {
     "generic": "Something went wrong",

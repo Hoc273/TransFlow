@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconLoader2, IconMicrophone2, IconPlayerPlay } from '@tabler/icons-react'
+import {
+  IconAlertTriangle,
+  IconLoader2,
+  IconMicrophone2,
+  IconPlayerPlay,
+  IconVolume,
+} from '@tabler/icons-react'
 import { useTtsVoices, useVoicePreview } from '@/hooks/useProviders'
 import {
   filterCompatibleActiveVoices,
@@ -105,6 +111,8 @@ export function VoiceSelector({
   // C2 UX: inline (create form) preview — plays the selected voice through
   // the workspace preview endpoint; never part of the create payload.
   const preview = useVoicePreview(workspaceId)
+  const audioSourceName = useId()
+  const providerSelectRef = useRef<HTMLSelectElement>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
 
   const selectableProviders = useMemo(
@@ -235,6 +243,21 @@ export function VoiceSelector({
     onChangeRef.current({ providerId: null, voiceId: null })
   }
 
+  const chooseOriginal = () => {
+    handleOriginal()
+    onOriginalChange?.(true)
+  }
+
+  // Back to AI dubbing: with autoSelect (Create) pre-pick the first provider so
+  // the user lands on a ready-to-submit pair instead of two empty selects.
+  const chooseTts = () => {
+    setKeepOriginal(false)
+    onOriginalChange?.(false)
+    if (autoSelect && providerId == null && pendingProviderId == null && selectableProviders[0]) {
+      handleProviderChange(selectableProviders[0].id)
+    }
+  }
+
   const noProviders = selectableProviders.length === 0
   const loading = Boolean(activeProviderId && voicesQuery.isPending)
   const noCompatible = !loading && !noProviders && providerId != null && compatibleVoices.length === 0
@@ -257,8 +280,51 @@ export function VoiceSelector({
   }
 
 
+  const activeProvider = selectableProviders.find((p) => p.id === providerId) ?? null
+  const showTtsControls = !(allowOriginal && keepOriginal)
+
   return (
-    <div className="space-y-2" data-testid="voice-selector">
+    <div className="space-y-2.5" data-testid="voice-selector">
+      {allowOriginal && (
+        <div className="audio-source-seg" role="radiogroup" aria-label={t('media:voice.sourceLabel')}>
+          <label className={cn('audio-source-option', !keepOriginal && 'active')}>
+            <input
+              type="radio"
+              name={audioSourceName}
+              data-testid="voice-use-tts"
+              checked={!keepOriginal}
+              disabled={disabled}
+              onChange={chooseTts}
+            />
+            <span className="audio-source-option__icon" aria-hidden>
+              <IconMicrophone2 size={16} />
+            </span>
+            <span className="min-w-0">
+              <strong>{t('media:voice.modeTts')}</strong>
+              <small>{t('media:voice.modeTtsHint')}</small>
+            </span>
+          </label>
+          <label className={cn('audio-source-option', keepOriginal && 'active')}>
+            <input
+              type="radio"
+              name={audioSourceName}
+              data-testid="voice-keep-original"
+              checked={keepOriginal}
+              disabled={disabled}
+              onChange={chooseOriginal}
+            />
+            <span className="audio-source-option__icon" aria-hidden>
+              <IconVolume size={16} />
+            </span>
+            <span className="min-w-0">
+              <strong>{t('media:voice.original')}</strong>
+              <small>{t('media:voice.originalHint')}</small>
+            </span>
+          </label>
+        </div>
+      )}
+
+      {showTtsControls && (
       <div
         className={cn(
           'grid gap-3 items-end',
@@ -275,6 +341,7 @@ export function VoiceSelector({
               {t('media:voice.providerLabel')}
             </span>
             <select
+              ref={providerSelectRef}
               className="field-input mt-1 w-full"
               data-testid="voice-provider-select"
               value={providerId ?? ''}
@@ -344,6 +411,7 @@ export function VoiceSelector({
           </div>
         )}
       </div>
+      )}
 
       {boundProviderMissing && (
         <p className="field-error m-0" data-testid="voice-bound-provider-missing">
@@ -357,39 +425,49 @@ export function VoiceSelector({
         </p>
       ) : null}
 
-      {noCompatible && (
-        <p className="field-error m-0" data-testid="voice-no-compatible">
-          {t('media:voice.emptyCompat')}
-        </p>
+      {noCompatible && showTtsControls && (
+        <div className="voice-callout" role="alert" data-testid="voice-no-compatible">
+          <IconAlertTriangle size={16} className="voice-callout__icon" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <strong>
+              {t('media:voice.noCompatTitle', {
+                provider: activeProvider
+                  ? providerDisplayName(activeProvider, t) ?? activeProvider.displayName
+                  : '',
+              })}
+            </strong>
+            <p>{t('media:voice.emptyCompat')}</p>
+            <div className="voice-callout__actions">
+              {selectableProviders.length > 1 && (
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  disabled={disabled}
+                  onClick={() => providerSelectRef.current?.focus()}
+                >
+                  {t('media:voice.changeProvider')}
+                </button>
+              )}
+              {allowOriginal && (
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  data-testid="voice-callout-original"
+                  disabled={disabled}
+                  onClick={chooseOriginal}
+                >
+                  {t('media:voice.useOriginal')}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {previewError && (
         <p className="field-error m-0" data-testid="voice-preview-error">
           {previewError}
         </p>
-      )}
-
-      {allowOriginal && (
-        <label className="audio-original-toggle">
-          <input
-            type="checkbox"
-            data-testid="voice-keep-original"
-            checked={keepOriginal}
-            disabled={disabled}
-            onChange={(event) => {
-              if (event.target.checked) {
-                handleOriginal()
-              } else {
-                setKeepOriginal(false)
-              }
-              onOriginalChange?.(event.target.checked)
-            }}
-          />
-          <span>
-            <strong>{t('media:voice.original')}</strong>
-            <small>{t('media:voice.originalHint')}</small>
-          </span>
-        </label>
       )}
     </div>
   )

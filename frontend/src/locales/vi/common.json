@@ -3,7 +3,7 @@
   "or": "hoặc",
   "loading": "Đang tải…",
   "retry": "Thử lại",
-  "refresh": "Cập nhật",
+  "refresh": "Làm mới",
   "previous": "Trước",
   "next": "Sau",
   "comingSoon": "Sắp ra mắt",
@@ -42,7 +42,9 @@
     "save": "Lưu",
     "saving": "Đang lưu…",
     "remove": "Xóa",
-    "close": "Đóng"
+    "close": "Đóng",
+    "learnMore": "Tìm hiểu thêm",
+    "collapse": "Thu gọn"
   },
   "error": {
     "generic": "Đã xảy ra lỗi",

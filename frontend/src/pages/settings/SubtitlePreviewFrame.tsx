@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconMoon,
@@ -94,6 +94,13 @@ export type SubtitlePreviewFrameProps = {
   /** Local calibration media (object URL) — never persisted, memory-only. */
   backgroundUrl?: string | null
   backgroundKind?: 'video' | 'image'
+  /**
+   * When false the aspect is chosen elsewhere (preset editor General tab):
+   * the frame only shows a read-only badge of the current aspect.
+   */
+  showAspectSelector?: boolean
+  /** Extra controls rendered in the preview header (e.g. calibration upload). */
+  headerExtra?: ReactNode
 }
 
 const ASPECTS: PreviewAspect[] = ['16:9', '9:16', '4:3', '1:1']
@@ -256,6 +263,8 @@ export function SubtitlePreviewFrame({
   onSelectedLayerChange,
   backgroundUrl,
   backgroundKind = 'video',
+  showAspectSelector = true,
+  headerExtra,
 }: SubtitlePreviewFrameProps) {
   const { t } = useTranslation('media')
   const [internalAspect, setInternalAspect] = useState<PreviewAspect>('16:9')
@@ -372,6 +381,16 @@ export function SubtitlePreviewFrame({
           >
             {canvasTheme === 'light' ? <IconMoon size={13} /> : <IconSun size={13} />}
           </button>
+          {headerExtra}
+          {!showAspectSelector && (
+            <span
+              className="rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-secondary)]"
+              data-testid="preset-preview-aspect-label"
+            >
+              {selected === 'ORIGINAL' ? t('media:renderPrep.aspectOriginal') : selected}
+            </span>
+          )}
+          {showAspectSelector && (
           <div
             className="flex rounded-lg border border-[var(--color-border)] p-0.5 text-[11px]"
             role="group"
@@ -394,6 +413,7 @@ export function SubtitlePreviewFrame({
               </button>
             ))}
           </div>
+          )}
         </div>
       </div>
 
@@ -575,11 +595,13 @@ export function SubtitlePreviewFrame({
         </p>
       )}
 
-      <p className="m-0 text-[11px] text-[var(--color-text-tertiary)]">
-        {controlled
-          ? t('media:workflowPresetAdmin.previewAspectReal')
-          : t('media:workflowPresetAdmin.previewNote')}
-      </p>
+      {showAspectSelector && (
+        <p className="m-0 text-[11px] text-[var(--color-text-tertiary)]">
+          {controlled
+            ? t('media:workflowPresetAdmin.previewAspectReal')
+            : t('media:workflowPresetAdmin.previewNote')}
+        </p>
+      )}
       {(onSubtitlePlacementChange || onLayerAnchorChange || onLayerPositionChange) && (
         <p className="m-0 text-[11px] text-[var(--color-text-tertiary)]">
           {t('media:renderPrep.previewDragHint')}

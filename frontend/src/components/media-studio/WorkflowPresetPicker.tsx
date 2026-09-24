@@ -8,7 +8,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconClipboardCheck, IconExternalLink } from '@tabler/icons-react'
+import { IconClipboardCheck, IconExternalLink, IconRefresh } from '@tabler/icons-react'
 import { useWorkflowPresets } from '@/hooks/useWorkflowPresets'
 import type {
   SubtitleDisplayMode,
@@ -96,6 +96,26 @@ export function WorkflowPresetPicker({
   const { t } = useTranslation(['media', 'common'])
   const presets = useWorkflowPresets(workspaceId, projectId)
 
+  // B3: refetch presets when window regains focus or visibility becomes visible.
+  useEffect(() => {
+    const handleFocus = () => {
+      if (typeof presets.refetch === 'function') {
+        void presets.refetch()
+      }
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && typeof presets.refetch === 'function') {
+        void presets.refetch()
+      }
+    }
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [presets.refetch])
+
   // BLOCKER M-C-02 fix (fail-closed): a selected preset that can no longer be
   // verified — deactivated/deleted after a refresh, or the list failed to load
   // — is cleared from state so a stale/fabricated id can never reach the create
@@ -147,16 +167,29 @@ export function WorkflowPresetPicker({
             {t('media:workflowPreset.label')}
           </span>
         </label>
-        <a
-          href={`/w/${workspaceId}/media/presets`}
-          className="inline-flex items-center gap-1 text-[11px] text-[var(--color-media)] hover:underline"
-          target="_blank"
-          rel="noreferrer"
-          data-testid="preset-manage-link"
-        >
-          <span>{t('media:workflowPreset.managePresets')}</span>
-          <IconExternalLink size={11} />
-        </a>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="btn-ghost btn-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+            title={t('common:refresh', { defaultValue: 'Làm mới' })}
+            aria-label={t('common:refresh', { defaultValue: 'Làm mới' })}
+            data-testid="preset-refresh-btn"
+            disabled={presets.isPending || presets.isFetching}
+            onClick={() => void presets.refetch()}
+          >
+            <IconRefresh size={13} className={presets.isFetching ? 'animate-spin' : ''} />
+          </button>
+          <a
+            href={`/w/${workspaceId}/media/presets`}
+            className="inline-flex items-center gap-1 text-[11px] text-[var(--color-media)] hover:underline"
+            target="_blank"
+            rel="noreferrer"
+            data-testid="preset-manage-link"
+          >
+            <span>{t('media:workflowPreset.managePresets')}</span>
+            <IconExternalLink size={11} />
+          </a>
+        </div>
       </div>
       <select
         className="field-input"

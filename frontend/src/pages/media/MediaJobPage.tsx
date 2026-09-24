@@ -414,7 +414,7 @@ export function MediaJobPage() {
                 disabled={overrideLang.isPending}
                 onClick={() => setConfirmLangChange(false)}
               >
-                {t('common:cancel')}
+                {t('common:actions.cancel')}
               </button>
               <button
                 type="button"

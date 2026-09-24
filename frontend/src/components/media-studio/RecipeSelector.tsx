@@ -54,7 +54,6 @@ export function RecipeSelector({
     >
       {recipes.map((recipe) => {
         const Icon = recipe.icon
-        const isGenerative = recipe.id === 'summary.generative'
         const isSelected = value === recipe.id
         return (
           <button
@@ -82,30 +81,10 @@ export function RecipeSelector({
                   {recipe.title}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    'media-recipe-badge',
-                    isGenerative ? 'generative' : 'localization',
-                  )}
-                >
-                  {isGenerative ? (
-                    <span className="inline-flex items-center gap-1">
-                      <IconSparkles size={11} stroke={2} />
-                      <span>AI Tóm tắt</span>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1">
-                      <IconLanguage size={11} stroke={2} />
-                      <span>Toàn bộ</span>
-                    </span>
-                  )}
-                </span>
-                <span
-                  className={cn('media-recipe-radio', isSelected && 'active')}
-                  aria-hidden="true"
-                />
-              </div>
+              <span
+                className={cn('media-recipe-radio', isSelected && 'active')}
+                aria-hidden="true"
+              />
             </div>
 
             <div className="text-xs text-[var(--color-text-secondary)] leading-relaxed">

@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 import {
-  IconClipboardCheck,
   IconEdit,
+  IconInfoCircle,
   IconLoader2,
   IconMicrophone2,
-  IconPhotoUp,
+  IconMovie,
   IconPlus,
+  IconSearch,
   IconStar,
+  IconStarFilled,
   IconTrash,
   IconVideo,
   IconX,
@@ -27,6 +29,8 @@ import {
 import { SubtitlePreviewFrame } from '@/pages/settings/SubtitlePreviewFrame'
 import { defaultCoverLayer, hydrateCoverState } from '@/lib/media/coverLayers'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+import { cn } from '@/lib/cn'
+import { usePinnedPresets, visiblePresets } from '@/lib/media/presetPins'
 import { usePermission } from '@/hooks/usePermission'
 import { useProjects } from '@/hooks/useProjects'
 import { useProviders, useTtsVoiceLanguages, useTtsVoices } from '@/hooks/useProviders'
@@ -241,18 +245,33 @@ function buildConfig(form: FormState): WorkflowPresetConfig {
 function PresetFormModal({
   preset,
   workspaceId,
+  initialScope,
+  initialProjectId,
   onClose,
 }: {
   preset: WorkflowPreset | null
   workspaceId: string
+  /** Create only: scope/project pre-selected by the column the user started from. */
+  initialScope?: WorkflowPresetScope
+  initialProjectId?: string
   onClose: () => void
 }) {
   const { t } = useTranslation(['media', 'common'])
-  const create = useCreateWorkflowPreset(workspaceId, preset?.projectId ?? undefined)
-  const update = useUpdateWorkflowPreset(workspaceId, preset?.projectId ?? undefined)
   const [form, setForm] = useState<FormState>(() =>
-    preset ? hydrateForm(preset) : emptyForm(),
+    preset
+      ? hydrateForm(preset)
+      : {
+          ...emptyForm(),
+          ...(initialScope ? { scope: initialScope } : {}),
+          ...(initialScope === 'PROJECT' && initialProjectId ? { projectId: initialProjectId } : {}),
+        },
   )
+  // Invalidate the project-scoped list too when creating a PROJECT preset.
+  const create = useCreateWorkflowPreset(
+    workspaceId,
+    form.scope === 'PROJECT' && form.projectId ? form.projectId : undefined,
+  )
+  const update = useUpdateWorkflowPreset(workspaceId, preset?.projectId ?? undefined)
   const [selectedCoverLayerId, setSelectedCoverLayerId] = useState<string | null>(
     form.coverLayers[0]?.id ?? null,
   )
@@ -299,6 +318,7 @@ function PresetFormModal({
     form.providerId.trim() || undefined,
   )
   const [voiceLanguageFilter, setVoiceLanguageFilter] = useState('')
+
   const selectableVoices = useMemo(
     () =>
       voiceLanguageFilter
@@ -314,12 +334,35 @@ function PresetFormModal({
     Boolean(form.providerId.trim()) !== Boolean(form.voiceId.trim())
   const charactersInvalid =
     form.displayMode === 'CHARACTERS' && !isMaxCharactersPerCueValid(form.maxCharactersPerCue)
+  const nameInvalid = form.name.trim().length === 0
+  const projectInvalid = form.scope === 'PROJECT' && form.projectId.trim().length === 0
   const canSave =
-    form.name.trim().length > 0
+    !nameInvalid
     && !halfPair
     && !charactersInvalid
-    && (form.scope !== 'PROJECT' || form.projectId.trim().length > 0)
+    && !projectInvalid
     && !pending
+
+  // --- Tab layout: general / subtitle / mask / audio+voice ---
+  type PresetTab = 'general' | 'subtitle' | 'mask' | 'audio'
+  const [activeTab, setActiveTab] = useState<PresetTab>('general')
+  const [submitAttempted, setSubmitAttempted] = useState(false)
+  const tabErrors: Record<PresetTab, boolean> = {
+    general: nameInvalid || projectInvalid,
+    subtitle: charactersInvalid,
+    mask: false,
+    audio: halfPair,
+  }
+  const firstErrorTab = (['general', 'subtitle', 'mask', 'audio'] as PresetTab[])
+    .find((tab) => tabErrors[tab]) ?? null
+  // Subtitle / mask are the only tabs with something to see in the frame.
+  const showPreview = activeTab === 'subtitle' || activeTab === 'mask'
+  const TABS: { key: PresetTab; labelKey: string; testid: string }[] = [
+    { key: 'general', labelKey: 'tabGeneral', testid: 'preset-form-tab-general' },
+    { key: 'subtitle', labelKey: 'tabSubtitle', testid: 'preset-form-tab-subtitle' },
+    { key: 'mask', labelKey: 'tabMask', testid: 'preset-form-tab-mask' },
+    { key: 'audio', labelKey: 'tabAudio', testid: 'preset-form-tab-audio' },
+  ]
 
   const fail = (e: unknown) => {
     if (e instanceof ApiError && e.code === 'WORKFLOW_PRESET_DEFAULT_CONFLICT') {
@@ -330,7 +373,12 @@ function PresetFormModal({
   }
 
   const submit = async () => {
-    if (!canSave) return
+    if (!canSave) {
+      // Jump to the first tab containing an error so the user sees what to fix.
+      setSubmitAttempted(true)
+      if (firstErrorTab) setActiveTab(firstErrorTab)
+      return
+    }
     setError(null)
     const body = {
       scope: form.scope,
@@ -365,117 +413,237 @@ function PresetFormModal({
       }
       description={t('media:workflowPresetAdmin.formHint')}
       size="xl"
+      className="preset-form-modal"
       footer={
         <>
           <button type="button" className="btn-secondary" onClick={onClose} disabled={pending}>
-            {t('common:cancel')}
+            {t('common:actions.cancel')}
           </button>
           <button
             type="button"
             className="btn-primary"
             data-testid="preset-form-save"
-            disabled={!canSave}
+            disabled={pending}
             onClick={() => void submit()}
           >
             {pending && <IconLoader2 size={16} className="animate-spin" />}
-            {preset ? t('common:save') : t('media:workflowPresetAdmin.create')}
+            {preset ? t('common:actions.save') : t('media:workflowPresetAdmin.create')}
           </button>
         </>
       }
     >
       <div
-        className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_480px]"
+        className={cn('preset-form-grid grid gap-4', showPreview && 'lg:grid-cols-[minmax(0,1fr)_480px]')}
         data-testid="preset-form"
       >
-        <div className="min-w-0 space-y-4 lg:order-1">
+        <div className="preset-form-main min-w-0 lg:order-1">
           {error && (
             <div role="alert" className="field-error m-0">
               {error}
             </div>
           )}
 
+        {/* Tab bar — stays put; only the tab content below it scrolls */}
+        <div
+          className="preset-form-tabs flex items-center gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-1"
+          role="tablist"
+          aria-label={t('media:workflowPresetAdmin.createTitle')}
+        >
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.key}
+              data-testid={tab.testid}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                activeTab === tab.key
+                  ? 'bg-[var(--color-bg-surface)] text-[var(--color-accent)] shadow-xs'
+                  : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+              }`}
+            >
+              {t(`media:workflowPresetAdmin.${tab.labelKey}`)}
+              {submitAttempted && tabErrors[tab.key] && (
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-[var(--color-error)]"
+                  aria-hidden
+                />
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="preset-form-scroll" data-testid="preset-form-scroll">
+        {activeTab === 'general' && (
+        <div className="space-y-5" role="tabpanel">
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="field-label">
-            <span>{t('media:workflowPresetAdmin.name')}</span>
+            <span>
+              {t('media:workflowPresetAdmin.name')}{' '}
+              <span className="text-[var(--color-error)]" aria-hidden>*</span>
+            </span>
             <input
               className="field-input"
+              aria-label={t('media:workflowPresetAdmin.name')}
+              aria-required
               value={form.name}
               maxLength={200}
+              placeholder={t('media:workflowPresetAdmin.namePlaceholder')}
               onChange={(e) => set('name', e.target.value)}
             />
+            {submitAttempted && nameInvalid && (
+              <p className="field-error m-0">{t('media:workflowPresetAdmin.nameRequired')}</p>
+            )}
           </label>
-          <label className="field-label">
-            <span>{t('media:workflowPresetAdmin.scope')}</span>
-            <select
-              className="field-input"
-              value={form.scope}
-              disabled={Boolean(preset)}
-              onChange={(e) => set('scope', e.target.value as WorkflowPresetScope)}
-            >
-              <option value="WORKSPACE">{t('media:workflowPreset.scopeWorkspace')}</option>
-              <option value="PROJECT">{t('media:workflowPreset.scopeProject')}</option>
-            </select>
-          </label>
-          {form.scope === 'PROJECT' && (
-            <label className="field-label">
-              <span>{t('media:workflowPresetAdmin.project')}</span>
-              <select
-                className="field-input"
-                value={form.projectId}
-                disabled={Boolean(preset)}
-                onChange={(e) => set('projectId', e.target.value)}
-              >
-                <option value="">{t('media:workflowPresetAdmin.selectProject')}</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
           <label className="field-label">
             <span>{t('media:workflowPresetAdmin.description')}</span>
             <input
               className="field-input"
               value={form.description}
               maxLength={4000}
+              placeholder={t('media:workflowPresetAdmin.descriptionPlaceholder')}
               onChange={(e) => set('description', e.target.value)}
             />
           </label>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 text-sm">
-          <label className="flex items-center gap-2">
+        <fieldset className="preset-field">
+          <legend>{t('media:workflowPresetAdmin.scopeLegend')}</legend>
+          <div className="preset-choice-grid" role="radiogroup">
+            <label className={cn('preset-choice', form.scope === 'WORKSPACE' && 'active')}>
+              <input
+                type="radio"
+                name="preset-scope"
+                value="WORKSPACE"
+                checked={form.scope === 'WORKSPACE'}
+                disabled={Boolean(preset)}
+                onChange={() => set('scope', 'WORKSPACE')}
+              />
+              <span className="preset-choice__title">{t('media:workflowPreset.scopeWorkspace')}</span>
+              <span className="preset-choice__desc">{t('media:workflowPresetAdmin.scopeWorkspaceHint')}</span>
+            </label>
+            <label className={cn('preset-choice', form.scope === 'PROJECT' && 'active')}>
+              <input
+                type="radio"
+                name="preset-scope"
+                value="PROJECT"
+                checked={form.scope === 'PROJECT'}
+                disabled={Boolean(preset)}
+                onChange={() => set('scope', 'PROJECT')}
+              />
+              <span className="preset-choice__title">{t('media:workflowPreset.scopeProject')}</span>
+              <span className="preset-choice__desc">{t('media:workflowPresetAdmin.scopeProjectHint')}</span>
+              {form.scope === 'PROJECT' && (
+                <select
+                  className="field-input mt-2"
+                  aria-label={t('media:workflowPresetAdmin.project')}
+                  value={form.projectId}
+                  disabled={Boolean(preset)}
+                  onChange={(e) => set('projectId', e.target.value)}
+                >
+                  <option value="">{t('media:workflowPresetAdmin.selectProject')}</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {form.scope === 'PROJECT' && submitAttempted && projectInvalid && (
+                <p className="field-error m-0 mt-1">{t('media:workflowPresetAdmin.projectRequired')}</p>
+              )}
+            </label>
+          </div>
+          <p className="preset-field__note">{t('media:workflowPresetAdmin.systemScopeNote')}</p>
+        </fieldset>
+
+        <fieldset className="preset-field">
+          <legend>{t('media:workflowPresetAdmin.workflowLegend')}</legend>
+          <div className="preset-choice-grid" role="radiogroup">
+            {(['AUTO', 'MANUAL'] as const).map((mode) => (
+              <label key={mode} className={cn('preset-choice', form.workflowMode === mode && 'active')}>
+                <input
+                  type="radio"
+                  name="preset-workflow-mode"
+                  value={mode}
+                  checked={form.workflowMode === mode}
+                  onChange={() => set('workflowMode', mode as WorkflowMode)}
+                />
+                <span className="preset-choice__title">
+                  {t(mode === 'AUTO' ? 'media:workflow.auto' : 'media:workflow.manual')}
+                </span>
+                <span className="preset-choice__desc">
+                  {t(mode === 'AUTO' ? 'media:createForm.autoDesc' : 'media:createForm.manualDesc')}
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset className="preset-field">
+          <legend>{t('media:workflowPresetAdmin.aspectLegend')}</legend>
+          <div className="preset-aspect-options" role="radiogroup">
+            {(['ORIGINAL', '16:9', '9:16', '4:3', '1:1'] as const).map((aspect) => (
+              <button
+                key={aspect}
+                type="button"
+                role="radio"
+                aria-checked={form.outputAspectRatio === aspect}
+                data-testid={`preset-aspect-option-${aspect.replace(':', 'x')}`}
+                className={cn('preset-aspect-option', form.outputAspectRatio === aspect && 'active')}
+                onClick={() => set('outputAspectRatio', aspect)}
+              >
+                <span
+                  className="preset-aspect-option__shape"
+                  data-shape={aspect.replace(':', 'x')}
+                  aria-hidden
+                />
+                <span>{aspect === 'ORIGINAL' ? t('media:workflowPresetAdmin.aspectKeep') : aspect}</span>
+              </button>
+            ))}
+          </div>
+          <p className="preset-field__note">{t('media:workflowPresetAdmin.aspectNote')}</p>
+        </fieldset>
+
+        <div className="preset-toggles">
+          <label className="preset-toggle">
             <input
               type="checkbox"
               checked={form.active}
               onChange={(e) => set('active', e.target.checked)}
             />
-            {t('media:workflowPresetAdmin.active')}
+            <span>
+              <strong>{t('media:workflowPresetAdmin.active')}</strong>
+              <small>{t('media:workflowPresetAdmin.activeHint')}</small>
+            </span>
           </label>
-          <label className="flex items-center gap-2">
+          <label className="preset-toggle">
             <input
               type="checkbox"
               checked={form.isDefault}
               onChange={(e) => set('isDefault', e.target.checked)}
             />
-            {t('media:workflowPresetAdmin.isDefault')}
+            <span>
+              <strong>{t('media:workflowPresetAdmin.isDefault')}</strong>
+              <small>
+                {form.scope === 'PROJECT'
+                  ? t('media:workflowPresetAdmin.isDefaultHintProject', {
+                      project:
+                        projects.find((p) => p.id === form.projectId)?.name
+                        ?? t('media:workflowPresetAdmin.thisProject'),
+                    })
+                  : t('media:workflowPresetAdmin.isDefaultHintWorkspace')}
+              </small>
+            </span>
           </label>
         </div>
+        </div>
+        )}
 
+        {activeTab === 'subtitle' && (
+        <div className="space-y-4" role="tabpanel">
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="field-label">
-            <span>{t('media:workflow.modeLabel')}</span>
-            <select
-              className="field-input"
-              value={form.workflowMode}
-              onChange={(e) => set('workflowMode', e.target.value as WorkflowMode)}
-            >
-              <option value="AUTO">{t('media:workflow.auto')}</option>
-              <option value="MANUAL">{t('media:workflow.manual')}</option>
-            </select>
-          </label>
           <label className="field-label">
             <span>{t('media:subtitleModeLabel')}</span>
             <select
@@ -671,7 +839,11 @@ function PresetFormModal({
             </div>
           </div>
         </div>
+        </div>
+        )}
 
+        {activeTab === 'mask' && (
+        <div className="space-y-4" role="tabpanel">
         <div className="media-config-group" data-testid="preset-mask-layer-panel">
           <div className="text-[12.5px] font-semibold text-[var(--color-text-primary)]">
             {t('media:renderPrep.maskLayerTitle')}
@@ -699,7 +871,11 @@ function PresetFormModal({
             <p className="field-help mt-3 mb-0">{t('media:renderPrep.softSubCoverWarning')}</p>
           )}
         </div>
+        </div>
+        )}
 
+        {activeTab === 'audio' && (
+        <div className="space-y-4" role="tabpanel">
         <div className="media-config-group">
           <div className="text-[12.5px] font-semibold text-[var(--color-text-primary)]">
             {t('media:renderPrep.audioTitle')}
@@ -806,44 +982,16 @@ function PresetFormModal({
             </p>
           )}
         </div>
+        </div>
+        )}
+        </div>
       </div>
 
+        {showPreview && (
         <div
-          className="min-w-0 space-y-3 lg:order-2 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-180px)] lg:overflow-y-auto"
+          className="preset-form-preview min-w-0 space-y-3 lg:order-2"
           data-testid="preset-preview-col"
         >
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="btn-media-secondary btn-sm cursor-pointer">
-              <IconPhotoUp size={14} />
-              {t('media:workflowPresetAdmin.uploadCalibration')}
-              <input
-                type="file"
-                accept="video/*,image/*"
-                className="hidden"
-                data-testid="preset-calibration-input"
-                onChange={(e) => setCalibrationFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            {calibration && (
-              <>
-                <span className="min-w-0 max-w-[180px] truncate text-[11px] text-[var(--color-text-tertiary)]">
-                  {calibration.name}
-                </span>
-                <button
-                  type="button"
-                  className="btn-media-secondary btn-sm px-1.5 text-[var(--color-danger)]"
-                  aria-label={t('media:workflowPresetAdmin.removeCalibration')}
-                  data-testid="preset-calibration-remove"
-                  onClick={() => setCalibrationFile(null)}
-                >
-                  <IconX size={13} />
-                </button>
-              </>
-            )}
-          </div>
-          <p className="m-0 text-[11px] text-[var(--color-text-tertiary)]">
-            {t('media:workflowPresetAdmin.calibrationNote')}
-          </p>
           <SubtitlePreviewFrame
             values={{
               subtitlePosition: form.subtitlePosition,
@@ -890,8 +1038,44 @@ function PresetFormModal({
               : undefined}
             backgroundUrl={calibration?.url ?? null}
             backgroundKind={calibration?.kind ?? 'video'}
+            showAspectSelector={false}
+            headerExtra={
+              <>
+                <label
+                  className="btn-media-secondary btn-sm cursor-pointer"
+                  title={t('media:workflowPresetAdmin.calibrationNote')}
+                >
+                  <IconMovie size={14} />
+                  {t('media:workflowPresetAdmin.uploadCalibration')}
+                  <input
+                    type="file"
+                    accept="video/*,image/*"
+                    className="hidden"
+                    data-testid="preset-calibration-input"
+                    onChange={(e) => setCalibrationFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+                {calibration && (
+                  <>
+                    <span className="min-w-0 max-w-[140px] truncate text-[11px] text-[var(--color-text-tertiary)]">
+                      {calibration.name}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-media-secondary btn-sm px-1.5 text-[var(--color-danger)]"
+                      aria-label={t('media:workflowPresetAdmin.removeCalibration')}
+                      data-testid="preset-calibration-remove"
+                      onClick={() => setCalibrationFile(null)}
+                    >
+                      <IconX size={13} />
+                    </button>
+                  </>
+                )}
+              </>
+            }
           />
         </div>
+        )}
       </div>
     </Modal>
   )
@@ -903,12 +1087,16 @@ function PresetCard({
   onEdit,
   onDelete,
   deleting,
+  pinned,
+  onTogglePin,
 }: {
   preset: WorkflowPreset
   canManage: boolean
   onEdit: () => void
   onDelete: () => void
   deleting: boolean
+  pinned: boolean
+  onTogglePin: () => void
 }) {
   const { t } = useTranslation('media')
   const config = preset.config ?? {}
@@ -924,21 +1112,29 @@ function PresetCard({
           <p className="m-0 flex items-center gap-1.5 text-sm font-semibold text-[var(--color-text-primary)]">
             <span className="truncate">{preset.name}</span>
             {preset.isDefault && (
-              <IconStar size={14} className="shrink-0 text-amber-400" aria-label={t('workflowPreset.default')} />
+              <span className="preset-default-badge">{t('workflowPreset.default')}</span>
             )}
           </p>
-          <p className="mt-0.5 mb-0 text-xs text-[var(--color-text-tertiary)]">
-            {t(`workflowPreset.scope${preset.scope.charAt(0) + preset.scope.slice(1).toLowerCase()}`)}
-            {config.workflowMode && (
-              <>
-                {' · '}
-                {t(`workflow.${config.workflowMode === 'MANUAL' ? 'manual' : 'auto'}`)}
-              </>
-            )}
-          </p>
+          {config.workflowMode && (
+            <p className="mt-0.5 mb-0 text-xs text-[var(--color-text-tertiary)]">
+              {t(`workflow.${config.workflowMode === 'MANUAL' ? 'manual' : 'auto'}`)}
+            </p>
+          )}
         </div>
-        {!system && canManage && (
-          <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            className={`preset-pin${pinned ? ' active' : ''}`}
+            aria-pressed={pinned}
+            aria-label={t(pinned ? 'workflowPresetAdmin.unpin' : 'workflowPresetAdmin.pin')}
+            title={t(pinned ? 'workflowPresetAdmin.unpin' : 'workflowPresetAdmin.pin')}
+            data-testid={`preset-pin-${preset.id}`}
+            onClick={onTogglePin}
+          >
+            {pinned ? <IconStarFilled size={15} /> : <IconStar size={15} />}
+          </button>
+          {!system && canManage && (
+            <>
             <button
               type="button"
               className="btn-media-secondary btn-sm"
@@ -956,8 +1152,9 @@ function PresetCard({
             >
               {deleting ? <IconLoader2 size={14} className="animate-spin" /> : <IconTrash size={14} />}
             </button>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
       {preset.description && (
         <p className="m-0 text-xs text-[var(--color-text-secondary)]">{preset.description}</p>
@@ -1046,6 +1243,37 @@ function PresetCard({
   )
 }
 
+/** One scope column (Workspace / Project / System) with a vertical preset list. */
+function PresetColumn({
+  title,
+  hint,
+  count,
+  action,
+  testId,
+  children,
+}: {
+  title: string
+  hint: string
+  count: string | null
+  action?: ReactNode
+  testId: string
+  children: ReactNode
+}) {
+  return (
+    <section className="preset-column" data-testid={testId}>
+      <header className="preset-column__header">
+        <div className="flex items-center gap-2">
+          <h2 className="preset-column__title">{title}</h2>
+          {count != null && <span className="preset-column__count">{count}</span>}
+          {action && <div className="ml-auto">{action}</div>}
+        </div>
+        <p className="preset-column__hint">{hint}</p>
+      </header>
+      <div className="preset-column__body">{children}</div>
+    </section>
+  )
+}
+
 /**
  * Workflow preset administration (docs/16 §7.5 — admin milestone).
  * Presets are TEMPLATE/DEFAULT configurations, never locks: jobs resolve the
@@ -1064,15 +1292,27 @@ export function PresetSettingsPage() {
   const [editing, setEditing] = useState<WorkflowPreset | null>(null)
   const [deleting, setDeleting] = useState<WorkflowPreset | null>(null)
   const [pageError, setPageError] = useState<string | null>(null)
+  const [showMoreInfo, setShowMoreInfo] = useState(false)
 
   const { data: projects = [] } = useProjects(workspaceId)
   const { data: presets = [], isLoading, isError, error, refetch } =
     useWorkflowPresets(workspaceId, selectedProjectId || undefined)
   const del = useDeleteWorkflowPreset(workspaceId, selectedProjectId || undefined)
 
+  const [search, setSearch] = useState('')
+  const [pinnedOnly, setPinnedOnly] = useState(false)
+  const { pins, toggle: togglePin } = usePinnedPresets(workspaceId)
+  const isFiltering = search.trim() !== '' || pinnedOnly
+
   const workspacePresets = presets.filter((p) => p.scope === 'WORKSPACE')
   const projectPresets = presets.filter((p) => p.scope === 'PROJECT')
   const systemPresets = presets.filter((p) => p.scope === 'SYSTEM')
+  const filterOpts = { query: search, pins, pinnedOnly }
+  const shownWorkspace = visiblePresets(workspacePresets, filterOpts)
+  const shownProject = visiblePresets(projectPresets, filterOpts)
+  const shownSystem = visiblePresets(systemPresets, filterOpts)
+  const pinnedCount = presets.filter((p) => pins.has(p.id)).length
+  const countLabel = (shown: number, total: number) => (isFiltering ? `${shown}/${total}` : String(total))
 
   const confirmDelete = async () => {
     if (!deleting) return
@@ -1086,54 +1326,89 @@ export function PresetSettingsPage() {
     }
   }
 
-  const openCreate = () => {
+  const [createDefaults, setCreateDefaults] = useState<{
+    scope?: WorkflowPresetScope
+    projectId?: string
+  }>({})
+
+  const openCreate = (defaults: { scope?: WorkflowPresetScope; projectId?: string } = {}) => {
     setEditing(null)
+    setCreateDefaults(defaults)
     setFormOpen(true)
   }
+
+  const columnAddButton = (scope: WorkflowPresetScope) =>
+    canManage && (
+      <button
+        type="button"
+        className="preset-column__add"
+        data-testid={`preset-add-${scope.toLowerCase()}`}
+        onClick={() =>
+          openCreate({ scope, projectId: scope === 'PROJECT' ? selectedProjectId || undefined : undefined })
+        }
+      >
+        <IconPlus size={13} />
+        <span>{t('media:workflowPresetAdmin.addToColumn')}</span>
+      </button>
+    )
 
   return (
     <div className="media-studio-page">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">
-            <IconVideo size={26} className="text-[var(--color-media)]" />
-            {t('media:title')}
-          </h1>
-        </div>
-        {canManage && (
-          <button
-            type="button"
-            className="btn-primary"
-            data-testid="preset-create-btn"
-            onClick={openCreate}
-          >
-            <IconPlus size={16} />
-            {t('media:workflowPresetAdmin.create')}
-          </button>
-        )}
+        <h1 className="page-title">
+          <IconVideo size={26} className="text-[var(--color-media)]" />
+          {t('media:workflowPresetAdmin.title')}
+        </h1>
       </div>
 
       <MediaStudioNav />
 
       <div className="space-y-4">
-        <div className="media-banner info mb-4">
-          <IconClipboardCheck size={18} />
-          <div className="flex-1 text-sm">{t('media:workflowPresetAdmin.subtitle')}</div>
+        <div className="preset-intro">
+          <IconInfoCircle size={16} className="shrink-0" />
+          <span>{t('media:workflowPresetAdmin.bannerShort')}</span>
+          <button
+            type="button"
+            className="preset-intro__toggle"
+            aria-expanded={showMoreInfo}
+            onClick={() => setShowMoreInfo((v) => !v)}
+          >
+            {showMoreInfo
+              ? t('common:actions.collapse', { defaultValue: 'Thu gọn' })
+              : t('common:actions.learnMore', { defaultValue: 'Tìm hiểu thêm' })}
+          </button>
+          {showMoreInfo && (
+            <p className="preset-intro__more">{t('media:workflowPresetAdmin.subtitle')}</p>
+          )}
         </div>
 
-      {pageError && (
-        <div role="alert" className="media-panel-error-toast" data-testid="preset-page-error">
-          {pageError}
-        </div>
-      )}
-
-      {projects.length > 0 && (
-        <div className="app-card">
-          <div className="app-card-body">
-            <label className="field-label max-w-xs">
-              <span>{t('media:workflowPresetAdmin.projectFilter')}</span>
+      <div className="jobs-filter" data-testid="preset-toolbar">
+        <div className="jobs-filter__row">
+          <div className="jobs-filter__search">
+            <IconSearch size={15} className="jobs-filter__search-icon" aria-hidden />
+            <input
+              type="text"
+              placeholder={t('media:workflowPresetAdmin.searchPlaceholder')}
+              aria-label={t('media:workflowPresetAdmin.searchPlaceholder')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button
+                type="button"
+                className="jobs-filter__search-clear"
+                aria-label={t('common:actions.close')}
+                onClick={() => setSearch('')}
+              >
+                <IconX size={13} />
+              </button>
+            )}
+          </div>
+          <div className="jobs-filter__selects">
+            {projects.length > 0 && (
               <select
-                className="field-input"
+                className="jobs-filter__select"
+                aria-label={t('media:workflowPresetAdmin.projectFilter')}
                 value={selectedProjectId}
                 onChange={(e) => setSelectedProjectId(e.target.value)}
               >
@@ -1144,8 +1419,40 @@ export function PresetSettingsPage() {
                   </option>
                 ))}
               </select>
-            </label>
+            )}
+            <button
+              type="button"
+              className="jobs-filter__chip"
+              data-tone="warning"
+              data-active={pinnedOnly || undefined}
+              aria-pressed={pinnedOnly}
+              data-testid="preset-pinned-only"
+              onClick={() => setPinnedOnly((v) => !v)}
+            >
+              {pinnedOnly ? <IconStarFilled size={13} /> : <IconStar size={13} />}
+              <span>{t('media:workflowPresetAdmin.pinnedOnly')}</span>
+              <span className="jobs-filter__chip-count">{pinnedCount}</span>
+            </button>
+            {canManage && (
+              <button
+                type="button"
+                className="btn-primary btn-sm preset-toolbar-create"
+                data-testid="preset-create-btn"
+                onClick={() =>
+                  openCreate(selectedProjectId ? { scope: 'PROJECT', projectId: selectedProjectId } : {})
+                }
+              >
+                <IconPlus size={16} />
+                {t('media:workflowPresetAdmin.create')}
+              </button>
+            )}
           </div>
+        </div>
+      </div>
+
+      {pageError && (
+        <div role="alert" className="media-panel-error-toast" data-testid="preset-page-error">
+          {pageError}
         </div>
       )}
 
@@ -1169,102 +1476,95 @@ export function PresetSettingsPage() {
       )}
 
       {!isLoading && !isError && (
-        <>
-          <section className="app-card">
-            <div className="app-card-header">
-              <div className="app-card-title">{t('media:workflowPreset.scopeWorkspace')}</div>
-            </div>
-            <div className="app-card-body">
-              {workspacePresets.length === 0 ? (
-                <p className="m-0 text-sm text-[var(--color-text-tertiary)]">
-                  {t('media:workflowPreset.empty')}
-                </p>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {workspacePresets.map((preset) => (
-                    <PresetCard
-                      key={preset.id}
-                      preset={preset}
-                      canManage={canManage}
-                      deleting={del.isPending && del.variables === preset.id}
-                      onEdit={() => {
-                        setEditing(preset)
-                        setFormOpen(true)
-                      }}
-                      onDelete={() => setDeleting(preset)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
+        <div className="preset-columns">
+          <PresetColumn
+            testId="preset-column-workspace"
+            title={t('media:workflowPreset.scopeWorkspace')}
+            hint={t('media:workflowPresetAdmin.scopeWorkspaceHint')}
+            count={countLabel(shownWorkspace.length, workspacePresets.length)}
+            action={columnAddButton('WORKSPACE')}
+          >
+            {workspacePresets.length === 0 ? (
+              <p className="preset-column__empty">{t('media:workflowPreset.empty')}</p>
+            ) : shownWorkspace.length === 0 ? (
+              <p className="preset-column__empty">{t('media:workflowPresetAdmin.noMatch')}</p>
+            ) : (
+              shownWorkspace.map((preset) => (
+                <PresetCard
+                  key={preset.id}
+                  preset={preset}
+                  pinned={pins.has(preset.id)}
+                  onTogglePin={() => togglePin(preset.id)}
+                  canManage={canManage}
+                  deleting={del.isPending && del.variables === preset.id}
+                  onEdit={() => {
+                    setEditing(preset)
+                    setFormOpen(true)
+                  }}
+                  onDelete={() => setDeleting(preset)}
+                />
+              ))
+            )}
+          </PresetColumn>
 
-          <section className="app-card">
-            <div className="app-card-header">
-              <div className="app-card-title">
-                {t('media:workflowPreset.scopeProject')}
-                {selectedProjectId && (
-                  <span className="ml-2 text-xs font-normal text-[var(--color-text-tertiary)]">
-                    {projects.find((p) => p.id === selectedProjectId)?.name ?? ''}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="app-card-body">
-              {!selectedProjectId ? (
-                <p className="m-0 text-sm text-[var(--color-text-tertiary)]">
-                  {t('media:workflowPresetAdmin.projectFilterHint')}
-                </p>
-              ) : projectPresets.length === 0 ? (
-                <p className="m-0 text-sm text-[var(--color-text-tertiary)]">
-                  {t('media:workflowPreset.empty')}
-                </p>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {projectPresets.map((preset) => (
-                    <PresetCard
-                      key={preset.id}
-                      preset={preset}
-                      canManage={canManage}
-                      deleting={del.isPending && del.variables === preset.id}
-                      onEdit={() => {
-                        setEditing(preset)
-                        setFormOpen(true)
-                      }}
-                      onDelete={() => setDeleting(preset)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
+          <PresetColumn
+            testId="preset-column-project"
+            title={t('media:workflowPreset.scopeProject')}
+            hint={t('media:workflowPresetAdmin.scopeProjectHint')}
+            count={selectedProjectId ? countLabel(shownProject.length, projectPresets.length) : null}
+            action={columnAddButton('PROJECT')}
+          >
+            {!selectedProjectId ? (
+              <p className="preset-column__empty">{t('media:workflowPresetAdmin.projectFilterHint')}</p>
+            ) : projectPresets.length === 0 ? (
+              <p className="preset-column__empty">{t('media:workflowPreset.empty')}</p>
+            ) : shownProject.length === 0 ? (
+              <p className="preset-column__empty">{t('media:workflowPresetAdmin.noMatch')}</p>
+            ) : (
+              shownProject.map((preset) => (
+                <PresetCard
+                  key={preset.id}
+                  preset={preset}
+                  pinned={pins.has(preset.id)}
+                  onTogglePin={() => togglePin(preset.id)}
+                  canManage={canManage}
+                  deleting={del.isPending && del.variables === preset.id}
+                  onEdit={() => {
+                    setEditing(preset)
+                    setFormOpen(true)
+                  }}
+                  onDelete={() => setDeleting(preset)}
+                />
+              ))
+            )}
+          </PresetColumn>
 
-          <section className="app-card">
-            <div className="app-card-header">
-              <div className="app-card-title">{t('media:workflowPreset.scopeSystem')}</div>
-            </div>
-            <div className="app-card-body">
-              {systemPresets.length === 0 ? (
-                <p className="m-0 text-sm text-[var(--color-text-tertiary)]">
-                  {t('media:workflowPreset.empty')}
-                </p>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {systemPresets.map((preset) => (
-                    <PresetCard
-                      key={preset.id}
-                      preset={preset}
-                      canManage={false}
-                      deleting={false}
-                      onEdit={() => undefined}
-                      onDelete={() => undefined}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-        </>
+          <PresetColumn
+            testId="preset-column-system"
+            title={t('media:workflowPreset.scopeSystem')}
+            hint={t('media:workflowPresetAdmin.scopeSystemHint')}
+            count={countLabel(shownSystem.length, systemPresets.length)}
+          >
+            {systemPresets.length === 0 ? (
+              <p className="preset-column__empty">{t('media:workflowPreset.empty')}</p>
+            ) : shownSystem.length === 0 ? (
+              <p className="preset-column__empty">{t('media:workflowPresetAdmin.noMatch')}</p>
+            ) : (
+              shownSystem.map((preset) => (
+                <PresetCard
+                  key={preset.id}
+                  preset={preset}
+                  pinned={pins.has(preset.id)}
+                  onTogglePin={() => togglePin(preset.id)}
+                  canManage={false}
+                  deleting={false}
+                  onEdit={() => undefined}
+                  onDelete={() => undefined}
+                />
+              ))
+            )}
+          </PresetColumn>
+        </div>
       )}
       </div>
 
@@ -1272,6 +1572,8 @@ export function PresetSettingsPage() {
         <PresetFormModal
           preset={editing}
           workspaceId={workspaceId}
+          initialScope={createDefaults.scope}
+          initialProjectId={createDefaults.projectId}
           onClose={() => setFormOpen(false)}
         />
       )}
@@ -1285,7 +1587,7 @@ export function PresetSettingsPage() {
           footer={
             <>
               <button type="button" className="btn-secondary" onClick={() => setDeleting(null)}>
-                {t('common:cancel')}
+                {t('common:actions.cancel')}
               </button>
               <button
                 type="button"
