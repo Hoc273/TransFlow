@@ -19,7 +19,7 @@ const mockJobs: MediaJob[] = [
     documentId: 'doc-1',
     rootAssetId: 'asset-1',
     projectId: 'prj-1',
-    processingMode: 'LOCALIZATION',
+    processingMode: 'TRANSLATE_ONLY',
     sourceLanguage: 'en',
     targetLang: 'vi',
     status: 'COMPLETED',
@@ -27,6 +27,7 @@ const mockJobs: MediaJob[] = [
     requestedDurationSeconds: null,
     selectedProposalId: null,
     createdAt: '2026-09-01T10:00:00Z',
+    stages: [],
   },
   {
     id: 'job-22222222',
@@ -41,13 +42,14 @@ const mockJobs: MediaJob[] = [
     requestedDurationSeconds: null,
     selectedProposalId: null,
     createdAt: '2026-09-02T10:00:00Z',
+    stages: [],
   },
   {
     id: 'job-33333333',
     documentId: 'doc-3',
     rootAssetId: 'asset-3',
     projectId: 'prj-1',
-    processingMode: 'LOCALIZATION',
+    processingMode: 'TRANSLATE_ONLY',
     sourceLanguage: 'en',
     targetLang: 'vi',
     status: 'FAILED',
@@ -55,6 +57,7 @@ const mockJobs: MediaJob[] = [
     requestedDurationSeconds: null,
     selectedProposalId: null,
     createdAt: '2026-09-03T10:00:00Z',
+    stages: [],
   },
 ]
 
