@@ -267,6 +267,37 @@ def _merge_usage(total: Usage | None, usage) -> Usage | None:
     )
 
 
+# Global default used by the original narrative writer when no voice calibration exists.
+DEFAULT_NARRATION_CPS = 14.0
+NARRATION_TOLERANCE = 0.10
+
+
+def _narration_cps(req: ScriptSummarizeRequest | ScriptRefineRequest) -> float:
+    return req.narration_cps or DEFAULT_NARRATION_CPS
+
+
+def _narration_chars(response: ScriptSummarizeResponse) -> int:
+    """TTS reads the excerpts, so they - not script_content - are the narration."""
+    return sum(len(segment.script_excerpt.strip()) for segment in response.segments)
+
+
+def _narration_miss(req: ScriptSummarizeRequest | ScriptRefineRequest,
+                    response: ScriptSummarizeResponse) -> tuple[float, str | None]:
+    """Relative miss of the narration budget and, when outside tolerance, the repair feedback."""
+    target = round(_requested_duration(req) * _narration_cps(req))
+    actual = _narration_chars(response)
+    miss = abs(actual - target) / target if target else 0.0
+    if miss <= NARRATION_TOLERANCE:
+        return miss, None
+    direction = "Expand" if actual < target else "Condense"
+    return miss, (
+        f"The narration (all script_excerpt values) has {actual} characters but must be about "
+        f"{target} characters (allowed {round(target * (1 - NARRATION_TOLERANCE))}-"
+        f"{round(target * (1 + NARRATION_TOLERANCE))}). {direction} the script and its excerpts "
+        "accordingly while keeping every excerpt a verbatim substring of script_content."
+    )
+
+
 def _repair_prompt(user: str, violation: str) -> str:
     return (
         f"{user}\n\n<previous_attempt_violation>{violation}</previous_attempt_violation>\n"
@@ -296,6 +327,7 @@ async def _run(req: ScriptSummarizeRequest | ScriptRefineRequest, *, previous_sc
         req.visual_context,
         previous_script=previous_script,
         feedback_text=feedback_text,
+        narration_cps=_narration_cps(req),
     )
     # Footage duration is fitted deterministically in _parse_response, so the
     # model's arithmetic never decides success. Only contract breaks the model
@@ -306,6 +338,10 @@ async def _run(req: ScriptSummarizeRequest | ScriptRefineRequest, *, previous_sc
     usage: Usage | None = None
     violation: str | None = None
     response: ScriptSummarizeResponse | None = None
+    # Closest draft to the narration budget; measured TTS stays the duration
+    # authority and render tempo absorbs a small residual, so a writer that
+    # cannot converge still yields a usable proposal.
+    best: tuple[float, ScriptSummarizeResponse] | None = None
     for attempt in range(attempts):
         prompt = user if violation is None else _repair_prompt(user, violation)
         try:
@@ -321,7 +357,7 @@ async def _run(req: ScriptSummarizeRequest | ScriptRefineRequest, *, previous_sc
             return _failed(req, exc.message, error=exc)
         usage = _merge_usage(usage, result.usage)
         try:
-            return _parse_response(req, result.text or "", usage)
+            parsed = _parse_response(req, result.text or "", usage)
         except _OutputViolation as exc:
             response = _failed(req, exc.message, exc.code.value)
             _log.warning(
@@ -339,6 +375,25 @@ async def _run(req: ScriptSummarizeRequest | ScriptRefineRequest, *, previous_sc
             if not exc.repairable:
                 return response
             violation = exc.message
+            continue
+        miss, feedback = _narration_miss(req, parsed)
+        if best is None or miss < best[0]:
+            best = (miss, parsed)
+        if feedback is None:
+            return parsed.model_copy(update={"usage": usage})
+        _log.info(
+            "Script narration outside budget correlation_id=%s model=%s attempt=%d/%d narration_chars=%d "
+            "narration_cps=%.2f miss=%.0f%%",
+            req.correlation_id, req.provider.model, attempt + 1, attempts,
+            _narration_chars(parsed), _narration_cps(req), miss * 100,
+        )
+        violation = feedback
+    if best is not None:
+        closest = best[1]
+        return closest.model_copy(update={
+            "usage": usage,
+            "warnings": [*closest.warnings, "NARRATION_LENGTH_RESIDUAL"],
+        })
     assert response is not None
     return response
 

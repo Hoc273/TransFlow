@@ -44,6 +44,9 @@ def _post(body: dict, *outputs: str):
     chat_mock = AsyncMock(side_effect=[SimpleNamespace(text=o, usage=None) for o in outputs])
     with (
         patch.object(script_gateway.settings, "mock_mode", False),
+        # Footage fitting only: placeholder excerpts are far below the narration
+        # budget, so disable the narration repair round-trips here.
+        patch.object(script_gateway.settings, "script_output_repair_attempts", 0),
         patch("app.services.script_gateway.chat", chat_mock),
         TestClient(app) as client,
     ):

@@ -63,10 +63,21 @@ public class SummaryAiClientImpl implements SummaryAiClient, UserAwareSummaryAiC
     public ScriptProposalResult generateScript(String transcript, String visualContext,
                                                int requestedDurationSeconds, String targetLang,
                                                UUID mediaJobId, UUID userId) {
+        return generateScript(transcript, visualContext, requestedDurationSeconds, targetLang,
+                mediaJobId, userId, null);
+    }
+
+    @Override
+    public ScriptProposalResult generateScript(String transcript, String visualContext,
+                                               int requestedDurationSeconds, String targetLang,
+                                               UUID mediaJobId, UUID userId, Double narrationCps) {
         Map<String, Object> body = baseRequest(mediaJobId, userId);
         body.put("transcript", parseTranscript(transcript, requestedDurationSeconds));
         body.put("requested_duration_seconds", requestedDurationSeconds);
         body.put("target_lang", targetLang);
+        if (narrationCps != null && narrationCps > 0) {
+            body.put("narration_cps", narrationCps);
+        }
         putVisualContext(body, visualContext);
         return post("/media/summarize/script", body);
     }

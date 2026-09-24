@@ -64,6 +64,10 @@ public class MediaStageExecutionService {
     private static final int MAX_TTS_SEGMENT_RETRIES = 3;
     /** Worker MixPlan bounds TTS tempo to 0.8..1.2; only speed-up is used to fit a slot. */
     private static final double MAX_TTS_TEMPO = 1.2d;
+    /** Narration retime bound: beyond ±10 % a voice audibly drags or rushes. */
+    private static final double MIN_NARRATION_TEMPO = 0.9d;
+    private static final double MAX_NARRATION_TEMPO = 1.1d;
+    private static final double NARRATION_TEMPO_DEADBAND = 0.03d;
 
     private final MediaJobRepository jobRepository;
     private final MediaJobStageRepository stageRepository;
@@ -85,6 +89,7 @@ public class MediaStageExecutionService {
     private final AiUsageLogService aiUsageLogService;
     private final GlossaryService glossaryService;
     private long ttsSegmentRetryDelayMs = 10_000L;
+    private NarrationPacingEstimator narrationPacingEstimator;
 
     @Autowired
     public MediaStageExecutionService(MediaJobRepository jobRepository,
@@ -168,6 +173,11 @@ public class MediaStageExecutionService {
                 RestClient.builder().baseUrl(props.ai().baseUrl()).build(),
                 RestClient.builder().baseUrl(props.mediaWorker().baseUrl()).build(),
                 null, null, null, null, null);
+    }
+
+    @Autowired(required = false)
+    void setNarrationPacingEstimator(NarrationPacingEstimator narrationPacingEstimator) {
+        this.narrationPacingEstimator = narrationPacingEstimator;
     }
 
     /** Test hook: the production delay mirrors the original pipeline. */
@@ -261,20 +271,25 @@ public class MediaStageExecutionService {
                     // footage is retimed to its clip, so a cue is never shown without voice.
                     List<Map<String, Object>> beats = new ArrayList<>();
                     List<Map<String, Object>> outputRanges = new ArrayList<>();
+                    double tempo = narrationTempo(job, narration, duration);
                     long cursor = 0L;
                     for (NarrationBeat beat : narration) {
                         SubtitleSegment segment = beat.segment();
+                        long beatMs = tempo == 1.0 ? beat.durationMs() : Math.round(beat.durationMs() / tempo);
                         Map<String, Object> wire = new LinkedHashMap<>();
                         wire.put("id", segment.getId().toString());
                         wire.put("source_start_ms", segment.getStartMs());
                         wire.put("source_end_ms", segment.getEndMs());
-                        wire.put("tts_duration_ms", beat.durationMs());
+                        wire.put("tts_duration_ms", beatMs);
                         wire.put("audio_ref", beat.audioRef());
                         wire.put("narration_segment", segment.getTargetText());
+                        if (tempo != 1.0) {
+                            wire.put("tempo", tempo);
+                        }
                         beats.add(wire);
-                        outputRanges.add(Map.of("start_ms", cursor, "end_ms", cursor + beat.durationMs()));
-                        cues.add(new RenderSubtitleCues.Cue(cursor, cursor + beat.durationMs(), segment.getTargetText()));
-                        cursor += beat.durationMs();
+                        outputRanges.add(Map.of("start_ms", cursor, "end_ms", cursor + beatMs));
+                        cues.add(new RenderSubtitleCues.Cue(cursor, cursor + beatMs, segment.getTargetText()));
+                        cursor += beatMs;
                     }
                     body.put("generative_beats", beats);
                     body.put("cut_ranges", outputRanges);
@@ -608,6 +623,30 @@ public class MediaStageExecutionService {
         return beats;
     }
 
+    /**
+     * One uniform, pitch-preserving tempo that brings the measured narration onto the
+     * requested duration (the writer's character budget is only an estimate). Bounded to
+     * 0.9-1.1x so speech stays natural; a miss within 3 % keeps the voice untouched.
+     */
+    private double narrationTempo(MediaJob job, List<NarrationBeat> narration, long sourceDurationMs) {
+        if (job.getRequestedDurationSeconds() == null || job.getRequestedDurationSeconds() <= 0) {
+            return 1.0;
+        }
+        long targetMs = Math.min(job.getRequestedDurationSeconds() * 1000L, sourceDurationMs);
+        long narrationMs = narration.stream().mapToLong(NarrationBeat::durationMs).sum();
+        if (targetMs <= 0L || narrationMs <= 0L) {
+            return 1.0;
+        }
+        double ratio = (double) narrationMs / targetMs;
+        if (Math.abs(ratio - 1.0) <= NARRATION_TEMPO_DEADBAND) {
+            return 1.0;
+        }
+        double tempo = Math.max(MIN_NARRATION_TEMPO, Math.min(MAX_NARRATION_TEMPO, ratio));
+        log.info("Narration tempo job={} narrationMs={} targetMs={} tempo={}", job.getId(), narrationMs, targetMs,
+                Math.round(tempo * 1000d) / 1000d);
+        return Math.round(tempo * 1000d) / 1000d;
+    }
+
     private Map<String, Object> defaultSubtitleTrack(MediaJob job, long duration, List<RenderSubtitleCues.Cue> raw) {
         Map<String, Object> renderConfig = jsonObject(job.getRenderConfig());
         Map<String, Object> style = jsonObject(job.getSubtitleStyle());
@@ -890,11 +929,14 @@ public class MediaStageExecutionService {
                                                                          String visualContext, int duration) {
         int retries = props.ai().maxRetries();
         int attempt = 0;
+        Double narrationCps = narrationPacingEstimator == null ? null : narrationPacingEstimator.estimateCps(job);
+        log.info("Narration pacing job={} narrationCps={} ({})", job.getId(), narrationCps,
+                narrationCps == null ? "gateway default" : "measured TTS history");
         while (true) {
             try {
                 if (summaryAiClient instanceof UserAwareSummaryAiClient userAware) {
                     return userAware.generateScript(serialized, visualContext, duration, job.getTargetLang(),
-                            job.getId(), job.getCreatedByUserId());
+                            job.getId(), job.getCreatedByUserId(), narrationCps);
                 }
                 return summaryAiClient.generateScript(serialized, visualContext, duration, job.getTargetLang());
             } catch (AiStageException failure) {

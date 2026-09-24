@@ -42,6 +42,24 @@ class SummaryAiClientImplTest {
     }
 
     @Test
+    void calibratedVoiceRateIsSentAsTheNarrationBudget() {
+        UUID userId = UUID.randomUUID();
+        when(providerResolver.resolveForCapability(userId, "TRANSLATE")).thenReturn(
+                new ProviderResolverService.ProviderResolution(UUID.randomUUID(), "dashscope_native",
+                        "https://dashscope.example/api", "secret", "qwen3.8-max", true));
+        server.expect(requestTo("http://ai.test/media/summarize/script"))
+                .andExpect(jsonPath("$.narration_cps").value(17.4))
+                .andRespond(withSuccess("""
+                        {"correlation_id":"c","status":"COMPLETED","script_content":"Kịch bản.",
+                         "segments":[{"start_ms":0,"end_ms":5000,"script_excerpt":"Kịch bản."}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        client.generateScript("[]", null, 5, "vi", UUID.randomUUID(), userId, 17.4);
+
+        server.verify();
+    }
+
+    @Test
     void scriptQuotaFailurePreservesProviderMetadataForSpringStage() {
         UUID userId = UUID.randomUUID();
         UUID providerId = UUID.randomUUID();

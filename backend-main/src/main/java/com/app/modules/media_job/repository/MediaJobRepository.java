@@ -32,6 +32,10 @@ public interface MediaJobRepository extends JpaRepository<MediaJob, UUID> {
 
     List<MediaJob> findByBatchIdOrderByCreatedAtAsc(UUID batchId);
 
+    /** Recent jobs of the same author and language: measured TTS history for narration pacing. */
+    List<MediaJob> findTop20ByCreatedByUserIdAndTargetLangAndIdNotOrderByCreatedAtDesc(
+            UUID createdByUserId, String targetLang, UUID excludedJobId);
+
     // ── Platform-wide aggregates (SUPER ADMIN) ─────────────────────────────────
 
     interface MediaJobAggregateRow {

@@ -29,6 +29,9 @@ class ScriptSummarizeRequest(BaseModel):
     target_lang: str = Field(min_length=1)
     visual_context: Any = None
     provider: ProviderPayload
+    # Voice speaking rate (characters/second of target text) calibrated by Spring
+    # from measured TTS; sizes the narration so it fills the requested duration.
+    narration_cps: Optional[float] = Field(default=None, gt=0)
 
 
 class ScriptRefineRequest(BaseModel):
@@ -41,6 +44,9 @@ class ScriptRefineRequest(BaseModel):
     transcript: list[SttSegment] = Field(default_factory=list)
     visual_context: Any = None
     provider: ProviderPayload
+    # Voice speaking rate (characters/second of target text) calibrated by Spring
+    # from measured TTS; sizes the narration so it fills the requested duration.
+    narration_cps: Optional[float] = Field(default=None, gt=0)
 
 
 class ScriptSummarizeResponse(BaseModel):

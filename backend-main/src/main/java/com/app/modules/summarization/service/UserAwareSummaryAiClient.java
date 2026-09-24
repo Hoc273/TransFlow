@@ -15,4 +15,14 @@ public interface UserAwareSummaryAiClient {
             String targetLang, UUID mediaJobId, UUID userId) {
         return generateScript(transcript, visualContext, requestedDurationSeconds, targetLang, userId);
     }
+
+    /**
+     * Variant carrying the voice's calibrated reading rate (chars/s) so the writer
+     * sizes the narration to the requested duration; {@code null} uses the gateway default.
+     */
+    default SummaryAiClient.ScriptProposalResult generateScript(
+            String transcript, String visualContext, int requestedDurationSeconds,
+            String targetLang, UUID mediaJobId, UUID userId, Double narrationCps) {
+        return generateScript(transcript, visualContext, requestedDurationSeconds, targetLang, mediaJobId, userId);
+    }
 }

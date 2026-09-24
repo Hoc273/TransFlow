@@ -280,6 +280,7 @@ class MediaStageExecutionServiceTtsTest {
                 .andExpect(jsonPath("$.generative_beats[1].source_end_ms").value(30_000))
                 .andExpect(jsonPath("$.generative_beats[1].tts_duration_ms").value(5_000))
                 .andExpect(jsonPath("$.generative_beats[1].audio_ref").value("transflow-media/dubbed/b.mp3"))
+                .andExpect(jsonPath("$.generative_beats[1].tempo").doesNotExist()) // no requested duration
                 .andExpect(jsonPath("$.cut_ranges[1].start_ms").value(2_400))
                 .andExpect(jsonPath("$.cut_ranges[1].end_ms").value(7_400))
                 .andRespond(withSuccess());
@@ -291,6 +292,54 @@ class MediaStageExecutionServiceTtsTest {
         String srt = new String(readAll(subtitle.getValue()), StandardCharsets.UTF_8);
         assertTrue(srt.contains("00:00:00,000 --> 00:00:02,400"), srt);
         assertTrue(srt.contains("00:00:02,400 --> 00:00:07,400"), srt);
+    }
+
+    @Test
+    void narrationLongerThanRequestedIsSpedUpWithinTheNaturalTempoBound() {
+        stage(MediaJobStage.StageName.RENDER);
+        job.setRecipeId(MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH);
+        job.setOutputAudioMode(MediaJob.OutputAudioMode.DUB_REPLACE);
+        job.setRequestedDurationSeconds(7);
+        first.setTtsAudioRef("transflow-media/dubbed/a.wav");
+        second.setTtsAudioRef("transflow-media/dubbed/b.wav");
+        renderSource(40_000L);
+        ttsOutput(2_400L, 5_000L); // 7.4 s of narration for a 7 s target: +5.7 %
+
+        RestClient.Builder workerBuilder = RestClient.builder().baseUrl("http://worker.test");
+        MockRestServiceServer worker = MockRestServiceServer.bindTo(workerBuilder).build();
+        worker.expect(requestTo("http://worker.test/internal/media/render"))
+                .andExpect(jsonPath("$.generative_beats[0].tempo").value(1.057))
+                .andExpect(jsonPath("$.generative_beats[1].tempo").value(1.057))
+                .andExpect(jsonPath("$.generative_beats[1].tts_duration_ms").value(4_730))
+                .andExpect(jsonPath("$.cut_ranges[1].end_ms").value(7_001))
+                .andRespond(withSuccess());
+
+        renderPipeline(workerBuilder.build()).execute(message("RENDER"));
+
+        worker.verify();
+    }
+
+    @Test
+    void narrationFarFromTheTargetIsOnlyRetimedUpToTheBound() {
+        stage(MediaJobStage.StageName.RENDER);
+        job.setRecipeId(MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH);
+        job.setOutputAudioMode(MediaJob.OutputAudioMode.DUB_REPLACE);
+        job.setRequestedDurationSeconds(12);
+        first.setTtsAudioRef("transflow-media/dubbed/a.wav");
+        second.setTtsAudioRef("transflow-media/dubbed/b.wav");
+        renderSource(40_000L);
+        ttsOutput(2_400L, 5_000L); // 7.4 s for 12 s: slowing to 0.9x keeps speech natural
+
+        RestClient.Builder workerBuilder = RestClient.builder().baseUrl("http://worker.test");
+        MockRestServiceServer worker = MockRestServiceServer.bindTo(workerBuilder).build();
+        worker.expect(requestTo("http://worker.test/internal/media/render"))
+                .andExpect(jsonPath("$.generative_beats[0].tempo").value(0.9))
+                .andExpect(jsonPath("$.generative_beats[0].tts_duration_ms").value(2_667))
+                .andRespond(withSuccess());
+
+        renderPipeline(workerBuilder.build()).execute(message("RENDER"));
+
+        worker.verify();
     }
 
     @Test

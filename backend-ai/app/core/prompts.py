@@ -382,6 +382,7 @@ def build_script_summarize_prompt(
     *,
     previous_script: str | None = None,
     feedback_text: str | None = None,
+    narration_cps: float | None = None,
 ) -> tuple[str, str]:
     """Build the compact script-first contract used by ``/media/summarize/script``."""
     lines = [
@@ -417,6 +418,16 @@ def build_script_summarize_prompt(
             "prefer whole transcript sentences and cite them in source_sentence_refs.",
         ]
     )
+    if narration_cps:
+        target_chars = round(requested_duration_seconds * narration_cps)
+        lines.append(
+            "The narration read aloud is exactly the script_excerpt values in order, so together the "
+            "excerpts must cover the whole script. Narration length: about "
+            f"{target_chars} characters in total (allowed {round(target_chars * 0.9)}-"
+            f"{round(target_chars * 1.1)}), because the voice reads about {narration_cps:g} characters "
+            "per second. Give each segment an excerpt of about (segment seconds x "
+            f"{narration_cps:g}) characters so its narration fills its footage."
+        )
     return SCRIPT_SUMMARIZE_SYSTEM, "\n".join(lines)
 
 

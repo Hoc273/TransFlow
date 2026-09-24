@@ -478,6 +478,48 @@ class RenderContractTest(unittest.IsolatedAsyncioTestCase):
         burn.assert_called_once()
         self.assertEqual("COMPLETED", complete.await_args.args[2])
 
+    async def test_generative_beat_tempo_retimes_only_the_narration_it_targets(self):
+        # Spring fits the total narration to the requested duration with one
+        # bounded tempo; beats without it keep their measured audio untouched.
+        from app.api.render import GenerativeBeatRequest
+        storage = Mock()
+        storage.upload.side_effect = lambda _path, key: f"media/{key}"
+        with patch("app.api.render.get_storage", return_value=storage), patch(
+            "app.api.render.send_progress", new=AsyncMock()
+        ), patch("app.api.render.send_complete", new=AsyncMock()) as complete, patch(
+            "app.services.generative_compose._extract_and_rescale_beat"
+        ), patch(
+            "app.services.generative_compose.probe_source_duration",
+            return_value=VideoDurationProbe(
+                container_duration_ms=25_000,
+                video_stream_start_ms=0,
+                video_stream_duration_ms=25_000,
+                video_stream_end_ms=25_000,
+                duration_source="test",
+            ),
+        ), patch("app.api.render._run"), patch("app.api.render.replace_audio"), patch(
+            "app.api.render.burn_subtitles"
+        ), patch("app.api.render.shutil.copyfile"), patch("app.api.render.srt_to_vtt"), patch(
+            "app.api.render._apply_tempo", side_effect=lambda path, tempo, temp_dir: path + ".tempo.wav"
+        ) as apply_tempo, patch(
+            "app.services.render_validation.get_duration", return_value=5.0
+        ), patch(
+            "app.services.render_validation.get_stream_types", return_value=["video", "audio"]
+        ):
+            await process_render(request(
+                subtitle_track=SubtitleTrackRequest(format="srt", content_ref="media/subtitle.srt", mode="HARD_SUB"),
+                generative_beats=[
+                    GenerativeBeatRequest(id="b1", source_start_ms=0, source_end_ms=10000,
+                                          tts_duration_ms=2315, audio_ref="media/b1.wav", tempo=1.08),
+                    GenerativeBeatRequest(id="b2", source_start_ms=15000, source_end_ms=25000,
+                                          tts_duration_ms=2500, audio_ref="media/b2.wav"),
+                ],
+            ))
+
+        apply_tempo.assert_called_once()
+        self.assertEqual(1.08, apply_tempo.call_args.args[1])
+        self.assertEqual("COMPLETED", complete.await_args.args[2])
+
     async def test_generative_ffmpeg_retryable_flag_reaches_callback(self):
         storage = Mock()
         failure = FFmpegError(
