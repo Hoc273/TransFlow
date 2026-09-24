@@ -57,12 +57,35 @@ def _mock_response(
     )
 
 
-def _failed(req: ScriptSummarizeRequest | ScriptRefineRequest, message: str, code: str | None = None) -> ScriptSummarizeResponse:
+def _failed(
+    req: ScriptSummarizeRequest | ScriptRefineRequest,
+    message: str,
+    code: str | None = None,
+    *,
+    error: ProviderException | None = None,
+) -> ScriptSummarizeResponse:
+    if error is None:
+        try:
+            error_code = ProviderErrorCode(code) if code else ProviderErrorCode.PROVIDER_OUTPUT_BUSINESS_RULE_VIOLATION
+        except ValueError:
+            error_code = ProviderErrorCode.PROVIDER_UNKNOWN
+        error = ProviderException(
+            error_code,
+            message,
+            provider=req.provider.base_url,
+            protocol=req.provider.protocol,
+            capability="TEXT",
+            model=req.provider.model,
+        )
+    detail = error.to_error_detail()
+    detail["protocol"] = detail.get("protocol") or req.provider.protocol
+    detail["capability"] = detail.get("capability") or "TEXT"
+    detail["model"] = detail.get("model") or req.provider.model
     return ScriptSummarizeResponse(
         correlation_id=req.correlation_id,
         status="FAILED",
-        error=message,
-        error_detail={"errorCode": code} if code else None,
+        error=error.message,
+        error_detail=detail,
     )
 
 
@@ -88,10 +111,10 @@ def _parse_response(req: ScriptSummarizeRequest | ScriptRefineRequest, raw: str,
             warnings=payload.get("warnings") or [],
             usage=usage,
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError):
         return _failed(
             req,
-            f"Model output did not match the script contract: {exc}",
+            "Model output did not match the script contract",
             ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED.value,
         )
 
@@ -144,7 +167,7 @@ async def _run(req: ScriptSummarizeRequest | ScriptRefineRequest, *, previous_sc
             extra_body=text_reasoning_extra(req.provider, disabled=settings.disable_thinking_for_summarize),
         )
     except ProviderException as exc:
-        return _failed(req, str(exc), exc.code.value if hasattr(exc.code, "value") else str(exc.code))
+        return _failed(req, exc.message, error=exc)
     return _parse_response(req, result.text or "", result.usage)
 
 

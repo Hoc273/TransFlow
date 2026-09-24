@@ -340,7 +340,7 @@ QA_OUTPUT_FORMAT = (
     '"source_span": "<concise excerpt ≤500 chars from source_text>", '
     '"target_span": "<concise excerpt ≤500 chars from translated_text>", '
     '"suggestion": "<fix>", '
-    '"blocking_actions": ["BLOCK_APPROVAL|BLOCK_EXPORT|BLOCK_RENDER"]'
+    '"blocking_actions": ["BLOCK_APPROVAL|BLOCK_PUBLISH|BLOCK_RENDER"]'
     '}], "score": <0..1>}</output_format>'
 )
 

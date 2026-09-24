@@ -49,9 +49,56 @@ public class AiGatewayClientImpl implements AiGatewayClient {
             log.warn("Auth probe returned ok=false: {}", response);
             return false;
         } catch (Exception ex) {
-            log.warn("Failed to test AI provider connection via FastAPI: {}", ex.getMessage());
+            log.warn("Failed to test AI provider auth via FastAPI: {}", ex.getClass().getSimpleName());
             return false;
         }
+    }
+
+    @Override
+    public ProviderCapabilityProbe probeCapability(String protocol, String baseUrl, String apiKey,
+                                                    String model, String capability) {
+        String normalizedCapability = "TEXT".equalsIgnoreCase(capability) ? "TRANSLATE"
+                : capability.toUpperCase(java.util.Locale.ROOT);
+        Map<String, Object> body = Map.of("provider", Map.of(
+                "protocol", protocol,
+                "base_url", baseUrl,
+                "api_key", apiKey,
+                "model", model,
+                "capabilities", List.of("TRANSLATE".equals(normalizedCapability) ? "TEXT" : normalizedCapability)
+        ));
+        String path = switch (normalizedCapability) {
+            case "STT" -> "/ai/validate/stt-probe";
+            case "TTS" -> "/ai/validate/tts-probe";
+            case "VISION" -> "/ai/validate/vision-probe";
+            default -> "/ai/validate-provider";
+        };
+        try {
+            Map<?, ?> response = restClient.post()
+                    .uri(path)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+            if (response == null) {
+                return new ProviderCapabilityProbe(false, model, "PROVIDER_UNAVAILABLE",
+                        "AI provider returned an empty validation response");
+            }
+            Object rawDetail = response.get("error_detail");
+            Map<?, ?> detail = rawDetail instanceof Map<?, ?> value ? value : Map.of();
+            boolean success = Boolean.TRUE.equals(response.get("ok"));
+            String testedModel = string(response.get("model"));
+            return new ProviderCapabilityProbe(success, testedModel == null ? model : testedModel,
+                    string(detail.get("errorCode")), string(detail.get("message")) != null
+                    ? string(detail.get("message")) : string(response.get("message")));
+        } catch (Exception ex) {
+            log.warn("AI provider capability probe failed: {}", ex.getClass().getSimpleName());
+            return new ProviderCapabilityProbe(false, model, "PROVIDER_UNAVAILABLE",
+                    "AI provider capability probe failed");
+        }
+    }
+
+    private String string(Object value) {
+        return value instanceof String text ? text : null;
     }
 
     @Override

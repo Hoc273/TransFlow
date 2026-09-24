@@ -139,6 +139,18 @@ class MediaExportServiceImplTest {
     }
 
     @Test
+    void video_presignsRenderOutputRef_fromWorkerCallbackObject() {
+        when(jobService.getStages(jobId)).thenReturn(List.of(renderStage(
+                "{\"objectRef\":\"transflow-media/rendered/j1/finished.mp4\",\"mediaProbe\":{\"durationMs\":97250}}")));
+        when(storage.presignedGetUrl("transflow-media/rendered/j1/finished.mp4")).thenReturn("http://minio/signed");
+
+        MediaExportResponse res = service.export(ws, user, jobId, "VIDEO");
+
+        assertEquals("http://minio/signed", res.downloadUrl());
+        assertEquals("finished.mp4", res.fileName());
+    }
+
+    @Test
     void video_withoutRenderOutput_isStageNotReady() {
         when(jobService.getStages(jobId)).thenReturn(List.of());
         assertEquals(ErrorCode.STAGE_NOT_READY,

@@ -12,5 +12,11 @@ public record UpdateUserAiProviderRequest(
         String apiKey,
         @Size(max = 200, message = "defaultModel cannot exceed 200 characters")
         String defaultModel,
-        Boolean isActive
-) {}
+        Boolean isActive,
+        List<String> defaultForCapabilities
+) {
+    public UpdateUserAiProviderRequest(String protocol, List<String> capabilities, String baseUrl,
+                                      String apiKey, String defaultModel, Boolean isActive) {
+        this(protocol, capabilities, baseUrl, apiKey, defaultModel, isActive, null);
+    }
+}

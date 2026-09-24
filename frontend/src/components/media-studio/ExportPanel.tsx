@@ -13,6 +13,7 @@ import {
   IconPlayerPlay,
   IconVideo,
 } from '@tabler/icons-react'
+import { exportTransformationJobApi } from '@/api/transformation'
 import { useExportMediaJob, useMediaLinkedJob, useOutputPackage } from '@/hooks/useMedia'
 import {
   downloadTextFile,
@@ -20,7 +21,7 @@ import {
   stageByName,
 } from '@/lib/media'
 import { ApiError } from '@/types/api'
-import type { MediaExportFormat, MediaJob } from '@/types/media'
+import { MEDIA_ERROR_CODES, type MediaExportFormat, type MediaJob } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
 
 type Props = {
@@ -64,16 +65,56 @@ export function ExportPanel({ workspaceId, job }: Props) {
   const renderStage = stageByName(job, 'RENDER')
   const renderDone = String(renderStage?.status).toUpperCase() === 'COMPLETED'
   const hasRenderArtifact = !!renderStage?.outputRef?.trim()
-  const videoArtifactReady = renderDone && hasRenderArtifact
+  const outputPackage = useOutputPackage(workspaceId, job.id, renderDone)
+  const hasPackageArtifact = !!outputPackage.data?.primaryVideoRef
+    || !!outputPackage.data?.primaryVideoDownloadUrl
+  const outputPackageStageNotReady = outputPackage.error instanceof ApiError
+    && outputPackage.error.errorCode === MEDIA_ERROR_CODES.STAGE_NOT_READY
+  const videoArtifactReady = renderDone
+    && !outputPackageStageNotReady
+    && (hasRenderArtifact || hasPackageArtifact)
   const jobDone =
     String(job.status).toUpperCase() === 'COMPLETED' ||
     String(job.status).toUpperCase() === 'PARTIALLY_FAILED'
 
-  const canExportVideo = !blocked && videoArtifactReady
-  const canExportSubs = !blocked && !!job.translationJobId
+  // Subtitles are generated from the job's own segments (MediaExportServiceImpl), which
+  // TRANSLATE materialises; the export endpoint only serves them once the job is COMPLETED.
+  const translateDone =
+    String(stageByName(job, 'TRANSLATE')?.status).toUpperCase() === 'COMPLETED'
+  const jobCompleted = String(job.status).toUpperCase() === 'COMPLETED'
+  const packageHasNoSubs = outputPackage.data?.subtitleTracks?.length
+    ? outputPackage.data.subtitleTracks.every((track) => !track.available)
+    : false
+  const subsReady = translateDone && jobCompleted && !packageHasNoSubs
 
-  const outputPackage = useOutputPackage(workspaceId, job.id, videoArtifactReady)
+  const canExportVideo = !blocked && videoArtifactReady
+  const canExportSubs = !blocked && subsReady
+
   const videoUrl = outputPackage.data?.primaryVideoDownloadUrl ?? null
+
+  // SOFT_SUB muxes a mov_text stream that browsers do not render, so the preview
+  // attaches the job's WebVTT as a <track> instead (the MP4 itself stays unchanged).
+  const isSoftSub = String(job.subtitleMode || '').toUpperCase() === 'SOFT_SUB'
+  const [softSubTrackUrl, setSoftSubTrackUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isSoftSub || !videoUrl || !canExportSubs) return
+    let objectUrl: string | null = null
+    let cancelled = false
+    exportTransformationJobApi(workspaceId, job.id, 'VTT')
+      .then((res) => {
+        if (cancelled || typeof res.content !== 'string') return
+        objectUrl = URL.createObjectURL(new Blob([res.content], { type: 'text/vtt' }))
+        setSoftSubTrackUrl(objectUrl)
+      })
+      .catch(() => {
+        // Preview-only convenience: the video still plays without the track.
+      })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      setSoftSubTrackUrl(null)
+    }
+  }, [isSoftSub, videoUrl, canExportSubs, workspaceId, job.id])
 
   // Auto-expand the video row when the presigned video URL is ready
   useEffect(() => {
@@ -86,29 +127,41 @@ export function ExportPanel({ workspaceId, job }: Props) {
     ? t('media:export.blockedShort')
     : !renderDone
       ? t('media:export.needRender')
-      : !hasRenderArtifact
-        ? t('media:export.needArtifact')
+      : !videoArtifactReady
+        ? outputPackageStageNotReady
+          ? t('media:export.needArtifact')
+          : outputPackage.isError
+            ? t('media:export.previewUnavailable')
+            : t('media:export.loadingPreview')
         : t('media:export.ready')
 
   const subsStatus = blocked
     ? t('media:export.blockedShort')
-    : !job.translationJobId
+    : !translateDone || packageHasNoSubs
       ? t('media:export.needTranslate')
-      : t('media:export.ready')
+      : !jobCompleted
+        ? t('media:export.needJobComplete')
+        : t('media:export.ready')
 
   const videoDetail = blocked
     ? t('media:export.blockedDesc')
     : !renderDone
       ? t('media:export.waitRender')
-      : !hasRenderArtifact
-        ? t('media:export.needArtifactDesc')
+      : !videoArtifactReady
+        ? outputPackageStageNotReady
+          ? t('media:export.needArtifactDesc')
+          : outputPackage.isError
+            ? t('media:export.previewUnavailable')
+            : t('media:export.loadingPreview')
         : t('media:export.ready')
 
   const subsDetail = blocked
     ? t('media:export.blockedDesc')
-    : !job.translationJobId
+    : !translateDone || packageHasNoSubs
       ? t('media:export.needTranslateDesc')
-      : t('media:export.ready')
+      : !jobCompleted
+        ? t('media:export.needJobCompleteDesc')
+        : t('media:export.ready')
 
   const runExport = async (format: MediaExportFormat) => {
     setError(null)
@@ -227,7 +280,7 @@ export function ExportPanel({ workspaceId, job }: Props) {
       title: t('media:export.videoItemTitle'),
       format: t('media:export.videoFormat'),
       durationMs: effectiveDurationMs,
-      fileName: renderStage?.outputRef?.trim() || 'rendered-video.mp4',
+      fileName: renderStage?.outputRef?.split('/').pop() || 'rendered-video.mp4',
       status: videoStatus,
       statusDetail: videoDetail,
       desc: t('media:export.videoDesc'),
@@ -249,11 +302,15 @@ export function ExportPanel({ workspaceId, job }: Props) {
         </div>
       )}
 
-      {!videoArtifactReady && (
+      {!videoArtifactReady && (!renderDone || outputPackageStageNotReady || outputPackage.isError) && (
         <div className="media-banner info">
           <IconVideo size={18} />
           <p className="m-0 text-sm">
-            {renderDone ? t('media:export.needArtifactDesc') : t('media:export.waitRender')}
+            {!renderDone
+              ? t('media:export.waitRender')
+              : outputPackageStageNotReady
+                ? t('media:export.needArtifactDesc')
+                : t('media:export.previewUnavailable')}
           </p>
         </div>
       )}
@@ -492,20 +549,31 @@ export function ExportPanel({ workspaceId, job }: Props) {
                                     setVideoDurationSec(e.currentTarget.duration)
                                   }
                                 }}
-                              />
-                            ) : !item.isReady ? (
+                              >
+                                {softSubTrackUrl && (
+                                  <track
+                                    kind="subtitles"
+                                    src={softSubTrackUrl}
+                                    srcLang={job.targetLang}
+                                    label={job.targetLang?.toUpperCase()}
+                                    default
+                                  />
+                                )}
+                              </video>
+                            ) : outputPackageStageNotReady ? (
                               <div className="p-6 text-center text-xs text-zinc-400">
                                 <IconVideo size={36} className="mx-auto mb-2 opacity-50" />
-                                <p className="m-0 font-medium">
-                                  {renderDone
-                                    ? t('media:export.needArtifactDesc')
-                                    : t('media:export.waitRender')}
-                                </p>
+                                <p className="m-0 font-medium">{t('media:export.needArtifactDesc')}</p>
                               </div>
                             ) : outputPackage.isError ? (
                               <div className="p-6 text-center text-xs text-rose-400">
                                 <IconAlertTriangle size={32} className="mx-auto mb-2 opacity-80" />
                                 <p className="m-0">{t('media:export.previewUnavailable')}</p>
+                              </div>
+                            ) : !item.isReady ? (
+                              <div className="p-6 text-center text-xs text-zinc-400">
+                                <IconLoader2 size={18} className="mx-auto mb-2 animate-spin" />
+                                <p className="m-0 font-medium">{t('media:export.loadingPreview')}</p>
                               </div>
                             ) : (
                               <div className="flex items-center gap-2 text-xs text-zinc-400">

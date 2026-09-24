@@ -1,6 +1,7 @@
 package com.app.modules.media_job.pipeline;
 
 import com.app.common.config.AppProperties;
+import com.app.common.exception.AiStageException;
 import com.app.common.exception.AppException;
 import com.app.modules.credit.service.CreditService;
 import com.app.modules.credit.service.AiUsageLogService;
@@ -40,6 +41,8 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.io.ByteArrayInputStream;
+import java.net.SocketTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.util.Base64;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -67,6 +70,8 @@ public class MediaStageExecutionService {
     private final MediaCallbackService callbackService;
     private final ObjectMapper objectMapper;
     private final RestClient aiClient;
+    private final RestClient mediaAiClient;
+    private final RestClient sourceSeparationAiClient;
     private final RestClient workerClient;
     private final AppProperties props;
     private final SubtitleSegmentRepository subtitleSegmentRepository;
@@ -86,6 +91,8 @@ public class MediaStageExecutionService {
                                       MediaCallbackService callbackService,
                                       ObjectMapper objectMapper,
                                       AppProperties props,
+                                      @Qualifier("mediaAiRestClient") RestClient mediaAiClient,
+                                      @Qualifier("sourceSeparationAiRestClient") RestClient sourceSeparationAiClient,
                                       @Qualifier("aiRestClient") RestClient aiClient,
                                       @Qualifier("mediaWorkerRestClient") RestClient workerClient,
                                       SubtitleSegmentRepository subtitleSegmentRepository,
@@ -104,12 +111,37 @@ public class MediaStageExecutionService {
         this.objectMapper = objectMapper;
         this.props = props;
         this.aiClient = aiClient;
+        this.mediaAiClient = mediaAiClient;
+        this.sourceSeparationAiClient = sourceSeparationAiClient;
         this.workerClient = workerClient;
         this.subtitleSegmentRepository = subtitleSegmentRepository;
         this.qaService = qaService;
         this.creditService = creditService;
         this.aiUsageLogService = aiUsageLogService;
         this.glossaryService = glossaryService;
+    }
+
+    /** Compatibility constructor for tests and callers that provide a single AI client. */
+    public MediaStageExecutionService(MediaJobRepository jobRepository,
+                                      MediaJobStageRepository stageRepository,
+                                      MediaAssetRepository assetRepository,
+                                      MediaStorageService storage,
+                                      ProviderResolverService providerResolver,
+                                      SummaryAiClient summaryAiClient,
+                                      SummarizationService summarizationService,
+                                      MediaCallbackService callbackService,
+                                      ObjectMapper objectMapper,
+                                      AppProperties props,
+                                      RestClient aiClient,
+                                      RestClient workerClient,
+                                      SubtitleSegmentRepository subtitleSegmentRepository,
+                                      QaService qaService,
+                                      CreditService creditService,
+                                      AiUsageLogService aiUsageLogService,
+                                      GlossaryService glossaryService) {
+        this(jobRepository, stageRepository, assetRepository, storage, providerResolver, summaryAiClient,
+                summarizationService, callbackService, objectMapper, props, aiClient, aiClient, aiClient, workerClient,
+                subtitleSegmentRepository, qaService, creditService, aiUsageLogService, glossaryService);
     }
 
     /** Compatibility constructor for focused pipeline tests that do not wire QA/credit/glossary. */
@@ -125,6 +157,8 @@ public class MediaStageExecutionService {
                                       AppProperties props) {
         this(jobRepository, stageRepository, assetRepository, storage, providerResolver,
                 summaryAiClient, summarizationService, callbackService, objectMapper, props,
+                RestClient.builder().baseUrl(props.ai().baseUrl()).build(),
+                RestClient.builder().baseUrl(props.ai().baseUrl()).build(),
                 RestClient.builder().baseUrl(props.ai().baseUrl()).build(),
                 RestClient.builder().baseUrl(props.mediaWorker().baseUrl()).build(),
                 null, null, null, null, null);
@@ -149,21 +183,26 @@ public class MediaStageExecutionService {
             }
         } catch (Exception ex) {
             String service = downstreamService(stage.getStageName());
-            String error = friendlyFailure(service, ex);
+            AiStageException failure = stageFailure(stage, ex);
+            Integer downstreamStatus = ex instanceof RestClientResponseException response
+                    ? response.getStatusCode().value() : null;
             if (ex instanceof RestClientResponseException response) {
-                log.error("Media stage downstream response job={} stage={} service={} status={} errorType={}",
+                log.error("Media stage failed job={} stage={} service={} errorCode={} protocol={} capability={} model={} retryable={} downstreamStatus={} errorType={}",
                         message.jobId(), stage.getStageName(), service,
-                        response.getStatusCode().value(), ex.getClass().getSimpleName(), sanitizedStack(ex));
+                        failure.getErrorCode(), failure.getProtocol(), failure.getCapability(), failure.getModel(),
+                        failure.isRetryable(), downstreamStatus, ex.getClass().getSimpleName(), sanitizedStack(ex));
             } else if (ex instanceof ResourceAccessException) {
-                log.error("Media stage downstream connection failed job={} stage={} service={} errorType={}",
+                log.error("Media stage failed job={} stage={} service={} errorCode={} protocol={} capability={} model={} retryable={} downstreamStatus={} errorType={}",
                         message.jobId(), stage.getStageName(), service,
-                        ex.getClass().getSimpleName(), sanitizedStack(ex));
+                        failure.getErrorCode(), failure.getProtocol(), failure.getCapability(), failure.getModel(),
+                        failure.isRetryable(), downstreamStatus, ex.getClass().getSimpleName(), sanitizedStack(ex));
             } else {
-                log.error("Media stage failed before callback job={} stage={} errorType={}",
-                        message.jobId(), stage.getStageName(),
+                log.error("Media stage failed job={} stage={} errorCode={} protocol={} capability={} model={} retryable={} downstreamStatus={} errorType={}",
+                        message.jobId(), stage.getStageName(), failure.getErrorCode(), failure.getProtocol(),
+                        failure.getCapability(), failure.getModel(), failure.isRetryable(), downstreamStatus,
                         ex.getClass().getSimpleName(), sanitizedStack(ex));
             }
-            completeFailure(job, stage, message, error);
+            completeFailure(job, stage, message, failure);
         }
     }
 
@@ -222,16 +261,38 @@ public class MediaStageExecutionService {
         };
     }
 
-    private String friendlyFailure(String service, Exception ex) {
+    private AiStageException stageFailure(MediaJobStage stage, Exception ex) {
+        String capability = switch (stage.getStageName()) {
+            case STT -> "STT";
+            case TTS -> "TTS";
+            case TRANSLATE, SUMMARIZE -> "TEXT";
+            default -> null;
+        };
+        if (ex instanceof AiStageException typed) return typed;
         if (ex instanceof RestClientResponseException response) {
-            int status = response.getStatusCode().value();
-            return service + (status >= 500 ? " failed" : " rejected the request")
-                    + " (HTTP " + status + ")";
+            return AiStageException.fromRestClientResponse(response, objectMapper, capability, null);
+        }
+        if (ex instanceof AppException appException) {
+            return AiStageException.fromAppException(appException, capability);
         }
         if (ex instanceof ResourceAccessException) {
-            return service + " is unavailable or timed out";
+            String code = isTimeoutFailure(ex) ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE";
+            String message = isTimeoutFailure(ex) ? "AI provider request timed out"
+                    : "AI provider is unavailable";
+            return AiStageException.safeFailure(code, message,
+                    true, "Try again later or check the provider service.", capability, null);
         }
-        return "Media stage execution failed";
+        return AiStageException.safeFailure("MEDIA_STAGE_EXECUTION_FAILED", "Media stage execution failed",
+                false, null, capability, null);
+    }
+
+    private boolean isTimeoutFailure(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SocketTimeoutException || cause instanceof HttpTimeoutException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Downstream messages may echo request data, so log the stack without the original message. */
@@ -510,7 +571,7 @@ public class MediaStageExecutionService {
                 "runId", message.correlationId().toString(),
                 "sourceAudioRef", audioRef,
                 "profile", "VOCAL_MUSIC");
-        JsonNode result = aiClient.post().uri("/media/source-separate")
+        JsonNode result = sourceSeparationAiClient.post().uri("/media/source-separate")
                 .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(JsonNode.class);
         completeSuccess(job, stage, message, result);
     }
@@ -535,12 +596,54 @@ public class MediaStageExecutionService {
         }
         ProviderContext provider = provider(job, "STT");
         body.put("provider", provider.payload());
-        JsonNode result = aiClient.post().uri("/media/stt").contentType(MediaType.APPLICATION_JSON)
-                .body(body).retrieve().body(JsonNode.class);
+        JsonNode result = executeSttWithRetry(stage, body, provider);
         ensureCompleted(result, "STT");
         chargeAiUsage(job, "STT", usageUnits(result, "STT", durationMs == null ? 0L : durationMs),
                 provider.personalApiKey());
         completeSuccess(job, stage, message, result);
+    }
+
+    private JsonNode executeSttWithRetry(MediaJobStage stage, Map<String, Object> body,
+                                         ProviderContext provider) {
+        int retries = props.ai().maxRetries();
+        int attempt = 0;
+        while (true) {
+            try {
+                return mediaAiClient.post().uri("/media/stt").contentType(MediaType.APPLICATION_JSON)
+                        .body(body).retrieve().body(JsonNode.class);
+            } catch (RuntimeException ex) {
+                AiStageException failure = stageFailure(stage, ex, provider);
+                if (!failure.isRetryable() || attempt >= retries) {
+                    throw failure;
+                }
+                long delayMs = 250L << Math.min(attempt, 10);
+                log.warn("Retrying STT after retryable failure errorCode={} attempt={}/{}",
+                        failure.getErrorCode(), attempt + 1, retries);
+                attempt++;
+                try {
+                    Thread.sleep(delayMs);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted while retrying STT", interrupted);
+                }
+            }
+        }
+    }
+
+    private AiStageException stageFailure(MediaJobStage stage, RuntimeException ex,
+                                          ProviderContext provider) {
+        AiStageException failure = stageFailure(stage, ex);
+        if (!(ex instanceof ResourceAccessException) || failure.getProtocol() != null) {
+            return failure;
+        }
+        String protocol = String.valueOf(provider.payload().getOrDefault("protocol", ""));
+        String model = String.valueOf(provider.payload().getOrDefault("model", ""));
+        Map<String, Object> detail = new LinkedHashMap<>(failure.getErrorDetail());
+        if (!protocol.isBlank()) detail.put("protocol", protocol);
+        if (!model.isBlank()) detail.put("model", model);
+        return new AiStageException(failure.getErrorCode(), failure.getMessage(), failure.isRetryable(),
+                failure.getRecommendedAction(), protocol.isBlank() ? null : protocol, "STT",
+                model.isBlank() ? null : model, detail);
     }
 
     private void executeSummarize(MediaJob job, MediaJobStage stage, MediaStageMessage message) throws Exception {
@@ -584,7 +687,7 @@ public class MediaStageExecutionService {
         body.put("duration_tolerance", Map.of("lower_seconds", 20, "upper_seconds", 20));
         ProviderContext provider = provider(job, "TRANSLATE");
         body.put("provider", provider.payload());
-        JsonNode result = aiClient.post().uri("/media/summarize").contentType(MediaType.APPLICATION_JSON)
+        JsonNode result = mediaAiClient.post().uri("/media/summarize").contentType(MediaType.APPLICATION_JSON)
                 .body(body).retrieve().body(JsonNode.class);
         ensureCompleted(result, "SUMMARIZE");
         chargeAiUsage(job, "SUMMARIZE_SCRIPT", usageUnits(result, "SUMMARIZE", serializedLength(segments)),
@@ -668,7 +771,7 @@ public class MediaStageExecutionService {
         body.put("segments", List.of(segment));
         ProviderContext provider = provider(job, "TTS");
         body.put("provider", provider.payload());
-        JsonNode result = aiClient.post().uri("/media/tts").contentType(MediaType.APPLICATION_JSON)
+        JsonNode result = mediaAiClient.post().uri("/media/tts").contentType(MediaType.APPLICATION_JSON)
                 .body(body).retrieve().body(JsonNode.class);
         ensureCompleted(result, "TTS");
         chargeAiUsage(job, "TTS", usageUnits(result, "TTS", text == null ? 0L : text.length()),
@@ -702,25 +805,21 @@ public class MediaStageExecutionService {
         return output;
     }
 
-    private ProviderContext provider(MediaJob job, String capability) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        try {
-            ProviderResolverService.ProviderResolution p = providerResolver.resolveForCapability(
-                    job.getCreatedByUserId(), capability);
-            payload.put("protocol", valueOrEmpty(p.providerType()));
-            payload.put("base_url", valueOrEmpty(p.endpointUrl()));
-            payload.put("api_key", valueOrEmpty(p.apiKey()));
-            payload.put("model", "");
-            payload.put("capabilities", List.of(providerCapability(capability)));
-            return new ProviderContext(payload, p.isPersonalApiKey());
-        } catch (Exception ignored) {
-            payload.put("protocol", "openai_compatible");
-            payload.put("base_url", props.ai().baseUrl());
-            payload.put("api_key", "");
-            payload.put("model", "");
-            payload.put("capabilities", List.of(providerCapability(capability)));
-            return new ProviderContext(payload, false);
+    ProviderContext provider(MediaJob job, String capability) {
+        ProviderResolverService.ProviderResolution p = providerResolver.resolveForCapability(
+                job.getCreatedByUserId(), capability);
+        if (p.model() == null || p.model().isBlank()) {
+            throw new AppException(com.app.common.exception.ErrorCode.PROVIDER_MODEL_NOT_CONFIGURED);
         }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("protocol", p.providerType());
+        payload.put("base_url", p.baseUrl());
+        payload.put("api_key", p.apiKey());
+        payload.put("model", p.model());
+        payload.put("capabilities", List.of(providerCapability(capability)));
+        log.info("Resolved provider protocol={} capability={} model={} personal={}",
+                p.providerType(), capability, p.model(), p.isPersonalApiKey());
+        return new ProviderContext(payload, p.isPersonalApiKey());
     }
 
     private String providerCapability(String capability) {
@@ -733,11 +832,7 @@ public class MediaStageExecutionService {
     }
 
     private boolean hasPersonalProvider(MediaJob job, String capability) {
-        try {
-            return providerResolver.resolveForCapability(job.getCreatedByUserId(), capability).isPersonalApiKey();
-        } catch (Exception ignored) {
-            return false;
-        }
+        return providerResolver.resolveForCapability(job.getCreatedByUserId(), capability).isPersonalApiKey();
     }
 
     /** Charge only after the FastAPI stage has returned COMPLETED. */
@@ -1256,14 +1351,21 @@ public class MediaStageExecutionService {
         callbackService.completeStage(job.getId(), stage.getId(), stage.getStageName(), true, output, null);
     }
 
-    private void completeFailure(MediaJob job, MediaJobStage stage, MediaStageMessage message, String error) {
+    private void completeFailure(MediaJob job, MediaJobStage stage, MediaStageMessage message,
+                                 AiStageException failure) {
+        JsonNode detail = objectMapper.valueToTree(failure.getErrorDetail());
         callbackService.completeStage(job.getId(), stage.getId(), stage.getStageName(), false, null,
-                error == null ? "Stage execution failed" : error);
+                failure.getMessage(), failure.getErrorCode(), detail);
     }
 
     private void ensureCompleted(JsonNode result, String stage) {
-        if (result == null || (result.has("status") && !"COMPLETED".equalsIgnoreCase(result.get("status").asText()))) {
-            throw new IllegalStateException(stage + " returned a non-completed response");
+        if (result == null || !"COMPLETED".equalsIgnoreCase(result.path("status").asText())) {
+            if (result != null && "FAILED".equalsIgnoreCase(result.path("status").asText())) {
+                throw AiStageException.fromOperationResponse(result);
+            }
+            throw AiStageException.safeFailure("PROVIDER_RESPONSE_MALFORMED",
+                    "AI provider returned an incomplete response", false,
+                    "Check the configured provider model and try the provider test again.", null, null);
         }
     }
 
@@ -1520,7 +1622,7 @@ public class MediaStageExecutionService {
         return null;
     }
 
-    private record ProviderContext(Map<String, Object> payload, boolean personalApiKey) {
+    record ProviderContext(Map<String, Object> payload, boolean personalApiKey) {
     }
 
     private record SourceSubtitle(String sourceText, long startMs, long endMs) {

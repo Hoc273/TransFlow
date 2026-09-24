@@ -1,5 +1,6 @@
 package com.app.modules.summarization.service.impl;
 
+import com.app.common.exception.AiStageException;
 import com.app.modules.provider.service.ProviderResolverService;
 import com.app.modules.summarization.service.DurationAwareSummaryAiClient;
 import com.app.modules.summarization.service.SummaryAiClient;
@@ -15,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -35,7 +37,7 @@ public class SummaryAiClientImpl implements SummaryAiClient, UserAwareSummaryAiC
     private final ObjectMapper objectMapper;
 
     @Autowired
-    public SummaryAiClientImpl(@Qualifier("aiRestClient") RestClient restClient,
+    public SummaryAiClientImpl(@Qualifier("mediaAiRestClient") RestClient restClient,
                                ProviderResolverService providerResolver,
                                ObjectMapper objectMapper) {
         this.restClient = restClient;
@@ -118,9 +120,9 @@ public class SummaryAiClientImpl implements SummaryAiClient, UserAwareSummaryAiC
         body.put("media_job_id", mediaJobId == null ? "summary-" + correlationId : mediaJobId.toString());
         body.put("provider", Map.of(
                 "protocol", valueOrEmpty(provider.providerType()),
-                "base_url", valueOrEmpty(provider.endpointUrl()),
+                "base_url", valueOrEmpty(provider.baseUrl()),
                 "api_key", valueOrEmpty(provider.apiKey()),
-                "model", "",
+                "model", provider.model(),
                 "capabilities", List.of("TEXT")));
         return body;
     }
@@ -135,16 +137,24 @@ public class SummaryAiClientImpl implements SummaryAiClient, UserAwareSummaryAiC
                     .retrieve()
                     .body(FastApiScriptResponse.class);
         } catch (RestClientException ex) {
-            throw new IllegalStateException("FastAPI summary request failed", ex);
+            if (ex instanceof RestClientResponseException responseError) {
+                throw AiStageException.fromRestClientResponse(responseError, objectMapper, "TEXT", null);
+            }
+            throw AiStageException.safeFailure("PROVIDER_UNAVAILABLE", "AI provider is unavailable or timed out",
+                    true, "Try again later or check the provider service.", "TEXT", null);
         }
 
         if (response == null) {
-            throw new IllegalStateException("FastAPI summary returned an empty response");
+            throw AiStageException.safeFailure("PROVIDER_RESPONSE_MALFORMED",
+                    "AI provider returned an incomplete response", false,
+                    "Check the configured provider model and try the provider test again.", "TEXT", null);
         }
         if (!"COMPLETED".equalsIgnoreCase(response.status)) {
-            String error = response.error == null || response.error.isBlank()
-                    ? "FastAPI summary request failed" : response.error;
-            throw new IllegalStateException(error);
+            if (response.errorDetail != null && response.errorDetail.isObject()) {
+                throw AiStageException.fromDetail(response.errorDetail, null);
+            }
+            throw AiStageException.safeFailure("PROVIDER_UNKNOWN", "AI provider operation failed",
+                    false, null, "TEXT", null);
         }
 
         List<SegmentDraft> segments = new ArrayList<>();
@@ -241,6 +251,8 @@ public class SummaryAiClientImpl implements SummaryAiClient, UserAwareSummaryAiC
         private FastApiUsage usage;
         @JsonProperty("error")
         private String error;
+        @JsonProperty("error_detail")
+        private JsonNode errorDetail;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

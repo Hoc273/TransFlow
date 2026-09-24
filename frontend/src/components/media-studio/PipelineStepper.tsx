@@ -78,6 +78,19 @@ function renderRecoveryKey(stage: MediaJobStage): string | null {
   return null
 }
 
+const PROVIDER_ERROR_KEYS: Record<string, string> = {
+  PROVIDER_QUOTA_EXCEEDED: 'pipeline.providerErrors.quotaExceeded',
+  PROVIDER_AUTH_FAILED: 'pipeline.providerErrors.authFailed',
+  PROVIDER_PERMISSION_DENIED: 'pipeline.providerErrors.permissionDenied',
+  PROVIDER_RATE_LIMITED: 'pipeline.providerErrors.rateLimited',
+  PROVIDER_TIMEOUT: 'pipeline.providerErrors.timeout',
+  PROVIDER_UNAVAILABLE: 'pipeline.providerErrors.unavailable',
+  PROVIDER_MODEL_NOT_FOUND: 'pipeline.providerErrors.modelNotFound',
+  PROVIDER_UNSUPPORTED_MODEL: 'pipeline.providerErrors.unsupportedModel',
+  PROVIDER_BAD_REQUEST: 'pipeline.providerErrors.badRequest',
+  PROVIDER_RESPONSE_MALFORMED: 'pipeline.providerErrors.responseMalformed',
+}
+
 /**
  * Retry budget per stage — mirrors backend `MediaStageStuckMonitor.maxRetriesFor`
  * (EXTRACT_AUDIO/STT/SUMMARIZE/TTS/AUDIO_MIX/SOURCE_SEPARATION → 3,
@@ -206,9 +219,16 @@ export function PipelineStepper({ job, className }: Props) {
                 <IconAlertTriangle size={10} /> {t(stage.errorMessage, { defaultValue: stage.errorMessage })}
               </div>
             )}
-            {st === 'FAILED' && stage.errorMessage && (
+            {st === 'FAILED' && (stage.errorCode || stage.errorMessage || stage.errorDetail) && (
               <div className="media-stage-reason error">
-                {t(stage.errorMessage, { defaultValue: stage.errorMessage })}
+                {(() => {
+                  const key = stage.errorCode ? PROVIDER_ERROR_KEYS[stage.errorCode] : null
+                  if (!key) return stage.errorDetail?.message || stage.errorMessage
+                  const stageLabel = t(`stages.${stage.stageName}`, {
+                    defaultValue: String(stage.stageName).replaceAll('_', ' '),
+                  })
+                  return t(key, { stage: stageLabel })
+                })()}
               </div>
             )}
             {(() => {

@@ -16,9 +16,14 @@ public record UserAiProviderResponse(
         String defaultModel,
         boolean isActive,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        List<String> defaultForCapabilities
 ) {
     public static UserAiProviderResponse from(UserAiProvider entity) {
+        return from(entity, List.of());
+    }
+
+    public static UserAiProviderResponse from(UserAiProvider entity, List<String> defaultForCapabilities) {
         return new UserAiProviderResponse(
                 entity.getId(),
                 entity.getUserId(),
@@ -29,7 +34,8 @@ public record UserAiProviderResponse(
                 entity.getDefaultModel(),
                 entity.isActive(),
                 entity.getCreatedAt(),
-                entity.getUpdatedAt()
+                entity.getUpdatedAt(),
+                defaultForCapabilities
         );
     }
 }

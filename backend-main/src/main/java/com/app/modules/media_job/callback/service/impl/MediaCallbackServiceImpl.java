@@ -11,6 +11,8 @@ import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.repository.MediaJobStageRepository;
 import com.app.modules.notification.service.NotificationService;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -76,6 +78,14 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
     @Transactional
     public void completeStage(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage,
                                boolean success, JsonNode outputRef, String errorMessage) {
+        completeStage(jobId, stageId, expectedStage, success, outputRef, errorMessage, null, null);
+    }
+
+    @Override
+    @Transactional
+    public void completeStage(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage,
+                              boolean success, JsonNode outputRef, String errorMessage,
+                              String errorCode, JsonNode errorDetail) {
         MediaJob job = requireJobLocked(jobId);
         MediaJobStage stage = requireStage(jobId, stageId, expectedStage);
 
@@ -89,6 +99,8 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
             stage.setStatus(MediaJobStage.StageStatus.CANCELLED);
             stage.setCompletedAt(Instant.now());
             stage.setErrorMessage(null);
+            stage.setErrorCode(null);
+            stage.setErrorDetail(null);
             mediaJobStageRepository.save(stage);
 
             List<MediaJobStage> stages = mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId);
@@ -107,13 +119,15 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
         stage.setOutputRef(outputRef != null ? outputRef.toString() : null);
         stage.setStatus(success ? MediaJobStage.StageStatus.COMPLETED : MediaJobStage.StageStatus.FAILED);
         stage.setErrorMessage(success ? null : errorMessage);
+        stage.setErrorCode(success ? null : errorCode);
+        stage.setErrorDetail(success ? null : failureDetail(errorDetail, errorCode, errorMessage));
         mediaJobStageRepository.save(stage);
 
         if (!success) {
             job.setStatus(MediaJob.JobStatus.FAILED);
             mediaJobRepository.save(job);
             notification.notify(job.getWorkspaceId(), job.getCreatedByUserId(), "JOB_FAILED", jobId,
-                    "Stage " + expectedStage + " failed" + (errorMessage != null ? ": " + errorMessage : ""));
+                    safeFailureNotification(expectedStage, errorCode, stage.getErrorDetail()));
         } else {
             List<MediaJobStage> stages = mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId);
             boolean hasMoreWork = stages.stream().anyMatch(s ->
@@ -136,6 +150,31 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
         if (success && mediaPipelineDispatcher != null) {
             mediaPipelineDispatcher.dispatchNext(jobId);
         }
+    }
+
+    @Override
+    @Transactional
+    public void completeStage(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage,
+                              boolean success, JsonNode outputRef, String errorMessage,
+                              String errorCode, JsonNode errorDetail, String dedupeKey) {
+        completeStage(jobId, stageId, expectedStage, success, outputRef, errorMessage, errorCode, errorDetail);
+    }
+
+    private JsonNode failureDetail(JsonNode provided, String errorCode, String errorMessage) {
+        if (provided != null && provided.isObject()) return provided;
+        if (errorCode == null) return null;
+        ObjectNode detail = JsonNodeFactory.instance.objectNode();
+        detail.put("errorCode", errorCode);
+        if (errorMessage != null) detail.put("message", errorMessage);
+        return detail;
+    }
+
+    private String safeFailureNotification(MediaJobStage.StageName stage, String errorCode, JsonNode detail) {
+        String message = detail == null ? null : detail.path("message").asText(null);
+        String code = errorCode == null || errorCode.isBlank() ? "" : " (" + errorCode + ")";
+        if (message != null && !message.isBlank()) return "Stage " + stage + " failed" + code + ": " + message;
+        if (!code.isBlank()) return "Stage " + stage + " failed" + code;
+        return "Stage " + stage + " failed";
     }
 
     private boolean isTerminal(MediaJobStage stage) {

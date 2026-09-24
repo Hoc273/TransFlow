@@ -8,8 +8,10 @@ import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.http.HttpMethod.POST;
 
 class AiGatewayClientImplTest {
 
@@ -30,6 +32,26 @@ class AiGatewayClientImplTest {
 
         assertThat(client.testConnection("openai_compatible", "https://provider.test/v1", "secret"))
                 .isTrue();
+        server.verify();
+    }
+
+    @Test
+    void translateCapabilityProbeSendsConfiguredModelToTextEndpoint() {
+        server.expect(requestTo("http://ai.test/ai/validate-provider"))
+                .andExpect(method(POST))
+                .andExpect(content().json("""
+                        {"provider":{"protocol":"dashscope_native","base_url":"https://dashscope.test/v1",
+                         "api_key":"secret","model":"qwen-plus","capabilities":["TEXT"]}}
+                        """))
+                .andRespond(withSuccess("""
+                        {"ok":true,"model":"qwen-plus","message":"Provider reachable"}
+                        """, MediaType.APPLICATION_JSON));
+
+        var result = client.probeCapability("dashscope_native", "https://dashscope.test/v1",
+                "secret", "qwen-plus", "TRANSLATE");
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.model()).isEqualTo("qwen-plus");
         server.verify();
     }
 

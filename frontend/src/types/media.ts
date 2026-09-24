@@ -41,6 +41,10 @@ export type MediaStageName =
   | 'RENDER'
   | string
 
+export const MEDIA_ERROR_CODES = {
+  STAGE_NOT_READY: '2902',
+} as const
+
 export type MediaAsset = {
   id: string
   projectId: string
@@ -88,6 +92,17 @@ export type MediaJobStage = {
   progressPercent: number
   attemptCount?: number
   errorMessage?: string | null
+  errorCode?: string | null
+  errorDetail?: {
+    title?: string | null
+    message?: string | null
+    retryable?: boolean | null
+    recommendedAction?: string | null
+    protocol?: string | null
+    capability?: string | null
+    model?: string | null
+  } | null
+  /** Storage ref bucket/key, not the original JSON output. */
   outputRef?: string | null
   startedAt: string | null
   completedAt: string | null

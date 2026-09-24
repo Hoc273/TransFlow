@@ -45,13 +45,21 @@ type UserAiProviderDto = {
   baseUrl: string
   apiKeyHint: string | null
   defaultModel: string | null
+  defaultForCapabilities?: string[] | null
   isActive?: boolean
   enabled?: boolean
   displayName?: string | null
   defaultFor?: ProviderCapability[] | null
 }
 
-type TestConnectionDto = { success?: boolean; ok?: boolean; message?: string | null; model?: string | null }
+type TestConnectionDto = {
+  success?: boolean
+  ok?: boolean
+  message?: string | null
+  model?: string | null
+  authSuccess?: boolean
+  capabilityResults?: TestConnectionResponse['capabilityResults']
+}
 
 function capabilityFromWire(capability: string): ProviderCapability {
   const upper = capability.toUpperCase()
@@ -69,7 +77,7 @@ export function normalizeProvider(dto: UserAiProviderDto): ProviderConfig {
     displayName: dto.displayName || defaultModel || dto.protocol,
     protocol: dto.protocol,
     capabilities: (dto.capabilities ?? []).map(capabilityFromWire),
-    defaultFor: dto.defaultFor ?? [],
+    defaultFor: (dto.defaultForCapabilities ?? dto.defaultFor ?? []).map(capabilityFromWire),
     baseUrl: dto.baseUrl,
     apiKeyHint: dto.apiKeyHint,
     defaultModel,
@@ -104,6 +112,7 @@ export function createProviderApi(
       baseUrl: payload.baseUrl,
       apiKey: payload.apiKey,
       defaultModel: payload.defaultModel,
+      defaultForCapabilities: capabilitiesToWire(payload.defaultForCapabilities),
     },
   }).then(normalizeProvider)
 }
@@ -136,6 +145,9 @@ export function updateProviderApi(
       apiKey: payload.apiKey || undefined,
       defaultModel: payload.defaultModel,
       isActive: payload.enabled,
+      defaultForCapabilities: payload.defaultForCapabilities
+        ? capabilitiesToWire(payload.defaultForCapabilities)
+        : undefined,
     },
   }).then(normalizeProvider)
 }
@@ -174,37 +186,22 @@ export function unsetDefaultProviderApi(
 }
 
 // ── Test connection ─────────────────────────────────────────────
-// Backend `POST /users/me/providers/{id}/test` không nhận `capability`
-// (param thừa sẽ bị Spring bỏ qua) — giữ param để tương thích chữ ký cũ.
-
+// The provider test endpoint is user-scoped and accepts the capability to probe.
 export function testProviderApi(
-  providerId: string,
-  _capability?: ProviderCapability,
-): Promise<TestConnectionResponse>
-/** @deprecated Pass (providerId, capability?) — workspaceId is ignored. */
-export function testProviderApi(
-  workspaceId: string,
   providerId: string,
   capability?: ProviderCapability,
-): Promise<TestConnectionResponse>
-export function testProviderApi(
-  workspaceIdOrId: string,
-  providerIdOrCapability?: string | ProviderCapability,
-  _capability?: ProviderCapability,
 ): Promise<TestConnectionResponse> {
-  const providerId =
-    typeof providerIdOrCapability === 'string' &&
-    (providerIdOrCapability.length > 16 || providerIdOrCapability.includes('-'))
-      ? providerIdOrCapability
-      : workspaceIdOrId
-  void workspaceIdOrId
-  void _capability
-  return apiRequest<TestConnectionDto>(`/users/me/providers/${providerId}/test`, {
+  const query = capability
+    ? `?capability=${encodeURIComponent(capabilitiesToWire([capability])[0])}`
+    : ''
+  return apiRequest<TestConnectionDto>(`/users/me/providers/${providerId}/test${query}`, {
     method: 'POST',
   }).then((res) => ({
     ok: res.ok ?? res.success ?? false,
     model: res.model ?? null,
     message: res.message ?? null,
+    authSuccess: res.authSuccess ?? res.success ?? res.ok ?? false,
+    capabilityResults: res.capabilityResults ?? [],
   }))
 }
 

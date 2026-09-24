@@ -28,13 +28,13 @@ import {
 import { formatVoiceLanguage, voiceMatchesTargetLang } from '@/lib/media/voiceSelection'
 import { validateProviderBaseUrl } from '@/lib/providerBaseUrl'
 import { ApiError } from '@/types/api'
-import type { ProviderCapability, ProviderConfig, ProviderProtocol } from '@/types/provider'
+import type { ProviderCapability, ProviderConfig, ProviderProtocol, TestConnectionResponse } from '@/types/provider'
 
 /**
  * Personal BYOK API keys (user-scoped `/users/me/providers`).
  * UI ported from the workspace ProvidersPage, limited to what the user
- * provider backend supports: no presets, per-capability defaults,
- * display names or 4-phase validation — only CRUD, test connection and
+ * provider backend supports: no presets, display names or 4-phase validation —
+ * only CRUD, per-capability test connection and
  * the TTS voice catalog.
  */
 
@@ -133,7 +133,11 @@ function FieldHelp({ children }: { children: ReactNode }) {
   return <p className="field-help">{children}</p>
 }
 
-type TestState = { status: 'testing' | 'success' | 'failed'; message?: string | null }
+type TestState = {
+  status: 'testing' | 'success' | 'failed'
+  message?: string | null
+  result?: TestConnectionResponse
+}
 
 export function ApiKeysSection() {
   const { t } = useTranslation(['account', 'settings', 'common'])
@@ -248,7 +252,7 @@ export function ApiKeysSection() {
       defaultModel: form.defaultModel.trim(),
       capabilities: form.capabilities,
       enabled: form.enabled,
-      defaultForCapabilities: [],
+      defaultForCapabilities: editing?.defaultFor ?? [],
     }
     const onError = (err: unknown) =>
       setFormError(err instanceof ApiError ? err.message : t('common:error.generic'))
@@ -263,20 +267,21 @@ export function ApiKeysSection() {
     }
   }
 
-  const onTest = (p: ProviderConfig) => {
-    setTestState((s) => ({ ...s, [p.id]: { status: 'testing' } }))
+  const onTest = (p: ProviderConfig, capability: ProviderCapability) => {
+    const testKey = `${p.id}:${capability}`
+    setTestState((s) => ({ ...s, [testKey]: { status: 'testing' } }))
     testProvider.mutate(
-      { providerId: p.id },
+      { providerId: p.id, capability },
       {
         onSuccess: (res) =>
           setTestState((s) => ({
             ...s,
-            [p.id]: { status: res.ok ? 'success' : 'failed', message: res.message },
+            [testKey]: { status: res.ok ? 'success' : 'failed', message: res.message, result: res },
           })),
         onError: (err) =>
           setTestState((s) => ({
             ...s,
-            [p.id]: {
+            [testKey]: {
               status: 'failed',
               message: err instanceof ApiError ? err.message : t('common:error.generic'),
             },
@@ -372,15 +377,22 @@ export function ApiKeysSection() {
                 </thead>
                 <tbody>
                   {sectionProviders.map((p) => {
-                    const ts = testState[p.id]
+                    const testKey = `${p.id}:${section.capability}`
+                    const ts = testState[testKey]
+                    const wireCapability = section.capability === 'TEXT' ? 'TRANSLATE' : section.capability
+                    const capabilityResult = ts?.result?.capabilityResults?.find(
+                      (result) => result.capability === wireCapability,
+                    )
                     return (
                       <tr
                         key={`${section.capability}-${p.id}`}
-                        title={ts?.message ?? undefined}
+                        title={capabilityResult?.errorCode
+                          ? `${capabilityResult.errorCode}: ${capabilityResult.message ?? ''}`
+                          : capabilityResult?.message ?? ts?.message ?? undefined}
                         className={
-                          ts?.status === 'success'
+                          capabilityResult?.success || ts?.status === 'success'
                             ? 'test-row-success'
-                            : ts?.status === 'failed'
+                            : capabilityResult || ts?.status === 'failed'
                               ? 'test-row-failed'
                               : ts?.status === 'testing'
                                 ? 'test-row-testing'
@@ -425,7 +437,7 @@ export function ApiKeysSection() {
                                 className="btn-secondary btn-sm"
                                 title={ts?.status === 'testing' ? tp('testing') : tp('test')}
                                 disabled={ts?.status === 'testing'}
-                                onClick={() => onTest(p)}
+                                onClick={() => onTest(p, section.capability)}
                               >
                                 {ts?.status === 'testing' ? (
                                   <IconLoader2 size={14} className="animate-spin" />
@@ -433,6 +445,13 @@ export function ApiKeysSection() {
                                   <IconPlugConnected size={14} />
                                 )}
                               </button>
+                              {ts?.status !== 'testing' && capabilityResult && (
+                                <span className={`max-w-[180px] truncate text-[11px] font-medium ${capabilityResult.success ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]'}`}>
+                                  {capabilityResult.success
+                                    ? `${section.capability}: ${tp('testOk')}`
+                                    : `${section.capability}: ${capabilityResult.errorCode ? `${capabilityResult.errorCode}${capabilityResult.message ? ` — ${capabilityResult.message}` : ''}` : capabilityResult.message || tp('testFail')}`}
+                                </span>
+                              )}
                             </div>
                             <span className="test-actions-divider" aria-hidden="true" />
                             <div className="flex items-center gap-1">

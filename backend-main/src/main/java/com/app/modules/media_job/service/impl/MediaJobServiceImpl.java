@@ -455,6 +455,8 @@ public class MediaJobServiceImpl implements MediaJobService {
                 stage.setStatus(MediaJobStage.StageStatus.PENDING);
                 stage.setProgressPercent((short) 0);
                 stage.setErrorMessage(null);
+                stage.setErrorCode(null);
+                stage.setErrorDetail(null);
                 stage.setOutputRef(null);
                 stage.setCompletedAt(null);
                 mediaJobStageRepository.save(stage);

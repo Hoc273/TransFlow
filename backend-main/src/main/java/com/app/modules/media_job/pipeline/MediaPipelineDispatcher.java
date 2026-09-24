@@ -111,6 +111,8 @@ public class MediaPipelineDispatcher {
             stage.setStartedAt(Instant.now());
             stage.setCompletedAt(null);
             stage.setErrorMessage(null);
+            stage.setErrorCode(null);
+            stage.setErrorDetail(null);
             stage.setWorkerId(correlationId.toString());
             stage.setAttemptCount((short) (stage.getAttemptCount() + 1));
             stageRepository.save(stage);

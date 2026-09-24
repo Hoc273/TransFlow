@@ -23,10 +23,22 @@ public interface MediaCallbackService {
     void completeStage(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage,
                         boolean success, JsonNode outputRef, String errorMessage);
 
+    default void completeStage(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage,
+                               boolean success, JsonNode outputRef, String errorMessage,
+                               String errorCode, JsonNode errorDetail) {
+        completeStage(jobId, stageId, expectedStage, success, outputRef, errorMessage);
+    }
+
     /** Callback-aware overload; implementations may reject a stale attempt. */
     default void completeStage(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage,
                                boolean success, JsonNode outputRef, String errorMessage,
                                String dedupeKey) {
         completeStage(jobId, stageId, expectedStage, success, outputRef, errorMessage);
+    }
+
+    default void completeStage(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage,
+                               boolean success, JsonNode outputRef, String errorMessage,
+                               String errorCode, JsonNode errorDetail, String dedupeKey) {
+        completeStage(jobId, stageId, expectedStage, success, outputRef, errorMessage, errorCode, errorDetail);
     }
 }

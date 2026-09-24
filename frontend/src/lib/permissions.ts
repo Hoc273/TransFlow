@@ -52,7 +52,7 @@ const MATRIX: Record<PermissionAction, Role[]> = {
   'segment.approve': ADMIN_PM_PROOFREADER,
   'qa.apply': ADMIN_PM_PROOFREADER,
   'qa.resolve': ADMIN_PM_PROOFREADER,
-  'qa.override': ['ADMIN', 'PM', 'LEAD'],
+  'qa.override': ['ADMIN', 'PM', 'LEAD', 'MEMBER'],
   'glossary.crud': ['ADMIN', 'PM', 'LEAD'],
   'tm.crud': ['ADMIN', 'PM', 'LEAD'],
   'dashboard.usage': ['ADMIN', 'PM', 'LEAD'],

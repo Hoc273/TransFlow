@@ -41,9 +41,11 @@ public interface ProviderResolverService {
     ) {}
 
     record ProviderResolution(
+            UUID providerId,
             String providerType,
+            String baseUrl,
             String apiKey,
-            String endpointUrl,
+            String model,
             boolean isPersonalApiKey
     ) {}
 }

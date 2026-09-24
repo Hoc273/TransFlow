@@ -131,6 +131,7 @@ vi.mock('@/hooks/useProviders', () => ({
   useCreateProvider: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useUpdateProvider: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useDeleteProvider: () => ({ isPending: false }),
+  useTestProvider: () => ({ isPending: false, mutate: vi.fn() }),
   useSetDefaultProvider: () => ({ isPending: false, mutate: vi.fn() }),
   useValidateProvider: () => ({ isPending: false }),
   useRefreshTtsVoices: () => ({ isPending: false, mutateAsync: vi.fn().mockResolvedValue([]) }),

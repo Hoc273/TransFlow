@@ -148,6 +148,10 @@
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/publish-package` | LEAD/MEMBER/CLIENT (project) | Bản nháp thông tin đăng bài (GENERIC, không auto-post): `{profile:"GENERIC", title?, description?, language, tags[], thumbnailRef?, sourceJobId, status:"DRAFT"}`; chưa lưu → nháp rỗng (`language` = `targetLang` của job). Lưu ở `media_jobs.publish_package`. |
 | PUT | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/publish-package` | LEAD; MEMBER chỉ job của mình | Body `{title?(≤100), description?(≤5000), language?(mã ngôn ngữ, chỉ kiểm định dạng), tags?(≤30 mục, mỗi mục ≤50), thumbnailRef?(≤1000)}`; field null/vắng = giữ nguyên. Sai giới hạn → `VALIDATION_ERROR`; còn issue `BLOCK_PUBLISH` chưa xử lý → `QA_BLOCKED` (403). Khoá job `FOR UPDATE`. Trả như GET. |
 
+`stages[]` trong chi tiết job và response mutation chứa `errorCode` cùng `errorDetail` khi stage lỗi; `errorMessage` là safe message để hiển thị dự phòng cho lỗi cũ/không nhận diện.
+
+`stages[].outputRef` là storage ref bucket/key của artifact (RENDER/AUDIO_MIX/TTS/EXTRACT_AUDIO…), null với stage chỉ sinh dữ liệu (STT/TRANSLATE/SUMMARIZE) — không bao giờ trả JSON output gốc.
+
 **Body mẫu — tạo job Localization:**
 ```json
 {
@@ -312,10 +316,10 @@ QA issue được pipeline tự sinh sau stage `TRANSLATE`/`SUMMARIZE`, không c
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
 | GET | `/api/users/me/providers` | JWT | List `user_ai_providers` của chính user (không trả `api_key_enc`, chỉ `api_key_hint`). |
-| POST | `/api/users/me/providers` | JWT | `{protocol, capabilities:[...], baseUrl, apiKey, defaultModel?}` → mã hoá AES-GCM trước khi lưu. |
-| PUT | `/api/users/me/providers/{id}` | JWT (owner) | Sửa cấu hình. |
+| POST | `/api/users/me/providers` | JWT | `{protocol, capabilities:[...], baseUrl, apiKey, defaultModel?, defaultForCapabilities:[...]}` → mã hoá AES-GCM trước khi lưu; default theo user + capability, capability phải được provider hỗ trợ và provider phải active. |
+| PUT | `/api/users/me/providers/{id}` | JWT (owner) | Sửa cấu hình; `defaultForCapabilities` nếu có sẽ thay thế các capability đang default cho provider này. Response GET/POST/PUT trả `defaultForCapabilities`. |
 | DELETE | `/api/users/me/providers/{id}` | JWT (owner) | Xoá provider cá nhân. |
-| POST | `/api/users/me/providers/{id}/test` | JWT (owner) | Gọi thử kết nối provider (qua FastAPI), trả kết quả pass/fail. |
+| POST | `/api/users/me/providers/{id}/test?capability=TRANSLATE` | JWT (owner) | Tách auth probe và model/capability probe; capability probe gửi đúng `defaultModel` tới FastAPI. Trả `authSuccess` và `capabilityResults[]` có kết quả, code lỗi và model theo capability. Không truyền capability thì test các capability default; nếu chưa có default thì test các capability provider khai báo. |
 | GET | `/api/users/me/providers/{id}/voices?language=` | JWT (owner) | List `tts_voices(provider_source=USER)` đã cache; filter `language` dùng chung primary-subtag compatibility trên cả `language` và `languages[]`. |
 | POST | `/api/users/me/providers/{id}/voices/refresh` | JWT (owner) | Đồng bộ lại danh sách voice từ provider. |
 | GET | `/api/tts-voices?language=&providerSource=PLATFORM` | JWT | Danh mục voice nền tảng (`platform_ai_providers`) dùng khi user không có BYOK phù hợp — phục vụ UI chọn giọng khi tạo job; filter `language` dùng chung primary-subtag compatibility trên cả `language` và `languages[]`. |
@@ -478,7 +482,7 @@ cùng `dedupeKey` không xử lý 2 lần.
 | Method | Path | Mô tả |
 |---|---|---|
 | POST | `/internal/media/render/progress` | `{jobId, stageId, dedupeKey, progressPercent}` — cập nhật `media_job_stages.progress_percent`. |
-| POST | `/internal/media/render/complete` | `{jobId, stageId, dedupeKey, outputRef, success, errorMessage?}` — set `COMPLETED`/`FAILED`, tiếp tục pipeline. |
+| POST | `/internal/media/render/complete` | `{jobId, stageId, dedupeKey, outputRef, success, errorMessage?, errorCode?, errorDetail?}` — set `COMPLETED`/`FAILED`, tiếp tục pipeline. |
 | POST | `/internal/media/audio-mix/progress` | Cùng shape, stage `AUDIO_MIX`. |
 | POST | `/internal/media/audio-mix/complete` | Cùng shape, stage `AUDIO_MIX`. |
 
@@ -519,7 +523,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `workspace` | 2100–2199 | `WORKSPACE_NOT_FOUND` = 2100, `WORKSPACE_MEMBER_NOT_FOUND` = 2101, `LEAD_CANNOT_BE_REMOVED` = 2102, `WORKSPACE_MEMBER_ALREADY_EXISTS` = 2103, `CANNOT_ASSIGN_LEAD_ROLE` = 2104, `WORKSPACE_SLUG_ALREADY_EXISTS` = 2105 |
 | `project` | 2200–2299 | `PROJECT_NOT_FOUND` = 2200, `PROJECT_MEMBER_NOT_FOUND` = 2201, `PROJECT_ACCESS_DENIED` = 2202, `USER_NOT_WORKSPACE_MEMBER` = 2203, `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` = 2204, `PROJECT_MEMBER_ALREADY_EXISTS` = 2205 |
 | `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303 |
-| `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406, `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` = 2407, `TTS_PREVIEW_FAILED` = 2408, `PROVIDER_KEY_DECRYPTION_FAILED` = 2409 |
+| `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406, `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` = 2407, `TTS_PREVIEW_FAILED` = 2408, `PROVIDER_KEY_DECRYPTION_FAILED` = 2409, `PROVIDER_DEFAULT_NOT_CONFIGURED` = 2410, `PROVIDER_MODEL_NOT_CONFIGURED` = 2411 |
 | `preset` | 2500–2599 | `PRESET_NOT_FOUND` = 2500, `PRESET_INACTIVE` = 2501, `PRESET_SCOPE_INVALID` = 2502, `CANNOT_DELETE_ONLY_DEFAULT_PRESET` = 2503, `SYSTEM_PRESET_READ_ONLY` = 2504, `PRESET_DEFAULT_CONFLICT` = 2505, `REPLACEMENT_PRESET_INVALID` = 2506 |
 | `notification` | 2600–2699 | `NOTIFICATION_NOT_FOUND` = 2600, `NOTIFICATION_TYPE_INVALID` = 2601 |
 | `dashboard` | 2700–2799 | `DASHBOARD_DATE_RANGE_INVALID` = 2700, `DASHBOARD_GROUP_BY_INVALID` = 2701 |
@@ -591,6 +595,8 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` | 2407 | 429 | Vượt giới hạn nghe thử giọng TTS của user (mặc định 5 lần/60 giây, cấu hình `app.rate-limit.voice-preview.*`). |
 | `TTS_PREVIEW_FAILED` | 2408 | 502 | Provider TTS không trả về audio preview (lỗi gateway/provider hoặc audio rỗng). |
 | `PROVIDER_KEY_DECRYPTION_FAILED` | 2409 | 500 | Decrypt API key lưu trong DB thất bại (`PROVIDER_KEY_ENC_SECRET` đã đổi hoặc data hỏng) — cần re-enter API key cho provider. |
+| `PROVIDER_DEFAULT_NOT_CONFIGURED` | 2410 | 400 | Có nhiều personal provider active cho capability nhưng chưa chọn default, hoặc default hiện lưu không còn active/hỗ trợ capability. |
+| `PROVIDER_MODEL_NOT_CONFIGURED` | 2411 | 400 | Provider đã được resolve nhưng `defaultModel` trống; cấu hình model trước khi chạy stage. |
 | `PRESET_NOT_FOUND` | 2500 | 404 | Preset không tồn tại hoặc không thuộc quyền xem của user. |
 | `PRESET_INACTIVE` | 2501 | 400 | Preset đang ở trạng thái ngừng kích hoạt. |
 | `PRESET_SCOPE_INVALID` | 2502 | 400 | Scope hoặc ràng buộc sở hữu workspace/project của preset không hợp lệ. |

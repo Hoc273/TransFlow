@@ -6,6 +6,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -67,6 +68,13 @@ public class MediaJobStage {
 
     @Column(name = "error_message")
     private String errorMessage;
+
+    @Column(name = "error_code", length = 100)
+    private String errorCode;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "error_detail")
+    private JsonNode errorDetail;
 
     @Column(name = "started_at")
     private Instant startedAt;

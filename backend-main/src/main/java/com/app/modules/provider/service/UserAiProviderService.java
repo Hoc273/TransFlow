@@ -20,5 +20,5 @@ public interface UserAiProviderService {
 
     void deleteProvider(UUID userId, UUID id);
 
-    TestConnectionResponse testProvider(UUID userId, UUID id);
+    TestConnectionResponse testProvider(UUID userId, UUID id, String capability);
 }

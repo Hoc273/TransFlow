@@ -121,10 +121,37 @@ class MediaCallbackServiceImplTest {
     }
 
     @Test
+    void completeStage_structuredAiFailurePersistsCodeAndSafeDetail() throws Exception {
+        MediaJob job = job(MediaJob.JobStatus.PROCESSING, null);
+        when(mediaJobRepository.findWithLockById(jobId)).thenReturn(Optional.of(job));
+        MediaJobStage stage = stage(MediaJobStage.StageName.TRANSLATE, MediaJobStage.StageStatus.PROCESSING);
+        when(mediaJobStageRepository.findById(stageId)).thenReturn(Optional.of(stage));
+        JsonNode detail = new ObjectMapper().readTree("""
+                {"errorCode":"PROVIDER_QUOTA_EXCEEDED","title":"Quota Exceeded",
+                 "message":"Provider quota has been exhausted","retryable":false,
+                 "recommendedAction":"Check billing or choose another provider"}
+                """);
+
+        service.completeStage(jobId, stageId, MediaJobStage.StageName.TRANSLATE, false, null,
+                "Provider quota has been exhausted", "PROVIDER_QUOTA_EXCEEDED", detail);
+
+        assertEquals(MediaJobStage.StageStatus.FAILED, stage.getStatus());
+        assertEquals("PROVIDER_QUOTA_EXCEEDED", stage.getErrorCode());
+        assertEquals("Provider quota has been exhausted", stage.getErrorMessage());
+        assertEquals("Check billing or choose another provider", stage.getErrorDetail().path("recommendedAction").asText());
+        assertEquals(MediaJob.JobStatus.FAILED, job.getStatus());
+        verify(notification).notify(eq(job.getWorkspaceId()), eq(job.getCreatedByUserId()), eq("JOB_FAILED"),
+                eq(jobId), eq("Stage TRANSLATE failed (PROVIDER_QUOTA_EXCEEDED): Provider quota has been exhausted"));
+    }
+
+    @Test
     void completeStage_successWithMoreStagesPending_setsJobProcessing() {
         MediaJob job = job(MediaJob.JobStatus.PROCESSING, null);
         when(mediaJobRepository.findWithLockById(jobId)).thenReturn(Optional.of(job));
         MediaJobStage stage = stage(MediaJobStage.StageName.EXTRACT_AUDIO, MediaJobStage.StageStatus.PROCESSING);
+        stage.setErrorMessage("old failure");
+        stage.setErrorCode("PROVIDER_UNKNOWN");
+        stage.setErrorDetail(new ObjectMapper().createObjectNode().put("errorCode", "PROVIDER_UNKNOWN"));
         when(mediaJobStageRepository.findById(stageId)).thenReturn(Optional.of(stage));
         MediaJobStage nextStage = stage(MediaJobStage.StageName.STT, MediaJobStage.StageStatus.PENDING);
         when(mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId)).thenReturn(List.of(stage, nextStage));
@@ -133,6 +160,9 @@ class MediaCallbackServiceImplTest {
         service.completeStage(jobId, stageId, MediaJobStage.StageName.EXTRACT_AUDIO, true, outputRef, null);
 
         assertEquals(MediaJobStage.StageStatus.COMPLETED, stage.getStatus());
+        assertNull(stage.getErrorMessage());
+        assertNull(stage.getErrorCode());
+        assertNull(stage.getErrorDetail());
         assertTrue(stage.getOutputRef().contains("audio/123.wav"));
         assertEquals(MediaJob.JobStatus.PROCESSING, job.getStatus());
         verifyNoInteractions(notification);

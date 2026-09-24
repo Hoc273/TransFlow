@@ -83,6 +83,7 @@ class TranslateResponse(BaseModel):
     applied_glossary: list[str] = Field(default_factory=list)
     usage: Optional[Usage] = None
     error: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 # ── /ai/qa ───────────────────────────────────────────────────────────────────
@@ -98,7 +99,8 @@ class QARequest(BaseModel):
 
 
 BlockingAction = Literal[
-    "BLOCK_EXPORT",
+    "BLOCK_APPROVAL",
+    "BLOCK_PUBLISH",
     "BLOCK_RENDER",
 ]
 
@@ -120,6 +122,7 @@ class QAResponse(BaseModel):
     score: Optional[float] = None
     usage: Optional[Usage] = None
     error: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 # ── /ai/validate-provider ────────────────────────────────────────────────────
@@ -131,6 +134,7 @@ class ValidateProviderResponse(BaseModel):
     ok: bool
     model: Optional[str] = None
     message: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 # ── /media/stt ──────────────────────────────────────────────────────────────
@@ -384,6 +388,7 @@ class TtsResponse(BaseModel):
     results: list[TtsResult] = Field(default_factory=list)
     usage: Optional[TtsUsage] = None
     error: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 class TtsVoice(BaseModel):

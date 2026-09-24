@@ -78,7 +78,8 @@ public class MediaCallbackController {
 
         if (!dedupeStore.isProcessed(payload.dedupeKey())) {
             callbackService.completeStage(payload.jobId(), payload.stageId(), stageName,
-                    payload.success(), payload.outputRef(), payload.errorMessage());
+                    payload.success(), payload.outputRef(), payload.errorMessage(),
+                    payload.errorCode(), payload.errorDetail(), payload.dedupeKey());
             dedupeStore.markProcessed(payload.dedupeKey());
         }
         return ApiResponse.<Void>builder().build();

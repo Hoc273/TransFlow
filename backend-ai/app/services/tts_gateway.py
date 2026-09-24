@@ -77,6 +77,7 @@ async def synthesize(request: TtsRequest) -> TtsResponse:
 
     results: list[TtsResult] = []
     total_characters = 0
+    first_provider_error: dict | None = None
 
     for segment in request.segments:
         started = time.monotonic()
@@ -105,6 +106,10 @@ async def synthesize(request: TtsRequest) -> TtsResponse:
             )
             total_characters += len(segment.target_text)
         except ProviderException as exc:
+            if first_provider_error is None:
+                first_provider_error = exc.to_error_detail()
+                first_provider_error["model"] = first_provider_error.get("model") or request.provider.model
+                first_provider_error["capability"] = first_provider_error.get("capability") or "TTS"
             _fe_log.warning(
                 "TTS segment %s failed: errorCode=%s",
                 segment.segment_id,
@@ -121,17 +126,28 @@ async def synthesize(request: TtsRequest) -> TtsResponse:
                 TtsResult(
                     segment_id=segment.segment_id,
                     status="FAILED",
-                    error=str(exc),
+                    error=exc.message,
                     errorCode=exc.code.value,
                 )
             )
         except Exception as exc:
             _int_log.exception("TTS failed for segment %s", segment.segment_id)
+            if first_provider_error is None:
+                unknown = ProviderException(
+                    ProviderErrorCode.PROVIDER_UNKNOWN,
+                    "TTS synthesis failed",
+                    protocol=request.provider.protocol,
+                    capability="TTS",
+                    model=request.provider.model,
+                )
+                first_provider_error = unknown.to_error_detail()
+                first_provider_error["model"] = first_provider_error.get("model") or request.provider.model
+                first_provider_error["capability"] = first_provider_error.get("capability") or "TTS"
             results.append(
                 TtsResult(
                     segment_id=segment.segment_id,
                     status="FAILED",
-                    error=str(exc),
+                    error="TTS synthesis failed",
                     errorCode=ProviderErrorCode.PROVIDER_UNKNOWN.value,
                 )
             )
@@ -146,6 +162,7 @@ async def synthesize(request: TtsRequest) -> TtsResponse:
             provider=request.provider.protocol,
         ),
         error=None if success else "All segments failed TTS synthesis",
+        error_detail=first_provider_error if not success else None,
     )
 
 

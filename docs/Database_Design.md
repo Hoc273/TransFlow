@@ -266,6 +266,13 @@ user_ai_providers(
 )
 CREATE INDEX ix_user_ai_providers_user ON user_ai_providers(user_id) WHERE is_active;
 
+user_ai_provider_defaults(
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  capability VARCHAR(20) NOT NULL CHECK (capability IN ('STT','TRANSLATE','TTS','VISION')),
+  provider_id UUID NOT NULL REFERENCES user_ai_providers(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, capability)
+)
+
 platform_ai_providers(
   id UUID PK,
   protocol VARCHAR NOT NULL,
@@ -461,6 +468,8 @@ media_job_stages(
   attempt_count SMALLINT NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
   execution_time_ms BIGINT,
   error_message TEXT,
+  error_code VARCHAR(100),
+  error_detail JSONB,
   started_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
   UNIQUE (media_job_id, stage_name),

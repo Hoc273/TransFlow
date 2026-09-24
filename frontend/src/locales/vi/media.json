@@ -157,6 +157,18 @@
     "staleWarn": "Đổi ngôn ngữ nguồn sẽ chạy lại TRANSLATE → TTS → RENDER với ngôn ngữ mới. STT không chạy lại — transcript không phụ thuộc ngôn ngữ.",
     "progress": "Tiến độ tổng",
     "noStages": "Chưa có dữ liệu stage.",
+    "providerErrors": {
+      "quotaExceeded": "Hạn mức của nhà cung cấp AI cho bước {{stage}} đã hết. Kiểm tra billing/quota hoặc chọn provider khác.",
+      "authFailed": "Khóa API của nhà cung cấp AI cho bước {{stage}} không hợp lệ hoặc đã hết hiệu lực. Kiểm tra lại cấu hình khóa.",
+      "permissionDenied": "Nhà cung cấp AI từ chối quyền truy cập cho bước {{stage}}. Kiểm tra quyền của khóa hoặc model.",
+      "rateLimited": "Nhà cung cấp AI đang giới hạn yêu cầu cho bước {{stage}}. Chờ một lúc rồi thử chạy lại.",
+      "timeout": "Nhà cung cấp AI phản hồi quá lâu ở bước {{stage}}. Thử chạy lại sau.",
+      "unavailable": "Nhà cung cấp AI hiện không khả dụng cho bước {{stage}}. Kiểm tra trạng thái dịch vụ hoặc thử lại sau.",
+      "modelNotFound": "Không tìm thấy model đã cấu hình cho bước {{stage}}. Chọn đúng tên model trong Provider Settings.",
+      "unsupportedModel": "Model đã chọn không hỗ trợ bước {{stage}}. Chọn model có hỗ trợ capability này.",
+      "badRequest": "Nhà cung cấp AI từ chối yêu cầu ở bước {{stage}}. Kiểm tra model và cấu hình capability.",
+      "responseMalformed": "Model trả về dữ liệu không đúng định dạng ở bước {{stage}}. Kiểm tra model hoặc chọn provider khác."
+    },
     "recovery": {
       "emptyCues": "Timeline phụ đề không có cue hợp lệ — hãy khôi phục hoặc chỉnh lại nội dung bản dịch và timing, sau đó Lưu và chạy lại Lồng tiếng & Render.",
       "durationMismatch": "Timeline phụ đề chưa phủ đủ video — hãy kiểm tra timing các dòng phụ đề, đặc biệt khu vực gần cuối, sau đó Lưu và chạy lại Lồng tiếng & Render.",
@@ -323,6 +335,8 @@
     "needArtifactDesc": "RENDER đã xong nhưng chưa có file video hoàn chỉnh — cần chạy lại stage render.",
     "needTranslate": "Chưa dịch xong",
     "needTranslateDesc": "Phụ đề mở khoá sau khi stage TRANSLATE tạo segment.",
+    "needJobComplete": "Chờ job hoàn tất",
+    "needJobCompleteDesc": "Phụ đề .srt/.vtt tải được khi toàn bộ job đã hoàn tất.",
     "alwaysBoth": "SRT và VTT luôn xuất được, độc lập hard/soft sub.",
     "jobReady": "Job sẵn sàng export.",
     "opened": "Đã mở {{file}}",

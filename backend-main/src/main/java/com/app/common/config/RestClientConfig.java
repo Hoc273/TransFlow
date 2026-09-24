@@ -35,6 +35,28 @@ public class RestClientConfig {
                 .build();
     }
 
+    /** Long-running AI media operations such as STT and TTS can run for several minutes. */
+    @Bean("mediaAiRestClient")
+    public RestClient mediaAiRestClient(AppProperties props) {
+        AppProperties.Ai ai = props.ai();
+        return RestClient.builder()
+                .baseUrl(ai.baseUrl())
+                .requestFactory(createHttp11Factory(
+                        Duration.ofMillis(ai.connectTimeoutMs()), Duration.ofMinutes(10)))
+                .build();
+    }
+
+    /** Separation can exceed the STT/TTS budget while processing long source audio. */
+    @Bean("sourceSeparationAiRestClient")
+    public RestClient sourceSeparationAiRestClient(AppProperties props) {
+        AppProperties.Ai ai = props.ai();
+        return RestClient.builder()
+                .baseUrl(ai.baseUrl())
+                .requestFactory(createHttp11Factory(
+                        Duration.ofMillis(ai.connectTimeoutMs()), Duration.ofMinutes(16)))
+                .build();
+    }
+
     private JdkClientHttpRequestFactory createHttp11Factory(Duration connectTimeout, Duration readTimeout) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)

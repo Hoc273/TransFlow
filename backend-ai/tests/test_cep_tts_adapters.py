@@ -48,6 +48,7 @@ from app.services.protocol.static_voices import (
     PIPER_VOICE_MODELS,
 )
 from app.services.protocol.types import SynthesizeResult
+from app.services.generated_asset_cache import NoopGeneratedAssetCache
 from app.services.provider_errors import (
     ProviderErrorCode,
     ProviderException,
@@ -445,6 +446,11 @@ class CatalogRegistryTest(unittest.TestCase):
 # ── Gateway execution_info ───────────────────────────────────────────────────
 
 class GatewayExecutionInfoTest(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        patcher = patch("app.services.tts_gateway.get_cache", return_value=NoopGeneratedAssetCache())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     async def test_gateway_completes_execution_info_per_segment(self):
         request = TtsRequest(
             correlation_id="corr-1",
@@ -524,6 +530,11 @@ class GatewayExecutionInfoTest(unittest.IsolatedAsyncioTestCase):
 # ── Gateway zero-key gate (P0-1) ──────────────────────────────────────────────
 
 class GatewayKeyGateTest(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        patcher = patch("app.services.tts_gateway.get_cache", return_value=NoopGeneratedAssetCache())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _adapter(self, requires_key: bool) -> SimpleNamespace:
         return SimpleNamespace(requires_api_key=requires_key)
 
@@ -591,6 +602,11 @@ class GatewayKeyGateTest(unittest.IsolatedAsyncioTestCase):
 class GatewayPerSegmentErrorCodeTest(unittest.IsolatedAsyncioTestCase):
     """OI-01 (`93` §4.19.12): per-segment errorCode wire contract."""
 
+    async def asyncSetUp(self):
+        patcher = patch("app.services.tts_gateway.get_cache", return_value=NoopGeneratedAssetCache())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _request(self, *segment_ids: str) -> TtsRequest:
         return TtsRequest(
             correlation_id="corr-oi01",
@@ -630,6 +646,8 @@ class GatewayPerSegmentErrorCodeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("FAILED", response.results[0].status)
         self.assertEqual("PROVIDER_UNKNOWN", response.results[0].errorCode)
         self.assertIsNotNone(response.results[0].error)
+        self.assertEqual("PROVIDER_UNKNOWN", response.error_detail.errorCode)
+        self.assertEqual("probe-model", response.error_detail.model)
 
     async def test_success_segments_omit_error_code(self):  # T3
         async def fake_synthesize(provider, text, voice_id):

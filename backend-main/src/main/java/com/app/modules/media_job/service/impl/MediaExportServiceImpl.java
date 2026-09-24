@@ -9,9 +9,8 @@ import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.entity.SubtitleSegment;
 import com.app.modules.media_job.service.MediaExportService;
 import com.app.modules.media_job.service.MediaJobService;
+import com.app.modules.media_job.util.StageOutputRefs;
 import com.app.modules.qa.service.QaService;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -26,7 +25,6 @@ public class MediaExportServiceImpl implements MediaExportService {
     private final MediaJobService jobService;
     private final QaService qaService;
     private final MediaStorageService storage;
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     public MediaExportServiceImpl(MediaJobService jobService, QaService qaService,
                                   MediaStorageService storage) {
@@ -86,17 +84,8 @@ public class MediaExportServiceImpl implements MediaExportService {
         }
     }
 
-    /** Stage {@code output_ref} is JSON text holding the worker's {@code "<bucket>/<key>"} string. */
     static String parseRef(String outputRef) {
-        if (outputRef == null) {
-            return null;
-        }
-        try {
-            JsonNode node = JSON.readTree(outputRef);
-            return node.isTextual() ? node.asText() : null;
-        } catch (Exception ex) {
-            return outputRef;
-        }
+        return StageOutputRefs.storageRef(outputRef);
     }
 
     static String toSrt(List<SubtitleSegment> segments) {

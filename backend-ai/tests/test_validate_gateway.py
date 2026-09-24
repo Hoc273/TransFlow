@@ -462,6 +462,10 @@ class TestSttProbeNoSpeechRetry(unittest.IsolatedAsyncioTestCase):
 
         assert resp.ok is False
         assert "no speech" in resp.message
+        assert resp.error_detail.errorCode == "PROVIDER_EMPTY_RESPONSE"
+        assert resp.error_detail.protocol == "dashscope_native"
+        assert resp.error_detail.capability == "STT"
+        assert resp.error_detail.model == "qwen3.5-omni-plus"
         assert adapter.calls == 2
 
     async def test_malformed_fails_fast_without_retry(self):
