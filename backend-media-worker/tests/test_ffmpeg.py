@@ -222,6 +222,28 @@ class DubAudioTimingTest(unittest.TestCase):
         self.assertIn("Bold=-1", vf)
         self.assertIn("Alignment=2", vf)
 
+    def test_burn_srt_scales_typography_from_1080_reference_to_frame_height(self):
+        # font_size/outline_width are authored for a 1080-line frame (Render
+        # Studio preview PLAY_RES_Y); a 720-line output burns them at 2/3.
+        with patch("app.services.ffmpeg._run") as run, patch(
+            "app.services.ffmpeg.get_video_height", return_value=720
+        ), patch("app.services.ffmpeg.get_video_width", return_value=1280):
+            burn_subtitles(
+                "source.mp4",
+                "subs/out.srt",
+                "render.mp4",
+                subtitle_format="srt",
+                background_box=False,
+                font_size=42,
+                outline_width=4,
+                outline_color="#FFFFFF",
+            )
+
+        cmd = run.call_args.args[0]
+        vf = cmd[cmd.index("-vf") + 1]
+        self.assertIn("Fontsize=28", vf)
+        self.assertIn("Outline=3", vf)
+
     def test_burn_srt_bold_false_maps_to_zero(self):
         with patch("app.services.ffmpeg._run") as run, patch(
             "app.services.ffmpeg.get_video_height", return_value=1080

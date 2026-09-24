@@ -115,6 +115,84 @@ class MediaJobServiceImplTest {
     }
 
     @Test
+    void createJob_withoutPreset_keepsSoftSubAndOriginalFrame() {
+        stubHappyPathUpToCreditCheck();
+
+        MediaJob job = service.createJob(workspaceId, userId, localizationRequest("ORIGINAL_ONLY", false, null));
+
+        assertEquals(MediaJob.SubtitleMode.SOFT_SUB, job.getSubtitleMode());
+        assertEquals("{}", job.getRenderConfig());
+        assertNull(job.getSubtitleStyle());
+        assertEquals("{}", job.getPresetSnapshot());
+    }
+
+    @Test
+    void createJob_shortsPreset_seedsHardSubVerticalFrameAndStyle() throws Exception {
+        stubHappyPathUpToCreditCheck();
+        UUID presetId = UUID.randomUUID();
+        when(presetResolver.resolveForJobCreation(any(), any(), any())).thenReturn(presetId);
+        when(presetResolver.findJobConfig(presetId)).thenReturn(Optional.of(shortsPreset(presetId)));
+
+        MediaJob job = service.createJob(workspaceId, userId, localizationRequest("ORIGINAL_ONLY", false, null));
+
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var render = mapper.readTree(job.getRenderConfig());
+        assertEquals(MediaJob.SubtitleMode.HARD_SUB, job.getSubtitleMode());
+        assertEquals("HARD_SUB", render.get("subtitleMode").asText());
+        assertEquals("BOTTOM", render.get("subtitlePosition").asText());
+        assertEquals(-13, render.get("verticalOffsetPercent").asInt());
+        assertEquals("9:16", render.get("outputAspectRatio").asText());
+        var subtitlePresentation = render.path("presentation").path("subtitle");
+        assertEquals("PHRASE", subtitlePresentation.path("displayMode").asText());
+        assertEquals(5, subtitlePresentation.path("wordsPerPhrase").asInt());
+        assertFalse(subtitlePresentation.path("layers").isArray()); // cover layers are never taken from a preset
+        var style = mapper.readTree(job.getSubtitleStyle());
+        assertEquals(56, style.get("font_size").asInt());
+        assertTrue(style.get("bold").asBoolean());
+        var snapshot = mapper.readTree(job.getPresetSnapshot());
+        assertEquals(presetId.toString(), snapshot.get("presetId").asText());
+        assertEquals("9:16", snapshot.path("renderConfig").path("outputAspectRatio").asText());
+    }
+
+    @Test
+    void createJob_explicitSubtitleModeWinsOverPreset_andInvalidPresetValuesAreDropped() throws Exception {
+        stubHappyPathUpToCreditCheck();
+        UUID presetId = UUID.randomUUID();
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var preset = new PresetResolverService.PresetJobConfig(presetId, "Custom",
+                mapper.readTree("{\"font_family\":\"Comic\",\"font_size\":999}"), mapper.createObjectNode(),
+                mapper.readTree("{\"subtitleMode\":\"HARD_SUB\",\"outputAspectRatio\":\"21:9\",\"verticalOffsetPercent\":-80}"));
+        when(presetResolver.resolveForJobCreation(any(), any(), any())).thenReturn(presetId);
+        when(presetResolver.findJobConfig(presetId)).thenReturn(Optional.of(preset));
+        CreateMediaJobRequest req = new CreateMediaJobRequest(projectId, rootAssetId, MediaJob.RECIPE_LOCALIZATION_FULL,
+                "TRANSLATE_ONLY", "en", null, "SOFT_SUB", "ORIGINAL_ONLY", false, null, null, null, null, presetId);
+
+        MediaJob job = service.createJob(workspaceId, userId, req);
+
+        var render = mapper.readTree(job.getRenderConfig());
+        assertEquals(MediaJob.SubtitleMode.SOFT_SUB, job.getSubtitleMode());
+        assertEquals("SOFT_SUB", render.get("subtitleMode").asText());
+        assertTrue(render.get("outputAspectRatio").isNull());
+        assertTrue(render.get("verticalOffsetPercent").isNull());
+        assertNull(job.getSubtitleStyle());
+    }
+
+    private PresetResolverService.PresetJobConfig shortsPreset(UUID presetId) throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        return new PresetResolverService.PresetJobConfig(presetId, "Social Media Shorts / Reels",
+                mapper.readTree("{\"font_family\":\"Arial\",\"font_size\":56,\"primary_color\":\"#FFD700\","
+                        + "\"outline_color\":\"#000000\",\"outline_width\":0,\"shadow\":false,\"bold\":true,"
+                        + "\"italic\":false,\"alignment\":\"center\",\"margin_v\":0,\"line_spacing\":0,"
+                        + "\"background\":\"#000000CC\",\"opacity\":100}"),
+                mapper.createObjectNode(),
+                mapper.readTree("{\"subtitleMode\":\"HARD_SUB\",\"subtitlePosition\":\"BOTTOM\","
+                        + "\"verticalOffsetPercent\":-13,\"backgroundBox\":true,\"backgroundColor\":\"#000000CC\","
+                        + "\"textColor\":\"#FFD700\",\"outputAspectRatio\":\"9:16\","
+                        + "\"presentation\":{\"subtitle\":{\"displayMode\":\"PHRASE\",\"wordsPerPhrase\":5,"
+                        + "\"layers\":[{\"layerType\":\"COVER_BOX\"}]}}}"));
+    }
+
+    @Test
     void createJob_hybridProcessingMode_activatesSummarizeStage() {
         stubHappyPathUpToCreditCheck();
         CreateMediaJobRequest req = new CreateMediaJobRequest(projectId, rootAssetId, MediaJob.RECIPE_LOCALIZATION_FULL,

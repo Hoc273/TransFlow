@@ -7,6 +7,7 @@
 import { apiRequest, buildWorkspacePath } from '@/lib/api/client'
 import type {
   WorkflowPreset,
+  WorkflowPresetConfig,
   WorkflowPresetRequest,
   WorkflowPresetScope,
 } from '@/types/media'
@@ -24,8 +25,12 @@ export function listWorkflowPresetsApi(
 ): Promise<WorkflowPreset[]> {
   const params = new URLSearchParams({ scope })
   if (projectId) params.set('projectId', projectId)
-  return apiRequest<WorkflowPreset[]>(
+  return apiRequest<Array<WorkflowPreset & { renderConfig?: WorkflowPresetConfig | null }>>(
     `${buildWorkspacePath(workspaceId, '/presets')}?${params.toString()}`,
+  ).then((rows) =>
+    // backend-main returns `renderConfig` (media_presets.render_config, same keys as the job
+    // render-config); the picker reads it as `config`.
+    rows.map(({ renderConfig, ...row }) => ({ ...row, config: row.config ?? renderConfig ?? null })),
   )
 }
 

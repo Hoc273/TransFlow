@@ -38,6 +38,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { usePermission } from '@/hooks/usePermission'
 import { useProviders, useTtsVoices } from '@/hooks/useProviders'
 import { useWorkflowPresets } from '@/hooks/useWorkflowPresets'
+import { presetScopeLabelKey } from '@/components/media-studio/WorkflowPresetPicker'
 import {
   scrollSectionIntoView,
   useWorkflowAutoScroll,
@@ -122,17 +123,19 @@ export function MediaJobPage() {
   // BA review v1 P2: raw/reduced UUIDs are never rendered — when the job has
   // no preset (or the name cannot be resolved) the row shows "Không" instead
   // of being hidden.
+  // backend-main returns the frozen reference as `presetId`; `workflowPresetId` is the legacy alias.
+  const jobPresetId = job?.workflowPresetId ?? job?.presetId ?? null
   const { data: jobPresets = [] } = useWorkflowPresets(
     workspaceId,
     job?.projectId,
-    Boolean(job?.workflowPresetId),
+    Boolean(jobPresetId),
   )
   const presetName = useMemo(() => {
-    if (!job?.workflowPresetId) return null
-    return (
-      jobPresets.find((p) => p.id === job.workflowPresetId)?.name ?? null
-    )
-  }, [job, jobPresets])
+    if (!jobPresetId) return null
+    const preset = jobPresets.find((p) => p.id === jobPresetId)
+    // "Hệ thống: Social Media Shorts / Reels" — scope first so SYSTEM templates read apart from own presets.
+    return preset ? `${t(presetScopeLabelKey(preset.scope))}: ${preset.name}` : null
+  }, [jobPresetId, jobPresets, t])
 
   // Phase C: a bound job's provider is authoritative — never replaced by the
   // current workspace default. Legacy jobs (null ttsProviderId) fall back to

@@ -41,7 +41,7 @@ public class MediaExportServiceImpl implements MediaExportService {
         }
 
         if (!fmt.equals("VIDEO")) { // SUBTITLE is the legacy alias of SRT
-            checkPublishable(workspaceId, userId, jobId);
+            checkSubtitlesReady(workspaceId, userId, jobId);
             List<SubtitleSegment> segments = jobService.listSubtitles(workspaceId, userId, jobId);
             boolean vtt = fmt.equals("VTT");
             return new MediaExportResponse(fmt, "subtitles_" + jobId + (vtt ? ".vtt" : ".srt"), null,
@@ -71,6 +71,21 @@ public class MediaExportServiceImpl implements MediaExportService {
             throw new AppException(ErrorCode.STAGE_NOT_READY);
         }
 
+        requirePublishAllowed(workspaceId, userId, jobId);
+    }
+
+    /**
+     * Subtitle files come from the job's segments, which TRANSLATE materialises — they do not wait for
+     * RENDER / job completion. The QA publish gate still applies.
+     */
+    private void checkSubtitlesReady(UUID workspaceId, UUID userId, UUID jobId) {
+        jobService.getJob(workspaceId, userId, jobId); // project read access
+        boolean translated = jobService.getStages(jobId).stream()
+                .anyMatch(s -> s.getStageName() == MediaJobStage.StageName.TRANSLATE
+                        && s.getStatus() == MediaJobStage.StageStatus.COMPLETED);
+        if (!translated) {
+            throw new AppException(ErrorCode.STAGE_NOT_READY);
+        }
         requirePublishAllowed(workspaceId, userId, jobId);
     }
 

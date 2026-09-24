@@ -647,7 +647,7 @@ export function RenderPreparationPanel({
   const [textColor, setTextColor] = useState('#000000')
   // Phase 6 presentation draft (docs/19 §1.8.1) — hydrated from the server.
   const [displayMode, setDisplayMode] = useState<SubtitleDisplayMode>('SENTENCE')
-  const [wordsPerPhrase, setWordsPerPhrase] = useState(3)
+  const [wordsPerPhrase, setWordsPerPhrase] = useState(5)
   // M-B (W2): 10..80 when CHARACTERS — the mid-range default keeps a mode
   // switch to CHARACTERS always valid; the backend remains the authority.
   const [maxCharactersPerCue, setMaxCharactersPerCue] = useState(40)
@@ -715,7 +715,7 @@ export function RenderPreparationPanel({
     const aud = configQuery.data.presentation?.audio
     const mask = sub?.mask
     setDisplayMode(sub?.displayMode ?? 'SENTENCE')
-    setWordsPerPhrase(sub?.wordsPerPhrase ?? 3)
+    setWordsPerPhrase(sub?.wordsPerPhrase ?? 5)
     setMaxCharactersPerCue(sub?.maxCharactersPerCue ?? 40)
     setFontSize(sub?.typography?.fontSize ?? null)
     setBold(sub?.typography?.bold ?? null)
@@ -743,7 +743,7 @@ export function RenderPreparationPanel({
         ? (configQuery.data.textColor as string).toUpperCase()
         : '#FFFFFF',
       displayMode: sub?.displayMode ?? 'SENTENCE',
-      wordsPerPhrase: sub?.wordsPerPhrase ?? 3,
+      wordsPerPhrase: sub?.wordsPerPhrase ?? 5,
       maxCharactersPerCue: sub?.maxCharactersPerCue ?? 40,
       fontSize: sub?.typography?.fontSize ?? null,
       bold: sub?.typography?.bold ?? null,

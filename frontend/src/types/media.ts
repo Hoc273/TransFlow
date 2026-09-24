@@ -193,6 +193,8 @@ export type MediaJob = {
   workflowMode?: WorkflowMode | null
   /** W0 additive — frozen workflow preset reference (display only; W1 resolution). */
   workflowPresetId?: string | null
+  /** Frozen preset reference as returned by backend-main (`media_jobs.preset_id`). */
+  presetId?: string | null
   /** W0 additive — pure checkpoint projection (docs/16 §7.5): CUT / REVIEW / EXPORT. */
   workflowCheckpoints?: WorkflowCheckpoint[] | null
 }

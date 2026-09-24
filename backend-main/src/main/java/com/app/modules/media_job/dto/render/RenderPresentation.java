@@ -16,8 +16,10 @@ public record RenderPresentation(@Valid Subtitle subtitle, @Valid Audio audio) {
 
     public static final int MAX_LAYERS = 4; // backend-media-worker rejects more than 4 layers (max_length=4)
 
+    /** {@code wordsPerPhrase} applies to PHRASE only (render groups cues by it; absent = 5 words). */
     public record Subtitle(
             @Pattern(regexp = "SENTENCE|PHRASE|WORD") String displayMode,
+            @Min(3) @Max(10) Integer wordsPerPhrase,
             @Valid @Size(max = MAX_LAYERS) List<Layer> layers) {
     }
 

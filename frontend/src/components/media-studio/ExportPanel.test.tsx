@@ -420,20 +420,30 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
     )
   })
 
-  it('subtitle downloads wait for the whole job even when TRANSLATE is done', () => {
+  it('subtitle downloads unlock as soon as TRANSLATE is done, before RENDER / job completion', () => {
     linkedJobData.data = linkedJob([])
     render(
       <ExportPanel
         workspaceId="ws"
-        job={job({ translationJobId: null, status: 'PROCESSING' })}
+        job={job({
+          translationJobId: null,
+          status: 'PROCESSING',
+          stages: [{
+            id: 's0',
+            stageName: 'TRANSLATE',
+            stageOrder: 3,
+            status: 'COMPLETED',
+            progressPercent: 100,
+            outputRef: null,
+            startedAt: null,
+            completedAt: null,
+          }],
+        })}
       />,
     )
 
-    expect((screen.getByTestId('export-quick-download-srt') as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.click(screen.getByTestId('export-video-row'))
-    expect(screen.getByTestId('export-video-detail').textContent).toContain(
-      'media:export.needJobCompleteDesc',
-    )
+    expect((screen.getByTestId('export-quick-download-srt') as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByTestId('export-quick-download-vtt') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('subtitle downloads unlock from the TRANSLATE stage without a legacy translationJobId', () => {

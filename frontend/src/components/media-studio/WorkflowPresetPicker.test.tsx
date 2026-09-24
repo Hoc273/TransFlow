@@ -24,6 +24,7 @@ const {
   presetWorkflowModeLabelKey,
   presetSubtitleModeLabelKey,
   presetDisplayModeLabelKey,
+  presetAspectSuffix,
 } = await import('./WorkflowPresetPicker')
 
 import type { WorkflowPreset } from '@/types/media'
@@ -278,5 +279,18 @@ describe('WorkflowPresetPicker — M-C create-form picker (docs/16 §7.5)', () =
     expect(presetById(list, null)).toBeNull()
     expect(optionToPresetId('preset-1')).toBe('preset-1')
     expect(optionToPresetId('')).toBeNull()
+  })
+
+  it('option labels carry the output frame so 16:9 and 9:16 presets read apart', () => {
+    expect(presetAspectSuffix(preset({ config: { outputAspectRatio: '9:16' } }))).toBe(' (9:16)')
+    expect(presetAspectSuffix(preset({ config: { outputAspectRatio: '16:9' } }))).toBe(' (16:9)')
+    expect(presetAspectSuffix(preset({ config: { outputAspectRatio: 'ORIGINAL' } }))).toBe('')
+    expect(presetAspectSuffix(preset({ config: null }))).toBe('')
+
+    presetsQuery.data = [preset({ id: 'reels', name: 'Social Media Shorts / Reels', config: { outputAspectRatio: '9:16' } })]
+    const html = renderToStaticMarkup(
+      <WorkflowPresetPicker workspaceId="ws" projectId="p" value={null} onChange={() => {}} />,
+    )
+    expect(html).toContain('Social Media Shorts / Reels (9:16)')
   })
 })

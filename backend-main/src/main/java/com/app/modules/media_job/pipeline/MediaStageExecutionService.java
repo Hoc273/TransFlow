@@ -466,27 +466,31 @@ public class MediaStageExecutionService {
         List<SubtitleSegment> segments = subtitleSegmentRepository == null
                 ? List.of() : subtitleSegmentRepository.findByMediaJobIdOrderBySeq(job.getId());
 
+        // Pre-render check: repair blank/out-of-range/overlapping cues, then group them per displayMode.
+        List<RenderSubtitleCues.Cue> raw = new ArrayList<>();
+        for (SubtitleSegment segment : segments) {
+            raw.add(new RenderSubtitleCues.Cue(segment.getStartMs(), segment.getEndMs(), segment.getTargetText()));
+        }
+        List<RenderSubtitleCues.Cue> cues = RenderSubtitleCues.sanitize(raw, duration);
+        if (cues.isEmpty()) {
+            // Never burn a placeholder (the whole translation as one cue over the video).
+            throw AiStageException.safeFailure("SUBTITLE_CUES_MISSING", "No valid subtitle cues to render",
+                    false, "Run TRANSLATE again or fix the subtitles in the editor before rendering.", null, null);
+        }
+        if (cues.size() != raw.size()) {
+            log.info("Pre-render subtitle check job={} segments={} renderable={}", job.getId(), raw.size(), cues.size());
+        }
+        Map<String, Object> subtitlePresentation = mapValue(mapValue(renderConfig.get("presentation")).get("subtitle"));
+        cues = RenderSubtitleCues.group(cues, stringValue(subtitlePresentation.get("displayMode"), null),
+                integerOrNull(subtitlePresentation.get("wordsPerPhrase")));
+
         StringBuilder srt = new StringBuilder();
         int seq = 1;
-        for (SubtitleSegment segment : segments) {
-            if (segment.getTargetText() == null || segment.getTargetText().isBlank()) {
-                continue;
-            }
-            long start = Math.max(0L, segment.getStartMs());
-            long end = Math.max(start + 1L, segment.getEndMs());
+        for (RenderSubtitleCues.Cue cue : cues) {
             srt.append(seq++).append('\n')
-                    .append(srtTimestamp(start)).append(" --> ").append(srtTimestamp(end)).append('\n')
-                    .append(segment.getTargetText().replace("\r", "").replace("\n", " ").trim())
+                    .append(srtTimestamp(cue.startMs())).append(" --> ").append(srtTimestamp(cue.endMs())).append('\n')
+                    .append(cue.text())
                     .append("\n\n");
-        }
-        // A render request can be replayed from an older job that predates subtitle
-        // materialisation. Keep a valid sidecar for that compatibility case only.
-        if (seq == 1) {
-            String text = translatedSubtitleText(job);
-            String end = srtTimestamp(Math.max(1, duration));
-            srt.append("1\n00:00:00,000 --> ").append(end).append('\n')
-                    .append(text == null ? "" : text.replace("\r", "").replace("\n", " ").trim())
-                    .append("\n");
         }
         String key = "subtitles/" + job.getId() + "/" + UUID.randomUUID() + ".srt";
         String content = srt.toString();
@@ -1464,15 +1468,6 @@ public class MediaStageExecutionService {
                 .filter(text -> !text.isBlank())
                 .reduce((left, right) -> left + " " + right)
                 .orElse(null);
-    }
-
-    private String translatedSubtitleText(MediaJob job) {
-        MediaJobStage translated = findStage(job.getId(), MediaJobStage.StageName.TRANSLATE);
-        JsonNode node = parseJson(translated == null ? null : translated.getOutputRef());
-        if (node == null || node.isNull()) return null;
-        JsonNode value = node.get("translation");
-        if (value == null) value = node.get("scriptContent");
-        return value != null && value.isTextual() ? value.asText() : null;
     }
 
     private JsonNode scriptProposalOutput(SummaryProposal proposal) {

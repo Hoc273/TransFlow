@@ -78,14 +78,13 @@ export function ExportPanel({ workspaceId, job }: Props) {
     String(job.status).toUpperCase() === 'PARTIALLY_FAILED'
 
   // Subtitles are generated from the job's own segments (MediaExportServiceImpl), which
-  // TRANSLATE materialises; the export endpoint only serves them once the job is COMPLETED.
+  // TRANSLATE materialises — they are downloadable before RENDER / job completion.
   const translateDone =
     String(stageByName(job, 'TRANSLATE')?.status).toUpperCase() === 'COMPLETED'
-  const jobCompleted = String(job.status).toUpperCase() === 'COMPLETED'
   const packageHasNoSubs = outputPackage.data?.subtitleTracks?.length
     ? outputPackage.data.subtitleTracks.every((track) => !track.available)
     : false
-  const subsReady = translateDone && jobCompleted && !packageHasNoSubs
+  const subsReady = translateDone && !packageHasNoSubs
 
   const canExportVideo = !blocked && videoArtifactReady
   const canExportSubs = !blocked && subsReady
@@ -139,9 +138,7 @@ export function ExportPanel({ workspaceId, job }: Props) {
     ? t('media:export.blockedShort')
     : !translateDone || packageHasNoSubs
       ? t('media:export.needTranslate')
-      : !jobCompleted
-        ? t('media:export.needJobComplete')
-        : t('media:export.ready')
+      : t('media:export.ready')
 
   const videoDetail = blocked
     ? t('media:export.blockedDesc')
@@ -159,9 +156,7 @@ export function ExportPanel({ workspaceId, job }: Props) {
     ? t('media:export.blockedDesc')
     : !translateDone || packageHasNoSubs
       ? t('media:export.needTranslateDesc')
-      : !jobCompleted
-        ? t('media:export.needJobCompleteDesc')
-        : t('media:export.ready')
+      : t('media:export.ready')
 
   const runExport = async (format: MediaExportFormat) => {
     setError(null)

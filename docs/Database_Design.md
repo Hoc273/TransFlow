@@ -640,6 +640,17 @@ CREATE UNIQUE INDEX ux_preset_default_per_scope
 - `SYSTEM` preset không gắn tenant và tuyệt đối không chứa API key, media asset, job hoặc dữ liệu riêng.
 - Khi user dùng template, hệ thống snapshot config vào `media_jobs.preset_snapshot`; không tạo membership
   vào Workspace/Project khác.
+- `render_config` dùng đúng key của `media_jobs.render_config` (`subtitleMode`, `subtitlePosition`,
+  `verticalOffsetPercent`, `backgroundBox`, `backgroundColor`, `textColor`, `outputAspectRatio`);
+  `subtitle_style` là `SubtitleStyleSnapshot` đủ 13 field snake_case. Khi tạo job, giá trị hợp lệ được chép vào
+  `media_jobs.render_config` / `media_jobs.subtitle_style` (giá trị sai miền bị bỏ qua); `subtitleMode` gửi
+  tường minh trong request thắng preset.
+- Không có preset `SYSTEM` mặc định (V8): job tạo không kèm preset giữ `SOFT_SUB` + khung hình gốc.
+- System template (V8): `Standard Subtitle & Dub` (HARD_SUB, 16:9, dòng phụ đề ở 80% chiều cao) và
+  `Social Media Shorts / Reels` (HARD_SUB, 9:16, dòng phụ đề ở 75% chiều cao, chữ đậm cỡ 40). V10: cả hai dùng chữ đen trên nền vàng nhạt `#FFF59DE6`, viền trắng 4, phụ đề ngắt cụm ≤ 5 từ (`presentation.subtitle.displayMode=PHRASE`).
+  `font_size`/`outline_width` được tính trên khung chuẩn 1080 dòng (như preview Render Studio); media worker
+  quy đổi theo chiều cao khung đầu ra thật. `Cinematic Subtitles` đã xoá
+  (tỉ lệ 21:9 worker không hỗ trợ).
 
 ---
 
