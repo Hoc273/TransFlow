@@ -75,7 +75,7 @@ export function QueueBatchStatusWidget() {
               {t('widget.queue.emptyTitle')}
             </div>
             <Link
-              to={`/w/${workspaceId}/batches`}
+              to={`/w/${workspaceId}/media`}
               className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[var(--color-accent)] hover:underline no-underline"
             >
               <IconPlus size={13} />

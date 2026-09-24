@@ -293,6 +293,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     fireEvent.click(screen.getByLabelText('workflowPresetAdmin.edit'))
 
     expect(screen.getByDisplayValue('Legacy')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('preset-form-tab-subtitle'))
     // Extension defaults are hydrated (not stale/absent).
     expect(
       (screen.getByLabelText('media:renderPrep.position') as HTMLSelectElement).value,
@@ -327,12 +328,14 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     expect(
       (screen.getByLabelText('media:workflow.modeLabel') as HTMLSelectElement).value,
     ).toBe('MANUAL')
+    fireEvent.click(screen.getByTestId('preset-form-tab-subtitle'))
     expect(
       (screen.getByLabelText('media:renderPrep.position') as HTMLSelectElement).value,
     ).toBe('TOP')
     expect(
       (screen.getByLabelText('media:renderPrep.offset') as HTMLInputElement).value,
     ).toBe('12')
+    fireEvent.click(screen.getByTestId('preset-form-tab-audio'))
     expect(
       (screen.getByLabelText('media:voice.providerLabel') as HTMLSelectElement).value,
     ).toBe('prov-1')
@@ -345,6 +348,10 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     presetsQuery.data = []
     renderPage()
     fireEvent.click(screen.getByTestId('preset-create-btn'))
+    fireEvent.change(screen.getByLabelText('media:workflowPresetAdmin.name'), {
+      target: { value: 'Half pair' },
+    })
+    fireEvent.click(screen.getByTestId('preset-form-tab-audio'))
 
     // provider select: pick the TTS provider, leave voice empty → half pair.
     fireEvent.change(screen.getByLabelText('media:voice.providerLabel'), {
@@ -352,7 +359,12 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     })
 
     expect(screen.getByTestId('preset-form-half-pair')).toBeTruthy()
-    expect(screen.getByTestId('preset-form-save').getAttribute('disabled')).not.toBeNull()
+    // Saving with a half pair stays on the audio tab and never calls the API.
+    fireEvent.click(screen.getByTestId('preset-form-save'))
+    expect(createMutate).not.toHaveBeenCalled()
+    expect(
+      screen.getByTestId('preset-form-tab-audio').getAttribute('aria-selected'),
+    ).toBe('true')
   })
 
   it('deletes a preset through the confirm modal', async () => {
@@ -406,6 +418,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     fireEvent.change(screen.getByLabelText('media:workflowPresetAdmin.name'), {
       target: { value: 'Blur preset' },
     })
+    fireEvent.click(screen.getByTestId('preset-form-tab-mask'))
     fireEvent.click(screen.getByLabelText('media:renderPrep.coverEnable'))
     // Default first layer: BLUR anchored to the subtitle line (mirrors v1).
     fireEvent.change(screen.getByTestId('preset-form-mask-layer-0-blur-radius'), {
@@ -414,6 +427,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     fireEvent.change(screen.getByTestId('preset-form-mask-layer-0-width'), {
       target: { value: '80' },
     })
+    fireEvent.click(screen.getByTestId('preset-form-tab-subtitle'))
     fireEvent.change(screen.getByTestId('preset-form-background-color'), {
       target: { value: '#ff8800' },
     })
@@ -455,6 +469,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     fireEvent.change(screen.getByLabelText('media:workflowPresetAdmin.name'), {
       target: { value: 'Two covers' },
     })
+    fireEvent.click(screen.getByTestId('preset-form-tab-mask'))
     fireEvent.click(screen.getByLabelText('media:renderPrep.coverEnable'))
     fireEvent.click(screen.getByTestId('preset-form-mask-layer-add'))
     // Second layer defaults to the first free fixed line: CENTER.
@@ -486,6 +501,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     fireEvent.change(screen.getByLabelText('media:workflowPresetAdmin.name'), {
       target: { value: 'No box' },
     })
+    fireEvent.click(screen.getByTestId('preset-form-tab-subtitle'))
     fireEvent.click(screen.getByLabelText('media:renderPrep.backgroundBox'))
 
     await waitFor(() => {
@@ -537,6 +553,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
 
     // The stored mask becomes an enabled BLUR layer on the subtitle line —
     // saving writes layers, never the legacy mask.
+    fireEvent.click(screen.getByTestId('preset-form-tab-mask'))
     expect(
       (screen.getByTestId('preset-form-mask-enable') as HTMLInputElement).checked,
     ).toBe(true)
@@ -549,6 +566,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     expect(
       (screen.getByTestId('preset-form-mask-layer-0-width') as HTMLInputElement).value,
     ).toBe('80')
+    fireEvent.click(screen.getByTestId('preset-form-tab-subtitle'))
     expect((screen.getByTestId('preset-form-background-color') as HTMLInputElement).value)
       .toBe('#ff8800')
     expect((screen.getByTestId('preset-form-background-alpha') as HTMLInputElement).value)
@@ -575,6 +593,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     // The cover layer appears once enabled and mirrors the chosen style.
     expect(screen.queryByTestId('preset-preview-layer-cover-1')).toBeNull()
     expect(screen.queryByTestId('preset-preview-mask')).toBeNull()
+    fireEvent.click(screen.getByTestId('preset-form-tab-mask'))
     fireEvent.click(screen.getByLabelText('media:renderPrep.coverEnable'))
     expect(screen.getByTestId('preset-preview-layer-cover-1').getAttribute('data-style')).toBe('BLUR')
     fireEvent.change(screen.getByTestId('preset-form-mask-layer-0-style'), {
@@ -741,6 +760,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     presetsQuery.data = []
     renderPage()
     fireEvent.click(screen.getByTestId('preset-create-btn'))
+    fireEvent.click(screen.getByTestId('preset-form-tab-audio'))
 
     // The controls are queryable directly — no summary click needed.
     expect(screen.getByTestId('audio-config-expanded')).toBeTruthy()
@@ -753,6 +773,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     presetsQuery.data = []
     renderPage()
     fireEvent.click(screen.getByTestId('preset-create-btn'))
+    fireEvent.click(screen.getByTestId('preset-form-tab-mask'))
     fireEvent.click(screen.getByLabelText('media:renderPrep.coverEnable'))
 
     expect(screen.getByText('media:renderPrep.coverHint')).toBeTruthy()
@@ -768,6 +789,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     presetsQuery.data = []
     renderPage()
     fireEvent.click(screen.getByTestId('preset-create-btn'))
+    fireEvent.click(screen.getByTestId('preset-form-tab-audio'))
     fireEvent.change(screen.getByLabelText('media:voice.providerLabel'), {
       target: { value: 'prov-1' },
     })

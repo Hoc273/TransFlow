@@ -299,6 +299,7 @@ function PresetFormModal({
     form.providerId.trim() || undefined,
   )
   const [voiceLanguageFilter, setVoiceLanguageFilter] = useState('')
+
   const selectableVoices = useMemo(
     () =>
       voiceLanguageFilter
@@ -314,12 +315,33 @@ function PresetFormModal({
     Boolean(form.providerId.trim()) !== Boolean(form.voiceId.trim())
   const charactersInvalid =
     form.displayMode === 'CHARACTERS' && !isMaxCharactersPerCueValid(form.maxCharactersPerCue)
+  const nameInvalid = form.name.trim().length === 0
+  const projectInvalid = form.scope === 'PROJECT' && form.projectId.trim().length === 0
   const canSave =
-    form.name.trim().length > 0
+    !nameInvalid
     && !halfPair
     && !charactersInvalid
-    && (form.scope !== 'PROJECT' || form.projectId.trim().length > 0)
+    && !projectInvalid
     && !pending
+
+  // --- Tab layout: general / subtitle / mask / audio+voice ---
+  type PresetTab = 'general' | 'subtitle' | 'mask' | 'audio'
+  const [activeTab, setActiveTab] = useState<PresetTab>('general')
+  const [submitAttempted, setSubmitAttempted] = useState(false)
+  const tabErrors: Record<PresetTab, boolean> = {
+    general: nameInvalid || projectInvalid,
+    subtitle: charactersInvalid,
+    mask: false,
+    audio: halfPair,
+  }
+  const firstErrorTab = (['general', 'subtitle', 'mask', 'audio'] as PresetTab[])
+    .find((tab) => tabErrors[tab]) ?? null
+  const TABS: { key: PresetTab; labelKey: string; testid: string }[] = [
+    { key: 'general', labelKey: 'tabGeneral', testid: 'preset-form-tab-general' },
+    { key: 'subtitle', labelKey: 'tabSubtitle', testid: 'preset-form-tab-subtitle' },
+    { key: 'mask', labelKey: 'tabMask', testid: 'preset-form-tab-mask' },
+    { key: 'audio', labelKey: 'tabAudio', testid: 'preset-form-tab-audio' },
+  ]
 
   const fail = (e: unknown) => {
     if (e instanceof ApiError && e.code === 'WORKFLOW_PRESET_DEFAULT_CONFLICT') {
@@ -330,7 +352,12 @@ function PresetFormModal({
   }
 
   const submit = async () => {
-    if (!canSave) return
+    if (!canSave) {
+      // Jump to the first tab containing an error so the user sees what to fix.
+      setSubmitAttempted(true)
+      if (firstErrorTab) setActiveTab(firstErrorTab)
+      return
+    }
     setError(null)
     const body = {
       scope: form.scope,
@@ -374,7 +401,7 @@ function PresetFormModal({
             type="button"
             className="btn-primary"
             data-testid="preset-form-save"
-            disabled={!canSave}
+            disabled={pending}
             onClick={() => void submit()}
           >
             {pending && <IconLoader2 size={16} className="animate-spin" />}
@@ -394,6 +421,39 @@ function PresetFormModal({
             </div>
           )}
 
+        {/* Tab bar — sticky while the form scrolls */}
+        <div
+          className="sticky top-0 z-10 flex items-center gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-1"
+          role="tablist"
+          aria-label={t('media:workflowPresetAdmin.createTitle')}
+        >
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.key}
+              data-testid={tab.testid}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                activeTab === tab.key
+                  ? 'bg-[var(--color-bg-surface)] text-[var(--color-accent)] shadow-xs'
+                  : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+              }`}
+            >
+              {t(`media:workflowPresetAdmin.${tab.labelKey}`)}
+              {tabErrors[tab.key] && (
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-[var(--color-error)]"
+                  aria-hidden
+                />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'general' && (
+        <div className="space-y-4" role="tabpanel">
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="field-label">
             <span>{t('media:workflowPresetAdmin.name')}</span>
@@ -403,6 +463,9 @@ function PresetFormModal({
               maxLength={200}
               onChange={(e) => set('name', e.target.value)}
             />
+            {submitAttempted && nameInvalid && (
+              <p className="field-error m-0">{t('media:workflowPresetAdmin.nameRequired')}</p>
+            )}
           </label>
           <label className="field-label">
             <span>{t('media:workflowPresetAdmin.scope')}</span>
@@ -432,6 +495,9 @@ function PresetFormModal({
                   </option>
                 ))}
               </select>
+              {submitAttempted && projectInvalid && (
+                <p className="field-error m-0">{t('media:workflowPresetAdmin.projectRequired')}</p>
+              )}
             </label>
           )}
           <label className="field-label">
@@ -476,6 +542,13 @@ function PresetFormModal({
               <option value="MANUAL">{t('media:workflow.manual')}</option>
             </select>
           </label>
+        </div>
+        </div>
+        )}
+
+        {activeTab === 'subtitle' && (
+        <div className="space-y-4" role="tabpanel">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="field-label">
             <span>{t('media:subtitleModeLabel')}</span>
             <select
@@ -671,7 +744,11 @@ function PresetFormModal({
             </div>
           </div>
         </div>
+        </div>
+        )}
 
+        {activeTab === 'mask' && (
+        <div className="space-y-4" role="tabpanel">
         <div className="media-config-group" data-testid="preset-mask-layer-panel">
           <div className="text-[12.5px] font-semibold text-[var(--color-text-primary)]">
             {t('media:renderPrep.maskLayerTitle')}
@@ -699,7 +776,11 @@ function PresetFormModal({
             <p className="field-help mt-3 mb-0">{t('media:renderPrep.softSubCoverWarning')}</p>
           )}
         </div>
+        </div>
+        )}
 
+        {activeTab === 'audio' && (
+        <div className="space-y-4" role="tabpanel">
         <div className="media-config-group">
           <div className="text-[12.5px] font-semibold text-[var(--color-text-primary)]">
             {t('media:renderPrep.audioTitle')}
@@ -806,6 +887,8 @@ function PresetFormModal({
             </p>
           )}
         </div>
+        </div>
+        )}
       </div>
 
         <div
