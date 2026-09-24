@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.schemas.contract import Usage
 from app.services import script_gateway
 from app.services.provider_errors import ProviderErrorCode, ProviderException
 
@@ -97,3 +98,63 @@ def test_script_business_validation_failure_uses_complete_typed_error_detail() -
     assert detail["protocol"] == "dashscope_native"
     assert detail["capability"] == "TEXT"
     assert detail["model"] == "qwen-plus"
+
+
+def test_script_business_violation_is_repaired_with_violation_feedback() -> None:
+    bad = '{"script_content":"Short script.","segments":[]}'
+    good = '{"script_content":"Short script.","segments":[{"start_ms":0,"end_ms":5000,"script_excerpt":"Short script.","source_sentence_refs":["0"]}]}'
+    usage = Usage(input_tokens=10, output_tokens=5, provider="dashscope_native", model="qwen-plus")
+    chat_mock = AsyncMock(side_effect=[
+        SimpleNamespace(text=bad, usage=usage),
+        SimpleNamespace(text=good, usage=usage),
+    ])
+    with (
+        patch.object(script_gateway.settings, "mock_mode", False),
+        patch("app.services.script_gateway.chat", chat_mock),
+        TestClient(app) as client,
+    ):
+        response = client.post("/media/summarize/script", json=_request_body())
+
+    payload = response.json()
+    assert payload["status"] == "COMPLETED"
+    assert chat_mock.await_count == 2
+    repair_prompt = chat_mock.await_args_list[1].args[2]
+    assert "<previous_attempt_violation>" in repair_prompt
+    assert "no matched video segments" in repair_prompt
+    assert payload["usage"]["input_tokens"] == 20
+    assert payload["usage"]["output_tokens"] == 10
+
+
+def test_script_output_repair_is_bounded() -> None:
+    chat_mock = AsyncMock(return_value=SimpleNamespace(text="not JSON", usage=None))
+    with (
+        patch.object(script_gateway.settings, "mock_mode", False),
+        patch.object(script_gateway.settings, "script_output_repair_attempts", 2),
+        patch("app.services.script_gateway.chat", chat_mock),
+        TestClient(app) as client,
+    ):
+        response = client.post("/media/summarize/script", json=_request_body())
+
+    assert response.json()["status"] == "FAILED"
+    assert chat_mock.await_count == 3
+
+
+def test_script_provider_failure_is_not_repaired() -> None:
+    failure = ProviderException(
+        ProviderErrorCode.PROVIDER_TIMEOUT,
+        "Provider timed out",
+        protocol="dashscope_native",
+        capability="TEXT",
+        model="qwen-plus",
+    )
+    chat_mock = AsyncMock(side_effect=failure)
+    with (
+        patch.object(script_gateway.settings, "mock_mode", False),
+        patch("app.services.script_gateway.chat", chat_mock),
+        TestClient(app) as client,
+    ):
+        response = client.post("/media/summarize/script", json=_request_body())
+
+    assert response.json()["error_detail"]["errorCode"] == "PROVIDER_TIMEOUT"
+    assert chat_mock.await_count == 1
+

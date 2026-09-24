@@ -33,6 +33,7 @@ import type {
   MediaJob,
   MediaSummaryProposal,
   MediaUploadResponse,
+  NarrativePlan,
   OverrideSourceLangBody,
   SelectVoiceBody,
   UpdateCustomProposalBody,
@@ -314,10 +315,55 @@ export function resumeWorkflowApi(workspaceId: string, jobId: string) {
 
 // ---------- proposals (extractive summary) ----------
 
+/**
+ * Script-first proposals (API_Contract: scriptContent + matched segments) carry
+ * no plan body; derive the narrative view from them so every section shows its
+ * script excerpt and source footage range, as the original narrative plan did.
+ */
+function scriptNarrativePlan(r: Record<string, unknown>, segments: unknown): NarrativePlan | null {
+  const script = r.scriptContent ?? r.script_content
+  if (typeof script !== 'string' || !script.trim() || !Array.isArray(segments)) return null
+  const rows = segments
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
+    .map((s, index) => ({
+      seq: Number(s.seq ?? index + 1),
+      startMs: Number(s.startMs ?? s.start_ms),
+      endMs: Number(s.endMs ?? s.end_ms),
+      excerpt: String(s.scriptExcerpt ?? s.script_excerpt ?? ''),
+      note: (s.reasoningNote ?? s.reasoning_note ?? null) as string | null,
+    }))
+    .filter((s) => Number.isFinite(s.startMs) && Number.isFinite(s.endMs) && s.endMs > s.startMs)
+    .sort((a, b) => a.seq - b.seq)
+  if (rows.length === 0) return null
+  const warnings = Array.isArray(r.warnings) ? r.warnings.filter((w): w is string => typeof w === 'string') : []
+  return {
+    title: null,
+    target_duration_ms: null,
+    sections: rows.map((row, index) => ({
+      seq: index + 1,
+      heading: null,
+      source_refs: [{ start_ms: row.startMs, end_ms: row.endMs }],
+      script_source_lang: row.excerpt,
+      beat_type: null,
+      notes: row.note,
+    })),
+    global_reasoning_note: (r.reasoningNote ?? r.reasoning_note ?? null) as string | null,
+    confidence: r.confidence == null ? null : Number(r.confidence),
+    warnings,
+  }
+}
+
+/** Backend persists warnings as a JSON string array; the panel renders `{ code }` objects. */
+function normalizeProposalWarnings(raw: unknown): unknown {
+  if (!Array.isArray(raw)) return []
+  return raw.map((w) => (typeof w === 'string' ? { code: w } : w))
+}
+
 function normalizeProposal(raw: unknown): MediaSummaryProposal {
   if (!raw || typeof raw !== 'object') return raw as MediaSummaryProposal
   const r = raw as Record<string, unknown>
   const cutRanges = (r.cut_ranges ?? r.segments ?? []) as any
+  const derivedPlan = r.planBody ? null : scriptNarrativePlan(r, cutRanges)
   return {
     ...r,
     id: String(r.id || ''),
@@ -336,7 +382,8 @@ function normalizeProposal(raw: unknown): MediaSummaryProposal {
     total_duration_ms: Number(r.total_duration_ms ?? r.totalDurationMs ?? 0),
     totalDurationMs: Number(r.totalDurationMs ?? r.total_duration_ms ?? 0),
     confidence: (r.confidence ?? null) as number | null,
-    warnings: (r.warnings ?? []) as any,
+    warnings: normalizeProposalWarnings(r.warnings),
+    ...(derivedPlan ? { planBody: derivedPlan, planKind: 'NARRATIVE_PLAN' as const } : {}),
   }
 }
 

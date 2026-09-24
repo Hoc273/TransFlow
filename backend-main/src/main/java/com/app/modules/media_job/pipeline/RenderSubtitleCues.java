@@ -62,6 +62,35 @@ final class RenderSubtitleCues {
         return result;
     }
 
+    /**
+     * Map source-timeline cues onto the concatenated output of {@code cutRanges}
+     * ({@code [startMs, endMs]} in source time, in render order). Parts of a cue
+     * outside every cut are dropped; a cue continuing across adjacent cuts stays
+     * one cue on the output timeline.
+     */
+    static List<Cue> toOutputTimeline(List<Cue> cues, List<long[]> cutRanges) {
+        List<Cue> result = new ArrayList<>();
+        for (Cue cue : cues) {
+            long offset = 0L;
+            for (long[] range : cutRanges) {
+                long start = Math.max(cue.startMs(), range[0]);
+                long end = Math.min(cue.endMs(), range[1]);
+                if (end > start) {
+                    Cue mapped = new Cue(offset + start - range[0], offset + end - range[0], cue.text());
+                    Cue previous = result.isEmpty() ? null : result.get(result.size() - 1);
+                    if (previous != null && previous.text().equals(mapped.text())
+                            && previous.endMs() == mapped.startMs()) {
+                        result.set(result.size() - 1, new Cue(previous.startMs(), mapped.endMs(), mapped.text()));
+                    } else {
+                        result.add(mapped);
+                    }
+                }
+                offset += Math.max(0L, range[1] - range[0]);
+            }
+        }
+        return result;
+    }
+
     static List<Cue> group(List<Cue> cues, String displayMode, Integer wordsPerPhrase) {
         String mode = displayMode == null ? "SENTENCE" : displayMode.toUpperCase(Locale.ROOT);
         int size = switch (mode) {

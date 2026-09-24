@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Root package is {@code com.app} on purpose: component/entity scan covers every
@@ -15,6 +16,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @EnableConfigurationProperties(AppProperties.class)
 @EnableJpaAuditing
 @EnableAsync
+@EnableScheduling
 public class BackendMainApplication {
 
     public static void main(String[] args) {

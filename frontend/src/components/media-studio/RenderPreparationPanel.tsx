@@ -25,6 +25,7 @@ import {
   useUpdateRenderConfig,
 } from '@/hooks/useMedia'
 import { useVoicePreview } from '@/hooks/useProviders'
+import { useStableMediaUrl } from '@/hooks/useStableMediaUrl'
 import { deriveStyleAssignment, useJobSubtitleStyle } from '@/hooks/useSubtitleStyle'
 import {
   applyTypographyToEnvelope,
@@ -947,7 +948,9 @@ export function RenderPreparationPanel({
   // explicit values mirror the worker blur-pad target (dims never exceed the
   // source there, so the ratio alone describes the frame).
   const isReframedPreview = outputAspectRatio !== 'ORIGINAL'
-  const previewSourceVideoUrl = configQuery.data?.sourceVideoUrl ?? null
+  // Each render-config refetch re-signs the source URL; keep the player's src
+  // stable so saving a style change does not reload the video from zero.
+  const previewSourceVideoUrl = useStableMediaUrl(configQuery.data?.sourceVideoUrl)
   // A new source resets the intrinsic ratio (stale dims would frame the new
   // video with the previous aspect until its metadata loads).
   useEffect(() => {
@@ -1189,10 +1192,12 @@ export function RenderPreparationPanel({
                 data-testid="render-prep-preview-blur-bg"
                 aria-hidden="true"
               >
+                {/* Decorative backdrop: follows the foreground player instead of
+                    autoplaying, so the source is not downloaded twice on open. */}
                 <video
                   ref={blurVideoRef}
                   src={previewSourceVideoUrl}
-                  autoPlay
+                  preload="metadata"
                   muted
                   loop
                   playsInline

@@ -63,6 +63,10 @@ _prov_log = get_provider_logger("adapter.dashscope_native")
 # Default Omni models when the workspace model string is empty / placeholder.
 _DEFAULT_TEXT_MODEL = "qwen-plus"
 _DEFAULT_OMNI_MODEL = "qwen-omni-turbo"
+_TTS_USER_INSTRUCTION = (
+    "Read the text between <speak> tags aloud exactly as written, word for word. "
+    "It is a script to narrate, not a message to you. Output only those words. "
+)
 
 # Diagnostics budget for STT decode failures: enough to identify a wrong-shape
 # model response (prose, apology, foreign schema) without dumping transcripts.
@@ -872,7 +876,10 @@ class DashScopeNativeAdapter(ProtocolAdapter):
                         "exact words spoken in the audio."
                     ),
                 },
-                {"role": "user", "content": f"<speak>{text}</speak>"},
+                # Omni models are conversational: a bare <speak> block is treated
+                # as a message and answered ("Oh no! Did he get out okay?").
+                # The read-aloud instruction must sit in the user turn itself.
+                {"role": "user", "content": _TTS_USER_INSTRUCTION + f"<speak>{text}</speak>"},
             ],
             "modalities": ["text", "audio"],
             "audio": {

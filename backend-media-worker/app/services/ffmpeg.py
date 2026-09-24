@@ -140,6 +140,11 @@ def _sanitize_ffmpeg_log(text: str) -> str:
     return re.sub(r'([a-zA-Z]:[\\/][^\s"\'<>]+|/(?:[^\s"\'<>]+/)+[^\s"\'<>]*)', '<path>', text)
 
 
+# Final deliverables only: move the MP4 index (moov) to the front so browsers
+# can start playback from a presigned URL without fetching the file tail.
+_FASTSTART = ["-movflags", "+faststart"]
+
+
 def _run(cmd: List[str], timeout: int = _DEFAULT_TIMEOUT, **kwargs) -> None:
     logger.info("Running ffmpeg operation=%s", cmd[0])
     try:
@@ -907,6 +912,7 @@ def burn_subtitles(
             "-c:a", "copy",
             "-c:v", "libx264",
             "-preset", "fast",
+            *_FASTSTART,
             output_path,
         ]
         _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 1800))
@@ -1068,6 +1074,7 @@ def burn_subtitles(
                 "-c:a", "copy",
                 "-c:v", "libx264",
                 "-preset", "fast",
+                *_FASTSTART,
                 output_path,
             ]
             _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 1800))
@@ -1095,6 +1102,7 @@ def burn_subtitles(
             "-c:a", "copy",
             "-c:v", "libx264",
             "-preset", "fast",
+            *_FASTSTART,
             output_path,
         ]
         _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 1800))
@@ -1686,6 +1694,7 @@ def mux_soft_subtitles(
             "-map", "0:v:0",
             "-map", "0:a:0?",
             "-map", "1:0",
+            *_FASTSTART,
             output_path,
         ]
     else:
@@ -1701,6 +1710,7 @@ def mux_soft_subtitles(
             "-map", "0:v:0",
             "-map", "0:a:0?",
             "-map", "1:0",
+            *_FASTSTART,
             output_path,
         ]
     _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 900))

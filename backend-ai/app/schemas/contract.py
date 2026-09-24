@@ -349,6 +349,8 @@ class TtsResult(BaseModel):
     audio_ref: Optional[str] = None
     # Base64 audio payload; Spring Boot uploads to media bucket (C4)
     audio_base64: Optional[str] = None
+    # Measured clip length; Spring builds the narration timeline from it.
+    duration_ms: Optional[int] = None
     error: Optional[str] = None
     # OI-01 (D2.6, `93` §4.19.12): typed per-segment error code — canonical
     # ProviderErrorCode name/value (e.g. "PROVIDER_TTS_VOICE_NOT_FOUND").

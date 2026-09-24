@@ -23,6 +23,7 @@ import {
 import { ApiError } from '@/types/api'
 import { MEDIA_ERROR_CODES, type MediaExportFormat, type MediaJob } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
+import { useStableMediaUrl } from '@/hooks/useStableMediaUrl'
 
 type Props = {
   workspaceId: string
@@ -89,7 +90,8 @@ export function ExportPanel({ workspaceId, job }: Props) {
   const canExportVideo = !blocked && videoArtifactReady
   const canExportSubs = !blocked && subsReady
 
-  const videoUrl = outputPackage.data?.primaryVideoDownloadUrl ?? null
+  // The output package refetches re-sign the URL; a changing src restarts playback.
+  const videoUrl = useStableMediaUrl(outputPackage.data?.primaryVideoDownloadUrl)
 
   // SOFT_SUB muxes a mov_text stream that browsers do not render, so the preview
   // attaches the job's WebVTT as a <track> instead (the MP4 itself stays unchanged).

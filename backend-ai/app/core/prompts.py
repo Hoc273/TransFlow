@@ -412,7 +412,9 @@ def build_script_summarize_prompt(
             '  "warnings": []',
             "}</output_format>",
             "Every script_excerpt MUST be an exact substring of script_content. "
-            "The sum of segment durations must be within 20 percent of the requested duration.",
+            f"Select footage whose summed segment durations total about {requested_duration_seconds * 1000} ms "
+            f"(allowed {requested_duration_seconds * 800}-{requested_duration_seconds * 1200} ms); "
+            "prefer whole transcript sentences and cite them in source_sentence_refs.",
         ]
     )
     return SCRIPT_SUMMARIZE_SYSTEM, "\n".join(lines)

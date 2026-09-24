@@ -5,6 +5,7 @@ Dispatches through the protocol adapter registry — no protocol-name branches.
 from __future__ import annotations
 
 import base64
+import io
 import time
 import uuid
 
@@ -62,6 +63,22 @@ async def list_voices(provider) -> TtsVoicesResponse:
     )
 
 
+def audio_duration_ms(audio: bytes) -> int | None:
+    """Decode the clip (any ffmpeg-readable provider format) and return its length.
+
+    Spring lays narration on the output timeline from this measurement, so it
+    must not depend on the provider returning WAV. ``None`` when undecodable.
+    """
+    if not audio:
+        return None
+    try:
+        from pydub import AudioSegment
+
+        return len(AudioSegment.from_file(io.BytesIO(audio)))
+    except Exception:  # noqa: BLE001 - measurement is best-effort metadata
+        return None
+
+
 async def synthesize(request: TtsRequest) -> TtsResponse:
     """Synthesize a batch by dispatching through the configured protocol adapter.
 
@@ -93,6 +110,7 @@ async def synthesize(request: TtsRequest) -> TtsResponse:
                     status="SUCCESS",
                     audio_ref=None,
                     audio_base64=base64.b64encode(audio).decode("ascii"),
+                    duration_ms=audio_duration_ms(audio),
                     execution_info=_execution_info(
                         adapter,
                         request.provider,

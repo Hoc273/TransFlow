@@ -18,6 +18,7 @@ from app.services.ffmpeg import (
     _srt_vtt_to_ass,
     build_dubbed_audio,
     burn_subtitles,
+    mux_soft_subtitles,
     fit_dub_audio,
     get_stream_types,
     has_audio_stream,
@@ -188,6 +189,22 @@ class DubAudioTimingTest(unittest.TestCase):
         )
         self.assertNotIn("force_style", cmd)
         self.assertIn("libx264", cmd)
+
+    def test_final_render_outputs_are_faststart_for_browser_streaming(self):
+        # The export/render players stream a presigned MinIO URL; a trailing
+        # moov atom forces the browser to fetch the file tail before playback.
+        with patch("app.services.ffmpeg._run") as run:
+            burn_subtitles("source.mp4", "subs/out.ass", "render.mp4", subtitle_format="ass")
+        burn_cmd = run.call_args.args[0]
+
+        with patch("app.services.ffmpeg._run") as run, patch(
+            "app.services.ffmpeg.get_video_height", return_value=1080
+        ), patch("app.services.ffmpeg.get_video_width", return_value=1920):
+            mux_soft_subtitles("source.mp4", "subs/out.srt", "render.mp4")
+        mux_cmd = run.call_args.args[0]
+
+        for cmd in (burn_cmd, mux_cmd):
+            self.assertEqual(cmd[-3:], ["-movflags", "+faststart", "render.mp4"])
 
     def test_burn_srt_still_applies_force_style(self):
         # The legacy SRT path keeps its inline styling (Alignment/MarginV/box).

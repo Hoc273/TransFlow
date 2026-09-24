@@ -13,6 +13,8 @@ import com.app.modules.notification.service.NotificationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +25,8 @@ import java.util.UUID;
 
 @Service
 public class MediaCallbackServiceImpl implements MediaCallbackService {
+
+    private static final Logger log = LoggerFactory.getLogger(MediaCallbackServiceImpl.class);
 
     private final MediaJobRepository mediaJobRepository;
     private final MediaJobStageRepository mediaJobStageRepository;
@@ -157,7 +161,27 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
     public void completeStage(UUID jobId, UUID stageId, MediaJobStage.StageName expectedStage,
                               boolean success, JsonNode outputRef, String errorMessage,
                               String errorCode, JsonNode errorDetail, String dedupeKey) {
+        // Dedupe keys are "<stage>:<correlation>:complete". A stage re-dispatched after a
+        // timeout carries a new correlation, so a late result of the old attempt is stale.
+        String correlation = correlationOf(dedupeKey);
+        if (correlation != null) {
+            requireJobLocked(jobId);
+            MediaJobStage stage = requireStage(jobId, stageId, expectedStage);
+            if (stage.getWorkerId() != null && !stage.getWorkerId().equals(correlation)) {
+                log.warn("Ignoring {} callback of a superseded attempt job={} correlation={} current={}",
+                        expectedStage, jobId, correlation, stage.getWorkerId());
+                return;
+            }
+        }
         completeStage(jobId, stageId, expectedStage, success, outputRef, errorMessage, errorCode, errorDetail);
+    }
+
+    private static String correlationOf(String dedupeKey) {
+        if (dedupeKey == null) {
+            return null;
+        }
+        String[] parts = dedupeKey.split(":");
+        return parts.length >= 3 && !parts[1].isBlank() ? parts[1] : null;
     }
 
     private JsonNode failureDetail(JsonNode provided, String errorCode, String errorMessage) {

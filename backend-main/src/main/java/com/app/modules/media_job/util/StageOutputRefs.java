@@ -33,6 +33,19 @@ public final class StageOutputRefs {
         }
     }
 
+    /** A named storage reference of a worker callback object (e.g. {@code srtRef}); null when absent. */
+    public static String field(String rawOutputRef, String name) {
+        if (rawOutputRef == null || rawOutputRef.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode value = JSON.readTree(rawOutputRef).get(name);
+            return value != null && value.isTextual() && !value.asText().isBlank() ? value.asText() : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private static boolean looksLikeStorageRef(String value) {
         return value.contains("/")
                 && !value.contains("{")

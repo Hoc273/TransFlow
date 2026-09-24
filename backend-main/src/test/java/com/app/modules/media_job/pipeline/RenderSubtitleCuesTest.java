@@ -59,4 +59,23 @@ class RenderSubtitleCuesTest {
         assertTrue(words.size() <= 2);
         assertEquals(500, words.get(words.size() - 1).endMs());
     }
+
+    @Test
+    void toOutputTimeline_mapsSourceCuesOntoConcatenatedCuts_andDropsFootageOutsideCuts() {
+        List<Cue> cues = RenderSubtitleCues.toOutputTimeline(List.of(
+                new Cue(1_000, 4_000, "inside first"),
+                new Cue(12_000, 15_000, "in the gap"),
+                new Cue(21_000, 25_000, "inside second")),
+                List.of(new long[] {0, 10_000}, new long[] {20_000, 30_000}));
+
+        assertEquals(List.of(new Cue(1_000, 4_000, "inside first"), new Cue(11_000, 15_000, "inside second")), cues);
+    }
+
+    @Test
+    void toOutputTimeline_keepsOneContinuousCueWhenItStraddlesAdjacentCuts() {
+        List<Cue> cues = RenderSubtitleCues.toOutputTimeline(List.of(new Cue(8_000, 22_000, "straddles")),
+                List.of(new long[] {0, 10_000}, new long[] {20_000, 30_000}));
+
+        assertEquals(List.of(new Cue(8_000, 12_000, "straddles")), cues);
+    }
 }

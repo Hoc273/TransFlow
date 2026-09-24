@@ -335,14 +335,22 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
                 return False
 
             def stream(self, *a, **k):
+                sent.update(k.get("json") or {})
                 return _StreamResponse()
 
+        sent: dict = {}
         with patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()):
             result = await DashScopeNativeAdapter().synthesize(
                 _provider("dashscope_native", "qwen-omni-turbo"),
                 "Xin chao",
                 "Serena",
             )
+
+        # Omni models answer a bare <speak> block conversationally; the
+        # read-aloud instruction must be in the user turn itself.
+        user_turn = sent["messages"][-1]["content"]
+        self.assertIn("word for word", user_turn)
+        self.assertTrue(user_turn.endswith("<speak>Xin chao</speak>"))
 
         # Raw PCM is wrapped as a real WAV container (RIFF/WAVE + s16le @ 24 kHz).
         self.assertTrue(result.audio_bytes.startswith(b"RIFF"), result.audio_bytes[:16])
@@ -1220,6 +1228,29 @@ class OpenAIThinkingCompatibilityTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("thinking", calls[1])
 
         self.assertEqual({"type": "json_object"}, calls[1]["response_format"])
+
+    async def test_unsupported_json_mode_retries_once_without_response_format(self):
+        # Local / proxy OpenAI-compatible servers often lack JSON mode; the
+        # gateways parse JSON from plain text, so the hint is safe to drop.
+        adapter = OpenAICompatibleAdapter()
+        provider = _provider("openai_compatible", "no-json-mode-model")
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="response_format is not supported by this model"),
+            self._ok_response('{"ok":true}'),
+        ])
+
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            result = await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                response_format={"type": "json_object"},
+            )
+
+        self.assertEqual('{"ok":true}', result.text)
+        self.assertEqual(2, len(calls))
+        self.assertNotIn("response_format", calls[1])
+        self.assertEqual(calls[0]["messages"], calls[1]["messages"])
 
     async def test_arbitrary_400_does_not_retry(self):
         adapter = OpenAICompatibleAdapter()

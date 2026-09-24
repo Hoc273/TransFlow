@@ -207,4 +207,36 @@ class MediaCallbackServiceImplTest {
                 service.completeStage(jobId, stageId, MediaJobStage.StageName.RENDER, true, null, null));
         assertEquals(ErrorCode.RESOURCE_NOT_FOUND, ex.getErrorCode());
     }
+
+    // ---- attempt ownership ----
+
+    @Test
+    void completeStage_callbackFromAnEarlierAttempt_isIgnored() {
+        // A timed-out attempt was re-dispatched under a new correlation; its late
+        // callback must not complete (or fail) the attempt that replaced it.
+        when(mediaJobRepository.findWithLockById(jobId)).thenReturn(Optional.of(job(MediaJob.JobStatus.PROCESSING, null)));
+        MediaJobStage stage = stage(MediaJobStage.StageName.EXTRACT_AUDIO, MediaJobStage.StageStatus.PROCESSING);
+        stage.setWorkerId("new-correlation");
+        when(mediaJobStageRepository.findById(stageId)).thenReturn(Optional.of(stage));
+
+        service.completeStage(jobId, stageId, MediaJobStage.StageName.EXTRACT_AUDIO, true, null, null,
+                null, null, "extract-audio:old-correlation:complete");
+
+        assertEquals(MediaJobStage.StageStatus.PROCESSING, stage.getStatus());
+        verify(mediaJobStageRepository, never()).save(any());
+    }
+
+    @Test
+    void completeStage_callbackFromTheCurrentAttempt_completes() {
+        when(mediaJobRepository.findWithLockById(jobId)).thenReturn(Optional.of(job(MediaJob.JobStatus.PROCESSING, null)));
+        MediaJobStage stage = stage(MediaJobStage.StageName.EXTRACT_AUDIO, MediaJobStage.StageStatus.PROCESSING);
+        stage.setWorkerId("current-correlation");
+        when(mediaJobStageRepository.findById(stageId)).thenReturn(Optional.of(stage));
+        when(mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId)).thenReturn(List.of(stage));
+
+        service.completeStage(jobId, stageId, MediaJobStage.StageName.EXTRACT_AUDIO, true, null, null,
+                null, null, "extract-audio:current-correlation:complete");
+
+        assertEquals(MediaJobStage.StageStatus.COMPLETED, stage.getStatus());
+    }
 }

@@ -112,7 +112,8 @@ class MediaStageExecutionServiceProviderTest {
         verify(callbackService).completeStage(eq(jobId), eq(stageId), eq(MediaJobStage.StageName.STT),
                 eq(false), isNull(), eq(ErrorCode.PROVIDER_DEFAULT_NOT_CONFIGURED.getMessage()),
                 eq("PROVIDER_DEFAULT_NOT_CONFIGURED"), argThat(detail ->
-                        detail != null && detail.path("errorCode").asText().equals("PROVIDER_DEFAULT_NOT_CONFIGURED")));
+                        detail != null && detail.path("errorCode").asText().equals("PROVIDER_DEFAULT_NOT_CONFIGURED")),
+                argThat(key -> key.startsWith("internal:")));
         verify(providerResolver, times(1)).resolveForCapability(userId, "STT");
     }
 
@@ -180,6 +181,7 @@ class MediaStageExecutionServiceProviderTest {
                 argThat(detail -> detail != null
                         && detail.path("errorCode").asText().equals("PROVIDER_QUOTA_EXCEEDED")
                         && detail.path("model").asText().equals("qwen-plus")
-                        && !detail.path("retryable").asBoolean(true)));
+                        && !detail.path("retryable").asBoolean(true)),
+                argThat(key -> key.startsWith("internal:")));
     }
 }

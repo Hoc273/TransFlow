@@ -175,6 +175,19 @@ class MediaExportServiceImplTest {
     }
 
     @Test
+    void subtitles_followTheRenderedTimeline_whenTheRenderIsCurrent() {
+        // Summary renders retime footage to narration; the sidecars carry the timing the video plays.
+        when(jobService.getStages(jobId)).thenReturn(List.of(
+                translateStage(MediaJobStage.StageStatus.COMPLETED),
+                renderStage("{\"objectRef\":\"transflow-media/rendered/j1/v.mp4\","
+                        + "\"srtRef\":\"transflow-media/rendered/j1/s.srt\",\"vttRef\":\"transflow-media/rendered/j1/s.vtt\"}")));
+        when(storage.getMediaObject("transflow-media/rendered/j1/s.vtt"))
+                .thenReturn(new java.io.ByteArrayInputStream("WEBVTT\n\nrendered".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+
+        assertEquals("WEBVTT\n\nrendered", service.export(ws, user, jobId, "VTT").content());
+    }
+
+    @Test
     void video_withoutRenderOutput_isStageNotReady() {
         when(jobService.getStages(jobId)).thenReturn(List.of());
         assertEquals(ErrorCode.STAGE_NOT_READY,

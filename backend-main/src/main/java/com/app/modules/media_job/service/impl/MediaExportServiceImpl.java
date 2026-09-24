@@ -42,10 +42,12 @@ public class MediaExportServiceImpl implements MediaExportService {
 
         if (!fmt.equals("VIDEO")) { // SUBTITLE is the legacy alias of SRT
             checkSubtitlesReady(workspaceId, userId, jobId);
-            List<SubtitleSegment> segments = jobService.listSubtitles(workspaceId, userId, jobId);
             boolean vtt = fmt.equals("VTT");
-            return new MediaExportResponse(fmt, "subtitles_" + jobId + (vtt ? ".vtt" : ".srt"), null,
-                    vtt ? toVtt(segments) : toSrt(segments));
+            String rendered = renderedSubtitle(jobId, vtt);
+            String content = rendered != null ? rendered : vtt
+                    ? toVtt(jobService.listSubtitles(workspaceId, userId, jobId))
+                    : toSrt(jobService.listSubtitles(workspaceId, userId, jobId));
+            return new MediaExportResponse(fmt, "subtitles_" + jobId + (vtt ? ".vtt" : ".srt"), null, content);
         }
 
         String ref = renderOutputRef(workspaceId, userId, jobId);
@@ -96,6 +98,29 @@ public class MediaExportServiceImpl implements MediaExportService {
                 .anyMatch(i -> i.getBlockingActions() != null && i.getBlockingActions().contains(BLOCK_PUBLISH));
         if (blocked) {
             throw new AppException(ErrorCode.QA_BLOCKED);
+        }
+    }
+
+    /**
+     * The sidecar the current render burned/muxed. Rows keep source-timeline times, while a
+     * summary render concatenates cuts or retimes footage to narration, so only the sidecar
+     * matches the exported video. Editing subtitles marks RENDER stale, which falls back to rows.
+     */
+    private String renderedSubtitle(UUID jobId, boolean vtt) {
+        String ref = jobService.getStages(jobId).stream()
+                .filter(s -> s.getStageName() == MediaJobStage.StageName.RENDER
+                        && s.getStatus() == MediaJobStage.StageStatus.COMPLETED)
+                .map(s -> StageOutputRefs.field(s.getOutputRef(), vtt ? "vttRef" : "srtRef"))
+                .filter(r -> r != null && !r.isBlank())
+                .findFirst()
+                .orElse(null);
+        if (ref == null) {
+            return null;
+        }
+        try (java.io.InputStream in = storage.getMediaObject(ref)) {
+            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception ex) {
+            return null; // the rows remain a valid (source-timeline) export
         }
     }
 
