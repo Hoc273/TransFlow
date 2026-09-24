@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -13,12 +13,14 @@ import {
   IconEye,
   IconLanguage,
   IconLoader2,
+  IconMicrophone2,
   IconPlayerPlay,
   IconPlus,
   IconSparkles,
   IconTrash,
   IconUpload,
   IconVideo,
+  IconVolume,
   IconX,
 } from '@tabler/icons-react'
 import {
@@ -129,6 +131,44 @@ const DURATION_PRESETS = [
   { labelKey: 'create.preset5m', seconds: 300 },
   { labelKey: 'create.preset10m', seconds: 600 },
 ] as const
+
+/** Numbered question header for each create step, with a done/todo status. */
+function ConfigStepHeader({
+  index,
+  icon,
+  title,
+  description,
+  done,
+  doneLabel,
+  todoLabel,
+}: {
+  index: number
+  icon: ReactNode
+  title: string
+  description: string
+  done: boolean
+  doneLabel: string
+  todoLabel: string
+}) {
+  return (
+    <div className="media-config-section-title">
+      <div className="media-config-section-icon">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <h3 className="m-0 text-sm font-semibold text-[var(--color-text-primary)]">
+          <span className="media-step-index">{index}.</span> {title}
+        </h3>
+        <p className="m-0 text-xs text-[var(--color-text-tertiary)]">{description}</p>
+      </div>
+      <span
+        className={cn('media-step-status', done ? 'done' : 'todo')}
+        data-testid={`create-step-status-${index}`}
+      >
+        {done ? <IconCheck size={12} stroke={2.5} /> : <IconAlertCircle size={12} stroke={2.5} />}
+        <span>{done ? doneLabel : todoLabel}</span>
+      </span>
+    </div>
+  )
+}
 
 export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props) {
   const { t } = useTranslation(['media', 'common'])
@@ -739,6 +779,31 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
 
   const providersLoading = providersQuery.isPending
   const noTtsProviders = !providersLoading && ttsProviders.length === 0
+  // Step 3 status + footer checklist — mirrors the voice half of the submit gate.
+  const voiceBlocked =
+    (isMultiTarget ? selectedTargets.some((lang) => targetBlocked(lang)) : missingVoicePair)
+    || (noTtsProviders && recipeId !== 'summary.generative' && !keepOriginalAudio)
+  const readinessTodos: Array<{ key: string; label: string; onClick: () => void }> = [
+    ...(!consented
+      ? [{
+          key: 'consent',
+          label: t('media:createForm.todoConsent'),
+          onClick: () => {
+            const el = document.querySelector<HTMLElement>('[data-testid="consent-check"]')
+            el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            el?.focus()
+          },
+        }]
+      : []),
+    ...(voiceBlocked
+      ? [{
+          key: 'voice',
+          label: t('media:createForm.todoVoice'),
+          onClick: () =>
+            document.getElementById('create-step-audio')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+        }]
+      : []),
+  ]
   // One staged video keeps the legacy single flow; several fan out over the
   // shared config (no Single/Batch toggle, no separate batch view).
   const single = staged.length === 1 ? staged[0] : null
@@ -1020,515 +1085,74 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
           </header>
 
           <div className="space-y-4">
-            {/* Section 1: Recipe & Execution Mode */}
-            <div className="media-config-section">
-            <div className="media-config-section-title">
-              <div className="media-config-section-icon">
-                <IconSparkles size={16} />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--color-text-primary)] m-0">
-                  {language === 'vi' ? '1. Công thức xử lý & Hiệu năng AI' : '1. Recipe & AI Performance'}
-                </h3>
-                <p className="text-xs text-[var(--color-text-tertiary)] m-0">
-                  {language === 'vi'
-                    ? 'Chọn mục tiêu chuyển đổi video và chế độ xử lý âm thanh'
-                    : 'Choose your transformation recipe and audio processing engine'}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-3">
-              <RecipeSelector
-                value={recipeId}
-                disabled={!consented}
-                generativeAvailable={generativeAvailable}
-                onChange={(next) => {
-                  setRecipeId(next)
-                }}
+            {/* Step 1: What to make (recipe + duration) */}
+            <div className="media-config-section" id="create-step-recipe">
+              <ConfigStepHeader
+                index={1}
+                icon={<IconSparkles size={16} />}
+                title={t('media:createForm.step1Title')}
+                description={t('media:createForm.step1Desc')}
+                done
+                doneLabel={t('media:createForm.stepDone')}
+                todoLabel={t('media:createForm.stepTodo')}
               />
-            </div>
 
-            {recipeId === 'summary.generative' && (
-              <div
-                className="mt-3 border border-[var(--color-border)] rounded-xl p-3.5 bg-[var(--color-bg-surface)] flex items-center justify-between gap-3"
-                data-testid="vlm-toggle-card"
-              >
-                <div className="flex items-start gap-2.5 min-w-0">
-                  <div className="media-config-section-icon mt-0.5">
-                    <IconEye size={16} className="text-[var(--color-media)]" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-[var(--color-text-primary)]">
-                        {t('media:vlm.toggleTitle')}
-                      </span>
-                      <span
-                        className={cn(
-                          'media-summary-pill text-[10px] py-0.5 px-2 border-none font-medium',
-                          enableVlm
-                            ? 'bg-[var(--color-media-soft)] text-[var(--color-media)]'
-                            : 'bg-[var(--color-bg-surface-2)] text-[var(--color-text-tertiary)]',
-                        )}
-                      >
-                        {enableVlm ? t('media:vlm.enabledPill') : t('media:vlm.disabledPill')}
-                      </span>
-                    </div>
-                    <p className="text-xs text-[var(--color-text-tertiary)] m-0 mt-0.5 leading-relaxed">
-                      {t('media:vlm.toggleDesc')}
-                    </p>
-                  </div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input
-                    type="checkbox"
-                    data-testid="toggle-vlm"
-                    className="sr-only peer"
-                    checked={enableVlm}
-                    disabled={!consented}
-                    onChange={(e) => setEnableVlm(e.target.checked)}
-                  />
-                  <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-media)]"></div>
-                </label>
-              </div>
-            )}
-
-            {/* Audio Execution Mode (Dropdown, Default Hidden, Default FAST) */}
-            <div className="mt-3 border border-[var(--color-border)] rounded-xl overflow-hidden bg-[var(--color-bg-surface)]">
-              <button
-                type="button"
-                className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-surface-2)] transition-colors"
-                onClick={() => setShowAudioMode(!showAudioMode)}
-              >
-                <div className="flex items-center gap-2">
-                  <IconAdjustments size={14} className="text-[var(--color-media)]" />
-                  <span>
-                    {language === 'vi' ? 'Chế độ xử lý audio (Nâng cao)' : 'Audio Execution Mode (Advanced)'}
-                  </span>
-                  <span className="media-summary-pill text-[11px] py-0.5 px-2 bg-[var(--color-media-soft)] text-[var(--color-media)] border-none font-medium">
-                    {effectiveSelection === 'STUDIO'
-                      ? (language === 'vi' ? 'Cân bằng (Studio)' : 'Balanced (Studio)')
-                      : (language === 'vi' ? 'Tốc độ cao (Fast)' : 'Fast')}
-                  </span>
-                </div>
-                <IconChevronDown
-                  size={15}
-                  className={cn(
-                    'transition-transform duration-200 text-[var(--color-text-tertiary)]',
-                    showAudioMode && 'rotate-180',
-                  )}
+              <div className="mt-3">
+                <RecipeSelector
+                  value={recipeId}
+                  disabled={!consented}
+                  generativeAvailable={generativeAvailable}
+                  onChange={(next) => {
+                    setRecipeId(next)
+                  }}
                 />
-              </button>
-              {showAudioMode && (
-                <div className="p-3 pt-0 border-t border-[var(--color-border)] mt-2">
-                  <ExecutionModeSelector
-                    projection={capabilities.data}
-                    value={requestedMode ?? capabilities.data?.defaultExecutionMode ?? 'FAST'}
-                    loading={capabilities.isPending}
-                    error={capabilities.isError}
-                    disabled={!consented}
-                    onChange={setRequestedMode}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Section 2: Languages & AI Voice */}
-          <div className="media-config-section">
-            <div className="media-config-section-title">
-              <div className="media-config-section-icon">
-                <IconLanguage size={16} />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--color-text-primary)] m-0">
-                  {language === 'vi' ? '2. Ngôn ngữ & Giọng đọc AI' : '2. Languages & AI Voice'}
-                </h3>
-                <p className="text-xs text-[var(--color-text-tertiary)] m-0">
-                  {language === 'vi'
-                    ? 'Chọn hướng dịch thuật và cấu hình giọng lồng tiếng tự nhiên'
-                    : 'Configure translation direction and natural speech voice'}
-                </p>
-              </div>
-            </div>
-
-            {/* Language bridge: Source -> Arrow -> Target */}
-            <div className="media-lang-bridge-container mt-3">
-              <div className="media-lang-box">
-                <label className="field-label m-0">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-secondary)]">
-                    <IconLanguage size={14} className="text-[var(--color-media)]" />
-                    {t('media:sourceLangLabel')}
-                  </span>
-                  <select
-                    className="field-input mt-1.5"
-                    value={sourceLang}
-                    disabled={!consented}
-                    onChange={(e) => setSourceLang(e.target.value)}
-                  >
-                    <option value="">{t('media:sourceLangAuto')}</option>
-                    {LANG_OPTIONS.map((lang) => (
-                      <option key={lang} value={lang}>
-                        {formatLanguageOption(lang, language)}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="field-help text-[11px] mt-1 block">
-                    {t('media:sourceLangHelp')}
-                  </span>
-                </label>
               </div>
 
-              <div className="media-lang-bridge-arrow" aria-hidden="true">
-                <IconArrowRight size={18} />
-              </div>
-
-              <div className="media-lang-box">
-                <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-secondary)]">
-                  <IconLanguage size={14} className="text-[var(--color-media)]" />
-                  {t('media:targetLangLabel')} <span className="text-[var(--color-accent)]">*</span>
-                </span>
-
-                <div className="relative mt-1.5" ref={targetDropdownRef}>
-                  <button
-                    type="button"
-                    className={cn(
-                      'field-input w-full flex items-center justify-between text-left cursor-pointer transition-colors',
-                      targetDropdownOpen && 'border-[var(--color-media)] ring-1 ring-[var(--color-media)]',
-                    )}
-                    disabled={batchCreating}
-                    data-testid="target-dropdown-trigger"
-                    aria-haspopup="listbox"
-                    aria-expanded={targetDropdownOpen}
-                    onClick={() => setTargetDropdownOpen((prev) => !prev)}
-                  >
-                    <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
-                      {selectedTargets.length === 1 ? (
-                        <span className="text-xs font-medium text-[var(--color-text-primary)] truncate">
-                          {formatLanguageOption(selectedTargets[0], language)}
+              {recipeId === 'summary.generative' && (
+                <div
+                  className="mt-3 border border-[var(--color-border)] rounded-xl p-3.5 bg-[var(--color-bg-surface)] flex items-center justify-between gap-3"
+                  data-testid="vlm-toggle-card"
+                >
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <div className="media-config-section-icon mt-0.5">
+                      <IconEye size={16} className="text-[var(--color-media)]" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-[var(--color-text-primary)]">
+                          {t('media:vlm.toggleTitle')}
                         </span>
-                      ) : (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--color-media-soft)] text-[var(--color-media)]">
-                            {language === 'vi' ? `${selectedTargets.length} ngôn ngữ` : `${selectedTargets.length} languages`}
-                          </span>
-                          <span className="text-xs text-[var(--color-text-secondary)] truncate">
-                            {selectedTargets.map((l) => l.toUpperCase()).join(', ')}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <IconChevronDown
-                      size={16}
-                      className={cn(
-                        'text-[var(--color-text-tertiary)] shrink-0 ml-2 transition-transform duration-150',
-                        targetDropdownOpen && 'rotate-180',
-                      )}
-                    />
-                  </button>
-
-                  <div
-                    className={cn(
-                      'absolute left-0 right-0 top-full mt-1.5 z-40 max-h-64 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-1.5 shadow-xl',
-                      !targetDropdownOpen && 'hidden',
-                    )}
-                    data-testid="target-checkboxes"
-                    role="group"
-                    aria-label={t('media:targetLangLabel')}
-                  >
-                    <div className="px-2.5 py-1 text-[11px] font-semibold text-[var(--color-text-tertiary)] flex justify-between items-center border-b border-[var(--color-border)] mb-1">
-                      <span>{language === 'vi' ? 'Chọn ngôn ngữ đích' : 'Select target languages'}</span>
-                      <span className="font-mono text-[10px]">{selectedTargets.length} / {LANG_OPTIONS.length}</span>
-                    </div>
-                    <div className="space-y-0.5">
-                      {LANG_OPTIONS.map((lang) => {
-                        const checked = selectedTargets.includes(lang)
-                        const locked = staged.length > 1 && !checked
-                        const isOnlyChecked = checked && selectedTargets.length === 1
-                        const disabled = batchCreating || locked || isOnlyChecked
-
-                        return (
-                          <label
-                            key={lang}
-                            className={cn(
-                              'flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer text-xs font-medium transition-colors select-none',
-                              checked
-                                ? 'bg-[var(--color-media-soft)] text-[var(--color-text-primary)] font-semibold'
-                                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-surface-2)] hover:text-[var(--color-text-primary)]',
-                              disabled && 'opacity-60 cursor-not-allowed',
-                            )}
-                            title={
-                              locked
-                                ? t('media:batch.multiVideoLocksTarget')
-                                : isOnlyChecked
-                                  ? language === 'vi'
-                                    ? 'Phải giữ lại tối thiểu 1 ngôn ngữ đích'
-                                    : 'At least one target language is required'
-                                  : undefined
-                            }
-                          >
-                            <input
-                              type="checkbox"
-                              className="rounded border-[var(--color-border-strong)] text-[var(--color-media)] focus:ring-[var(--color-media)] h-4 w-4 shrink-0"
-                              checked={checked}
-                              disabled={disabled}
-                              data-testid={`target-check-${lang}`}
-                              onChange={() => toggleTarget(lang)}
-                            />
-                            <span className="flex-1 min-w-0 truncate">
-                              {formatLanguageOption(lang, language)}
-                            </span>
-                            {checked && (
-                              <span className="text-[11px] font-semibold text-[var(--color-media)] shrink-0">
-                                {language === 'vi' ? 'Đã chọn' : 'Selected'}
-                              </span>
-                            )}
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {selectedTargets.length > 1 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5" data-testid="selected-target-chips">
-                    {selectedTargets.map((lang) => (
-                      <span
-                        key={lang}
-                        className="inline-flex items-center gap-1 rounded-full bg-[var(--color-media-soft)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--color-media)] border border-color-mix(in srgb, var(--color-media) 20%, transparent)"
-                      >
-                        <span>{formatLanguageOption(lang, language)}</span>
-                        {!batchCreating && selectedTargets.length > 1 && (
-                          <button
-                            type="button"
-                            className="hover:text-[var(--color-text-primary)] ml-0.5 cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleTarget(lang)
-                            }}
-                            aria-label={`Remove ${lang}`}
-                          >
-                            <IconX size={12} />
-                          </button>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <span className="field-help text-[11px] mt-1 block">
-                  {language === 'vi' ? 'Ngôn ngữ đích cho phụ đề và lồng tiếng' : 'Target language for subtitles & dubbing'}
-                </span>
-                {staged.length > 1 && (
-                  <span className="field-help text-[11px] mt-1 block">
-                    {t('media:batch.multiVideoLocksTarget')}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Voice configuration */}
-            <div className="mt-3.5">
-              {!isMultiTarget && (
-                <div className="media-config-block">
-                  {presetProvidesVoice ? (
-                    <div data-testid="preset-voice-note">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
-                        <IconLanguage size={14} className="text-[var(--color-media)]" />
-                        {t('media:voice.presetVoiceTitle')}
+                        <span
+                          className={cn(
+                            'media-summary-pill text-[10px] py-0.5 px-2 border-none font-medium',
+                            enableVlm
+                              ? 'bg-[var(--color-media-soft)] text-[var(--color-media)]'
+                              : 'bg-[var(--color-bg-surface-2)] text-[var(--color-text-tertiary)]',
+                          )}
+                        >
+                          {enableVlm ? t('media:vlm.enabledPill') : t('media:vlm.disabledPill')}
+                        </span>
                       </div>
-                      <p className="mb-0 mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
-                        {t('media:voice.presetVoiceHint')}
+                      <p className="text-xs text-[var(--color-text-tertiary)] m-0 mt-0.5 leading-relaxed">
+                        {t('media:vlm.toggleDesc')}
                       </p>
                     </div>
-                  ) : (
-                    <VoiceSelector
-                      workspaceId={workspaceId}
-                      providers={ttsProviders}
-                      targetLang={selectedTargets[0]}
-                      selectedProviderId={voiceSelection.providerId}
-                      selectedVoiceId={voiceSelection.voiceId}
-                      disabled={!consented}
-                      autoSelect
-                      showPreview
-                      allowOriginal={recipeId !== 'summary.generative'}
-                      originalSelected={keepOriginalAudio}
-                      onChange={(selection) => {
-                        setVoiceSelection(selection)
-                      }}
-                      onOriginalChange={setKeepOriginalAudio}
-                      onPendingChange={setVoiceSelection}
-                    />
-                  )}
-                </div>
-              )}
-              {isMultiTarget && (
-                <>
-                  <label className="audio-original-toggle mt-3">
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
                     <input
                       type="checkbox"
-                      data-testid="multi-keep-original"
-                      checked={keepOriginalAudio}
-                      disabled={batchCreating}
-                      onChange={(e) => setKeepOriginalAudio(e.target.checked)}
-                    />
-                    <span>
-                      <strong>{t('media:voice.original')}</strong>
-                      <small>{t('media:batch.keepOriginalHint')}</small>
-                    </span>
-                  </label>
-                  <div className="mt-3 space-y-3">
-                    {selectedTargets.map((lang) => (
-                      <div
-                        key={lang}
-                        className="media-config-block"
-                        data-testid="multi-target-row"
-                        data-lang={lang}
-                      >
-                        <div className="mb-2 flex items-center gap-2">
-                          <span className="text-xs font-semibold text-[var(--color-text-primary)]">
-                            {formatLanguageOption(lang, language)}
-                          </span>
-                          <span className="text-[11px] text-[var(--color-text-tertiary)]">
-                            {targetJobs[lang]?.status === 'created'
-                              ? t('media:batch.status.created')
-                              : targetJobs[lang]?.status === 'failed'
-                                ? t('media:batch.status.failed')
-                                : null}
-                          </span>
-                          <span className="flex-1" />
-                          {targetJobs[lang]?.jobId && (
-                            <Link
-                              to={`/w/${workspaceId}/media/jobs/${targetJobs[lang]?.jobId}`}
-                              className="text-xs font-semibold text-[var(--color-media)]"
-                            >
-                              {t('media:batch.viewJob')}
-                            </Link>
-                          )}
-                          {targetJobs[lang]?.status === 'created' && (
-                            <IconCheck size={15} className="shrink-0 text-[var(--color-status-completed)]" />
-                          )}
-                        </div>
-                        {!keepOriginalAudio
-                          && !(presetProvidesVoice
-                            && (targetVoices[lang]?.providerId == null)
-                            && (targetVoices[lang]?.voiceId == null)) && (
-                          <VoiceSelector
-                            workspaceId={workspaceId}
-                            providers={ttsProviders}
-                            targetLang={lang}
-                            selectedProviderId={targetVoices[lang]?.providerId ?? null}
-                            selectedVoiceId={targetVoices[lang]?.voiceId ?? null}
-                            disabled={batchCreating}
-                            autoSelect
-                            allowOriginal={false}
-                            onChange={(selection) =>
-                              setTargetVoices((prev) => ({ ...prev, [lang]: selection }))
-                            }
-                            onPendingChange={(selection) =>
-                              setTargetVoices((prev) => ({ ...prev, [lang]: selection }))
-                            }
-                          />
-                        )}
-                        {targetJobs[lang]?.error && (
-                          <div className="mt-1 text-[11px] text-[var(--color-error)]">
-                            {targetJobs[lang]?.error}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Section 3: Workflow Mode & Target Duration */}
-          <div className="media-config-section">
-            <div className="media-config-section-title">
-              <div className="media-config-section-icon">
-                <IconAdjustments size={16} />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--color-text-primary)] m-0">
-                  {language === 'vi' ? '3. Quy trình thực thi & Thời lượng' : '3. Workflow Execution & Duration'}
-                </h3>
-                <p className="text-xs text-[var(--color-text-tertiary)] m-0">
-                  {language === 'vi'
-                    ? 'Cấu hình mức độ tự động hóa và thời lượng mục tiêu của video'
-                    : 'Configure automation mode and target video duration'}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-3 grid gap-4 lg:grid-cols-2 items-start">
-              {/* Left Column: Workflow Mode + Preset */}
-              <div className="space-y-3 min-w-0">
-                <div className="media-config-block">
-                  <span className="field-label m-0 mb-1.5 text-xs font-semibold text-[var(--color-text-secondary)] block">
-                    {t('media:workflow.modeLabel')}
-                  </span>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div
-                      className="media-workflow-seg shrink-0"
-                      role="radiogroup"
-                      aria-label={t('media:workflow.modeLabel')}
-                      data-testid="workflow-mode-seg"
-                    >
-                      <button
-                        type="button"
-                        role="radio"
-                        aria-checked={workflowMode === 'MANUAL'}
-                        className={cn(workflowMode === 'MANUAL' && 'active')}
-                        disabled={!consented}
-                        onClick={() => {
-                          setWorkflowMode('MANUAL')
-                          setWorkflowPresetId(null)
-                        }}
-                      >
-                        <IconEdit size={14} className="mr-1 inline-block" />
-                        {t('media:workflow.manual')}
-                      </button>
-                      <button
-                        type="button"
-                        role="radio"
-                        aria-checked={workflowMode === 'AUTO'}
-                        className={cn(workflowMode === 'AUTO' && 'active')}
-                        disabled={!consented}
-                        onClick={() => setWorkflowMode('AUTO')}
-                      >
-                        <IconPlayerPlay size={14} className="mr-1 inline-block" />
-                        {t('media:workflow.auto')}
-                      </button>
-                    </div>
-
-                    <div className="text-xs text-[var(--color-text-secondary)] flex items-center gap-1.5 flex-1 min-w-[180px]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-media)] shrink-0" />
-                      <span className="leading-snug">
-                        {workflowMode === 'MANUAL'
-                          ? (language === 'vi' ? 'Dừng duyệt checkpoint trước khi xuất bản' : t('media:workflow.manualHelp'))
-                          : (language === 'vi' ? 'Tự động chạy liên tục từ đầu đến cuối' : t('media:workflow.autoHelp'))}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {workflowMode === 'AUTO' && (
-                  <div className="media-config-block">
-                    <WorkflowPresetPicker
-                      workspaceId={workspaceId}
-                      projectId={projectId}
-                      value={workflowPresetId}
-                      onChange={setWorkflowPresetId}
+                      data-testid="toggle-vlm"
+                      className="sr-only peer"
+                      checked={enableVlm}
                       disabled={!consented}
-                      explicitMode={workflowMode}
+                      onChange={(e) => setEnableVlm(e.target.checked)}
                     />
-                  </div>
-                )}
-              </div>
+                    <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-media)]"></div>
+                  </label>
+                </div>
+              )}
 
-              {/* Right Column: Duration or Timeline Note */}
-              <div className="space-y-3 min-w-0">
+              <div className="mt-3">
                 {recipeId !== 'localization.full' ? (
                   <div className="media-config-block">
                     <div className="mb-2 flex items-center justify-between gap-1.5">
@@ -1591,28 +1215,443 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                     </span>
                   </div>
                 ) : (
-                  <div className="media-config-block">
-                    <div className="flex items-center gap-2 mb-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">
-                      <IconClock size={15} className="text-[var(--color-media)]" />
-                      {language === 'vi' ? 'Thời lượng video: Giữ nguyên 100%' : 'Video Duration: Original timeline'}
-                    </div>
-                    <p className="text-xs text-[var(--color-text-secondary)] leading-relaxed m-0">
-                      {language === 'vi'
-                        ? 'Chế độ Bản địa hóa toàn bộ giữ nguyên timeline và nhịp độ video gốc. Mọi câu thoại sẽ được nhận dạng, dịch và lồng tiếng đồng bộ thời gian hoàn hảo.'
-                        : 'Full Localization preserves 100% of the original video timeline and pace. Every spoken sentence will be recognized, translated, and dubbed in sync.'}
-                    </p>
+                  <div className="media-keep-duration-note">
+                    <IconClock size={14} className="shrink-0" />
+                    <span>{t('media:createForm.keepDuration')}</span>
                     {single?.durationMs != null && (
-                      <div className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-mono font-medium text-[var(--color-media)] bg-[var(--color-media-soft)] px-2.5 py-1 rounded-md">
-                        <IconVideo size={13} />
-                        {language === 'vi' ? 'Độ dài nguồn' : 'Source length'}: {formatDurationMs(single.durationMs)}
-                      </div>
+                      <span className="font-mono font-semibold">{formatDurationMs(single.durationMs)}</span>
                     )}
                   </div>
                 )}
               </div>
             </div>
+
+            {/* Step 2: Languages */}
+            <div className="media-config-section" id="create-step-language">
+              <ConfigStepHeader
+                index={2}
+                icon={<IconLanguage size={16} />}
+                title={t('media:createForm.step2Title')}
+                description={t('media:createForm.step2Desc')}
+                done={selectedTargets.length > 0}
+                doneLabel={t('media:createForm.stepDone')}
+                todoLabel={t('media:createForm.stepTodo')}
+              />
+
+              {/* Language bridge: Source -> Arrow -> Target */}
+              <div className="media-lang-bridge-container mt-3">
+                <div className="media-lang-box">
+                  <label className="field-label m-0">
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-secondary)]">
+                      <IconLanguage size={14} className="text-[var(--color-media)]" />
+                      {t('media:sourceLangLabel')}
+                    </span>
+                    <select
+                      className="field-input mt-1.5"
+                      value={sourceLang}
+                      disabled={!consented}
+                      onChange={(e) => setSourceLang(e.target.value)}
+                    >
+                      <option value="">{t('media:sourceLangAuto')}</option>
+                      {LANG_OPTIONS.map((lang) => (
+                        <option key={lang} value={lang}>
+                          {formatLanguageOption(lang, language)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="field-help text-[11px] mt-1 block">
+                      {t('media:sourceLangHelp')}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="media-lang-bridge-arrow" aria-hidden="true">
+                  <IconArrowRight size={18} />
+                </div>
+
+                <div className="media-lang-box">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-secondary)]">
+                    <IconLanguage size={14} className="text-[var(--color-media)]" />
+                    {t('media:targetLangLabel')} <span className="text-[var(--color-accent)]">*</span>
+                  </span>
+
+                  <div className="relative mt-1.5" ref={targetDropdownRef}>
+                    <button
+                      type="button"
+                      className={cn(
+                        'field-input w-full flex items-center justify-between text-left cursor-pointer transition-colors',
+                        targetDropdownOpen && 'border-[var(--color-media)] ring-1 ring-[var(--color-media)]',
+                      )}
+                      disabled={batchCreating}
+                      data-testid="target-dropdown-trigger"
+                      aria-haspopup="listbox"
+                      aria-expanded={targetDropdownOpen}
+                      onClick={() => setTargetDropdownOpen((prev) => !prev)}
+                    >
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
+                        {selectedTargets.length === 1 ? (
+                          <span className="text-xs font-medium text-[var(--color-text-primary)] truncate">
+                            {formatLanguageOption(selectedTargets[0], language)}
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--color-media-soft)] text-[var(--color-media)]">
+                              {language === 'vi' ? `${selectedTargets.length} ngôn ngữ` : `${selectedTargets.length} languages`}
+                            </span>
+                            <span className="text-xs text-[var(--color-text-secondary)] truncate">
+                              {selectedTargets.map((l) => l.toUpperCase()).join(', ')}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <IconChevronDown
+                        size={16}
+                        className={cn(
+                          'text-[var(--color-text-tertiary)] shrink-0 ml-2 transition-transform duration-150',
+                          targetDropdownOpen && 'rotate-180',
+                        )}
+                      />
+                    </button>
+
+                    <div
+                      className={cn(
+                        'absolute left-0 right-0 top-full mt-1.5 z-40 max-h-64 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-1.5 shadow-xl',
+                        !targetDropdownOpen && 'hidden',
+                      )}
+                      data-testid="target-checkboxes"
+                      role="group"
+                      aria-label={t('media:targetLangLabel')}
+                    >
+                      <div className="px-2.5 py-1 text-[11px] font-semibold text-[var(--color-text-tertiary)] flex justify-between items-center border-b border-[var(--color-border)] mb-1">
+                        <span>{language === 'vi' ? 'Chọn ngôn ngữ đích' : 'Select target languages'}</span>
+                        <span className="font-mono text-[10px]">{selectedTargets.length} / {LANG_OPTIONS.length}</span>
+                      </div>
+                      <div className="space-y-0.5">
+                        {LANG_OPTIONS.map((lang) => {
+                          const checked = selectedTargets.includes(lang)
+                          const locked = staged.length > 1 && !checked
+                          const isOnlyChecked = checked && selectedTargets.length === 1
+                          const disabled = batchCreating || locked || isOnlyChecked
+
+                          return (
+                            <label
+                              key={lang}
+                              className={cn(
+                                'flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer text-xs font-medium transition-colors select-none',
+                                checked
+                                  ? 'bg-[var(--color-media-soft)] text-[var(--color-text-primary)] font-semibold'
+                                  : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-surface-2)] hover:text-[var(--color-text-primary)]',
+                                disabled && 'opacity-60 cursor-not-allowed',
+                              )}
+                              title={
+                                locked
+                                  ? t('media:batch.multiVideoLocksTarget')
+                                  : isOnlyChecked
+                                    ? language === 'vi'
+                                      ? 'Phải giữ lại tối thiểu 1 ngôn ngữ đích'
+                                      : 'At least one target language is required'
+                                    : undefined
+                              }
+                            >
+                              <input
+                                type="checkbox"
+                                className="rounded border-[var(--color-border-strong)] text-[var(--color-media)] focus:ring-[var(--color-media)] h-4 w-4 shrink-0"
+                                checked={checked}
+                                disabled={disabled}
+                                data-testid={`target-check-${lang}`}
+                                onChange={() => toggleTarget(lang)}
+                              />
+                              <span className="flex-1 min-w-0 truncate">
+                                {formatLanguageOption(lang, language)}
+                              </span>
+                              {checked && (
+                                <span className="text-[11px] font-semibold text-[var(--color-media)] shrink-0">
+                                  {language === 'vi' ? 'Đã chọn' : 'Selected'}
+                                </span>
+                              )}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {selectedTargets.length > 1 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5" data-testid="selected-target-chips">
+                      {selectedTargets.map((lang) => (
+                        <span
+                          key={lang}
+                          className="inline-flex items-center gap-1 rounded-full bg-[var(--color-media-soft)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--color-media)] border border-color-mix(in srgb, var(--color-media) 20%, transparent)"
+                        >
+                          <span>{formatLanguageOption(lang, language)}</span>
+                          {!batchCreating && selectedTargets.length > 1 && (
+                            <button
+                              type="button"
+                              className="hover:text-[var(--color-text-primary)] ml-0.5 cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleTarget(lang)
+                              }}
+                              aria-label={`Remove ${lang}`}
+                            >
+                              <IconX size={12} />
+                            </button>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <span className="field-help text-[11px] mt-1 block">
+                    {language === 'vi' ? 'Ngôn ngữ đích cho phụ đề và lồng tiếng' : 'Target language for subtitles & dubbing'}
+                  </span>
+                  {staged.length > 1 && (
+                    <span className="field-help text-[11px] mt-1 block">
+                      {t('media:batch.multiVideoLocksTarget')}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Step 3: Audio & voice */}
+            <div className="media-config-section" id="create-step-audio">
+              <ConfigStepHeader
+                index={3}
+                icon={<IconMicrophone2 size={16} />}
+                title={t('media:createForm.step3Title')}
+                description={t('media:createForm.step3Desc')}
+                done={!voiceBlocked}
+                doneLabel={t('media:createForm.stepDone')}
+                todoLabel={t('media:createForm.stepTodo')}
+              />
+
+              {/* Voice configuration */}
+              <div className="mt-3.5">
+                {!isMultiTarget && (
+                  <div className="media-config-block">
+                    {presetProvidesVoice ? (
+                      <div data-testid="preset-voice-note">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
+                          <IconLanguage size={14} className="text-[var(--color-media)]" />
+                          {t('media:voice.presetVoiceTitle')}
+                        </div>
+                        <p className="mb-0 mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+                          {t('media:voice.presetVoiceHint')}
+                        </p>
+                      </div>
+                    ) : (
+                      <VoiceSelector
+                        workspaceId={workspaceId}
+                        providers={ttsProviders}
+                        targetLang={selectedTargets[0]}
+                        selectedProviderId={voiceSelection.providerId}
+                        selectedVoiceId={voiceSelection.voiceId}
+                        disabled={!consented}
+                        autoSelect
+                        showPreview
+                        allowOriginal={recipeId !== 'summary.generative'}
+                        originalSelected={keepOriginalAudio}
+                        onChange={(selection) => {
+                          setVoiceSelection(selection)
+                        }}
+                        onOriginalChange={setKeepOriginalAudio}
+                        onPendingChange={setVoiceSelection}
+                      />
+                    )}
+                  </div>
+                )}
+                {isMultiTarget && (
+                  <>
+                    <label className="audio-original-toggle mt-3">
+                      <input
+                        type="checkbox"
+                        data-testid="multi-keep-original"
+                        checked={keepOriginalAudio}
+                        disabled={batchCreating}
+                        onChange={(e) => setKeepOriginalAudio(e.target.checked)}
+                      />
+                      <span>
+                        <strong>{t('media:voice.original')}</strong>
+                        <small>{t('media:batch.keepOriginalHint')}</small>
+                      </span>
+                    </label>
+                    <div className="mt-3 space-y-3">
+                      {selectedTargets.map((lang) => (
+                        <div
+                          key={lang}
+                          className="media-config-block"
+                          data-testid="multi-target-row"
+                          data-lang={lang}
+                        >
+                          <div className="mb-2 flex items-center gap-2">
+                            <span className="text-xs font-semibold text-[var(--color-text-primary)]">
+                              {formatLanguageOption(lang, language)}
+                            </span>
+                            <span className="text-[11px] text-[var(--color-text-tertiary)]">
+                              {targetJobs[lang]?.status === 'created'
+                                ? t('media:batch.status.created')
+                                : targetJobs[lang]?.status === 'failed'
+                                  ? t('media:batch.status.failed')
+                                  : null}
+                            </span>
+                            <span className="flex-1" />
+                            {targetJobs[lang]?.jobId && (
+                              <Link
+                                to={`/w/${workspaceId}/media/jobs/${targetJobs[lang]?.jobId}`}
+                                className="text-xs font-semibold text-[var(--color-media)]"
+                              >
+                                {t('media:batch.viewJob')}
+                              </Link>
+                            )}
+                            {targetJobs[lang]?.status === 'created' && (
+                              <IconCheck size={15} className="shrink-0 text-[var(--color-status-completed)]" />
+                            )}
+                          </div>
+                          {!keepOriginalAudio
+                            && !(presetProvidesVoice
+                              && (targetVoices[lang]?.providerId == null)
+                              && (targetVoices[lang]?.voiceId == null)) && (
+                            <VoiceSelector
+                              workspaceId={workspaceId}
+                              providers={ttsProviders}
+                              targetLang={lang}
+                              selectedProviderId={targetVoices[lang]?.providerId ?? null}
+                              selectedVoiceId={targetVoices[lang]?.voiceId ?? null}
+                              disabled={batchCreating}
+                              autoSelect
+                              allowOriginal={false}
+                              onChange={(selection) =>
+                                setTargetVoices((prev) => ({ ...prev, [lang]: selection }))
+                              }
+                              onPendingChange={(selection) =>
+                                setTargetVoices((prev) => ({ ...prev, [lang]: selection }))
+                              }
+                            />
+                          )}
+                          {targetJobs[lang]?.error && (
+                            <div className="mt-1 text-[11px] text-[var(--color-error)]">
+                              {targetJobs[lang]?.error}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Step 4: How it runs */}
+            <div className="media-config-section" id="create-step-workflow">
+              <ConfigStepHeader
+                index={4}
+                icon={<IconPlayerPlay size={16} />}
+                title={t('media:createForm.step4Title')}
+                description={t('media:createForm.step4Desc')}
+                done
+                doneLabel={t('media:createForm.stepDone')}
+                todoLabel={t('media:createForm.stepTodo')}
+              />
+
+              <div
+                className="media-workflow-cards mt-3"
+                role="radiogroup"
+                aria-label={t('media:workflow.modeLabel')}
+                data-testid="workflow-mode-seg"
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={workflowMode === 'AUTO'}
+                  className={cn('media-workflow-card', workflowMode === 'AUTO' && 'active')}
+                  disabled={!consented}
+                  onClick={() => setWorkflowMode('AUTO')}
+                >
+                  <span className="media-workflow-card__head">
+                    <IconPlayerPlay size={15} />
+                    <span className="media-workflow-card__title">{t('media:workflow.auto')}</span>
+                    <span className="media-recipe-radio ml-auto" aria-hidden="true" />
+                  </span>
+                  <span className="media-workflow-card__desc">{t('media:createForm.autoDesc')}</span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={workflowMode === 'MANUAL'}
+                  className={cn('media-workflow-card', workflowMode === 'MANUAL' && 'active')}
+                  disabled={!consented}
+                  onClick={() => {
+                    setWorkflowMode('MANUAL')
+                    setWorkflowPresetId(null)
+                  }}
+                >
+                  <span className="media-workflow-card__head">
+                    <IconEdit size={15} />
+                    <span className="media-workflow-card__title">{t('media:workflow.manual')}</span>
+                    <span className="media-recipe-radio ml-auto" aria-hidden="true" />
+                  </span>
+                  <span className="media-workflow-card__desc">{t('media:createForm.manualDesc')}</span>
+                </button>
+              </div>
+
+              {workflowMode === 'AUTO' && (
+                <div className="media-config-block mt-3">
+                  <WorkflowPresetPicker
+                    workspaceId={workspaceId}
+                    projectId={projectId}
+                    value={workflowPresetId}
+                    onChange={setWorkflowPresetId}
+                    disabled={!consented}
+                    explicitMode={workflowMode}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Advanced options — collapsed by default */}
+            <div className="media-advanced-card">
+              <button
+                type="button"
+                className="media-advanced-toggle"
+                aria-expanded={showAudioMode}
+                onClick={() => setShowAudioMode(!showAudioMode)}
+              >
+                <IconAdjustments size={15} className="shrink-0 text-[var(--color-media)]" />
+                <span className="font-semibold text-[var(--color-text-primary)]">
+                  {t('media:createForm.advancedTitle')}
+                </span>
+                <span className="media-advanced-summary">
+                  {t('media:createForm.audioModeLabel')}:{' '}
+                  {effectiveSelection === 'STUDIO'
+                    ? (language === 'vi' ? 'Cân bằng (Studio)' : 'Balanced (Studio)')
+                    : (language === 'vi' ? 'Tốc độ cao (Fast)' : 'Fast')}
+                </span>
+                <IconChevronDown
+                  size={15}
+                  className={cn(
+                    'ml-auto shrink-0 transition-transform duration-200 text-[var(--color-text-tertiary)]',
+                    showAudioMode && 'rotate-180',
+                  )}
+                />
+              </button>
+              {showAudioMode && (
+                <div className="media-advanced-body">
+                  <p className="m-0 mb-2 text-[11px] text-[var(--color-text-tertiary)]">
+                    {t('media:createForm.advancedHint')}
+                  </p>
+                  <ExecutionModeSelector
+                    projection={capabilities.data}
+                    value={requestedMode ?? capabilities.data?.defaultExecutionMode ?? 'FAST'}
+                    loading={capabilities.isPending}
+                    error={capabilities.isError}
+                    disabled={!consented}
+                    onChange={setRequestedMode}
+                  />
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
         {/* Action / Launch Summary Bar */}
         <div className="media-create-action-bar mt-3.5 pt-3 border-t border-[var(--color-border)]">
@@ -1641,6 +1680,20 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                   ? `${formatLanguageOption(selectedTargets[0], language)} +${selectedTargets.length - 1}`
                   : formatLanguageOption(selectedTargets[0] ?? 'vi', language)}
               </span>
+              {recipeId !== 'summary.generative' && (
+                <span className={cn('media-summary-pill', voiceBlocked && 'warn')} data-testid="voice-summary-pill">
+                  {keepOriginalAudio ? <IconVolume size={12} stroke={2} /> : <IconMicrophone2 size={12} stroke={2} />}
+                  <span>
+                    {keepOriginalAudio
+                      ? t('media:voice.original')
+                      : presetProvidesVoice
+                        ? t('media:createForm.voiceFromPreset')
+                        : voiceBlocked
+                          ? t('media:createForm.voiceNotSet')
+                          : t('media:voice.modeTts')}
+                  </span>
+                </span>
+              )}
               <span className="media-summary-pill">
                 {workflowMode === 'AUTO' ? (
                   <>
@@ -1732,19 +1785,28 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-xs text-[var(--color-text-tertiary)]">
-              {!isMultiTarget && missingVoicePair && !noTtsProviders && (
-                <span className="text-[var(--color-warning)] flex items-center gap-1">
-                  <IconAlertCircle size={14} />
-                  {language === 'vi'
-                    ? 'Vui lòng chọn đủ Provider và Giọng đọc trước khi tạo job.'
-                    : 'Please select both Provider and Voice before creating the job.'}
-                </span>
-              )}
-              {isMultiTarget && selectedTargets.some((lang) => targetBlocked(lang)) && !noTtsProviders && (
-                <span className="text-[var(--color-warning)] flex items-center gap-1">
-                  <IconAlertCircle size={14} />
-                  {t('media:batch.missingVoice')}
+            <div className="flex min-w-0 flex-col gap-1 text-xs text-[var(--color-text-tertiary)]">
+              {readinessTodos.length > 0 ? (
+                <div className="media-readiness" data-testid="create-readiness">
+                  <span className="media-readiness__title">
+                    <IconAlertCircle size={14} className="shrink-0" />
+                    {t('media:createForm.remaining', { count: readinessTodos.length })}
+                  </span>
+                  <ul className="media-readiness__list">
+                    {readinessTodos.map((todo) => (
+                      <li key={todo.key}>
+                        <button type="button" onClick={todo.onClick}>
+                          {todo.label}
+                          <IconArrowRight size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <span className="media-readiness__ready" data-testid="create-readiness">
+                  <IconCheck size={14} className="shrink-0" />
+                  {t('media:createForm.ready')}
                 </span>
               )}
               {isNxN && (

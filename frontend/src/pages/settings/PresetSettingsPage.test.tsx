@@ -173,6 +173,38 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     expect(screen.getAllByText('Studio standard').length).toBeGreaterThan(0)
   })
 
+  it('shared search filters every scope column and pins float to the top', () => {
+    window.localStorage.clear()
+    presetsQuery.data = [
+      preset({ id: 'ws-1', name: 'Studio standard' }),
+      preset({ id: 'ws-2', name: 'Phụ đề điện ảnh' }),
+      preset({ id: 'sys-1', scope: 'SYSTEM', name: 'System Auto' }),
+    ]
+
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText('media:workflowPresetAdmin.searchPlaceholder'), {
+      target: { value: 'phu de' },
+    })
+    expect(screen.getByTestId('preset-card-ws-2')).toBeTruthy()
+    expect(screen.queryByTestId('preset-card-ws-1')).toBeNull()
+    expect(screen.queryByTestId('preset-card-sys-1')).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('media:workflowPresetAdmin.searchPlaceholder'), {
+      target: { value: '' },
+    })
+    fireEvent.click(screen.getByTestId('preset-pin-ws-2'))
+    const workspaceCards = screen
+      .getByTestId('preset-column-workspace')
+      .querySelectorAll('[data-testid^="preset-card-"]')
+    expect(workspaceCards[0].getAttribute('data-testid')).toBe('preset-card-ws-2')
+
+    fireEvent.click(screen.getByTestId('preset-pinned-only'))
+    expect(screen.queryByTestId('preset-card-ws-1')).toBeNull()
+    expect(screen.queryByTestId('preset-card-sys-1')).toBeNull()
+    expect(screen.getByTestId('preset-card-ws-2')).toBeTruthy()
+  })
+
   it('renders voice status chips — configured vs default', () => {
     presetsQuery.data = [
       preset({
@@ -246,11 +278,32 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     renderPage()
 
     expect(screen.queryByTestId('preset-create-btn')).toBeNull()
+    expect(screen.queryByTestId('preset-add-workspace')).toBeNull()
+    expect(screen.queryByTestId('preset-add-project')).toBeNull()
     expect(screen.queryByLabelText('workflowPresetAdmin.edit')).toBeNull()
     expect(screen.queryByLabelText('workflowPresetAdmin.delete')).toBeNull()
     expect(screen.getByTestId('preset-card-ws-1')).toBeTruthy()
     expect(screen.getByTestId('preset-card-sys-1')).toBeTruthy()
     permissionMock.mockReturnValue(true)
+  })
+
+  it('column "Add" buttons open the form with that scope (and the filtered project) pre-selected', () => {
+    presetsQuery.data = []
+    renderPage()
+
+    // System column is read-only — no add button.
+    expect(screen.getByTestId('preset-column-system').querySelector('.preset-column__add')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('preset-add-workspace'))
+    expect((screen.getByRole('radio', { name: /workflowPreset\.scopeWorkspace/ }) as HTMLInputElement).checked).toBe(true)
+    fireEvent.click(screen.getByText('common:actions.cancel'))
+
+    fireEvent.change(screen.getByLabelText('media:workflowPresetAdmin.projectFilter'), {
+      target: { value: 'prj-1' },
+    })
+    fireEvent.click(screen.getByTestId('preset-add-project'))
+    expect((screen.getByRole('radio', { name: /workflowPreset\.scopeProject/ }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByLabelText('media:workflowPresetAdmin.project') as HTMLSelectElement).value).toBe('prj-1')
   })
 
   it('create form saves a full extended config', async () => {
@@ -325,9 +378,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     fireEvent.click(screen.getByLabelText('workflowPresetAdmin.edit'))
 
     expect(screen.getByDisplayValue('Extended')).toBeTruthy()
-    expect(
-      (screen.getByLabelText('media:workflow.modeLabel') as HTMLSelectElement).value,
-    ).toBe('MANUAL')
+    expect((screen.getByRole('radio', { name: /workflow\.manual/ }) as HTMLInputElement).checked).toBe(true)
     fireEvent.click(screen.getByTestId('preset-form-tab-subtitle'))
     expect(
       (screen.getByLabelText('media:renderPrep.position') as HTMLSelectElement).value,
@@ -573,22 +624,29 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
       .toBe('30')
   })
 
-  it('renders the live preview frame and switches preview aspects', () => {
+  it('shows the preview only on subtitle/mask tabs and mirrors the General-tab frame', () => {
     presetsQuery.data = []
     renderPage()
     fireEvent.click(screen.getByTestId('preset-create-btn'))
 
-    expect(screen.getByTestId('preset-preview-frame')).toBeTruthy()
-    expect(screen.getByTestId('preset-preview-aspect-16x9')).toBeTruthy()
-    expect(screen.getByTestId('preset-preview-aspect-9x16')).toBeTruthy()
-    expect(screen.getByTestId('preset-preview-aspect-4x3')).toBeTruthy()
-    expect(screen.getByTestId('preset-preview-aspect-1x1')).toBeTruthy()
+    // General tab: no preview, the output frame is a real field here.
+    expect(screen.queryByTestId('preset-preview-frame')).toBeNull()
+    for (const id of ['ORIGINAL', '16x9', '9x16', '4x3', '1x1']) {
+      expect(screen.getByTestId(`preset-aspect-option-${id}`)).toBeTruthy()
+    }
+    fireEvent.click(screen.getByTestId('preset-aspect-option-9x16'))
+    expect(screen.getByTestId('preset-aspect-option-9x16').getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByTestId('preset-aspect-option-ORIGINAL').getAttribute('aria-checked')).toBe('false')
 
-    fireEvent.click(screen.getByTestId('preset-preview-aspect-9x16'))
-    expect(screen.getByTestId('preset-preview-aspect-9x16').getAttribute('aria-pressed'))
-      .toBe('true')
-    expect(screen.getByTestId('preset-preview-aspect-16x9').getAttribute('aria-pressed'))
-      .toBe('false')
+    // Subtitle tab: preview shows the chosen frame read-only (no selector).
+    fireEvent.click(screen.getByTestId('preset-form-tab-subtitle'))
+    expect(screen.getByTestId('preset-preview-frame').getAttribute('data-aspect')).toBe('9:16')
+    expect(screen.getByTestId('preset-preview-aspect-label').textContent).toBe('9:16')
+    expect(screen.queryByTestId('preset-preview-aspect-16x9')).toBeNull()
+
+    // Audio tab: no preview.
+    fireEvent.click(screen.getByTestId('preset-form-tab-audio'))
+    expect(screen.queryByTestId('preset-preview-frame')).toBeNull()
 
     // The cover layer appears once enabled and mirrors the chosen style.
     expect(screen.queryByTestId('preset-preview-layer-cover-1')).toBeNull()
@@ -640,7 +698,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
 
   // ─── OUTPUT-ASPECT (docs/97 §19.19) — real output frame + calibration ───
 
-  it('persists the output frame selected in the preview selector', async () => {
+  it('persists the output frame selected on the General tab', async () => {
     presetsQuery.data = []
     renderPage()
     fireEvent.click(screen.getByTestId('preset-create-btn'))
@@ -648,8 +706,8 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     fireEvent.change(screen.getByLabelText('media:workflowPresetAdmin.name'), {
       target: { value: 'Reel preset' },
     })
-    // Controlled selector — the buttons write the real preset field.
-    fireEvent.click(screen.getByTestId('preset-preview-aspect-9x16'))
+    // General-tab field writes the real preset value.
+    fireEvent.click(screen.getByTestId('preset-aspect-option-9x16'))
     await waitFor(() => {
       expect(screen.getByTestId('preset-form-save').getAttribute('disabled')).toBeNull()
     })
@@ -680,6 +738,7 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
     presetsQuery.data = []
     renderPage()
     fireEvent.click(screen.getByTestId('preset-create-btn'))
+    fireEvent.click(screen.getByTestId('preset-form-tab-subtitle'))
 
     // No calibration by default — gradient background only.
     expect(screen.queryByTestId('preset-preview-blur-bg')).toBeNull()
@@ -746,14 +805,18 @@ describe('PresetSettingsPage — preset admin UI (docs/16 §7.5)', () => {
   // ─── PRESET-VIZ FE follow-up (docs/97 §19.16): sticky preview · audio
   //     always-expanded · mask follows subtitle help ─────────────────────
 
-  it('keeps the preview column sticky on desktop while the form scrolls', () => {
+  it('pins the tab bar and scrolls only the tab content inside a fixed-size modal', () => {
     presetsQuery.data = []
     renderPage()
     fireEvent.click(screen.getByTestId('preset-create-btn'))
+    fireEvent.click(screen.getByTestId('preset-form-tab-subtitle'))
 
-    const col = screen.getByTestId('preset-preview-col')
-    expect(col.className).toContain('lg:sticky')
-    expect(col.className).toContain('lg:self-start')
+    expect(screen.getByRole('dialog').className).toContain('preset-form-modal')
+    // Tab panels live in their own scroll area, separate from the tab bar.
+    const scroll = screen.getByTestId('preset-form-scroll')
+    expect(scroll.contains(screen.getByTestId('preset-form-tab-subtitle'))).toBe(false)
+    expect(scroll.querySelector('[role="tabpanel"]')).toBeTruthy()
+    expect(screen.getByTestId('preset-preview-col').className).toContain('preset-form-preview')
   })
 
   it('renders the audio section always expanded (no accordion toggle)', () => {

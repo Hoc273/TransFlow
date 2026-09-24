@@ -190,7 +190,10 @@ describe('UploadConsentPanel — C2 create-form redesign (docs/19 §1.8.2)', () 
     expect(screen.queryByText('media:subtitleModeLabel')).toBeNull()
     expect(screen.getByTestId('workflow-mode-seg')).toBeTruthy()
     // Default for localization.full is AUTO (recipe-derived).
-    expect(screen.getByTestId('workflow-mode-seg').querySelector('[aria-checked="true"]')?.textContent)
+    expect(
+      screen.getByTestId('workflow-mode-seg')
+        .querySelector('[aria-checked="true"] .media-workflow-card__title')?.textContent,
+    )
       .toBe('media:workflow.auto')
   })
 

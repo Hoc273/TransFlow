@@ -1416,7 +1416,7 @@ export function RenderPreparationPanel({
                     }
                   }}
                 >
-                  {t('common:cancel')}
+                  {t('common:actions.cancel')}
                 </button>
                 <button
                   type="button"

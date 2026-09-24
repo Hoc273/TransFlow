@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import type { MediaAsset, MediaJob } from '@/types/media'
-import { exportTransformationJobApi, rerunTransformationStageApi } from '@/api/transformation'
+import {
+  exportTransformationJobApi,
+  getTransformationRenderConfigApi,
+  rerunTransformationStageApi,
+} from '@/api/transformation'
 import { JobsTable, MediaListPage } from './MediaListPage'
 
 afterEach(() => cleanup())
@@ -37,6 +41,9 @@ vi.mock('@/api/transformation', () => ({
   exportTransformationJobApi: vi.fn().mockResolvedValue({
     downloadUrl: 'https://cdn.example.com/rendered.mp4',
     fileName: 'rendered.mp4',
+  }),
+  getTransformationRenderConfigApi: vi.fn().mockResolvedValue({
+    sourceVideoUrl: 'https://cdn.example.com/source.mp4',
   }),
   rerunTransformationStageApi: vi.fn().mockResolvedValue({}),
 }))
@@ -72,7 +79,7 @@ const mockAsset: MediaAsset = {
 
 describe('JobsTable — video title display', () => {
   it('renders video file name from documents with truncate class and tooltip', () => {
-    render(
+    const { container } = render(
       <MemoryRouter>
         <JobsTable
           workspaceId="ws"
@@ -96,8 +103,9 @@ describe('JobsTable — video title display', () => {
     expect(titleEl.getAttribute('title')).toBe('my_awesome_video_presentation_2026.mp4')
 
     // The target language column still shows the language
-    const langBadge = screen.getByText(/Tiếng Việt/)
+    const langBadge = container.querySelector('.media-lang-badge')
     expect(langBadge).toBeTruthy()
+    expect(langBadge?.textContent).toContain('Tiếng Việt')
   })
 
   it('falls back to Video <id-prefix> when document is not in documents list', () => {
@@ -245,7 +253,8 @@ describe('JobsTable — Action column buttons', () => {
 
     const watchBtn = screen.getByTestId(`preview-job-${mockJob.id}`)
     expect(watchBtn).toBeTruthy()
-    expect(watchBtn.getAttribute('title')).toBe('Xem video')
+    expect(watchBtn.getAttribute('title')).toBe('media:actions.previewOutput')
+    expect(screen.getByTestId(`preview-source-${mockJob.id}`)).toBeTruthy()
     expect(screen.getByTestId(`download-job-${mockJob.id}`)).toBeTruthy()
     expect(screen.queryByTestId(`rerun-job-${mockJob.id}`)).toBeNull()
   })
@@ -269,7 +278,9 @@ describe('JobsTable — Action column buttons', () => {
     )
 
     expect(screen.getByTestId(`rerun-job-${failedJob.id}`)).toBeTruthy()
-    expect(screen.queryByTestId(`preview-job-${failedJob.id}`)).toBeNull()
+    // Original video is always watchable; the processed one only once completed.
+    expect(screen.getByTestId(`preview-source-${failedJob.id}`)).toBeTruthy()
+    expect((screen.getByTestId(`preview-job-${failedJob.id}`) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.queryByTestId(`download-job-${failedJob.id}`)).toBeNull()
   })
 
@@ -299,6 +310,37 @@ describe('JobsTable — Action column buttons', () => {
     expect(modalEl).toBeTruthy()
   })
 
+  it('opens the original video and switches to the processed one in the preview modal', async () => {
+    render(
+      <MemoryRouter>
+        <JobsTable
+          workspaceId="ws"
+          projectId="prj-1"
+          jobs={[mockJob]}
+          assets={[mockAsset]}
+          isLoading={false}
+          language="vi"
+          page={0}
+          pageSize={8}
+          onPageChange={() => {}}
+          onOpen={() => {}}
+        />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId(`preview-source-${mockJob.id}`))
+    expect(getTransformationRenderConfigApi).toHaveBeenCalledWith('ws', mockJob.id)
+    await screen.findByRole('dialog')
+    await waitFor(() =>
+      expect(document.querySelector('video')?.getAttribute('src')).toBe('https://cdn.example.com/source.mp4'),
+    )
+
+    fireEvent.click(screen.getByTestId('preview-tab-output'))
+    await waitFor(() =>
+      expect(document.querySelector('video')?.getAttribute('src')).toBe('https://cdn.example.com/rendered.mp4'),
+    )
+  })
+
   it('calls rerun API and onRefresh when clicking rerun button', async () => {
     const onRefresh = vi.fn()
     render(
@@ -321,6 +363,9 @@ describe('JobsTable — Action column buttons', () => {
 
     const rerunBtn = screen.getByTestId(`rerun-job-${failedJob.id}`)
     fireEvent.click(rerunBtn)
+
+    const confirmBtn = screen.getByTestId('rerun-confirm-btn')
+    fireEvent.click(confirmBtn)
 
     expect(rerunTransformationStageApi).toHaveBeenCalledWith('ws', failedJob.id, 'RENDER')
     await vi.waitFor(() => {

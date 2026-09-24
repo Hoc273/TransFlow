@@ -108,7 +108,7 @@ describe('VoiceSelector — showPreview preview (C2 UX)', () => {
     expect(previewMutate).not.toHaveBeenCalled()
   })
 
-  it('locks TTS controls when keep-original is checked and unlocks them when cleared', () => {
+  it('hides TTS controls when keep-original is chosen and restores them on AI dubbing', () => {
     voicesByProvider.set('p1', [voice({ id: 'vi1', language: 'vi' })])
     const onChange = vi.fn()
     render(
@@ -125,24 +125,23 @@ describe('VoiceSelector — showPreview preview (C2 UX)', () => {
     )
 
     const original = screen.getByTestId('voice-keep-original') as HTMLInputElement
-    const providerSelect = screen.getByTestId('voice-provider-select') as HTMLSelectElement
-    const voiceSelect = screen.getByTestId('voice-voice-select') as HTMLSelectElement
-    const previewButton = screen.getByTestId('voice-preview-button') as HTMLButtonElement
+    const useTts = screen.getByTestId('voice-use-tts') as HTMLInputElement
 
-    expect(original.type).toBe('checkbox')
+    expect(original.type).toBe('radio')
     expect(original.checked).toBe(false)
-    expect(providerSelect.disabled).toBe(false)
+    expect(useTts.checked).toBe(true)
+    expect((screen.getByTestId('voice-provider-select') as HTMLSelectElement).disabled).toBe(false)
 
     fireEvent.click(original)
 
     expect(onChange).toHaveBeenCalledWith({ providerId: null, voiceId: null })
     expect(original.checked).toBe(true)
-    expect(providerSelect.disabled).toBe(true)
-    expect(voiceSelect.disabled).toBe(true)
-    expect(previewButton.disabled).toBe(true)
+    expect(screen.queryByTestId('voice-provider-select')).toBeNull()
+    expect(screen.queryByTestId('voice-voice-select')).toBeNull()
+    expect(screen.queryByTestId('voice-preview-button')).toBeNull()
 
-    fireEvent.click(original)
-    expect(original.checked).toBe(false)
-    expect(providerSelect.disabled).toBe(false)
+    fireEvent.click(useTts)
+    expect(useTts.checked).toBe(true)
+    expect((screen.getByTestId('voice-provider-select') as HTMLSelectElement).disabled).toBe(false)
   })
 })
