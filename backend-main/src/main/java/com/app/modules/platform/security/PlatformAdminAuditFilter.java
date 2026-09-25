@@ -85,7 +85,7 @@ public class PlatformAdminAuditFilter extends OncePerRequestFilter {
             // outcomes (e.g. 400 validation) still record the attempted action.
             PlatformAdminAuditAction action = (status == 401 || status == 403)
                     ? PlatformAdminAuditAction.DENIED
-                    : PlatformAdminAuditServiceImpl.actionForPath(request.getRequestURI());
+                    : PlatformAdminAuditServiceImpl.actionForPath(request.getMethod(), request.getRequestURI());
             auditService.recordFromRequest(
                     principal != null ? principal.id() : null, action, request, status);
         } catch (Throwable t) {

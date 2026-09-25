@@ -185,7 +185,9 @@
       "key": "Key",
       "default": "Default",
       "actions": "Actions"
-    }
+    },
+    "keyRejected": "Key rejected",
+    "keyRejectedHint": "Daily check: the provider rejected this key (expired or revoked). Update it with a new key."
   },
   "ttsProviders": {
     "title": "Text-to-speech providers",

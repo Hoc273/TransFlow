@@ -86,6 +86,30 @@ class MediaStageRecoveryServiceTest {
     }
 
     @Test
+    void providerFailoverRequeuesTheCurrentAttempt() {
+        MediaJobStage stage = stage(MediaJobStage.StageName.TRANSLATE, MediaJobStage.StageStatus.PROCESSING,
+                Duration.ofMinutes(1), 1);
+
+        assertTrue(recovery.retryOnAnotherProvider(jobId, stageId, "old-correlation", "PROVIDER_RATE_LIMITED"));
+
+        assertEquals(MediaJobStage.StageStatus.PENDING, stage.getStatus());
+        assertNull(stage.getWorkerId());
+        assertTrue(stage.getErrorMessage().contains("PROVIDER_RATE_LIMITED"));
+        verify(dispatcher).dispatchNext(jobId);
+    }
+
+    @Test
+    void providerFailoverIgnoresASupersededAttempt() {
+        MediaJobStage stage = stage(MediaJobStage.StageName.TRANSLATE, MediaJobStage.StageStatus.PROCESSING,
+                Duration.ofMinutes(1), 2);
+
+        assertFalse(recovery.retryOnAnotherProvider(jobId, stageId, "stale-correlation", "PROVIDER_RATE_LIMITED"));
+
+        assertEquals(MediaJobStage.StageStatus.PROCESSING, stage.getStatus());
+        verify(dispatcher, never()).dispatchNext(any());
+    }
+
+    @Test
     void attemptWithinItsTimeBudgetIsLeftAlone() {
         MediaJobStage stage = stage(MediaJobStage.StageName.RENDER, MediaJobStage.StageStatus.PROCESSING,
                 Duration.ofMinutes(20), 1);

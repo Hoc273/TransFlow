@@ -31,6 +31,18 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     @Query("update Notification n set n.readAt = :now where n.workspaceId = :workspaceId and n.userId = :userId and n.readAt is null")
     int markAllAsRead(@Param("workspaceId") UUID workspaceId, @Param("userId") UUID userId, @Param("now") Instant now);
 
+    /** Retention: read notifications older than {@code readBefore}, any notification older than {@code anyBefore}. */
+    @Modifying
+    @Query("""
+            delete from Notification n
+            where (n.readAt is not null and n.createdAt < :readBefore) or n.createdAt < :anyBefore
+            """)
+    int deleteExpired(@Param("readBefore") Instant readBefore, @Param("anyBefore") Instant anyBefore);
+
+    boolean existsByUserIdAndTypeAndRefIdAndCreatedAtAfter(UUID userId,
+                                                           com.app.modules.notification.entity.NotificationType type,
+                                                           UUID refId, Instant after);
+
     Optional<Notification> findFirstByWorkspaceIdAndUserIdAndRefIdOrderByCreatedAtDesc(
             UUID workspaceId, UUID userId, UUID refId);
 }

@@ -135,6 +135,8 @@ export function JobsTable({
     return new Map(assets.map((asset) => [asset.id, asset.fileName]))
   }, [assets])
 
+  const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets])
+
   const availableLangs = useMemo(() => {
     const set = new Set<string>()
     for (const job of jobs) {
@@ -556,6 +558,7 @@ export function JobsTable({
                                 </span>
                               </>
                             )}
+                            <RetentionBadge asset={assetById.get(job.rootAssetId)} />
                           </div>
                         </div>
                       </div>
@@ -912,5 +915,32 @@ function SortableTh({ label, asc, desc, sortBy, onSort, firstDirection = 'asc' }
         <Icon size={12} aria-hidden />
       </button>
     </th>
+  )
+}
+
+/** Files are kept for a limited time (retention sweep); warn during the last day and after purge. */
+function RetentionBadge({ asset }: { asset?: MediaAsset }) {
+  const { t } = useTranslation('media')
+  if (!asset) return null
+  if (asset.purgedAt) {
+    return (
+      <span
+        className="rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-error)]"
+        title={t('retention.expiredHint')}
+      >
+        {t('retention.expired')}
+      </span>
+    )
+  }
+  if (!asset.expiresAt) return null
+  const hoursLeft = Math.ceil((new Date(asset.expiresAt).getTime() - Date.now()) / 3_600_000)
+  if (hoursLeft > 24) return null
+  return (
+    <span
+      className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+      title={t('retention.expiringHint')}
+    >
+      {t('retention.expiresIn', { count: Math.max(1, hoursLeft) })}
+    </span>
   )
 }

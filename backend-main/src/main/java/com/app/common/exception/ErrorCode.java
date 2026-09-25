@@ -77,6 +77,7 @@ public enum ErrorCode {
     PROVIDER_KEY_DECRYPTION_FAILED(2409, "Stored API key cannot be decrypted; re-enter the API key for this provider", HttpStatus.INTERNAL_SERVER_ERROR),
     PROVIDER_DEFAULT_NOT_CONFIGURED(2410, "Choose a default AI provider for this capability", HttpStatus.BAD_REQUEST),
     PROVIDER_MODEL_NOT_CONFIGURED(2411, "Configure a default model for this AI provider", HttpStatus.BAD_REQUEST),
+    PROVIDER_IN_USE(2412, "AI provider is still referenced by media jobs; deactivate it instead", HttpStatus.CONFLICT),
 
     // 25xx - preset (Member A)
     PRESET_NOT_FOUND(2500, "Media preset not found", HttpStatus.NOT_FOUND),
@@ -100,6 +101,7 @@ public enum ErrorCode {
     MEDIA_FILE_TOO_LARGE(2801, "Uploaded file exceeds the maximum allowed size of 500MB", HttpStatus.BAD_REQUEST),
     MEDIA_DURATION_EXCEEDED(2802, "Video duration exceeds the maximum allowed length of 30 minutes", HttpStatus.BAD_REQUEST),
     TERMS_VERSION_MISMATCH(2803, "termsVersion does not match the current terms version", HttpStatus.BAD_REQUEST),
+    MEDIA_FILE_EXPIRED(2804, "Media files were deleted after the retention period; upload the video again", HttpStatus.GONE),
 
     // 29xx - media_job (Member B)
     VOICE_LANGUAGE_MISMATCH(2900, "Selected voice language does not match targetLang", HttpStatus.BAD_REQUEST),

@@ -56,6 +56,10 @@ export type MediaAsset = {
   durationMs: number | null
   processingStatus: string
   createdAt: string
+  /** When the 3-day retention sweep deletes the stored files. */
+  expiresAt?: string | null
+  /** Set once the files were deleted; jobs on this video can no longer run or download. */
+  purgedAt?: string | null
 }
 
 export type MediaUploadResponse = {

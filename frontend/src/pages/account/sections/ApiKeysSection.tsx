@@ -477,6 +477,14 @@ export function ApiKeysSection() {
                         </td>
                         <td className="text-center font-mono text-xs text-[var(--color-text-secondary)]">
                           {p.apiKeyHint ?? '••••'}
+                          {p.keyHealth === 'DOWN' && (
+                            <span
+                              className="mt-1 block font-sans text-[10px] font-semibold text-[var(--color-error)]"
+                              title={tp('keyRejectedHint')}
+                            >
+                              {tp('keyRejected')}
+                            </span>
+                          )}
                         </td>
                         <td className="text-center">
                           {isDefault ? (

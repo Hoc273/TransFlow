@@ -100,6 +100,34 @@ services:
       retries: 12
       start_period: 30s
 
+  # FreeLLMAPI — OpenAI-compatible proxy gom free tier của nhiều LLM provider
+  # (https://github.com/tashfeenahmed/freellmapi). Là 1 key trong pool platform
+  # (tier FREE, priority 10): backend-ai gọi http://freellmapi:3001/v1 trong docker network.
+  # Dashboard chỉ bind localhost — trên VPS mở bằng SSH tunnel:
+  #   ssh -L 3001:127.0.0.1:3001 <vps>  rồi vào http://localhost:3001
+  # Lần đầu: tạo tài khoản admin, thêm key các provider miễn phí (Groq, Gemini, ...) ở trang Keys,
+  # tạo API key "freellmapi-..." rồi đặt vào FREELLMAPI_API_KEY cho backend-main.
+  # Bật bằng profile: docker compose --profile freellmapi up -d  (hoặc COMPOSE_PROFILES=freellmapi trong .env)
+  freellmapi:
+    image: ghcr.io/tashfeenahmed/freellmapi:latest
+    container_name: transflow-freellmapi
+    profiles: ["freellmapi"]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Bắt buộc, giữ cố định (mã hoá key provider trong SQLite): openssl rand -hex 32
+      ENCRYPTION_KEY: ${FREELLMAPI_ENCRYPTION_KEY:-}
+    ports:
+      - "127.0.0.1:${FREELLMAPI_PORT:-3001}:3001"
+    volumes:
+      - freellmapi-data:/app/server/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/ping >/dev/null 2>&1 || curl -fs http://localhost:3001/api/ping >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
   # Media Processing Worker (FFmpeg extract / render / audio dub mix + HMAC callbacks)
   media-worker:
     build:
@@ -174,6 +202,10 @@ services:
   #     GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
   #     GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:8080/api/auth/google/callback}
   #     CREDIT_INITIAL_GRANT_AMOUNT: ${CREDIT_INITIAL_GRANT_AMOUNT:-100.0000}
+  #     MEDIA_RETENTION: ${MEDIA_RETENTION:-P3D}
+  #     FREELLMAPI_API_KEY: ${FREELLMAPI_API_KEY:-}
+  #     FREELLMAPI_BASE_URL: http://freellmapi:3001/v1
+  #     FREELLMAPI_MODEL: ${FREELLMAPI_MODEL:-auto}
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
@@ -233,3 +265,4 @@ volumes:
   redisdata:
   miniodata:
   rabbitmqdata:
+  freellmapi-data:

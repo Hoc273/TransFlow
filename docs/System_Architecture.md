@@ -350,11 +350,37 @@ mở §14). Số dư không đủ → mặc định thiết kế `BLOCK_UPFRONT`
 
 ---
 
-## 11. Nguồn AI (chỉ BYOK cá nhân + nguồn nền tảng — không đổi)
+## 11. Nguồn AI (BYOK cá nhân + pool key nền tảng dùng chung)
 
 - Cấu hình API key **chỉ ở cấp cá nhân** — không có cấu hình nguồn AI ở cấp Workspace.
-- Không có API key cá nhân hợp lệ cho capability cần dùng → hệ thống tự dùng **nguồn AI nền tảng**
+- Không có API key cá nhân hợp lệ cho capability cần dùng → hệ thống tự dùng **pool key nền tảng**
   (`platform_ai_providers`) — kích hoạt công thức Trường hợp 2 (§10.2).
+- **Pool (V13):** nhiều key/capability, Super Admin quản lý ở `/api/platform/providers`. Resolver chọn nhóm
+  `priority` nhỏ nhất còn key khả dụng, random theo `weight`. Khả dụng = không `DOWN`, không cooldown
+  (Redis `provider:cooldown:<id>`), chưa lỗi trong stage hiện tại (Redis `provider:exclude:<stageId>`).
+  Hết key khả dụng vẫn trả key xếp hạng cao nhất (cờ health cũ không được chặn mọi job).
+- **Failover:** mỗi attempt stage mở một `ProviderUsageScope` (thread-bound). Key nền tảng lỗi phía provider
+  (rate limit, quota, auth, timeout, output hỏng…) bị loại khỏi scope + cooldown; nếu pool còn key khác, stage
+  được xếp lại `PENDING` dưới job lock (`retryOnAnotherProvider`, tối đa 4 attempt) thay vì FAILED. Key BYOK
+  lỗi không bao giờ rơi sang pool. TTS dùng đúng provider gắn với voice của job (`resolveBoundProvider`).
+- **FreeLLMAPI:** proxy tự host (service `freellmapi`, profile compose) gom free tier nhiều LLM provider, là 1 key
+  `tier=FREE`, `priority=10`, capability `TRANSLATE` trong pool; key trả phí priority 100 làm dự phòng. Tính Credit
+  theo giá bóng của capability (D3). Tự đăng ký khi có `FREELLMAPI_API_KEY`.
+
+### 11.2 Cronjob bảo trì (`@Scheduled`, 1 instance backend-main — không distributed lock)
+
+| Job | Lịch | Việc |
+|---|---|---|
+| `MediaStageWatchdog` | 1 phút | Stage `PROCESSING`/`CANCEL_REQUESTED` quá budget → retry attempt mới hoặc FAILED `STAGE_TIMEOUT`. |
+| `MediaJobReconciler` | 5 phút | (1) Job mở có source đã purge → FAILED `MEDIA_FILE_EXPIRED`. (2) Job mở không đổi ≥5 phút, không stage đang chạy/`STALE` → gọi lại `dispatchNext` (idempotent; tôn trọng checkpoint & QA gate). |
+| `BatchStatusReconciler` | 10 phút | Tính lại trạng thái lô `PENDING`/`PROCESSING` từ job con. |
+| `MediaRetentionSweeper` | mỗi giờ (:15) | Xoá mọi object bucket media cũ hơn 3 ngày (trừ prefix `generated-assets/` do backend-ai tự quản TTL, và file của job đang chạy — nhận diện qua jobId/correlationId trong key); đặt `media_assets.purged_at`. |
+| `ProviderHealthCheckJob.checkPlatformProviders` | 30 phút | Test auth + probe từng capability cho key pool; lỗi credential/quota/model → `DOWN`, lỗi tạm thời giữ trạng thái. Bỏ qua cả vòng khi backend-ai down. |
+| `ProviderHealthCheckJob.syncPlatformVoices` | 04:30 hằng ngày | Upsert voice TTS của key nền tảng; voice bị gỡ → inactive (không xoá vì job còn tham chiếu). |
+| `ProviderHealthCheckJob.checkUserProviders` | 04:00 hằng ngày | Probe auth key BYOK; chuyển sang `DOWN` → notification `PROVIDER_KEY_INVALID`. |
+| `NotificationCleanupJob` | CN 03:30 | Xoá thông báo đã đọc >30 ngày, mọi thông báo >90 ngày. |
+
+Cấu hình ở `app.maintenance.*` (`MAINTENANCE_ENABLED=false` tắt toàn bộ). Cron theo múi giờ của JVM.
 
 ### 11.1 Platform Super Admin
 

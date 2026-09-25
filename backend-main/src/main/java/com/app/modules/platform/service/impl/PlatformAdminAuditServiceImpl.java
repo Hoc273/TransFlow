@@ -91,8 +91,16 @@ public class PlatformAdminAuditServiceImpl implements PlatformAdminAuditService 
     }
 
     public static PlatformAdminAuditAction actionForPath(String path) {
+        return actionForPath("GET", path);
+    }
+
+    public static PlatformAdminAuditAction actionForPath(String method, String path) {
         if (path == null) {
             return PlatformAdminAuditAction.OTHER;
+        }
+        if (path.contains("/providers")) {
+            return "GET".equalsIgnoreCase(method)
+                    ? PlatformAdminAuditAction.LIST_PROVIDERS : PlatformAdminAuditAction.MANAGE_PROVIDERS;
         }
         if (path.contains("/overview")) {
             return PlatformAdminAuditAction.VIEW_OVERVIEW;

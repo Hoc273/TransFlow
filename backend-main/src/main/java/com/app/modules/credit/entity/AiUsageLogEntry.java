@@ -38,6 +38,10 @@ public class AiUsageLogEntry {
     @Column(name = "used_personal_api_key", nullable = false, updatable = false)
     private boolean usedPersonalApiKey;
 
+    /** Platform or user provider that served the call (null for legacy rows / RENDER). */
+    @Column(name = "provider_id", updatable = false)
+    private UUID providerId;
+
     @Column(name = "input_tokens", updatable = false)
     private Integer inputTokens;
 
@@ -58,6 +62,7 @@ public class AiUsageLogEntry {
     public void setUsedPersonalApiKey(boolean usedPersonalApiKey) { this.usedPersonalApiKey = usedPersonalApiKey; }
     public void setInputTokens(Integer inputTokens) { this.inputTokens = inputTokens; }
     public void setOutputTokens(Integer outputTokens) { this.outputTokens = outputTokens; }
+    public void setProviderId(UUID providerId) { this.providerId = providerId; }
     public void setCreditUsed(BigDecimal creditUsed) { this.creditUsed = creditUsed; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

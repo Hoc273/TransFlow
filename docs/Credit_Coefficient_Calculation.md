@@ -532,9 +532,9 @@ Request tạo version (ví dụ):
   - **Chốt:** ______
 - [ ] **Q11 — Phí tối thiểu mỗi job** (ví dụ 1 Credit/job cho clip rất ngắn)
   - **Chốt:** ______
-- [ ] **Nguồn API miễn phí (freellmAPI)** — ⏸ để xử lý sau
+- [x] **Nguồn API miễn phí (freellmAPI)**
   - Cần làm rõ: có cung cấp STT/TTS hay chỉ LLM; dùng cho production hay chỉ test; điều khoản thương mại. Nếu dùng: khai báo `provider_scope` riêng, y theo shadow price của model tương đương (D3).
-  - **Chốt:** ______
+  - **Chốt (2026-09-25):** dùng cả production (ít người dùng), tự host bằng service `freellmapi` trong docker-compose. Là 1 key `tier=FREE`, `priority=10`, capability `TRANSLATE` trong pool key nền tảng (V13); key trả phí làm dự phòng khi FreeLLMAPI lỗi/giới hạn. Credit **giữ nguyên giá theo capability** (giá bóng D3), không tách `provider_scope`. Rủi ro đã chấp nhận: điều khoản free tier, dữ liệu đi qua bên thứ ba, chất lượng dao động giữa các model.
 - [ ] **Hệ số RENDER theo độ phân giải** (1080p/4K tốn lưu trữ & compute hơn)
   - **Chốt:** ______
 

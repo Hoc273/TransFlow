@@ -21,6 +21,8 @@ function notificationIcon(type: string) {
   if (t === 'BATCH_PARTIALLY_FAILED')
     return <IconAlertTriangle size={18} className="text-[var(--color-status-partial)]" />
   if (t === 'BATCH_FAILED') return <IconX size={18} className="text-[var(--color-error)]" />
+  if (t === 'PROVIDER_KEY_INVALID')
+    return <IconAlertTriangle size={18} className="text-[var(--color-error)]" />
   return <IconBell size={18} className="text-[var(--color-text-tertiary)]" />
 }
 

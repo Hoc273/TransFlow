@@ -94,6 +94,7 @@ export const queryKeys = {
   platformAudit: (params: Record<string, string | number | undefined>) =>
     ['platform', 'audit', params] as const,
   platformRealtime: ['platform', 'realtime'] as const,
+  platformProviders: ['platform', 'providers'] as const,
   // Guide (Public + Platform Admin)
   guideCategories: (lang?: string) => ['guide', 'categories', lang ?? 'vi'] as const,
   guideArticles: (params?: Record<string, string | number | undefined>) =>

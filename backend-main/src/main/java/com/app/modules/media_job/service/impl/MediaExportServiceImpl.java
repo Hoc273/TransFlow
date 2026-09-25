@@ -51,6 +51,9 @@ public class MediaExportServiceImpl implements MediaExportService {
         }
 
         String ref = renderOutputRef(workspaceId, userId, jobId);
+        if (storage.objectMissing(ref)) {
+            throw new AppException(ErrorCode.MEDIA_FILE_EXPIRED);
+        }
         return new MediaExportResponse(fmt, ref.substring(ref.lastIndexOf('/') + 1), storage.presignedGetUrl(ref), null);
     }
 

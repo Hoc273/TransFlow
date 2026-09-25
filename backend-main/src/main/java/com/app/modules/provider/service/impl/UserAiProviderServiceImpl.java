@@ -25,7 +25,7 @@ import java.util.UUID;
 @Service
 public class UserAiProviderServiceImpl implements UserAiProviderService {
 
-    private static final Set<String> ALLOWED_PROTOCOLS = Set.of(
+    static final Set<String> ALLOWED_PROTOCOLS = Set.of(
             "openai_compatible",
             "anthropic",
             "elevenlabs_native",
@@ -34,7 +34,7 @@ public class UserAiProviderServiceImpl implements UserAiProviderService {
             "dashscope_native"
     );
 
-    private static final Set<String> ALLOWED_CAPABILITIES = Set.of(
+    static final Set<String> ALLOWED_CAPABILITIES = Set.of(
             "STT",
             "TRANSLATE",
             "TTS",

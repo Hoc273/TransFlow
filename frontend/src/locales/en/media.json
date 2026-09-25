@@ -235,7 +235,7 @@
   "consent": {
     "title": "Content rights consent",
     "declaration": "Content Rights Declaration",
-    "body": "By confirming, you declare that you own this content, have a license, or have explicit permission to use it for translation and dubbing in this workspace. Derived assets inherit this consent.",
+    "body": "By confirming, you declare that you own this content, have a license, or have explicit permission to use it for translation and dubbing in this workspace. Derived assets inherit this consent. The video and processed files are deleted automatically after 3 days.",
     "checkbox": "I confirm I have the rights to use this video for translation and dubbing in this workspace, and accept responsibility per the current Terms.",
     "required": "Required",
     "done": "Recorded"
@@ -985,5 +985,12 @@
     "titleUnknown": "Rendering is paused until QA issues are handled",
     "body": "Fix the flagged subtitles or skip checks that are false alarms. Rendering starts on its own once nothing blocks it.",
     "cta": "Review QA issues"
+  },
+  "retention": {
+    "expired": "Files expired",
+    "expiredHint": "The video and its outputs were deleted after the 3-day retention period. Upload the video again to continue.",
+    "expiresIn_one": "Expires in {{count}} hour",
+    "expiresIn_other": "Expires in {{count}} hours",
+    "expiringHint": "Files are kept for 3 days only. Download your results before they expire."
   }
 }

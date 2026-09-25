@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,6 +32,23 @@ public interface MediaJobRepository extends JpaRepository<MediaJob, UUID> {
             UUID workspaceId, UUID projectId, MediaJob.JobStatus status, String recipeId);
 
     List<MediaJob> findByBatchIdOrderByCreatedAtAsc(UUID batchId);
+
+    // ── Maintenance (reconciler / retention) ──────────────────────────────────
+
+    /** Open jobs not touched since {@code before}: candidates for re-dispatch. */
+    @Query("select j.id from MediaJob j where j.status in :statuses and j.updatedAt < :before")
+    List<UUID> findIdsByStatusInAndUpdatedAtBefore(@Param("statuses") Collection<MediaJob.JobStatus> statuses,
+                                                   @Param("before") Instant before);
+
+    /** Open jobs whose source video was already deleted by the retention sweep. */
+    @Query("""
+            select j.id from MediaJob j, com.app.modules.media_asset.entity.MediaAsset a
+            where a.id = j.rootAssetId and a.purgedAt is not null and j.status in :statuses
+            """)
+    List<UUID> findIdsWithPurgedRootAsset(@Param("statuses") Collection<MediaJob.JobStatus> statuses);
+
+    @Query("select j.rootAssetId from MediaJob j where j.id in :ids")
+    List<UUID> findRootAssetIds(@Param("ids") Collection<UUID> ids);
 
     /** Recent jobs of the same author and language: measured TTS history for narration pacing. */
     List<MediaJob> findTop20ByCreatedByUserIdAndTargetLangAndIdNotOrderByCreatedAtDesc(

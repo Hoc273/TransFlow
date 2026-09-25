@@ -16,4 +16,7 @@ public interface UserAiProviderRepository extends JpaRepository<UserAiProvider, 
     Optional<UserAiProvider> findByIdAndUserId(UUID id, UUID userId);
 
     List<UserAiProvider> findByUserIdAndIsActiveTrue(UUID userId);
+
+    /** Daily BYOK key check. */
+    List<UserAiProvider> findByIsActiveTrue();
 }

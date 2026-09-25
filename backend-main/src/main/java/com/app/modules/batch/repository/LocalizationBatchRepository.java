@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +23,11 @@ public interface LocalizationBatchRepository extends JpaRepository<LocalizationB
     Optional<LocalizationBatch> findWithLockById(UUID id);
 
     List<LocalizationBatch> findByWorkspaceIdAndProjectIdOrderByCreatedAtDesc(UUID workspaceId, UUID projectId);
+
+    /** Reconciler candidates: batches still open that were created before {@code before}. */
+    @Query("select b.id from LocalizationBatch b where b.status in :statuses and b.createdAt < :before")
+    List<UUID> findIdsByStatusInAndCreatedAtBefore(@Param("statuses") Collection<LocalizationBatch.BatchStatus> statuses,
+                                                   @Param("before") Instant before);
 
     // ── Platform-wide aggregates (SUPER ADMIN) ─────────────────────────────────
 

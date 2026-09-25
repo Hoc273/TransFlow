@@ -297,7 +297,7 @@ CREATE INDEX ix_credit_package_purchases_user ON credit_package_purchases(user_i
 
 ---
 
-## 5. Nguồn AI — chỉ cá nhân (BYOK) + nền tảng (không đổi)
+## 5. Nguồn AI — cá nhân (BYOK) + pool key nền tảng dùng chung (V13)
 
 ```sql
 user_ai_providers(
@@ -312,6 +312,11 @@ user_ai_providers(
   api_key_hint VARCHAR(20) NOT NULL,
   default_model VARCHAR(200),
   is_active BOOLEAN NOT NULL DEFAULT true,
+  -- V13: kết quả kiểm tra key hằng ngày (cronjob). DOWN = provider từ chối key; key vẫn được dùng
+  -- (user đã chọn) nhưng user nhận notification PROVIDER_KEY_INVALID một lần khi chuyển sang DOWN.
+  health_status VARCHAR(10) NOT NULL DEFAULT 'UNKNOWN' CHECK (health_status IN ('UNKNOWN','HEALTHY','DOWN')),
+  last_checked_at TIMESTAMPTZ,
+  last_error_code VARCHAR(80),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 )
@@ -324,16 +329,31 @@ user_ai_provider_defaults(
   PRIMARY KEY (user_id, capability)
 )
 
+-- Pool key nền tảng dùng chung (V13): mọi user không có BYOK cho capability đó được phục vụ
+-- từ pool và trừ Credit. Nhiều key/capability; resolver chọn nhóm priority nhỏ nhất còn key
+-- khả dụng (không DOWN, không đang cooldown Redis, chưa lỗi trong stage hiện tại), random theo weight.
 platform_ai_providers(
   id UUID PK,
+  name VARCHAR(100) NOT NULL,                     -- tên hiển thị, vd "FreeLLMAPI", "OpenAI chính"
   protocol VARCHAR NOT NULL,
   capabilities VARCHAR[] NOT NULL CHECK (capabilities <@ ARRAY['STT','TRANSLATE','TTS','VISION']::VARCHAR[]),
   base_url VARCHAR(500) NOT NULL,
   api_key_enc BYTEA NOT NULL,
+  api_key_hint VARCHAR(20),
   default_model VARCHAR(200),
   is_active BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT now()
+  priority SMALLINT NOT NULL DEFAULT 100 CHECK (priority BETWEEN 0 AND 1000),   -- nhỏ = dùng trước
+  weight SMALLINT NOT NULL DEFAULT 1 CHECK (weight BETWEEN 1 AND 100),          -- chia tải cùng priority
+  tier VARCHAR(10) NOT NULL DEFAULT 'PAID' CHECK (tier IN ('PAID','FREE')),     -- FREE = FreeLLMAPI
+  health_status VARCHAR(10) NOT NULL DEFAULT 'UNKNOWN' CHECK (health_status IN ('UNKNOWN','HEALTHY','DOWN')),
+  last_checked_at TIMESTAMPTZ,
+  last_error_code VARCHAR(80),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 )
+CREATE INDEX ix_platform_ai_providers_pool ON platform_ai_providers(is_active, priority);
+-- Cooldown ngắn hạn KHÔNG lưu DB: Redis `provider:cooldown:<id>` (TTL theo mã lỗi) và
+-- `provider:exclude:<stageId>` (set key đã lỗi trong stage, TTL 2h). Redis lỗi => fail-open.
 
 tts_voices(
   id UUID PK,
@@ -384,12 +404,16 @@ media_assets(
   duration_ms BIGINT CHECK (duration_ms IS NULL OR duration_ms <= 1800000),                        -- 30 phút (SRS §6)
   uploaded_by_user_id UUID NOT NULL REFERENCES users(id),
   processing_status VARCHAR CHECK (processing_status IN ('UPLOADED','VALIDATING','READY','FAILED')) NOT NULL,
+  -- V13: retention 3 ngày. Cronjob xoá object MinIO quá hạn và đặt purged_at; dòng được giữ lại
+  -- (media_jobs.root_asset_id ON DELETE RESTRICT). Asset đã purge không tạo/rerun job được (MEDIA_FILE_EXPIRED).
+  purged_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (storage_provider, bucket_name, object_storage_key)
 )
 CREATE INDEX ix_media_assets_workspace_project ON media_assets(workspace_id, project_id);
 CREATE INDEX ix_media_assets_parent ON media_assets(parent_asset_id);
+CREATE INDEX ix_media_assets_retention ON media_assets(created_at) WHERE purged_at IS NULL;
 
 media_consents(
   id UUID PK,
@@ -714,14 +738,16 @@ notifications(
   user_id UUID NOT NULL REFERENCES users(id),
   type VARCHAR CHECK (type IN (
     'JOB_COMPLETED','JOB_FAILED','JOB_NEEDS_RERUN','JOB_QA_BLOCKED',
-    'BATCH_COMPLETED','BATCH_PARTIALLY_FAILED','BATCH_FAILED'
-  )) NOT NULL,  -- JOB_QA_BLOCKED: RENDER chờ xử lý QA issue BLOCK_RENDER (V12)
+    'BATCH_COMPLETED','BATCH_PARTIALLY_FAILED','BATCH_FAILED',
+    'PROVIDER_KEY_INVALID'
+  )) NOT NULL,  -- JOB_QA_BLOCKED: RENDER chờ QA issue BLOCK_RENDER (V12); PROVIDER_KEY_INVALID: key BYOK bị từ chối (V13)
   ref_id UUID,
   message TEXT NOT NULL,
   read_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now()
 )
 CREATE INDEX ix_notifications_user_unread ON notifications(user_id) WHERE read_at IS NULL;
+CREATE INDEX ix_notifications_created ON notifications(created_at);  -- V13: cronjob dọn thông báo
 
 ai_usage_logs(
   id UUID PK,
@@ -731,6 +757,7 @@ ai_usage_logs(
   performed_by_user_id UUID NOT NULL REFERENCES users(id),
   operation VARCHAR CHECK (operation IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION')) NOT NULL,
   used_personal_api_key BOOLEAN NOT NULL,
+  provider_id UUID,  -- V13: platform hoặc user provider đã phục vụ lượt gọi (không FK — thuộc 1 trong 2 bảng)
   input_tokens INT,
   output_tokens INT,
   credit_used NUMERIC(14,4) NOT NULL,
@@ -738,6 +765,7 @@ ai_usage_logs(
 )
 CREATE INDEX ix_ai_usage_logs_workspace_op ON ai_usage_logs(workspace_id, operation, created_at DESC);
 CREATE INDEX ix_ai_usage_logs_user ON ai_usage_logs(performed_by_user_id, created_at DESC);
+CREATE INDEX ix_ai_usage_logs_provider ON ai_usage_logs(provider_id, created_at);
 ```
 
 ---
@@ -792,7 +820,9 @@ CREATE INDEX ix_ai_usage_logs_user ON ai_usage_logs(performed_by_user_id, create
   `V6__user_ai_provider_defaults.sql` (bảng `user_ai_provider_defaults`),
   `V7__media_stage_structured_errors.sql` (cột error structured cho `media_job_stages`),
   `V8__system_presets_render_ready.sql`, `V9__shorts_preset_typography.sql`, `V10__system_presets_phrase_colors.sql` (cập nhật render presets),
-  `V11__guide.sql` (bảng Hướng dẫn ở §3.2 + seed nội dung mẫu).
+  `V11__guide.sql` (bảng Hướng dẫn ở §3.2 + seed nội dung mẫu), `V12__notification_qa_blocked.sql`,
+  `V13__provider_pool_and_retention.sql` (pool key nền tảng §5, health BYOK, `ai_usage_logs.provider_id`,
+  `media_assets.purged_at` retention 3 ngày, notification `PROVIDER_KEY_INVALID`, index cho cronjob).
 - **Thứ tự tạo bảng chính (do FK chéo):**
   1. `users` → `workspaces` → `workspace_members` → `projects` → `project_members`.
   2. `terms_versions`, `credit_packages`, `platform_ai_providers` (độc lập).

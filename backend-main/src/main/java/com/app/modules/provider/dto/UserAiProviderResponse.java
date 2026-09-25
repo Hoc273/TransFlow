@@ -17,7 +17,10 @@ public record UserAiProviderResponse(
         boolean isActive,
         Instant createdAt,
         Instant updatedAt,
-        List<String> defaultForCapabilities
+        List<String> defaultForCapabilities,
+        /** Daily key check: UNKNOWN, HEALTHY or DOWN (key rejected by its provider). */
+        String healthStatus,
+        Instant lastCheckedAt
 ) {
     public static UserAiProviderResponse from(UserAiProvider entity) {
         return from(entity, List.of());
@@ -35,7 +38,9 @@ public record UserAiProviderResponse(
                 entity.isActive(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt(),
-                defaultForCapabilities
+                defaultForCapabilities,
+                entity.getHealthStatus() == null ? "UNKNOWN" : entity.getHealthStatus().name(),
+                entity.getLastCheckedAt()
         );
     }
 }

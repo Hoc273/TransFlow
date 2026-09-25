@@ -11,6 +11,7 @@ import {
   IconUsers,
   IconArrowLeft,
   IconBook2,
+  IconKey,
 } from '@tabler/icons-react'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
@@ -25,6 +26,7 @@ const NAV = [
   { to: '/platform/status', end: false, icon: IconActivity, key: 'status' as const },
   { to: '/platform/users', end: false, icon: IconUsers, key: 'users' as const },
   { to: '/platform/workspaces', end: false, icon: IconBuilding, key: 'workspaces' as const },
+  { to: '/platform/providers', end: false, icon: IconKey, key: 'providers' as const },
   { to: '/platform/audit', end: false, icon: IconClipboardList, key: 'audit' as const },
   { to: '/platform/guides', end: false, icon: IconBook2, key: 'guides' as const },
 ]

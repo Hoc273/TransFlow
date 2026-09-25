@@ -21,6 +21,9 @@ public interface TtsVoiceRepository extends JpaRepository<TtsVoice, UUID> {
 
     List<TtsVoice> findByVoiceIdAndIsActiveTrue(String voiceId);
 
+    /** Every voice (active or not) of a platform key: voice sync upserts instead of deleting. */
+    List<TtsVoice> findByPlatformProviderId(UUID platformProviderId);
+
     @Modifying
     void deleteByUserProviderId(UUID userProviderId);
 }

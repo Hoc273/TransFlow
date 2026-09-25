@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   adminAdjustUserCreditApi,
+  createPlatformProviderApi,
+  deletePlatformProviderApi,
+  getPlatformProvidersApi,
+  syncPlatformProviderVoicesApi,
+  testPlatformProviderApi,
+  updatePlatformProviderApi,
   getPlatformAuditLogsApi,
   getPlatformOverviewApi,
   getPlatformRealtimeApi,
@@ -15,6 +21,7 @@ import type {
   AdminCreditAdjustRequest,
   PlatformAuditQuery,
   PlatformOverviewQuery,
+  PlatformProviderInput,
   PlatformUsersQuery,
   PlatformWorkspacesQuery,
 } from '@/types/platform'
@@ -124,4 +131,47 @@ export function useAdminAdjustUserCredit() {
       void queryClient.invalidateQueries({ queryKey: ['platform', 'users'] })
     },
   })
+}
+
+/** SA — shared platform AI key pool; polled so health/cooldown badges stay current. */
+export function usePlatformProviders(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.platformProviders,
+    queryFn: () => getPlatformProvidersApi(),
+    enabled,
+    staleTime: 10_000,
+    refetchInterval: 30_000,
+  })
+}
+
+function useProviderMutation<TArgs, TResult>(fn: (args: TArgs) => Promise<TResult>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.platformProviders })
+    },
+  })
+}
+
+export function useCreatePlatformProvider() {
+  return useProviderMutation((body: PlatformProviderInput) => createPlatformProviderApi(body))
+}
+
+export function useUpdatePlatformProvider() {
+  return useProviderMutation(({ id, body }: { id: string; body: PlatformProviderInput }) =>
+    updatePlatformProviderApi(id, body),
+  )
+}
+
+export function useDeletePlatformProvider() {
+  return useProviderMutation((id: string) => deletePlatformProviderApi(id))
+}
+
+export function useTestPlatformProvider() {
+  return useProviderMutation((id: string) => testPlatformProviderApi(id))
+}
+
+export function useSyncPlatformProviderVoices() {
+  return useProviderMutation((id: string) => syncPlatformProviderVoicesApi(id))
 }

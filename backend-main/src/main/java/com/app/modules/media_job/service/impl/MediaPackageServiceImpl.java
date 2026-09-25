@@ -140,7 +140,7 @@ public class MediaPackageServiceImpl implements MediaPackageService {
     /** Best effort: an unsignable ref must not break the whole preview. */
     private String signOrNull(String ref) {
         try {
-            return storage.presignedGetUrl(ref);
+            return storage.objectMissing(ref) ? null : storage.presignedGetUrl(ref);
         } catch (AppException ex) {
             log.warn("output-package: cannot sign ref={}: {}", ref, ex.getMessage());
             return null;

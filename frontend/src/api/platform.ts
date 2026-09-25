@@ -7,12 +7,15 @@ import type {
   PlatformOverview,
   PlatformOverviewQuery,
   PlatformPage,
+  PlatformProvider,
+  PlatformProviderInput,
   PlatformRealtime,
   PlatformStatus,
   PlatformUserItem,
   PlatformUsersQuery,
   PlatformWorkspaceItem,
   PlatformWorkspacesQuery,
+  ProviderTestResult,
 } from '@/types/platform'
 
 function qs(params: Record<string, string | number | boolean | undefined | null>): string {
@@ -122,4 +125,29 @@ export function adminAdjustUserCreditApi(
     method: 'POST',
     body: req,
   })
+}
+
+/** SA — shared platform AI key pool. */
+export function getPlatformProvidersApi() {
+  return apiRequest<PlatformProvider[]>('/platform/providers')
+}
+
+export function createPlatformProviderApi(body: PlatformProviderInput) {
+  return apiRequest<PlatformProvider>('/platform/providers', { method: 'POST', body })
+}
+
+export function updatePlatformProviderApi(id: string, body: PlatformProviderInput) {
+  return apiRequest<PlatformProvider>(`/platform/providers/${id}`, { method: 'PATCH', body })
+}
+
+export function deletePlatformProviderApi(id: string) {
+  return apiRequest<void>(`/platform/providers/${id}`, { method: 'DELETE' })
+}
+
+export function testPlatformProviderApi(id: string) {
+  return apiRequest<ProviderTestResult>(`/platform/providers/${id}/test`, { method: 'POST' })
+}
+
+export function syncPlatformProviderVoicesApi(id: string) {
+  return apiRequest<{ activeVoices: number }>(`/platform/providers/${id}/voices/sync`, { method: 'POST' })
 }

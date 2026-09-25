@@ -185,7 +185,9 @@
       "key": "Key",
       "default": "Mặc định",
       "actions": "Thao tác"
-    }
+    },
+    "keyRejected": "Key bị từ chối",
+    "keyRejectedHint": "Lần kiểm tra hằng ngày: nhà cung cấp đã từ chối key này (hết hạn/bị thu hồi). Hãy cập nhật key mới."
   },
   "ttsProviders": {
     "title": "Provider chuyển văn bản thành giọng nói",

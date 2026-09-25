@@ -30,6 +30,9 @@ public class PlatformAiProvider {
     @Column(nullable = false, updatable = false)
     private UUID id;
 
+    @Column(nullable = false, length = 100)
+    private String name;
+
     @Column(nullable = false)
     private String protocol;
 
@@ -46,17 +49,60 @@ public class PlatformAiProvider {
     @Column(name = "default_model", length = 200)
     private String defaultModel;
 
+    @Column(name = "api_key_hint", length = 20)
+    private String apiKeyHint;
+
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
+
+    /** Pool order: the lowest priority value with an available key wins. */
+    @Column(nullable = false)
+    private short priority = 100;
+
+    /** Weighted random share among available keys of the same priority. */
+    @Column(nullable = false)
+    private short weight = 1;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private Tier tier = Tier.PAID;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "health_status", nullable = false, length = 10)
+    private HealthStatus healthStatus = HealthStatus.UNKNOWN;
+
+    @Column(name = "last_checked_at")
+    private Instant lastCheckedAt;
+
+    @Column(name = "last_error_code", length = 80)
+    private String lastErrorCode;
 
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;
 
+    @Column(name = "updated_at")
+    private Instant updatedAt;
+
+    /** PAID = billed provider account; FREE = free-tier pool such as FreeLLMAPI. */
+    public enum Tier { PAID, FREE }
+
+    public enum HealthStatus { UNKNOWN, HEALTHY, DOWN }
+
     @PrePersist
     void prePersist() {
-        if (createdAt == null) {
-            createdAt = Instant.now();
+        Instant now = Instant.now();
+        if (name == null || name.isBlank()) {
+            name = protocol;
         }
+        if (createdAt == null) {
+            createdAt = now;
+        }
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void preUpdate() {
+        updatedAt = Instant.now();
     }
 
     public boolean hasCapability(String capability) {

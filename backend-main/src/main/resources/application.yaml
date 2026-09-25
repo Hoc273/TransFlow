@@ -86,6 +86,24 @@ logging:
 app:
   pipeline:
     enabled: ${MEDIA_PIPELINE_ENABLED:true}
+  # Cronjob (@Scheduled) — một instance duy nhất (VPS all-in-one), không cần distributed lock.
+  maintenance:
+    enabled: ${MAINTENANCE_ENABLED:true}
+    initial-delay: PT2M
+    # Mọi file trong bucket media bị xoá khi quá hạn này (ISO-8601 duration).
+    media-retention: ${MEDIA_RETENTION:P3D}
+    media-retention-cron: "0 15 * * * *"
+    # Prefix tự quản TTL riêng (cache generated-assets của backend-ai).
+    retention-skip-prefixes: ${MEDIA_RETENTION_SKIP_PREFIXES:generated-assets/}
+    job-reconciler-interval: PT5M
+    job-idle-threshold: PT5M
+    batch-reconciler-interval: PT10M
+    platform-provider-check-interval: ${PLATFORM_PROVIDER_CHECK_INTERVAL:PT30M}
+    platform-voice-sync-cron: "0 30 4 * * *"
+    user-provider-check-cron: "0 0 4 * * *"
+    notification-cleanup-cron: "0 30 3 * * SUN"
+    notification-read-retention: P30D
+    notification-max-retention: P90D
   cors:
     allowed-origin: ${FE_ORIGIN:http://localhost:5173}
   fe-origin: ${FE_ORIGIN:http://localhost:5173}
@@ -138,6 +156,15 @@ app:
     forgot-password-otp:
       max-requests: ${FORGOT_OTP_RATE_LIMIT_MAX_REQUESTS:5}
       window-seconds: ${FORGOT_OTP_RATE_LIMIT_WINDOW_SECONDS:600}
+  # FreeLLMAPI (self-hosted free-tier LLM pool, OpenAI-compatible) — đăng ký 1 lần vào pool key
+  # platform khi có API key; sau đó quản lý ở Super Admin → AI providers.
+  freellmapi:
+    api-key: ${FREELLMAPI_API_KEY:}
+    # URL phải truy cập được từ container backend-ai (FastAPI là nơi gọi provider).
+    base-url: ${FREELLMAPI_BASE_URL:http://freellmapi:3001/v1}
+    model: ${FREELLMAPI_MODEL:auto}
+    capabilities: ${FREELLMAPI_CAPABILITIES:TRANSLATE}
+    priority: ${FREELLMAPI_PRIORITY:10}
   platform-admin:
     seed-on-startup: ${PLATFORM_ADMIN_SEED_ON_STARTUP:false}
     emails: ${PLATFORM_ADMIN_EMAILS:}

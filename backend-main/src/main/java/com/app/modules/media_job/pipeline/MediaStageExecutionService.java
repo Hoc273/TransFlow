@@ -18,7 +18,9 @@ import com.app.modules.media_job.pipeline.dto.ExtractAudioRequest;
 import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.repository.MediaJobStageRepository;
 import com.app.modules.media_job.repository.SubtitleSegmentRepository;
+import com.app.modules.provider.service.ProviderHealthService;
 import com.app.modules.provider.service.ProviderResolverService;
+import com.app.modules.provider.service.ProviderUsageScope;
 import com.app.modules.qa.entity.QaIssue;
 import com.app.modules.qa.service.QaService;
 import com.app.modules.summarization.service.SummaryAiClient;
@@ -90,6 +92,8 @@ public class MediaStageExecutionService {
     private final GlossaryService glossaryService;
     private long ttsSegmentRetryDelayMs = 10_000L;
     private NarrationPacingEstimator narrationPacingEstimator;
+    private ProviderHealthService providerHealth;
+    private MediaStageRecoveryService recoveryService;
 
     @Autowired
     public MediaStageExecutionService(MediaJobRepository jobRepository,
@@ -176,6 +180,12 @@ public class MediaStageExecutionService {
     }
 
     @Autowired(required = false)
+    void setProviderFailover(ProviderHealthService providerHealth, MediaStageRecoveryService recoveryService) {
+        this.providerHealth = providerHealth;
+        this.recoveryService = recoveryService;
+    }
+
+    @Autowired(required = false)
     void setNarrationPacingEstimator(NarrationPacingEstimator narrationPacingEstimator) {
         this.narrationPacingEstimator = narrationPacingEstimator;
     }
@@ -202,6 +212,13 @@ public class MediaStageExecutionService {
         if (stage.getStatus() != MediaJobStage.StageStatus.PROCESSING) {
             return;
         }
+        // Scope = stage id: providers that fail during this stage are skipped by its later attempts.
+        try (ProviderUsageScope ignored = ProviderUsageScope.open(stage.getId().toString())) {
+            executeInScope(job, stage, message);
+        }
+    }
+
+    private void executeInScope(MediaJob job, MediaJobStage stage, MediaStageMessage message) {
         try {
             switch (stage.getStageName()) {
                 case EXTRACT_AUDIO, AUDIO_MIX, RENDER -> dispatchWorker(job, stage, message);
@@ -230,7 +247,46 @@ public class MediaStageExecutionService {
                 withStack[fields.length] = sanitizedStack(ex);
                 log.error(logLine, withStack);
             }
+            if (failOverToAnotherProvider(job, stage, message, failure)) {
+                return;
+            }
             completeFailure(job, stage, message, failure);
+        }
+    }
+
+    /**
+     * Shared platform pool failover: when a platform key fails with a provider-side error and
+     * the pool still has another available key, the stage is re-queued instead of failing.
+     * TTS is excluded because a job's voice is bound to one provider.
+     */
+    private boolean failOverToAnotherProvider(MediaJob job, MediaJobStage stage, MediaStageMessage message,
+                                              AiStageException failure) {
+        if (providerHealth == null || recoveryService == null
+                || stage.getStageName() == MediaJobStage.StageName.TTS
+                || stage.getAttemptCount() >= MediaStageRecoveryService.MAX_FAILOVER_ATTEMPTS) {
+            return false;
+        }
+        String capability = ProviderUsageScope.current()
+                .map(ProviderUsageScope::resolved)
+                .filter(list -> !list.isEmpty())
+                .map(list -> list.get(list.size() - 1).capability())
+                .orElse(null);
+        if (capability == null || !providerHealth.reportScopeFailure(failure.getErrorCode())
+                || !providerHealth.hasPlatformAlternative(capability)) {
+            return false;
+        }
+        try {
+            boolean requeued = recoveryService.retryOnAnotherProvider(job.getId(), stage.getId(),
+                    message.correlationId().toString(), failure.getErrorCode());
+            if (requeued) {
+                log.warn("Stage {} of job={} re-queued on another platform provider after {}",
+                        stage.getStageName(), job.getId(), failure.getErrorCode());
+            }
+            return requeued;
+        } catch (RuntimeException ex) {
+            log.warn("Provider failover of job={} stage={} failed: {}", job.getId(), stage.getStageName(),
+                    ex.toString());
+            return false;
         }
     }
 
@@ -965,7 +1021,11 @@ public class MediaStageExecutionService {
                 }
                 return summaryAiClient.generateScript(serialized, visualContext, duration, job.getTargetLang());
             } catch (AiStageException failure) {
-                if (!failure.isRetryable() || attempt >= retries) {
+                // A failed platform key is excluded, so the next attempt resolves another pool key.
+                boolean switched = providerHealth != null
+                        && providerHealth.reportScopeFailure(failure.getErrorCode())
+                        && providerHealth.hasPlatformAlternative("TRANSLATE");
+                if ((!failure.isRetryable() && !switched) || attempt >= retries) {
                     throw failure;
                 }
                 log.warn("Retrying SUMMARIZE after retryable failure job={} errorCode={} attempt={}/{}",
@@ -1068,7 +1128,7 @@ public class MediaStageExecutionService {
         String voiceId = job.getTtsVoiceId() == null ? "default"
                 : providerResolver.resolveVoiceIdentifier(job.getCreatedByUserId(), job.getTtsProviderId(), job.getTtsVoiceId())
                 .orElse(job.getTtsVoiceId().toString());
-        ProviderContext provider = provider(job, "TTS");
+        ProviderContext provider = boundProvider(job, job.getTtsProviderId(), "TTS");
 
         Map<UUID, TtsClip> clips = new LinkedHashMap<>();
         JsonNode lastFailure = null;
@@ -1284,8 +1344,19 @@ public class MediaStageExecutionService {
     }
 
     ProviderContext provider(MediaJob job, String capability) {
-        ProviderResolverService.ProviderResolution p = providerResolver.resolveForCapability(
-                job.getCreatedByUserId(), capability);
+        return providerContext(capability, providerResolver.resolveForCapability(
+                job.getCreatedByUserId(), capability));
+    }
+
+    private ProviderContext boundProvider(MediaJob job, UUID providerId, String capability) {
+        if (providerId == null) {
+            return provider(job, capability);
+        }
+        return providerContext(capability, providerResolver.resolveBoundProvider(
+                job.getCreatedByUserId(), providerId, capability));
+    }
+
+    private ProviderContext providerContext(String capability, ProviderResolverService.ProviderResolution p) {
         if (p.model() == null || p.model().isBlank()) {
             throw new AppException(com.app.common.exception.ErrorCode.PROVIDER_MODEL_NOT_CONFIGURED);
         }
@@ -1310,7 +1381,12 @@ public class MediaStageExecutionService {
     }
 
     private boolean hasPersonalProvider(MediaJob job, String capability) {
-        return providerResolver.resolveForCapability(job.getCreatedByUserId(), capability).isPersonalApiKey();
+        // Reuse the resolution this attempt already made: re-resolving could pick another pool key.
+        return ProviderUsageScope.current()
+                .flatMap(scope -> scope.last(capability))
+                .map(resolved -> !resolved.platform())
+                .orElseGet(() -> providerResolver.resolveForCapability(job.getCreatedByUserId(), capability)
+                        .isPersonalApiKey());
     }
 
     /** Charge only after the FastAPI stage has returned COMPLETED. */
@@ -1340,10 +1416,15 @@ public class MediaStageExecutionService {
         java.math.BigDecimal creditUsed = creditService.chargeUsage(
                 job.getWorkspaceId(), job.getCreatedByUserId(), capability, billableUnits, personalApiKey);
         if (aiUsageLogService != null) {
+            String resolvedCapability = "SUMMARIZE_SCRIPT".equals(capability) ? "TRANSLATE" : capability;
+            UUID providerId = ProviderUsageScope.current()
+                    .flatMap(scope -> scope.last(resolvedCapability))
+                    .map(ProviderUsageScope.Resolved::providerId)
+                    .orElse(null);
             try {
                 aiUsageLogService.record(job.getWorkspaceId(), job.getProjectId(), job.getId(),
                         job.getCreatedByUserId(), capability, personalApiKey,
-                        billableUnits - loggedOutputTokens, loggedOutputTokens, creditUsed);
+                        billableUnits - loggedOutputTokens, loggedOutputTokens, creditUsed, providerId);
             } catch (Exception ex) {
                 // Usage logging must not turn a successfully charged/completed AI
                 // stage into a retry (the credit transaction is already durable).

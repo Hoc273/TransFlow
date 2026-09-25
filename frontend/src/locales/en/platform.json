@@ -23,7 +23,8 @@
     "users": "Users",
     "workspaces": "Workspaces",
     "audit": "Audit Log",
-    "guides": "Guides"
+    "guides": "Guides",
+    "providers": "AI providers"
   },
   "menu": {
     "console": "Platform console"
@@ -258,5 +259,80 @@
     "close": "Close",
     "cancel": "Cancel",
     "clear": "Clear"
+  },
+  "providers": {
+    "title": "Shared AI providers",
+    "subtitle": "Platform key pool serving every user without a personal key (billed in credits). Lower priority is used first; a failing or rate-limited key fails over to the next one.",
+    "add": "Add key",
+    "empty": "The pool has no keys yet.",
+    "loadError": "Could not load providers.",
+    "inactive": "Off",
+    "poolHint": "Health is checked automatically every 30 minutes. Keys rejected by the provider or out of quota go DOWN and leave the pool until a check passes.",
+    "dismiss": "Dismiss",
+    "test": "Test key",
+    "testTitle": "Test result — {{name}}",
+    "testAuth": "Authentication",
+    "testError": "Could not test the key.",
+    "syncVoices": "Sync TTS voices",
+    "syncDone": "{{name}}: {{count}} active voices.",
+    "syncError": "Could not sync voices.",
+    "edit": "Edit",
+    "activate": "Turn on",
+    "deactivate": "Turn off",
+    "delete": "Delete",
+    "deleteTitle": "Delete key from the pool?",
+    "deleteBody": "Permanently deletes \"{{name}}\" and its voice list.",
+    "deleteHint": "If jobs still use one of its voices the delete is refused — turn the key off instead.",
+    "deleteError": "Could not delete the key.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…",
+    "tier": {
+      "PAID": "Paid",
+      "FREE": "Free"
+    },
+    "health": {
+      "UNKNOWN": "Not checked",
+      "HEALTHY": "Healthy",
+      "DOWN": "Down",
+      "COOLING": "Cooling down"
+    },
+    "col": {
+      "name": "Name",
+      "capabilities": "Capabilities",
+      "model": "Model",
+      "priority": "Priority · weight",
+      "health": "Health",
+      "lastChecked": "Last checked",
+      "actions": "Actions"
+    },
+    "stats": {
+      "active": "Active keys",
+      "healthy": "Healthy",
+      "cooling": "Cooling down",
+      "coolingHint": "Rate limited or overloaded, back in a few minutes",
+      "down": "Down",
+      "downHint": "Out of the pool until a check passes"
+    },
+    "form": {
+      "createTitle": "Add key to the pool",
+      "editTitle": "Edit key",
+      "name": "Display name",
+      "protocol": "Protocol",
+      "baseUrl": "Base URL",
+      "baseUrlHint": "URL called by backend-ai (FreeLLMAPI: http://freellmapi:3001/v1).",
+      "apiKey": "API key",
+      "apiKeyKeep": "Leave empty to keep the current key.",
+      "model": "Default model",
+      "capabilities": "Capabilities",
+      "capabilitiesRequired": "Pick at least one capability.",
+      "priority": "Priority",
+      "priorityHint": "Lower is used first (0–1000).",
+      "weight": "Weight",
+      "weightHint": "Load share among keys of the same priority.",
+      "tier": "Tier",
+      "active": "Key is active",
+      "saveError": "Could not save the key."
+    }
   }
 }

@@ -122,6 +122,13 @@
 | GET | `/api/workspaces/{workspaceId}/media/assets/{assetId}` | LEAD/MEMBER/CLIENT | Chi tiết 1 asset. |
 | POST | `/api/workspaces/{workspaceId}/media/assets/{assetId}/consent` | LEAD/MEMBER | `{termsVersion}` phải khớp version hiện hành → tạo `media_consents`. Bắt buộc trước khi tạo Media Job từ asset này. |
 
+**Retention 3 ngày (V13).** Mọi file trong bucket media (video gốc, audio, stem, TTS, render, preview) bị
+cronjob xoá khi quá `app.maintenance.media-retention` (mặc định `P3D`). `MediaAssetResponse` có thêm
+`expiresAt` (= `createdAt` + retention) và `purgedAt` (khác null khi file đã bị xoá). Với asset đã purge:
+tạo job / rerun trả `MEDIA_FILE_EXPIRED` (2804, HTTP 410); job đang mở bị cronjob đánh FAILED với
+`errorCode=MEDIA_FILE_EXPIRED` ở stage kế tiếp; `GET .../export?format=VIDEO` trả `MEDIA_FILE_EXPIRED` khi file
+render không còn; output-package trả `url=null` cho track đã mất.
+
 ---
 
 ## 5. Media Job — orchestrator Localization + Summarization (SRS §5.3, §5.5; Arch §5, §7)
@@ -349,6 +356,10 @@ chỉ kiểm tra thời gian.
 | POST | `/api/users/me/providers/{id}/test?capability=TRANSLATE` | JWT (owner) | Tách auth probe và model/capability probe; capability probe gửi đúng `defaultModel` tới FastAPI. Trả `authSuccess` và `capabilityResults[]` có kết quả, code lỗi và model theo capability. Không truyền capability thì test các capability default; nếu chưa có default thì test các capability provider khai báo. |
 | GET | `/api/users/me/providers/{id}/voices?language=` | JWT (owner) | List `tts_voices(provider_source=USER)` đã cache; filter `language` dùng chung primary-subtag compatibility trên cả `language` và `languages[]`. |
 | POST | `/api/users/me/providers/{id}/voices/refresh` | JWT (owner) | Đồng bộ lại danh sách voice từ provider. |
+
+`UserAiProviderResponse` có thêm `healthStatus` (`UNKNOWN`\|`HEALTHY`\|`DOWN`) và `lastCheckedAt` từ cronjob
+kiểm tra key BYOK hằng ngày (chỉ probe auth, không tốn phí). Khi key chuyển sang `DOWN`, user nhận 1 notification
+`PROVIDER_KEY_INVALID` ở workspace mặc định; key vẫn được dùng (không tự rơi sang pool nền tảng).
 | GET | `/api/tts-voices?language=&providerSource=PLATFORM` | JWT | Danh mục voice nền tảng (`platform_ai_providers`) dùng khi user không có BYOK phù hợp — phục vụ UI chọn giọng khi tạo job; filter `language` dùng chung primary-subtag compatibility trên cả `language` và `languages[]`. |
 | POST | `/api/tts-voices/preview` | JWT | `{voiceId, text}` (`text` ≤ 50 ký tự, `@NotBlank`) → `{audioUrl, expiresInSeconds}` — nghe thử giọng: tổng hợp audio ngắn qua `POST /media/tts` của `backend-ai`, upload MinIO (`temp/voice-preview/<userId>/<uuid>.<ext>`), `audioUrl` là presigned GET (TTL `app.storage.presigned-ttl-seconds`, mặc định 3600s). `voiceId` là UUID `tts_voices.id`, không phải `tts_voices.voice_id`. Voice `providerSource=USER` chỉ owner của `user_ai_providers` đó gọi được (không khớp → `404`). **Không trừ Credit** — chỉ rate limit theo user. Lỗi: `404 TTS_VOICE_NOT_FOUND`, `400 PROVIDER_CAPABILITY_NOT_SUPPORTED`, `400 PLATFORM_PROVIDER_NOT_CONFIGURED`, `429 TTS_PREVIEW_RATE_LIMIT_EXCEEDED`, `502 TTS_PREVIEW_FAILED`. |
 
@@ -385,11 +396,23 @@ Workspace; tài khoản thường nhận `UNAUTHORIZED` (HTTP 403). Response v�
 | POST | `/api/platform/users/{userId}/credit/adjust` | Cộng (`amount > 0`) hoặc trừ (`amount < 0`) Credit của một user bất kỳ, có ghi `credit_transactions`. |
 | GET | `/api/platform/workspaces?page=0&size=20&q=` | Danh sách Workspace có phân trang, owner và số thành viên. |
 | GET | `/api/platform/audit-logs?page=0&size=20&action=` | Nhật ký kiểm toán cấp nền tảng có phân trang, lọc theo action. |
+| GET | `/api/platform/providers` | Pool key AI nền tảng dùng chung (`PlatformAiProviderResponse[]`): `name, protocol, capabilities, baseUrl, apiKeyHint, defaultModel, isActive, priority, weight, tier (PAID\|FREE), healthStatus (UNKNOWN\|HEALTHY\|DOWN), coolingDown, lastCheckedAt, lastErrorCode`. **Không bao giờ trả API key.** |
+| POST | `/api/platform/providers` | Thêm key: `{name, protocol, capabilities[], baseUrl, apiKey, defaultModel, priority?=100, weight?=1, tier?=PAID, isActive?=true}`. Key mã hoá AES-GCM trước khi lưu. |
+| PATCH | `/api/platform/providers/{id}` | Sửa từng phần; `apiKey` không rỗng = xoay key. Đổi key/baseUrl/model reset `healthStatus=UNKNOWN`. |
+| DELETE | `/api/platform/providers/{id}` | Xoá key (cascade voice). Còn job gắn voice của key → `PROVIDER_IN_USE` (2412, HTTP 409) — dùng PATCH `isActive=false`. |
+| POST | `/api/platform/providers/{id}/test` | Probe auth + từng capability qua FastAPI (`TestConnectionResponse`), lưu kết quả vào health. |
+| POST | `/api/platform/providers/{id}/voices/sync` | Đồng bộ voice TTS (upsert, voice bị provider gỡ → `is_active=false`, không xoá). Trả `{activeVoices}`. |
 
 Ngoài ra, quản trị nội dung trang Hướng dẫn nằm dưới `/api/platform/guides/*` — xem §13.2.
 
-Nhóm API này read-only trong MVP, **trừ** điều chỉnh Credit của user (`POST .../credit/adjust`) và quản
-trị Hướng dẫn (§13.2); không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.
+**Chọn key trong pool.** User không có BYOK cho capability → resolver lấy key nền tảng đang bật có capability đó,
+nhóm `priority` nhỏ nhất còn key khả dụng (không `DOWN`, không cooldown Redis, chưa lỗi trong stage hiện tại),
+random theo `weight`. Khi key nền tảng lỗi `PROVIDER_RATE_LIMITED`/`QUOTA_EXCEEDED`/`AUTH_FAILED`/`TIMEOUT`/
+`UNAVAILABLE`/output hỏng…, stage được xếp lại (không FAILED) để chạy trên key kế tiếp, tối đa 4 attempt; TTS
+không failover vì voice gắn với 1 provider. Credit tính theo capability như cũ (key FREE vẫn tính giá bóng theo D3).
+
+Nhóm API này read-only trong MVP, **trừ** điều chỉnh Credit của user (`POST .../credit/adjust`), quản lý pool key
+AI (`/api/platform/providers*`) và quản trị Hướng dẫn (§13.2); không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.
 
 Quy tắc chung cho nhóm:
 
@@ -543,7 +566,7 @@ Response `data`:
 ```
 
 - Sort `createdAt DESC`. `action` ∈ `VIEW_OVERVIEW, VIEW_STATUS, LIST_USERS, LIST_WORKSPACES,
-  LIST_AUDIT, VIEW_USER_CREDIT, ADJUST_USER_CREDIT, SEED_GRANT, DENIED, OTHER` (case-insensitive); giá trị
+  LIST_AUDIT, VIEW_USER_CREDIT, ADJUST_USER_CREDIT, SEED_GRANT, LIST_PROVIDERS, MANAGE_PROVIDERS, DENIED, OTHER` (case-insensitive); giá trị
   lạ → `VALIDATION_ERROR` (400). `DENIED` = request bị từ chối 401/403; `OTHER` = path `/api/platform/*`
   không map được (hiện gồm `/realtime` và toàn bộ `/guides/*`).
   `actorUserId` null cho request không JWT và `SEED_GRANT` ghi lúc bootstrap.
@@ -718,11 +741,11 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `workspace` | 2100–2199 | `WORKSPACE_NOT_FOUND` = 2100, `WORKSPACE_MEMBER_NOT_FOUND` = 2101, `LEAD_CANNOT_BE_REMOVED` = 2102, `WORKSPACE_MEMBER_ALREADY_EXISTS` = 2103, `CANNOT_ASSIGN_LEAD_ROLE` = 2104, `WORKSPACE_SLUG_ALREADY_EXISTS` = 2105 |
 | `project` | 2200–2299 | `PROJECT_NOT_FOUND` = 2200, `PROJECT_MEMBER_NOT_FOUND` = 2201, `PROJECT_ACCESS_DENIED` = 2202, `USER_NOT_WORKSPACE_MEMBER` = 2203, `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` = 2204, `PROJECT_MEMBER_ALREADY_EXISTS` = 2205 |
 | `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303 |
-| `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406, `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` = 2407, `TTS_PREVIEW_FAILED` = 2408, `PROVIDER_KEY_DECRYPTION_FAILED` = 2409, `PROVIDER_DEFAULT_NOT_CONFIGURED` = 2410, `PROVIDER_MODEL_NOT_CONFIGURED` = 2411 |
+| `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406, `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` = 2407, `TTS_PREVIEW_FAILED` = 2408, `PROVIDER_KEY_DECRYPTION_FAILED` = 2409, `PROVIDER_DEFAULT_NOT_CONFIGURED` = 2410, `PROVIDER_MODEL_NOT_CONFIGURED` = 2411, `PROVIDER_IN_USE` = 2412 |
 | `preset` | 2500–2599 | `PRESET_NOT_FOUND` = 2500, `PRESET_INACTIVE` = 2501, `PRESET_SCOPE_INVALID` = 2502, `CANNOT_DELETE_ONLY_DEFAULT_PRESET` = 2503, `SYSTEM_PRESET_READ_ONLY` = 2504, `PRESET_DEFAULT_CONFLICT` = 2505, `REPLACEMENT_PRESET_INVALID` = 2506 |
 | `notification` | 2600–2699 | `NOTIFICATION_NOT_FOUND` = 2600, `NOTIFICATION_TYPE_INVALID` = 2601 |
 | `dashboard` | 2700–2799 | `DASHBOARD_DATE_RANGE_INVALID` = 2700, `DASHBOARD_GROUP_BY_INVALID` = 2701 |
-| `media_asset` | 2800–2899 | `TERMS_NOT_ACCEPTED` = 2800, `MEDIA_FILE_TOO_LARGE` = 2801, `MEDIA_DURATION_EXCEEDED` = 2802, `TERMS_VERSION_MISMATCH` = 2803 |
+| `media_asset` | 2800–2899 | `TERMS_NOT_ACCEPTED` = 2800, `MEDIA_FILE_TOO_LARGE` = 2801, `MEDIA_DURATION_EXCEEDED` = 2802, `TERMS_VERSION_MISMATCH` = 2803, `MEDIA_FILE_EXPIRED` = 2804 |
 | `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902, `STYLE_NOT_FOUND` = 2903, `INVALID_STYLE_KEY` = 2904, `DOWNLOAD_SELECTION_TOO_LARGE` = 2905 |
 | `summarization` | 3000–3099 | `REFINE_LIMIT_REACHED` = 3000, `PROPOSAL_ALREADY_TRANSLATED` = 3001 |
 | `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100, `BATCH_RATE_LIMIT_EXCEEDED` = 3101 |

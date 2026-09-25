@@ -55,6 +55,17 @@ public class UserAiProvider {
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 
+    /** Result of the daily key check; a DOWN key is still used (the user chose it) but flagged. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "health_status", nullable = false, length = 10)
+    private PlatformAiProvider.HealthStatus healthStatus = PlatformAiProvider.HealthStatus.UNKNOWN;
+
+    @Column(name = "last_checked_at")
+    private Instant lastCheckedAt;
+
+    @Column(name = "last_error_code", length = 80)
+    private String lastErrorCode;
+
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;
 

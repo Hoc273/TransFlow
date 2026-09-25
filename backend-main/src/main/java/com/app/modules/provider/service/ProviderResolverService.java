@@ -13,6 +13,13 @@ public interface ProviderResolverService {
     ProviderResolution resolveForCapability(UUID userId, String capability);
 
     /**
+     * Resolves one specific provider (the TTS provider a job's voice belongs to): the user's own
+     * active provider or an active platform provider with {@code capability}. Voices are bound to
+     * their provider, so TTS must not be load-balanced to another key of the pool.
+     */
+    ProviderResolution resolveBoundProvider(UUID userId, UUID providerId, String capability);
+
+    /**
      * Resolves the language only when the requested active voice belongs to the requested active,
      * TTS-capable provider and that provider is available to the user. This is the public module
      * boundary used by media_job; callers must never validate provider repositories directly.

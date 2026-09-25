@@ -46,6 +46,8 @@ public class MediaStageRecoveryService {
 
     private static final int MAX_ATTEMPTS = 3;
     private static final int MAX_RENDER_ATTEMPTS = 2;
+    /** Attempts a stage may consume while failing over across keys of the platform pool. */
+    public static final int MAX_FAILOVER_ATTEMPTS = 4;
 
     private final MediaJobRepository jobRepository;
     private final MediaJobStageRepository stageRepository;
@@ -114,6 +116,31 @@ public class MediaStageRecoveryService {
         callbackService.completeStage(jobId, stageId, stage.getStageName(), false, null, message,
                 timeout.getErrorCode(), objectMapper.valueToTree(timeout.getErrorDetail()));
         return cancel;
+    }
+
+    /**
+     * Re-queues a stage whose platform key just failed so the next attempt resolves another key
+     * of the pool. Runs under the job lock and only for the attempt identified by
+     * {@code correlationId}: a cancel or a newer attempt always wins.
+     */
+    @Transactional
+    public boolean retryOnAnotherProvider(UUID jobId, UUID stageId, String correlationId, String errorCode) {
+        if (jobRepository.findWithLockById(jobId).isEmpty()) {
+            return false;
+        }
+        MediaJobStage stage = stageRepository.findById(stageId).orElse(null);
+        if (stage == null || stage.getStatus() != MediaJobStage.StageStatus.PROCESSING
+                || correlationId == null || !correlationId.equals(stage.getWorkerId())) {
+            return false;
+        }
+        stage.setStatus(MediaJobStage.StageStatus.PENDING);
+        stage.setWorkerId(null);
+        stage.setStartedAt(null);
+        stage.setErrorMessage("Attempt " + stage.getAttemptCount() + " failed (" + errorCode
+                + "); retrying with another AI provider");
+        stageRepository.save(stage);
+        dispatcher.dispatchNext(jobId);
+        return true;
     }
 
     private boolean overdue(MediaJobStage stage, Instant now) {

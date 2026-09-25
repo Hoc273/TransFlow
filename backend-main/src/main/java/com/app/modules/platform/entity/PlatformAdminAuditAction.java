@@ -12,6 +12,9 @@ public enum PlatformAdminAuditAction {
     VIEW_USER_CREDIT,
     ADJUST_USER_CREDIT,
     SEED_GRANT,
+    LIST_PROVIDERS,
+    /** Create, update, delete, test or voice sync of a shared platform key. */
+    MANAGE_PROVIDERS,
     /** Request was rejected by auth (401 unauthenticated / 403 non-admin). */
     DENIED,
     /** Any other {@code /api/platform/*} path not mapped to a specific action. */

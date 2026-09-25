@@ -43,6 +43,8 @@ export type ProviderConfig = {
   enabled: boolean
   /** LLM sampling temperature; STT/TTS ignore. Default 0.20. */
   temperature?: number | null
+  /** Daily key check: DOWN = the provider rejected this key. */
+  keyHealth?: 'UNKNOWN' | 'HEALTHY' | 'DOWN'
 }
 
 export type CreateProviderRequest = {

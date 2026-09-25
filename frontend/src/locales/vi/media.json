@@ -235,7 +235,7 @@
   "consent": {
     "title": "Xác nhận quyền nội dung",
     "declaration": "Tuyên bố quyền nội dung",
-    "body": "Bằng cách xác nhận, bạn tuyên bố sở hữu nội dung, có giấy phép, hoặc được phép dùng để dịch/lồng tiếng trong workspace này. Asset phát sinh kế thừa consent này.",
+    "body": "Bằng cách xác nhận, bạn tuyên bố sở hữu nội dung, có giấy phép, hoặc được phép dùng để dịch/lồng tiếng trong workspace này. Asset phát sinh kế thừa consent này. Video và các tệp xử lý được tự động xoá sau 3 ngày.",
     "checkbox": "Tôi xác nhận có quyền dùng video này để dịch và lồng tiếng trong workspace, và chịu trách nhiệm theo Terms hiện hành.",
     "required": "Bắt buộc",
     "done": "Đã ghi nhận"
@@ -985,5 +985,11 @@
     "titleUnknown": "Render đang tạm dừng cho tới khi xử lý xong lỗi QA",
     "body": "Sửa các phụ đề bị đánh dấu hoặc bỏ qua kiểm tra nếu là cảnh báo sai. Render tự chạy tiếp khi không còn lỗi chặn.",
     "cta": "Xem lỗi QA"
+  },
+  "retention": {
+    "expired": "Tệp đã hết hạn",
+    "expiredHint": "Tệp video và kết quả đã bị xoá sau 3 ngày lưu trữ. Hãy tải video lên lại để xử lý tiếp.",
+    "expiresIn": "Hết hạn sau {{count}} giờ",
+    "expiringHint": "Tệp chỉ được lưu 3 ngày. Hãy tải kết quả về trước khi hết hạn."
   }
 }

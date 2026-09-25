@@ -9,6 +9,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -62,6 +63,10 @@ public class MediaAsset extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "processing_status", nullable = false, length = 20)
     private AssetStatus processingStatus = AssetStatus.UPLOADED;
+
+    /** Set when the retention sweep deleted the stored object; the row is kept for job history. */
+    @Column(name = "purged_at")
+    private Instant purgedAt;
 
     public enum AssetType {
         SOURCE_VIDEO,

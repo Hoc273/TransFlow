@@ -138,6 +138,9 @@ public class MediaJobServiceImpl implements MediaJobService {
         access.requireProjectWriteAccess(workspaceId, userId, req.projectId());
 
         MediaAsset rootAsset = mediaAssetService.getAsset(workspaceId, userId, req.rootAssetId());
+        if (rootAsset.getPurgedAt() != null) {
+            throw new AppException(ErrorCode.MEDIA_FILE_EXPIRED);
+        }
         if (rootAsset.getParentAssetId() != null
                 || rootAsset.getAssetType() != MediaAsset.AssetType.SOURCE_VIDEO
                 || !rootAsset.getProjectId().equals(req.projectId())) {
@@ -480,6 +483,11 @@ public class MediaJobServiceImpl implements MediaJobService {
         MediaJob job = requireJobInWorkspace(workspaceId, jobId);
         access.requireProjectWriteAccess(workspaceId, userId, job.getProjectId());
         job = mediaJobRepository.findWithLockById(jobId).orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+        // Stage inputs are younger than the source, so a purged source means the job's files are gone.
+        MediaAsset rerunSource = mediaAssetService.getAsset(workspaceId, userId, job.getRootAssetId());
+        if (rerunSource != null && rerunSource.getPurgedAt() != null) {
+            throw new AppException(ErrorCode.MEDIA_FILE_EXPIRED);
+        }
 
         List<MediaJobStage> stages = mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId);
         MediaJobStage target = stages.stream().filter(s -> s.getStageName() == stageName).findFirst()

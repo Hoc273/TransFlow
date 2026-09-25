@@ -126,6 +126,9 @@ public class MediaRenderConfigServiceImpl implements MediaRenderConfigService {
     private String sourceVideoUrl(UUID workspaceId, UUID userId, MediaJob job) {
         try {
             MediaAsset asset = assetService.getAsset(workspaceId, userId, job.getRootAssetId());
+            if (asset.getPurgedAt() != null) {
+                return null;
+            }
             return storage.presignedGetUrl(asset.getBucketName() + "/" + asset.getObjectStorageKey());
         } catch (AppException ex) {
             log.warn("render-config: cannot sign source video for job={}: {}", job.getId(), ex.getMessage());

@@ -23,7 +23,8 @@
     "users": "Người dùng",
     "workspaces": "Workspace",
     "audit": "Nhật ký audit",
-    "guides": "Hướng dẫn"
+    "guides": "Hướng dẫn",
+    "providers": "AI providers"
   },
   "menu": {
     "console": "Bảng điều khiển Platform"
@@ -258,5 +259,80 @@
     "close": "Đóng",
     "cancel": "Huỷ",
     "clear": "Xoá"
+  },
+  "providers": {
+    "title": "AI providers dùng chung",
+    "subtitle": "Pool key nền tảng phục vụ mọi người dùng chưa có key riêng (tính Credit). Key có priority nhỏ được dùng trước; key lỗi hoặc bị giới hạn tự chuyển sang key kế tiếp.",
+    "add": "Thêm key",
+    "empty": "Chưa có key nào trong pool.",
+    "loadError": "Không tải được danh sách provider.",
+    "inactive": "Tắt",
+    "poolHint": "Kiểm tra sức khỏe tự động mỗi 30 phút. Key bị từ chối xác thực/hết quota sẽ chuyển DOWN và bị loại khỏi pool cho tới lần kiểm tra đạt.",
+    "dismiss": "Đóng",
+    "test": "Kiểm tra key",
+    "testTitle": "Kết quả kiểm tra — {{name}}",
+    "testAuth": "Xác thực",
+    "testError": "Không kiểm tra được key.",
+    "syncVoices": "Đồng bộ giọng TTS",
+    "syncDone": "{{name}}: {{count}} giọng đang hoạt động.",
+    "syncError": "Không đồng bộ được danh sách giọng.",
+    "edit": "Sửa",
+    "activate": "Bật",
+    "deactivate": "Tắt",
+    "delete": "Xoá",
+    "deleteTitle": "Xoá key khỏi pool?",
+    "deleteBody": "Xoá vĩnh viễn \"{{name}}\" và danh sách giọng của nó.",
+    "deleteHint": "Nếu còn job đang dùng giọng của key này, hệ thống sẽ từ chối — hãy tắt key thay vì xoá.",
+    "deleteError": "Không xoá được key.",
+    "cancel": "Huỷ",
+    "save": "Lưu",
+    "saving": "Đang lưu…",
+    "tier": {
+      "PAID": "Trả phí",
+      "FREE": "Miễn phí"
+    },
+    "health": {
+      "UNKNOWN": "Chưa kiểm tra",
+      "HEALTHY": "Hoạt động",
+      "DOWN": "Lỗi",
+      "COOLING": "Đang tạm nghỉ"
+    },
+    "col": {
+      "name": "Tên",
+      "capabilities": "Năng lực",
+      "model": "Model",
+      "priority": "Ưu tiên · trọng số",
+      "health": "Sức khỏe",
+      "lastChecked": "Kiểm tra lần cuối",
+      "actions": "Thao tác"
+    },
+    "stats": {
+      "active": "Key đang bật",
+      "healthy": "Hoạt động tốt",
+      "cooling": "Đang tạm nghỉ",
+      "coolingHint": "Bị rate limit/quá tải, tự quay lại sau vài phút",
+      "down": "Lỗi",
+      "downHint": "Bị loại khỏi pool tới lần kiểm tra đạt"
+    },
+    "form": {
+      "createTitle": "Thêm key vào pool",
+      "editTitle": "Sửa key",
+      "name": "Tên hiển thị",
+      "protocol": "Giao thức",
+      "baseUrl": "Base URL",
+      "baseUrlHint": "URL mà backend-ai gọi tới (FreeLLMAPI: http://freellmapi:3001/v1).",
+      "apiKey": "API key",
+      "apiKeyKeep": "Để trống để giữ key hiện tại.",
+      "model": "Model mặc định",
+      "capabilities": "Năng lực",
+      "capabilitiesRequired": "Chọn ít nhất một năng lực.",
+      "priority": "Ưu tiên",
+      "priorityHint": "Số nhỏ dùng trước (0–1000).",
+      "weight": "Trọng số",
+      "weightHint": "Chia tải giữa các key cùng ưu tiên.",
+      "tier": "Loại",
+      "active": "Bật key này",
+      "saveError": "Không lưu được key."
+    }
   }
 }

@@ -181,3 +181,53 @@ export type AdminCreditAdjustResponse = {
   reason: string | null
   adjustedAt: string
 }
+
+/** Shared platform AI key pool (GET /api/platform/providers). The API key is write-only. */
+export type PlatformProviderTier = 'PAID' | 'FREE'
+export type ProviderHealthStatus = 'UNKNOWN' | 'HEALTHY' | 'DOWN'
+
+export type PlatformProvider = {
+  id: string
+  name: string
+  protocol: string
+  capabilities: string[]
+  baseUrl: string
+  apiKeyHint: string | null
+  defaultModel: string | null
+  isActive: boolean
+  priority: number
+  weight: number
+  tier: PlatformProviderTier
+  healthStatus: ProviderHealthStatus
+  coolingDown: boolean
+  lastCheckedAt: string | null
+  lastErrorCode: string | null
+  createdAt: string
+  updatedAt: string | null
+}
+
+export type PlatformProviderInput = {
+  name?: string
+  protocol?: string
+  capabilities?: string[]
+  baseUrl?: string
+  apiKey?: string
+  defaultModel?: string
+  priority?: number
+  weight?: number
+  tier?: PlatformProviderTier
+  isActive?: boolean
+}
+
+export type ProviderTestResult = {
+  success: boolean
+  message: string
+  authSuccess: boolean
+  capabilityResults: {
+    capability: string
+    success: boolean
+    model: string | null
+    errorCode: string | null
+    message: string | null
+  }[]
+}

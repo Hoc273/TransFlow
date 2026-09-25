@@ -46,6 +46,7 @@ type UserAiProviderDto = {
   apiKeyHint: string | null
   defaultModel: string | null
   defaultForCapabilities?: string[] | null
+  healthStatus?: 'UNKNOWN' | 'HEALTHY' | 'DOWN' | null
   isActive?: boolean
   enabled?: boolean
   displayName?: string | null
@@ -82,6 +83,7 @@ export function normalizeProvider(dto: UserAiProviderDto): ProviderConfig {
     apiKeyHint: dto.apiKeyHint,
     defaultModel,
     enabled: dto.enabled ?? dto.isActive ?? true,
+    keyHealth: dto.healthStatus ?? 'UNKNOWN',
   }
 }
 
