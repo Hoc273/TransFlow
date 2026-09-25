@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { IconShieldX } from '@tabler/icons-react'
 import { Modal } from '@/components/shared/Modal'
 import { SeverityBadge } from '@/components/qa/SeverityBadge'
+import { cn } from '@/lib/cn'
 import { issueBlockingActions } from '@/lib/qa'
 import type { BlockingAction, QaIssue } from '@/types/qa'
 
@@ -15,13 +16,6 @@ type Props = {
   error?: string | null
 }
 
-const BLOCKING_LABELS: Record<string, string> = {
-  BLOCK_TM_WRITEBACK: 'TM write-back',
-  BLOCK_APPROVAL: 'Approval',
-  BLOCK_EXPORT: 'Export',
-  BLOCK_RENDER: 'Render',
-}
-
 export function QaOverrideModal({
   open,
   onClose,
@@ -30,17 +24,18 @@ export function QaOverrideModal({
   loading,
   error,
 }: Props) {
-  const { t } = useTranslation('job')
+  const { t } = useTranslation(['job', 'media'])
   const actions = issueBlockingActions(issue)
   const overridden = new Set((issue.overrides ?? []).map((o) => o.blockingAction))
   const remaining = actions.filter((a) => !overridden.has(a))
 
-  const [selectedAction, setSelectedAction] = useState<BlockingAction>(
-    remaining[0] ?? '',
-  )
+  // The backend resolves the whole issue on override (every blocking action is lifted);
+  // the API still receives one action for compatibility.
+  const selectedAction: BlockingAction = remaining[0] ?? ''
   const [reason, setReason] = useState('')
   const MIN_REASON = 10
   const reasonValid = reason.trim().length >= MIN_REASON
+  const presets = ['falseAlarm', 'authored', 'checked'] as const
 
   const handleSubmit = () => {
     if (!selectedAction || !reasonValid) return
@@ -89,23 +84,14 @@ export function QaOverrideModal({
           </div>
         )}
 
-        {/* Action selector */}
         {remaining.length > 0 && (
-          <div>
-            <label className="mb-1 block text-sm font-medium text-[var(--color-text-primary)]">
-              {t('qa.overrideModal.actionLabel')}
-            </label>
-            <select
-              className="input-select w-full"
-              value={selectedAction}
-              onChange={(e) => setSelectedAction(e.target.value as BlockingAction)}
-            >
-              {remaining.map((a) => (
-                <option key={a} value={a}>
-                  {BLOCKING_LABELS[a] ?? a.replace('BLOCK_', '')}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center gap-2 text-[13px]">
+            <span className="text-[var(--color-text-secondary)]">{t('qa.overrideModal.liftsLabel')}:</span>
+            {remaining.map((a) => (
+              <span key={a} className="chip chip-block">
+                {t(`media:qa.blocks.${a}`, { defaultValue: a.replace('BLOCK_', '') })}
+              </span>
+            ))}
           </div>
         )}
 
@@ -115,6 +101,22 @@ export function QaOverrideModal({
             <label className="mb-1 block text-sm font-medium text-[var(--color-text-primary)]">
               {t('qa.overrideModal.reasonLabel')}
             </label>
+            <div className="mb-2 flex flex-wrap gap-1.5" aria-label={t('qa.overrideModal.presetsLabel')}>
+              {presets.map((key) => {
+                const text = t(`qa.overrideModal.presets.${key}`)
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={cn('media-subtitle-filter-chip', reason === text && 'active')}
+                    onClick={() => setReason(text)}
+                    data-testid={`override-preset-${key}`}
+                  >
+                    {text}
+                  </button>
+                )
+              })}
+            </div>
             <textarea
               className="input-textarea w-full"
               rows={3}

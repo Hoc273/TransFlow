@@ -55,17 +55,24 @@
     "overridden": "This blocking action was overridden",
     "overriddenShort": "overridden",
     "overrideModal": {
-      "title": "Override blocking action",
-      "description": "Override a QA blocking action so the workflow can proceed. This is recorded in the audit log.",
+      "title": "Skip this QA check",
+      "description": "The issue is marked as handled and stops blocking this job. Your reason is kept in the audit log.",
       "cancel": "Cancel",
-      "submit": "Override",
-      "submitting": "Overriding…",
+      "submit": "Skip check",
+      "submitting": "Skipping…",
       "actionLabel": "Blocking action to override",
       "reasonLabel": "Reason",
-      "reasonPlaceholder": "Why this blocking action should be overridden…",
+      "reasonPlaceholder": "Why is it safe to skip this check?",
       "reasonHint": "Minimum {{min}} characters required",
       "reasonOk": "Reason meets minimum length",
-      "allOverridden": "All blocking actions for this issue have already been overridden."
+      "allOverridden": "All blocking actions for this issue have already been overridden.",
+      "liftsLabel": "Stops blocking",
+      "presetsLabel": "Common reasons",
+      "presets": {
+        "falseAlarm": "False alarm: the text is correct as written.",
+        "authored": "The script was written directly in the target language, so there is nothing to translate.",
+        "checked": "Checked manually: content and timing are fine."
+      }
     },
     "criticalMediaOnly": "CRITICAL is media-pipeline only at runtime",
     "severity": {

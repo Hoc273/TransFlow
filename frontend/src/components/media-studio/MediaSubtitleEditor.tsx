@@ -8,6 +8,8 @@ import {
   IconClock,
   IconDeviceFloppy,
   IconLanguage,
+  IconMinus,
+  IconPlus,
   IconRefresh,
   IconSearch,
   IconSubtitles,
@@ -23,6 +25,7 @@ import {
 } from '@/hooks/useMedia'
 import { cn } from '@/lib/cn'
 import { formatDurationMs, resolveWorkflowMode, subtitleToSegmentItem } from '@/lib/media'
+import { formatTimecode, parseTimecode } from '@/lib/timecode'
 import { ApiError } from '@/types/api'
 import type { MediaJob, MediaSubtitleCue, RenderFailureDiagnostics, SegmentItem } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
@@ -104,8 +107,8 @@ function DiagnosticChips({ diag, t }: { diag: RenderFailureDiagnostics | null | 
 function draftFor(seg: SegmentItem): Draft {
   return {
     targetText: seg.targetText ?? '',
-    startMs: seg.startMs != null ? String(seg.startMs) : '',
-    endMs: seg.endMs != null ? String(seg.endMs) : '',
+    startMs: formatTimecode(seg.startMs),
+    endMs: formatTimecode(seg.endMs),
   }
 }
 
@@ -113,9 +116,40 @@ function draftFor(seg: SegmentItem): Draft {
 function isDirty(seg: SegmentItem, d: Draft | undefined): boolean {
   if (!d) return false
   if (d.targetText !== (seg.targetText ?? '')) return true
-  if (d.startMs.trim() !== '' && Number(d.startMs) !== seg.startMs) return true
-  if (d.endMs.trim() !== '' && Number(d.endMs) !== seg.endMs) return true
+  if (d.startMs.trim() !== '' && parseTimecode(d.startMs) !== seg.startMs) return true
+  if (d.endMs.trim() !== '' && parseTimecode(d.endMs) !== seg.endMs) return true
   return false
+}
+
+/** Above ~20 characters per second viewers cannot finish reading a subtitle. */
+const MAX_READING_CPS = 20
+const NUDGE_MS = 100
+
+/** On-screen duration and reading speed of the draft, so length/timing fixes can be judged while typing. */
+function ReadingStats({
+  id,
+  draft,
+  t,
+}: {
+  id: string
+  draft: Draft
+  t: (key: string, options?: Record<string, unknown>) => string
+}) {
+  const start = parseTimecode(draft.startMs)
+  const end = parseTimecode(draft.endMs)
+  if (start == null || end == null || end <= start) return null
+  const seconds = (end - start) / 1000
+  const cps = draft.targetText.trim().length / seconds
+  const fast = cps > MAX_READING_CPS
+  return (
+    <p id={id} className={cn('media-subtitle-stats', fast && 'fast')} data-testid={id}>
+      {t('media:subtitles.duration', { seconds: seconds.toFixed(1) })}
+      {' | '}
+      {t(fast ? 'media:subtitles.readingSpeedFast' : 'media:subtitles.readingSpeed', {
+        cps: Math.round(cps),
+      })}
+    </p>
+  )
 }
 
 /**
@@ -276,10 +310,10 @@ export function MediaSubtitleEditor({
   }
 
   const parseTiming = (d: Draft) => {
-    const startMs = d.startMs.trim() === '' ? null : Number(d.startMs)
-    const endMs = d.endMs.trim() === '' ? null : Number(d.endMs)
-    if (startMs != null && (Number.isNaN(startMs) || startMs < 0)) return { error: 'invalidTiming' as const }
-    if (endMs != null && (Number.isNaN(endMs) || endMs < 0)) return { error: 'invalidTiming' as const }
+    const startMs = d.startMs.trim() === '' ? null : parseTimecode(d.startMs)
+    const endMs = d.endMs.trim() === '' ? null : parseTimecode(d.endMs)
+    if (d.startMs.trim() !== '' && startMs == null) return { error: 'invalidTiming' as const }
+    if (d.endMs.trim() !== '' && endMs == null) return { error: 'invalidTiming' as const }
     if (startMs != null && endMs != null && endMs <= startMs) return { error: 'invalidRange' as const }
     return { startMs, endMs }
   }
@@ -383,6 +417,16 @@ export function MediaSubtitleEditor({
       .catch((e) =>
         setError(e instanceof ApiError ? e.message : t('common:error.generic')),
       )
+  }
+
+  const setDraftField = (id: string, d: Draft, field: keyof Draft, value: string) =>
+    setDrafts((prev) => ({ ...prev, [id]: { ...d, [field]: value } }))
+
+  /** Shift a timecode by +/-100 ms; an unparsable field is left for the user to fix. */
+  const nudge = (id: string, d: Draft, field: 'startMs' | 'endMs', deltaMs: number) => {
+    const current = parseTimecode(d[field])
+    if (current == null) return
+    setDraftField(id, d, field, formatTimecode(Math.max(0, current + deltaMs)))
   }
 
   const toggleRow = (seg: SegmentItem) => {
@@ -591,10 +635,36 @@ export function MediaSubtitleEditor({
                 {savedId === seg.id && (
                   <span className="media-subtitle-saved">{t('media:subtitles.saved')}</span>
                 )}
+                {!expanded && seg.sourceText && seg.sourceText !== d.targetText && (
+                  <span className="media-subtitle-row-source" data-testid={`subtitle-source-${seg.seq}`}>
+                    {seg.sourceText}
+                  </span>
+                )}
               </button>
 
               {expanded && (
                 <div className="media-subtitle-row-editor">
+                  {qaIssues && (
+                    <div className="media-subtitle-line-issues" data-testid={`subtitle-line-issues-${seg.seq}`}>
+                      <span className="media-subtitle-field-label">
+                        <IconAlertTriangle size={12} />
+                        {t('media:subtitles.qaOnLine')}
+                      </span>
+                      <ul>
+                        {qaIssues.map((issue) => (
+                          <li key={issue.id}>
+                            <strong>
+                              {t(`media:qa.types.${String(issue.type ?? '').toLowerCase()}`, {
+                                defaultValue: issue.type,
+                              })}
+                            </strong>
+                            {issue.message ? `: ${issue.message}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   <div className="media-subtitle-source">
                     <span className="media-subtitle-field-label">
                       <IconLanguage size={12} />
@@ -610,58 +680,80 @@ export function MediaSubtitleEditor({
                     <textarea
                       className="field-input media-subtitle-target-input"
                       value={d.targetText}
-                      onChange={(e) =>
-                        setDrafts((prev) => ({
-                          ...prev,
-                          [seg.id]: { ...d, targetText: e.target.value },
-                        }))
-                      }
+                      onChange={(e) => setDraftField(seg.id, d, 'targetText', e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault()
+                          save(seg)
+                        }
+                      }}
                       rows={3}
+                      aria-describedby={`subtitle-stats-${seg.seq}`}
                       data-testid={`subtitle-target-${seg.seq}`}
                     />
                   </label>
+                  <ReadingStats id={`subtitle-stats-${seg.seq}`} draft={d} t={t} />
 
                   <div className="media-subtitle-timing-row">
-                    <label className="field-label media-subtitle-timing-field">
-                      <span>{t('media:subtitles.startMs')}</span>
-                      <input
-                        className="field-input font-mono text-xs"
-                        value={d.startMs}
-                        inputMode="numeric"
-                        onChange={(e) =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [seg.id]: { ...d, startMs: e.target.value },
-                          }))
-                        }
-                      />
-                      <span className="field-help">{t('media:subtitles.msHelp')}</span>
-                    </label>
-                    <label className="field-label media-subtitle-timing-field">
-                      <span>{t('media:subtitles.endMs')}</span>
-                      <input
-                        className="field-input font-mono text-xs"
-                        value={d.endMs}
-                        inputMode="numeric"
-                        onChange={(e) =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [seg.id]: { ...d, endMs: e.target.value },
-                          }))
-                        }
-                      />
-                      <span className="field-help">{t('media:subtitles.msHelp')}</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="btn-media-secondary media-subtitle-save-btn"
-                      disabled={edit.isPending}
-                      onClick={() => save(seg)}
-                    >
-                      <IconDeviceFloppy size={14} />
-                      {t('media:subtitles.save')}
-                    </button>
+                    {(['startMs', 'endMs'] as const).map((field) => (
+                      <div key={field} className="field-label media-subtitle-timing-field">
+                        <label htmlFor={`subtitle-${field}-${seg.seq}`}>
+                          {t(`media:subtitles.${field}`)}
+                        </label>
+                        <div className="media-subtitle-time-input">
+                          <button
+                            type="button"
+                            className="media-subtitle-nudge"
+                            aria-label={t('media:subtitles.nudgeEarlier')}
+                            title={t('media:subtitles.nudgeEarlier')}
+                            onClick={() => nudge(seg.id, d, field, -NUDGE_MS)}
+                          >
+                            <IconMinus size={12} />
+                          </button>
+                          <input
+                            id={`subtitle-${field}-${seg.seq}`}
+                            className="field-input font-mono text-xs"
+                            value={d[field]}
+                            inputMode="decimal"
+                            placeholder="0:00.000"
+                            onChange={(e) => setDraftField(seg.id, d, field, e.target.value)}
+                            data-testid={`subtitle-${field}-${seg.seq}`}
+                          />
+                          <button
+                            type="button"
+                            className="media-subtitle-nudge"
+                            aria-label={t('media:subtitles.nudgeLater')}
+                            title={t('media:subtitles.nudgeLater')}
+                            onClick={() => nudge(seg.id, d, field, NUDGE_MS)}
+                          >
+                            <IconPlus size={12} />
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          className="media-subtitle-use-time"
+                          onClick={() => setDraftField(seg.id, d, field, formatTimecode(playingTimeMs))}
+                          data-testid={`subtitle-use-time-${field}-${seg.seq}`}
+                        >
+                          <IconClock size={12} />
+                          {t('media:subtitles.useVideoTime')}
+                        </button>
+                      </div>
+                    ))}
+                    <div className="media-subtitle-save-group">
+                      <button
+                        type="button"
+                        className="btn-media-secondary media-subtitle-save-btn"
+                        disabled={edit.isPending}
+                        onClick={() => save(seg)}
+                      >
+                        <IconDeviceFloppy size={14} />
+                        {t('media:subtitles.save')}
+                      </button>
+                      <span className="field-help">{t('media:subtitles.saveShortcut')}</span>
+                    </div>
                   </div>
+                  <span className="field-help">{t('media:subtitles.msHelp')}</span>
                 </div>
               )}
             </div>

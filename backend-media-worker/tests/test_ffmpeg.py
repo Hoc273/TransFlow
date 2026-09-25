@@ -1100,33 +1100,30 @@ class DubAudioTimingTest(unittest.TestCase):
         self.assertIn("PlayResY: 720", content)
         self.assertIn("Hello VTT", content)
 
-    def test_build_dubbed_audio_collects_segment_warning(self):
-        warning = {
-            "code": "AUDIO_TRUNCATED",
-            "exceeded_ms": 1_000,
-            "segment_id": "seg-42",
-        }
+    def test_build_dubbed_audio_keeps_long_lines_instead_of_cutting_them(self):
+        from pydub.generators import Sine
+
+        line = Sine(440).to_audio_segment(duration=3_000, volume=-20)
         storage = Mock()
+        storage.download.side_effect = lambda ref, local: line.export(local, format="wav")
         storage_module = ModuleType("app.services.storage")
         storage_module.get_storage = Mock(return_value=storage)
         with TemporaryDirectory() as temp_dir:
-            with patch.dict(sys.modules, {"app.services.storage": storage_module}), patch(
-                "app.services.ffmpeg.fit_dub_audio",
-                return_value=("fitted.wav", warning),
-            ), patch(
-                "app.services.ffmpeg.AudioSegment.from_file",
-                return_value=AudioSegment.silent(duration=2_000),
-            ):
+            with patch.dict(sys.modules, {"app.services.storage": storage_module}):
                 output_path, warnings = build_dubbed_audio(
                     "source.mp4",
-                    [CutRange(start_ms=0, end_ms=2_000)],
-                    [SegmentAudio("seg-42", "tts/seg-42.wav", 0, 2_000)],
+                    [CutRange(start_ms=0, end_ms=10_000)],
+                    # 3 s of speech for a 2 s subtitle followed by a pause.
+                    [SegmentAudio("seg-42", "tts/seg-42.wav", 1_000, 3_000)],
                     temp_dir,
                 )
+                audio = AudioSegment.from_file(output_path)
 
-        storage.download.assert_called_once()
-        self.assertEqual([warning], warnings)
-        self.assertTrue(output_path.endswith("final_audio.wav"))
+        self.assertEqual([], warnings)
+        self.assertEqual(10_000, len(audio))
+        # The tail after the subtitle end is still spoken, not truncated.
+        self.assertGreater(audio[3_200:3_800].dBFS, -40)
+        self.assertEqual(float("-inf"), audio[5_000:].dBFS)
 
 if __name__ == "__main__":
     unittest.main()

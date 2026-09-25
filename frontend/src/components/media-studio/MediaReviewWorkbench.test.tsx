@@ -166,7 +166,7 @@ describe('Review workbench — cue list batch save (§1.8.2 redesign)', () => {
       target: { value: 'Chào' },
     })
     // end before start — invalid.
-    fireEvent.change(screen.getByDisplayValue('4000'), { target: { value: '500' } })
+    fireEvent.change(screen.getByDisplayValue('0:04.000'), { target: { value: '0:00.500' } })
 
     fireEvent.click(screen.getByTestId('subtitle-save-all'))
 

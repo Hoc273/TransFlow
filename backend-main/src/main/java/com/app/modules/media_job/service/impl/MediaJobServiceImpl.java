@@ -23,6 +23,8 @@ import com.app.modules.media_job.service.MediaJobService;
 import com.app.modules.notification.service.NotificationService;
 import com.app.modules.preset.service.PresetResolverService;
 import com.app.modules.provider.service.ProviderResolverService;
+import com.app.modules.qa.entity.QaIssue;
+import com.app.modules.qa.repository.QaIssueRepository;
 import com.app.modules.workspace.entity.Role;
 import com.app.modules.workspace.service.WorkspaceAccessService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,9 +32,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -55,6 +60,12 @@ public class MediaJobServiceImpl implements MediaJobService {
     private final ProviderResolverService providerResolver;
     private final NotificationService notification;
     private final MediaPipelineDispatcher mediaPipelineDispatcher;
+    private final QaIssueRepository qaIssueRepository;
+
+    /** Deterministic timing checks recorded at TRANSLATE; re-evaluated (not auto-resolved) on edit. */
+    private static final Set<String> TIMING_QA_TYPES = Set.of("subtitle_overlap", "invalid_timing");
+    /** AI findings about timing/length also go stale when only the cue timing is edited. */
+    private static final Set<String> TIMING_SENSITIVE_AI_TYPES = Set.of("timing", "length");
 
     // field-injected (not via constructor) so unit tests keep the default
     @Value("${app.media-job.max-batch-subtitle-updates:200}")
@@ -74,7 +85,8 @@ public class MediaJobServiceImpl implements MediaJobService {
                                 PresetResolverService presetResolver,
                                 ProviderResolverService providerResolver,
                                 NotificationService notification,
-                                MediaPipelineDispatcher mediaPipelineDispatcher) {
+                                MediaPipelineDispatcher mediaPipelineDispatcher,
+                                QaIssueRepository qaIssueRepository) {
         this.mediaJobRepository = mediaJobRepository;
         this.mediaJobStageRepository = mediaJobStageRepository;
         this.subtitleSegmentRepository = subtitleSegmentRepository;
@@ -85,6 +97,7 @@ public class MediaJobServiceImpl implements MediaJobService {
         this.providerResolver = providerResolver;
         this.notification = notification;
         this.mediaPipelineDispatcher = mediaPipelineDispatcher;
+        this.qaIssueRepository = qaIssueRepository;
     }
 
     /** Compatibility constructor for focused unit tests that do not exercise queue dispatch. */
@@ -98,7 +111,7 @@ public class MediaJobServiceImpl implements MediaJobService {
                                ProviderResolverService providerResolver,
                                NotificationService notification) {
         this(mediaJobRepository, mediaJobStageRepository, subtitleSegmentRepository, access,
-                mediaAssetService, credit, presetResolver, providerResolver, notification, null);
+                mediaAssetService, credit, presetResolver, providerResolver, notification, null, null);
     }
 
     // ---- create ----
@@ -525,8 +538,10 @@ public class MediaJobServiceImpl implements MediaJobService {
         MediaJob job = lockJobForEdit(workspaceId, userId, jobId);
         SubtitleSegment segment = subtitleSegmentRepository.findByIdAndMediaJobId(segmentId, jobId)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+        EditChange change = changeOf(segment, request.targetText(), request.startMs(), request.endMs());
         applyEdit(segment, request.targetText(), request.startMs(), request.endMs());
         staleDownstreamStages(workspaceId, job);
+        resolveQaAfterEdit(job, Map.of(segment.getId(), change));
         return segment;
     }
 
@@ -551,10 +566,14 @@ public class MediaJobServiceImpl implements MediaJobService {
         }
 
         List<SubtitleSegment> result = new ArrayList<>(updates.size());
+        Map<UUID, EditChange> changes = new HashMap<>();
         for (BatchEditSegmentsRequest.Item item : updates) {
-            result.add(applyEdit(byId.get(item.segmentId()), item.targetText(), item.startMs(), item.endMs()));
+            SubtitleSegment segment = byId.get(item.segmentId());
+            changes.put(segment.getId(), changeOf(segment, item.targetText(), item.startMs(), item.endMs()));
+            result.add(applyEdit(segment, item.targetText(), item.startMs(), item.endMs()));
         }
         staleDownstreamStages(workspaceId, job);
+        resolveQaAfterEdit(job, changes);
         return result;
     }
 
@@ -580,6 +599,61 @@ public class MediaJobServiceImpl implements MediaJobService {
         segment.setStartMs(start);
         segment.setEndMs(end);
         return subtitleSegmentRepository.save(segment);
+    }
+
+    private record EditChange(boolean text, boolean timing) {}
+
+    private EditChange changeOf(SubtitleSegment segment, String targetText, Long startMs, Long endMs) {
+        boolean text = targetText != null && !targetText.equals(segment.getTargetText());
+        boolean timing = (startMs != null && startMs != segment.getStartMs())
+                || (endMs != null && endMs != segment.getEndMs());
+        return new EditChange(text, timing);
+    }
+
+    /**
+     * Editing a cue is the fix path for its QA findings (SRS §5.3): AI findings about the edited
+     * content are resolved, while deterministic timing issues are re-checked against the whole
+     * timeline and resolved only when the cue no longer violates them. A RENDER held only by
+     * these issues is released when nothing downstream became STALE (no surprise Credit spend).
+     */
+    private void resolveQaAfterEdit(MediaJob job, Map<UUID, EditChange> changes) {
+        if (qaIssueRepository == null || changes.isEmpty()) {
+            return;
+        }
+        List<SubtitleSegment> timeline = subtitleSegmentRepository.findByMediaJobIdOrderBySeq(job.getId());
+        Set<UUID> timingViolations = new HashSet<>();
+        for (int i = 0; i < timeline.size(); i++) {
+            SubtitleSegment current = timeline.get(i);
+            if (current.getEndMs() <= current.getStartMs()
+                    || i > 0 && current.getStartMs() < timeline.get(i - 1).getEndMs()) {
+                timingViolations.add(current.getId());
+            }
+        }
+        List<UUID> ids = timeline.stream().map(SubtitleSegment::getId).toList();
+        Instant now = Instant.now();
+        boolean resolvedAny = false;
+        for (QaIssue issue : qaIssueRepository.findBySubtitleSegmentIdInAndResolvedAtIsNull(ids)) {
+            String type = issue.getIssueType() == null ? "" : issue.getIssueType().toLowerCase(Locale.ROOT);
+            boolean resolve;
+            if (TIMING_QA_TYPES.contains(type)) {
+                // An edit elsewhere can fix an overlap, so every timing issue is re-checked.
+                resolve = !timingViolations.contains(issue.getSubtitleSegmentId());
+            } else {
+                EditChange change = changes.get(issue.getSubtitleSegmentId());
+                resolve = change != null
+                        && (change.text() || change.timing() && TIMING_SENSITIVE_AI_TYPES.contains(type));
+            }
+            if (resolve) {
+                issue.setResolvedAt(now);
+                qaIssueRepository.save(issue);
+                resolvedAny = true;
+            }
+        }
+        boolean staleWork = mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(job.getId()).stream()
+                .anyMatch(stage -> stage.getStatus() == MediaJobStage.StageStatus.STALE);
+        if (resolvedAny && !staleWork && mediaPipelineDispatcher != null) {
+            mediaPipelineDispatcher.dispatchNext(job.getId());
+        }
     }
 
     private void staleDownstreamStages(UUID workspaceId, MediaJob job) {

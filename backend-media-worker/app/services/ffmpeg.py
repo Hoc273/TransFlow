@@ -560,12 +560,17 @@ def build_dubbed_audio(
     _ = source_path  # DUB_REPLACE does not mix original speech.
     warnings: List[dict] = []
 
+    from app.services.dub_timeline import VoiceClip, prepare_voice, schedule
+    from app.services.storage import get_storage
+
+    storage = get_storage()
     cut_audios: List[AudioSegment] = []
     for r in cut_ranges:
         target_len = max(0, r.end_ms - r.start_ms)
-        # DUB_REPLACE: silent bed, place fitted TTS into each segment slot.
+        # DUB_REPLACE: silent bed; voice lines are levelled and scheduled on it.
         cut_audio = AudioSegment.silent(duration=target_len)
 
+        clips = []
         for sa in segment_audios:
             if sa.start_ms >= r.end_ms or sa.end_ms <= r.start_ms:
                 continue
@@ -577,22 +582,23 @@ def build_dubbed_audio(
                     "message": "Segment straddles cut ranges; slot left silent",
                 })
                 continue
-            from app.services.storage import get_storage
-            storage = get_storage()
             tts_local = _local_tts_path(temp_dir, sa.segment_id, sa.audio_ref)
             storage.download(sa.audio_ref, tts_local)
-            target_ms = sa.end_ms - sa.start_ms
-            fitted_path, warning = fit_dub_audio(
-                tts_local,
-                target_ms,
-                temp_dir,
-                segment_id=sa.segment_id,
-            )
-            if warning:
-                warnings.append(warning)
-            fitted_audio = AudioSegment.from_file(fitted_path)
-            position = sa.start_ms - r.start_ms
-            cut_audio = cut_audio.overlay(fitted_audio, position=position)
+            clips.append(VoiceClip(
+                sa.segment_id,
+                sa.start_ms - r.start_ms,
+                sa.end_ms - r.start_ms,
+                prepare_voice(AudioSegment.from_file(tts_local)),
+            ))
+        placements, fit_warnings = schedule(clips, target_len, temp_dir)
+        warnings.extend(fit_warnings)
+        for placement in placements:
+            # A cut range is a fixed video slice: a line may not spill into the next range.
+            room = max(0, target_len - placement.position_ms)
+            voice = placement.audio
+            if len(voice) > room:
+                voice = voice[:room].fade_out(min(120, room))
+            cut_audio = cut_audio.overlay(voice, position=placement.position_ms)
 
         cut_audios.append(cut_audio)
 

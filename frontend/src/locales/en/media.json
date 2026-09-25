@@ -211,7 +211,9 @@
       "emptyCues": "Subtitle timeline has no usable cues — restore or edit the translated text and timing, then Save and re-run Voice Dub & Render.",
       "durationMismatch": "Subtitle timing does not cover the video sufficiently — check the timing of your subtitle lines, especially around the ending, then Save and re-run Voice Dub & Render.",
       "generativeTtsDurationMismatch": "Generative narration is outside the requested duration — subtitle start/end edits cannot fix this TTS mismatch."
-    }
+    },
+    "waitingForQa": "Waiting for QA",
+    "waitingForQaReason": "Handle QA issues in Review to continue"
   },
   "upload": {
     "stepTitle": "Upload video",
@@ -435,7 +437,32 @@
       "medium": "Medium",
       "low": "Low"
     },
-    "jumpToCue": "Jump to cue #{{seq}}"
+    "jumpToCue": "Jump to cue #{{seq}}",
+    "blockingTitle_one": "{{count}} issue is blocking the render",
+    "blockingTitle_other": "{{count}} issues are blocking the render",
+    "blockingHelp": "Edit the subtitle to fix it, or skip the check if the warning is wrong. Saving a line clears its warnings.",
+    "otherOpen_one": "{{count}} more issue to review (not blocking).",
+    "otherOpen_other": "{{count}} more issues to review (not blocking).",
+    "firstIssue": "Go to first blocking issue",
+    "fixCue": "Edit subtitle",
+    "skipCheck": "Skip check",
+    "overlapNotSkippable": "Overlapping lines can't be skipped. Adjust the timing instead.",
+    "lineAt": "Line {{seq}} at {{time}}",
+    "types": {
+      "accuracy": "Translation accuracy",
+      "fluency": "Fluency",
+      "terminology": "Terminology",
+      "length": "Line length",
+      "timing": "Timing",
+      "subtitle_overlap": "Overlapping lines",
+      "invalid_timing": "Invalid timing"
+    },
+    "blocks": {
+      "BLOCK_RENDER": "Blocks render",
+      "BLOCK_PUBLISH": "Blocks publishing",
+      "BLOCK_APPROVAL": "Blocks approval",
+      "BLOCK_EXPORT": "Blocks publishing"
+    }
   },
   "subtitles": {
     "panelTitle": "Edit subtitles",
@@ -444,18 +471,18 @@
     "loading": "Loading subtitles…",
     "emptyTitle": "No subtitle lines",
     "emptyDesc": "No translation segments found for this media job.",
-    "hint": "Edit the translated text and timing on the original video timeline. After saving, re-run Voice Dub & Render.",
+    "hint": "Fix the translated text or timing. Saving a line clears its QA warnings; re-run Voice Dub & Render afterwards.",
     "timelineNote": "Times follow the source video",
     "segmentCount": "{{count}} lines",
     "sourceLabel": "Source",
     "targetLabel": "Translation",
-    "startMs": "Start (ms)",
-    "endMs": "End (ms)",
-    "msHelp": "1 second = 1000 ms",
+    "startMs": "Start",
+    "endMs": "End",
+    "msHelp": "m:ss.mmm, e.g. 1:05.250",
     "save": "Save",
     "saved": "Saved",
     "qaIssues": "{{count}} QA issue(s) on this line",
-    "invalidTiming": "Start/end must be non-negative numbers.",
+    "invalidTiming": "Enter times as m:ss.mmm, e.g. 1:05.250.",
     "invalidRange": "End must be greater than start.",
     "rerun": "Re-run Voice Dub & Render",
     "recovery": {
@@ -494,11 +521,19 @@
     "unsavedEditsHint": "{{count}} unsaved change(s).",
     "savedAll": "Saved {{count}} cues.",
     "tooManyToSave": "Too many edits ({{limit}} max per batch) — save in smaller groups.",
-    "invalidTimingSeq": "Cue #{{seq}}: invalid timing.",
+    "invalidTimingSeq": "Line {{seq}}: enter times as m:ss.mmm.",
     "invalidRangeSeq": "Cue #{{seq}}: end must be after start.",
     "unsaved": "Unsaved changes",
     "noMatch": "No cues match the current filter.",
-    "seekNote": "Click a cue to seek the video"
+    "seekNote": "Click a cue to seek the video",
+    "useVideoTime": "Use video time",
+    "nudgeEarlier": "0.1 s earlier",
+    "nudgeLater": "0.1 s later",
+    "duration": "{{seconds}} s on screen",
+    "readingSpeed": "{{cps}} characters/s",
+    "readingSpeedFast": "{{cps}} characters/s, too fast to read",
+    "qaOnLine": "Issues on this line",
+    "saveShortcut": "Ctrl+Enter saves this line"
   },
   "voice": {
     "optionalTitle": "Voice is optional",
@@ -926,5 +961,12 @@
     "SKIPPED": "Skipped",
     "CANCEL_REQUESTED": "Cancelling",
     "CANCELLED": "Cancelled"
+  },
+  "qaWait": {
+    "title_one": "Rendering is paused: {{count}} QA issue needs you",
+    "title_other": "Rendering is paused: {{count}} QA issues need you",
+    "titleUnknown": "Rendering is paused until QA issues are handled",
+    "body": "Fix the flagged subtitles or skip checks that are false alarms. Rendering starts on its own once nothing blocks it.",
+    "cta": "Review QA issues"
   }
 }

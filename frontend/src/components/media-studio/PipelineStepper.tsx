@@ -17,6 +17,7 @@ import { cn } from '@/lib/cn'
 import {
   isExtractiveRecipe,
   orderedMediaStages,
+  QA_BLOCKED,
   resolveRecipeId,
 } from '@/lib/media'
 import type { MediaJob, MediaJobStage, RenderFailureReason } from '@/types/media'
@@ -173,6 +174,7 @@ export function PipelineStepper({ job, className }: Props) {
             )
           })
         const connectorClass = connectorPathClass(st, reached)
+        const waitingForQa = st === 'PENDING' && stage.errorCode === QA_BLOCKED
 
         return (
           <div
@@ -190,7 +192,20 @@ export function PipelineStepper({ job, className }: Props) {
                 defaultValue: String(stage.stageName).replaceAll('_', ' '),
               })}
             </div>
-            <StageBadge status={stage.status} />
+            {waitingForQa ? (
+              <StageBadge
+                status={stage.status}
+                className="media-stage-waiting-qa"
+                label={t('pipeline.waitingForQa')}
+              />
+            ) : (
+              <StageBadge status={stage.status} />
+            )}
+            {waitingForQa && (
+              <div className="media-stage-reason warn" data-testid="stage-waiting-qa">
+                <IconAlertTriangle size={10} /> {t('pipeline.waitingForQaReason')}
+              </div>
+            )}
             {stage.stageName === 'TRANSLATE' && translateScopeKey && (
               <div className="media-stage-meta">{t(translateScopeKey)}</div>
             )}

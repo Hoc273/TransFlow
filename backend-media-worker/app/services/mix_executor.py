@@ -3,10 +3,11 @@
 Worker rules:
 - Execute the plan only — no DB, Strategy, Recipe, Provider, or GPU lookup.
 - Do not invent inputs; fail closed on invalid plan structure.
-- Phase 5 (docs/62 §2): optional TTS_SEGMENT `tempo` (0.8..1.2) is applied as
-  deterministic pitch-preserving atempo BEFORE the trim/pad fit — the slot
-  window [start_ms, end_ms] remains the alignment authority and tempo is the
-  only speed control in the mix path (legacy fit_dub_audio is untouched).
+- Phase 5 (docs/62 §2): optional TTS_SEGMENT `tempo` (0.8..1.2) is a user
+  speed applied as pitch-preserving atempo before fitting.
+- TTS clips are levelled and placed by ``dub_timeline``: each line starts at
+  its subtitle start and may use the pause before the next subtitle; it is sped
+  up (bounded) or, as a last resort, faded only when it would lag the video.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from typing import Any
 
 from pydub import AudioSegment
 
+from app.services.dub_timeline import VoiceClip, prepare_voice, schedule
 from app.services.ffmpeg import FFmpegError, _local_tts_path, _run, get_duration
 from app.services.storage import get_storage
 
@@ -53,12 +55,14 @@ def execute_mix_plan(mix_plan: dict[str, Any], temp_dir: str) -> tuple[str, int,
         if role == "TTS_SEGMENT":
             local = _local_tts_path(temp_dir, raw.get("segment_id") or input_id, audio_ref)
         storage.download(audio_ref, local)
-        # Phase 5 (docs/62 §2): tempo BEFORE gain/fade/fit — pitch-preserving
-        # atempo; the slot window stays the alignment authority (trim/pad after).
+        # Phase 5 (docs/62 §2): user tempo BEFORE gain/fade/fit — pitch-preserving atempo.
         tempo = raw.get("tempo")
         if role == "TTS_SEGMENT" and tempo is not None and abs(float(tempo) - 1.0) > 1e-9:
             local = _apply_tempo(local, float(tempo), temp_dir)
         segment = AudioSegment.from_file(local)
+        if role == "TTS_SEGMENT":
+            # One speech level for every provider clip; the user's TTS gain applies on top.
+            segment = prepare_voice(segment)
         segment = _apply_gain(segment, float(raw.get("gain_db") or 0.0))
         fade_in = int(raw.get("fade_in_ms") or 0)
         fade_out = int(raw.get("fade_out_ms") or 0)
@@ -90,27 +94,33 @@ def execute_mix_plan(mix_plan: dict[str, Any], temp_dir: str) -> tuple[str, int,
 
     ducking = mix_plan.get("ducking") or {"kind": "NONE"}
     kind = (ducking.get("kind") or "NONE").upper()
-    speech_ids = list(ducking.get("speech_input_ids") or [])
+    speech_ids = set(ducking.get("speech_input_ids") or [])
     tts_inputs = [i for i in mix_plan["inputs"] if i["role"] == "TTS_SEGMENT"]
 
-    speech_inputs = [item for item in tts_inputs if item["input_id"] in speech_ids]
-    if kind in {"WHOLE_MIX", "STEM_AWARE"} and speech_inputs:
+    clips = []
+    for tts in tts_inputs:
+        start = int(tts.get("start_ms") or 0)
+        end = int(tts.get("end_ms") or start)
+        if end <= start:
+            warnings.append({
+                "code": "EMPTY_TTS_WINDOW",
+                "message": "TTS window has non-positive duration",
+                "input_id": tts.get("input_id"),
+            })
+        clips.append(VoiceClip(tts["input_id"], start, max(start, end), loaded[tts["input_id"]]))
+    # The subtitle window is where a line starts; it may run on into the following pause
+    # instead of being cut at its subtitle end (see dub_timeline).
+    placements, fit_warnings = schedule(clips, len(bed), temp_dir)
+    warnings.extend(fit_warnings)
+
+    if kind in {"WHOLE_MIX", "STEM_AWARE"}:
         duck_gain_db = float(ducking.get("duck_gain_db") or -12.0)
         attack_ms = int(ducking.get("attack_ms") or 50)
         release_ms = int(ducking.get("release_ms") or 200)
         target_id = ducking.get("target_input_id")
-        # Whole-mix: duck entire bed under each TTS window (speech may bleed).
-        # Stem-aware: same gain automation on the assembled bed (music-led).
-        for tts in speech_inputs:
-            start = int(tts.get("start_ms") or 0)
-            end = int(tts.get("end_ms") or start)
-            if end <= start:
-                warnings.append({
-                    "code": "EMPTY_TTS_WINDOW",
-                    "message": "TTS window has non-positive duration",
-                    "input_id": tts.get("input_id"),
-                })
-                continue
+        # Duck the bed under the voice where it actually plays, merging touching lines
+        # so the bed does not pump between them.
+        for start, end in _speech_regions(p for p in placements if p.segment_id in speech_ids):
             bed = _duck_region(bed, start, end, duck_gain_db, attack_ms, release_ms)
         if target_id and target_id not in loaded:
             warnings.append({
@@ -119,24 +129,10 @@ def execute_mix_plan(mix_plan: dict[str, Any], temp_dir: str) -> tuple[str, int,
                 "input_id": target_id,
             })
 
-    # Overlay TTS segments at timeline positions
-    for tts in tts_inputs:
-        input_id = tts["input_id"]
-        start = int(tts.get("start_ms") or 0)
-        end = int(tts.get("end_ms") or start)
-        tts_audio = loaded[input_id]
-        target_ms = max(0, end - start)
-        if target_ms > 0 and len(tts_audio) > 0:
-            # Fit roughly to window without cross-service stretch policy (CT8 simple).
-            if abs(len(tts_audio) - target_ms) > 5:
-                # pad or trim
-                if len(tts_audio) > target_ms:
-                    tts_audio = tts_audio[:target_ms]
-                else:
-                    tts_audio = tts_audio + AudioSegment.silent(duration=target_ms - len(tts_audio))
-        if start + len(tts_audio) > len(bed):
-            bed = bed + AudioSegment.silent(duration=start + len(tts_audio) - len(bed))
-        bed = bed.overlay(tts_audio, position=start)
+    for placement in placements:
+        if placement.end_ms > len(bed):
+            bed = bed + AudioSegment.silent(duration=placement.end_ms - len(bed), frame_rate=bed.frame_rate)
+        bed = bed.overlay(placement.audio, position=placement.position_ms)
 
     output = mix_plan.get("output") or {}
     fmt = (output.get("format") or "wav").lower()
@@ -250,6 +246,16 @@ def _apply_tempo(path: str, tempo: float, temp_dir: str) -> str:
     ]
     _run(cmd)
     return output_path
+
+
+def _speech_regions(placements, merge_gap_ms: int = 400) -> list[tuple[int, int]]:
+    regions: list[list[int]] = []
+    for placement in sorted(placements, key=lambda p: p.position_ms):
+        if regions and placement.position_ms - regions[-1][1] <= merge_gap_ms:
+            regions[-1][1] = max(regions[-1][1], placement.end_ms)
+        else:
+            regions.append([placement.position_ms, placement.end_ms])
+    return [(start, end) for start, end in regions]
 
 
 def _duck_region(

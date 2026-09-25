@@ -211,7 +211,9 @@
       "emptyCues": "Timeline phụ đề không có cue hợp lệ — hãy khôi phục hoặc chỉnh lại nội dung bản dịch và timing, sau đó Lưu và chạy lại Lồng tiếng & Render.",
       "durationMismatch": "Timeline phụ đề chưa phủ đủ video — hãy kiểm tra timing các dòng phụ đề, đặc biệt khu vực gần cuối, sau đó Lưu và chạy lại Lồng tiếng & Render.",
       "generativeTtsDurationMismatch": "Lồng tiếng generative nằm ngoài thời lượng mục tiêu — chỉnh start/end phụ đề không khắc phục được mismatch TTS này."
-    }
+    },
+    "waitingForQa": "Chờ xử lý QA",
+    "waitingForQaReason": "Xử lý lỗi QA ở mục Review để tiếp tục"
   },
   "upload": {
     "stepTitle": "Tải video",
@@ -435,7 +437,32 @@
       "medium": "Trung bình",
       "low": "Thấp"
     },
-    "jumpToCue": "Nhảy tới cue #{{seq}}"
+    "jumpToCue": "Nhảy tới cue #{{seq}}",
+    "blockingTitle_one": "{{count}} lỗi đang chặn render",
+    "blockingTitle_other": "{{count}} lỗi đang chặn render",
+    "blockingHelp": "Sửa phụ đề để khắc phục, hoặc bỏ qua kiểm tra nếu cảnh báo sai. Lưu một dòng sẽ xoá cảnh báo của dòng đó.",
+    "otherOpen_one": "Còn {{count}} lỗi cần xem (không chặn).",
+    "otherOpen_other": "Còn {{count}} lỗi cần xem (không chặn).",
+    "firstIssue": "Tới lỗi chặn đầu tiên",
+    "fixCue": "Sửa phụ đề",
+    "skipCheck": "Bỏ qua kiểm tra",
+    "overlapNotSkippable": "Không thể bỏ qua lỗi chồng thời gian. Hãy chỉnh lại thời gian của dòng.",
+    "lineAt": "Dòng {{seq}} lúc {{time}}",
+    "types": {
+      "accuracy": "Độ chính xác bản dịch",
+      "fluency": "Độ trôi chảy",
+      "terminology": "Thuật ngữ",
+      "length": "Độ dài dòng",
+      "timing": "Thời gian",
+      "subtitle_overlap": "Chồng thời gian",
+      "invalid_timing": "Thời gian không hợp lệ"
+    },
+    "blocks": {
+      "BLOCK_RENDER": "Chặn render",
+      "BLOCK_PUBLISH": "Chặn xuất bản",
+      "BLOCK_APPROVAL": "Chặn duyệt",
+      "BLOCK_EXPORT": "Chặn xuất bản"
+    }
   },
   "subtitles": {
     "panelTitle": "Chỉnh phụ đề",
@@ -444,18 +471,18 @@
     "loading": "Đang tải phụ đề…",
     "emptyTitle": "Chưa có câu phụ đề",
     "emptyDesc": "Không tìm thấy segment dịch cho job này.",
-    "hint": "Sửa nội dung dịch và mốc thời gian theo timeline video gốc. Lưu xong cần chạy lại Lồng tiếng & Render.",
+    "hint": "Sửa nội dung dịch hoặc thời gian. Lưu một dòng sẽ xoá cảnh báo QA của dòng đó; sau đó chạy lại Lồng tiếng & Render.",
     "timelineNote": "Thời gian theo video gốc",
     "segmentCount": "{{count}} câu",
     "sourceLabel": "Gốc",
     "targetLabel": "Bản dịch",
-    "startMs": "Bắt đầu (ms)",
-    "endMs": "Kết thúc (ms)",
-    "msHelp": "1 giây = 1000 ms",
+    "startMs": "Bắt đầu",
+    "endMs": "Kết thúc",
+    "msHelp": "m:ss.mmm, ví dụ 1:05.250",
     "save": "Lưu",
     "saved": "Đã lưu",
     "qaIssues": "{{count}} lỗi QA trên dòng này",
-    "invalidTiming": "Thời gian bắt đầu/kết thúc phải là số ≥ 0.",
+    "invalidTiming": "Nhập thời gian dạng m:ss.mmm, ví dụ 1:05.250.",
     "invalidRange": "Điểm kết thúc phải lớn hơn điểm bắt đầu.",
     "rerun": "Chạy lại Lồng tiếng & Render",
     "recovery": {
@@ -494,11 +521,19 @@
     "unsavedEditsHint": "Có {{count}} thay đổi chưa lưu.",
     "savedAll": "Đã lưu {{count}} cue.",
     "tooManyToSave": "Quá nhiều thay đổi (tối đa {{limit}} mỗi lần) — hãy lưu theo nhóm nhỏ hơn.",
-    "invalidTimingSeq": "Cue #{{seq}}: thời gian không hợp lệ.",
+    "invalidTimingSeq": "Dòng {{seq}}: nhập thời gian dạng m:ss.mmm.",
     "invalidRangeSeq": "Cue #{{seq}}: thời điểm kết thúc phải sau thời điểm bắt đầu.",
     "unsaved": "Có thay đổi chưa lưu",
     "noMatch": "Không có cue nào khớp bộ lọc hiện tại.",
-    "seekNote": "Nhấn vào cue để nhảy tới vị trí video"
+    "seekNote": "Nhấn vào cue để nhảy tới vị trí video",
+    "useVideoTime": "Lấy thời điểm video",
+    "nudgeEarlier": "Sớm 0,1 giây",
+    "nudgeLater": "Trễ 0,1 giây",
+    "duration": "Hiện {{seconds}} giây",
+    "readingSpeed": "{{cps}} ký tự/giây",
+    "readingSpeedFast": "{{cps}} ký tự/giây, quá nhanh để đọc kịp",
+    "qaOnLine": "Lỗi trên dòng này",
+    "saveShortcut": "Ctrl+Enter để lưu dòng này"
   },
   "voice": {
     "optionalTitle": "Giọng nói là tùy chọn",
@@ -926,5 +961,12 @@
     "SKIPPED": "Bỏ qua",
     "CANCEL_REQUESTED": "Đang hủy",
     "CANCELLED": "Đã hủy"
+  },
+  "qaWait": {
+    "title_one": "Render đang tạm dừng: {{count}} lỗi QA cần bạn xử lý",
+    "title_other": "Render đang tạm dừng: {{count}} lỗi QA cần bạn xử lý",
+    "titleUnknown": "Render đang tạm dừng cho tới khi xử lý xong lỗi QA",
+    "body": "Sửa các phụ đề bị đánh dấu hoặc bỏ qua kiểm tra nếu là cảnh báo sai. Render tự chạy tiếp khi không còn lỗi chặn.",
+    "cta": "Xem lỗi QA"
   }
 }

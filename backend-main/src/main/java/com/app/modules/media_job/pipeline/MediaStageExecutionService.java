@@ -62,8 +62,6 @@ public class MediaStageExecutionService {
     private static final int TTS_BATCH_SIZE = 8;
     /** Same budget as the original pipeline: 3 retry rounds, 10s apart, failed segments only. */
     private static final int MAX_TTS_SEGMENT_RETRIES = 3;
-    /** Worker MixPlan bounds TTS tempo to 0.8..1.2; only speed-up is used to fit a slot. */
-    private static final double MAX_TTS_TEMPO = 1.2d;
     /** Narration retime bound: beyond ±10 % a voice audibly drags or rushes. */
     private static final double MIN_NARRATION_TEMPO = 0.9d;
     private static final double MAX_NARRATION_TEMPO = 1.1d;
@@ -412,10 +410,8 @@ public class MediaStageExecutionService {
             voice.put("segment_id", placement.segmentId());
             voice.put("start_ms", placement.startMs());
             voice.put("end_ms", placement.endMs());
-            Double tempo = fitTempo(placement);
-            if (tempo != null) {
-                voice.put("tempo", tempo);
-            }
+            // No tempo here: the worker levels each clip and fits it against the pause before
+            // the next subtitle using the real audio (docs/API_Contract AUDIO_MIX).
             inputs.add(voice);
             speechIds.add(inputId);
         }
@@ -425,16 +421,6 @@ public class MediaStageExecutionService {
                 "ducking", Map.of("kind", "WHOLE_MIX", "speech_input_ids", speechIds,
                         "target_input_id", "music", "duck_gain_db", -12),
                 "output", Map.of("asset_type", "MIXED_AUDIO", "format", "wav")));
-    }
-
-    /** Speed a clip up (bounded) when it is longer than its subtitle slot; the worker trims the rest. */
-    private Double fitTempo(TtsPlacement placement) {
-        long window = placement.endMs() - placement.startMs();
-        if (placement.durationMs() == null || window <= 0 || placement.durationMs() <= window) {
-            return null;
-        }
-        double tempo = Math.min(MAX_TTS_TEMPO, (double) placement.durationMs() / window);
-        return Math.round(tempo * 1000d) / 1000d;
     }
 
     /** Apply the persisted Render Studio audio controls to the worker MixPlan. */
@@ -1019,7 +1005,9 @@ public class MediaStageExecutionService {
             authored.put("status", "COMPLETED");
             authored.put("translation", sourceText);
             persistSubtitleSegments(job, sourceSegments, authored, SubtitleSegment.ContentSource.AUTHORED_SCRIPT);
-            runQualityChecks(job, sourceSegments, authored);
+            // Nothing was translated (source == target), so the AI translation-accuracy QA would only
+            // report "not translated" false positives that block RENDER; timing checks still run.
+            runDeterministicQa(job);
             completeSuccess(job, stage, message, authored);
             return;
         }
@@ -1800,6 +1788,13 @@ public class MediaStageExecutionService {
             log.warn("AI QA failed for job={}: {}", job.getId(), ex.getMessage());
         }
         recordDeterministicQa(segments, recorded);
+    }
+
+    private void runDeterministicQa(MediaJob job) {
+        if (subtitleSegmentRepository == null || qaService == null) {
+            return;
+        }
+        recordDeterministicQa(subtitleSegmentRepository.findByMediaJobIdOrderBySeq(job.getId()), new HashSet<>());
     }
 
     private String joinSegmentText(List<SubtitleSegment> segments, boolean source) {

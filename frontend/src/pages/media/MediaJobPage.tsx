@@ -8,6 +8,7 @@ import {
   IconRefresh,
   IconRocket,
   IconScissors,
+  IconShieldExclamation,
   IconShieldLock,
   IconVideo,
   IconX,
@@ -58,10 +59,12 @@ import {
   isCancellableMediaJob,
   isLocalizationRecipe,
   isRedundantPhaseBadge,
+  isRenderWaitingForQa,
   overallProgress,
   recipeLabelKey,
   recipeModeBadgeClass,
   recipePlanPanelKind,
+  renderBlockingIssues,
   resolveEffectivePhase,
   resolveWorkflowMode,
 } from '@/lib/media'
@@ -205,6 +208,22 @@ export function MediaJobPage() {
   )
 
   useWorkflowAutoScroll(job, { onMilestone: handleScrollMilestone })
+
+  // RENDER held by QA (backend-owned signal): open Review once per wait so the
+  // blocking issues are in front of the user instead of a silent PENDING stage.
+  const waitingForQa = isRenderWaitingForQa(job)
+  const qaBlockingCount = useMemo(() => renderBlockingIssues(realQaIssues).length, [realQaIssues])
+  const openedForQaRef = useRef(false)
+  useEffect(() => {
+    if (!waitingForQa) {
+      openedForQaRef.current = false
+      return
+    }
+    if (!openedForQaRef.current && !userToggledRef.current) {
+      openedForQaRef.current = true
+      openSection('review')
+    }
+  }, [waitingForQa, openSection])
 
   useEffect(() => {
     // Summary recipes still auto-open the plan panel when selection is needed.
@@ -688,6 +707,28 @@ export function MediaJobPage() {
                   {t('media:waitingForProposal.cta')}
                 </button>
               </p>
+            </div>
+          )}
+
+          {waitingForQa && (
+            <div className="media-banner warn mb-4" role="status" data-testid="qa-wait-banner">
+              <IconShieldExclamation size={18} className="mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="m-0 text-sm font-semibold">
+                  {qaBlockingCount > 0
+                    ? t('media:qaWait.title', { count: qaBlockingCount })
+                    : t('media:qaWait.titleUnknown')}
+                </p>
+                <p className="m-0 text-sm">{t('media:qaWait.body')}</p>
+              </div>
+              <button
+                type="button"
+                className="btn-media-secondary btn-sm shrink-0 whitespace-nowrap"
+                data-testid="qa-wait-cta"
+                onClick={() => openSection('review')}
+              >
+                {t('media:qaWait.cta')}
+              </button>
             </div>
           )}
 

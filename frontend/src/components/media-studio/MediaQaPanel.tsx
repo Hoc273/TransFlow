@@ -1,8 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  IconAlertTriangle,
-} from '@tabler/icons-react'
+import { IconAlertTriangle, IconPencil } from '@tabler/icons-react'
 import { QaOverrideModal } from '@/components/qa/QaOverrideModal'
 import { SeverityBadge } from '@/components/qa/SeverityBadge'
 import { useMediaJobQaIssues, useMediaSubtitles, useOverrideQaIssue } from '@/hooks/useMedia'
@@ -11,6 +9,7 @@ import { hasEffectiveBlockExport, hasEffectiveBlockRender, subtitleToSegmentItem
 import { featureFlags } from '@/config/featureFlags'
 import { usePermission } from '@/hooks/usePermission'
 import { cn } from '@/lib/cn'
+import { formatTimecode } from '@/lib/timecode'
 import { ApiError } from '@/types/api'
 import type { MediaJob } from '@/types/media'
 import type { BlockingAction, QaIssue } from '@/types/qa'
@@ -96,11 +95,30 @@ export const QA_VISIBLE_LIMIT = 5
 
 type IssuePair = { seg: SegmentItem; issue: QaIssue }
 
+/** CRITICAL timing overlaps are never overridable backend-side (OVERRIDE_NOT_ALLOWED). */
+export function isUnskippableIssue(issue: QaIssue): boolean {
+  return (
+    String(issue.type).toLowerCase() === 'subtitle_overlap' &&
+    String(issue.severity).toUpperCase() === 'CRITICAL'
+  )
+}
+
+/** Render-blocking issues first, then severity; resolved last (stable). */
+function compareForReview(a: IssuePair, b: IssuePair): number {
+  const aResolved = a.issue.resolved ? 1 : 0
+  const bResolved = b.issue.resolved ? 1 : 0
+  if (aResolved !== bResolved) return aResolved - bResolved
+  const aBlocks = hasEffectiveBlockRender([a.issue]) ? 0 : 1
+  const bBlocks = hasEffectiveBlockRender([b.issue]) ? 0 : 1
+  if (aBlocks !== bBlocks) return aBlocks - bBlocks
+  return compareIssuesForDisplay(a.issue, b.issue)
+}
+
 /**
- * Media QA panel — review workbench issue strip (docs/19 §1.8.2 redesign).
- * Compact actionable rows instead of the text-side table: Resolve applies the
- * suggestion (API existed for text; wired here), Override opens the shared
- * modal (Admin/PM, flag-gated). Clicking a row jumps to its cue.
+ * Media QA panel — review workbench issue list. The summary says what blocks
+ * the job and how to unblock it; every row names the subtitle it is about and
+ * offers the two ways out: edit the subtitle (saving clears its findings
+ * backend-side) or skip the check with a recorded reason.
  */
 export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
   const { t } = useTranslation(['media', 'job', 'common'])
@@ -122,20 +140,15 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
   )
 
   const issues = useMemo(() => pairs.map((p) => p.issue), [pairs])
-  const sortedPairs = useMemo(() => [...pairs].sort((a, b) => compareIssuesForDisplay(a.issue, b.issue)), [pairs])
+  const sortedPairs = useMemo(() => [...pairs].sort(compareForReview), [pairs])
 
   const bands = useMemo(() => countIssuesByBand(issues), [issues])
-  const critical = issues.filter(
-    (i) => !i.resolved && String(i.severity).toUpperCase() === 'CRITICAL',
-  )
-  const overlap = issues.filter(
-    (i) => !i.resolved && String(i.type).toLowerCase() === 'subtitle_overlap',
-  )
-  const blockRender = hasEffectiveBlockRender(issues)
+  const blocking = sortedPairs.filter((p) => hasEffectiveBlockRender([p.issue]))
   const blockExport = hasEffectiveBlockExport(issues)
   const openTotal = bands.high + bands.medium + bands.low
+  const otherOpen = openTotal - blocking.length
 
-  // Collapsed view shows the top open issues (severity first, resolved hidden);
+  // Collapsed view shows the top open issues (blocking first, resolved hidden);
   // the toggle reveals everything including resolved entries.
   const visible = expanded
     ? sortedPairs
@@ -164,21 +177,27 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
 
   return (
     <div className="space-y-3" data-testid="media-qa-panel">
-      {(critical.length > 0 || overlap.length > 0 || blockRender || blockExport) && (
-        <div className="media-banner warn">
-          <IconAlertTriangle size={18} />
-          <div className="space-y-1 text-sm">
-            {critical.length > 0 && (
-              <p className="m-0 font-semibold">
-                {t('qa.criticalCount', { count: critical.length })}
-              </p>
-            )}
-            {overlap.length > 0 && (
-              <p className="m-0">{t('qa.overlapHint', { count: overlap.length })}</p>
-            )}
-            {blockRender && <p className="m-0">{t('qa.blockRender')}</p>}
+      {blocking.length > 0 && (
+        <div className="media-banner warn" data-testid="qa-blocking-summary">
+          <IconAlertTriangle size={18} className="mt-0.5 shrink-0" />
+          <div className="min-w-0 flex-1 space-y-1 text-sm">
+            <p className="m-0 font-semibold">
+              {t('qa.blockingTitle', { count: blocking.length })}
+            </p>
+            <p className="m-0">{t('qa.blockingHelp')}</p>
+            {otherOpen > 0 && <p className="m-0">{t('qa.otherOpen', { count: otherOpen })}</p>}
             {blockExport && <p className="m-0">{t('qa.blockExport')}</p>}
           </div>
+          {onSelectIssue && (
+            <button
+              type="button"
+              className="btn-media-secondary btn-sm shrink-0 whitespace-nowrap"
+              data-testid="qa-first-blocking"
+              onClick={() => onSelectIssue(blocking[0].seg)}
+            >
+              {t('qa.firstIssue')}
+            </button>
+          )}
         </div>
       )}
 
@@ -191,6 +210,8 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
           const actions = issueBlockingActions(issue)
           const overridden = new Set((issue.overrides ?? []).map((o) => o.blockingAction))
           const overriding = override.isPending && override.variables?.issueId === issue.id
+          const typeKey = String(issue.type ?? '').toLowerCase()
+          const unskippable = isUnskippableIssue(issue)
           return (
             <div
               key={issue.id}
@@ -203,8 +224,18 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
                 onClick={() => onSelectIssue?.(seg)}
                 title={t('qa.jumpToCue', { seq: seg.seq })}
               >
-                <SeverityBadge severity={issue.severity} showMediaNote />
-                <span className="media-review-issue-type">{issue.type}</span>
+                <span className="media-review-issue-head">
+                  <SeverityBadge severity={issue.severity} showMediaNote />
+                  <span className="media-review-issue-type">
+                    {t(`qa.types.${typeKey}`, { defaultValue: issue.type })}
+                  </span>
+                  <span className="media-review-issue-where">
+                    {t('qa.lineAt', { seq: seg.seq, time: formatTimecode(seg.startMs ?? 0) })}
+                  </span>
+                </span>
+                {seg.targetText && (
+                  <span className="media-review-issue-cue">“{seg.targetText}”</span>
+                )}
                 <span className="media-review-issue-msg">
                   {issue.message}
                   {issue.suggestion && (
@@ -213,7 +244,8 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
                     </span>
                   )}
                 </span>
-                <span className="media-subtitle-seq">#{seg.seq}</span>
+              </button>
+              <div className="media-review-issue-foot">
                 <span className="flex flex-wrap gap-1">
                   {actions.map((a) => (
                     <span
@@ -221,28 +253,41 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
                       className={cn('chip chip-block', overridden.has(a) && 'chip-overridden')}
                       title={overridden.has(a) ? t('job:qa.overridden') : a}
                     >
-                      {a.replace('BLOCK_', '')}
+                      {t(`qa.blocks.${a}`, { defaultValue: a.replace('BLOCK_', '') })}
                     </span>
                   ))}
                 </span>
-              </button>
-              {!issue.resolved && (
-                <div className="media-review-issue-actions">
-                  {canOverride && actions.length > 0 && (
+                {!issue.resolved && (
+                  <div className="media-review-issue-actions">
                     <button
                       type="button"
-                      className="btn-ghost btn-sm"
-                      disabled={overriding}
-                      onClick={() => setOverrideIssue(issue)}
+                      className="btn-media-secondary btn-sm"
+                      data-testid={`qa-fix-${issue.id}`}
+                      onClick={() => onSelectIssue?.(seg)}
                     >
-                      {t('job:qa.override')}
+                      <IconPencil size={13} />
+                      {t('qa.fixCue')}
                     </button>
-                  )}
-                </div>
-              )}
-              {issue.resolved && (
-                <span className="media-review-issue-resolved">{t('job:qa.resolved')}</span>
-              )}
+                    {canOverride && actions.length > 0 && !unskippable && (
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        disabled={overriding}
+                        data-testid={`qa-skip-${issue.id}`}
+                        onClick={() => setOverrideIssue(issue)}
+                      >
+                        {t('qa.skipCheck')}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {!issue.resolved && unskippable && (
+                  <span className="media-review-issue-note">{t('qa.overlapNotSkippable')}</span>
+                )}
+                {issue.resolved && (
+                  <span className="media-review-issue-resolved">{t('job:qa.resolved')}</span>
+                )}
+              </div>
             </div>
           )
         })}

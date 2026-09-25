@@ -55,17 +55,24 @@
     "overridden": "Blocking action này đã được override",
     "overriddenShort": "đã override",
     "overrideModal": {
-      "title": "Override blocking action",
-      "description": "Override một blocking action QA để luồng tiếp tục. Thao tác này được ghi vào audit log.",
+      "title": "Bỏ qua kiểm tra QA này",
+      "description": "Lỗi được đánh dấu là đã xử lý và không còn chặn job. Lý do của bạn được lưu vào nhật ký audit.",
       "cancel": "Huỷ",
-      "submit": "Override",
-      "submitting": "Đang override…",
+      "submit": "Bỏ qua kiểm tra",
+      "submitting": "Đang bỏ qua…",
       "actionLabel": "Blocking action cần override",
       "reasonLabel": "Lý do",
-      "reasonPlaceholder": "Lý do blocking action này nên được override…",
+      "reasonPlaceholder": "Vì sao có thể bỏ qua kiểm tra này?",
       "reasonHint": "Tối thiểu {{min}} ký tự",
       "reasonOk": "Lý do đạt độ dài tối thiểu",
-      "allOverridden": "Tất cả blocking action của issue này đã được override."
+      "allOverridden": "Tất cả blocking action của issue này đã được override.",
+      "liftsLabel": "Gỡ chặn",
+      "presetsLabel": "Lý do thường gặp",
+      "presets": {
+        "falseAlarm": "Cảnh báo sai: nội dung đã đúng.",
+        "authored": "Kịch bản được viết trực tiếp bằng ngôn ngữ đích nên không cần dịch.",
+        "checked": "Đã kiểm tra thủ công: nội dung và thời gian đều ổn."
+      }
     },
     "criticalMediaOnly": "CRITICAL chỉ dùng runtime media",
     "severity": {

@@ -8,6 +8,7 @@ import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.repository.MediaJobStageRepository;
 import com.app.modules.media_job.repository.SubtitleSegmentRepository;
+import com.app.modules.notification.service.NotificationService;
 import com.app.modules.qa.entity.QaIssue;
 import com.app.modules.qa.repository.QaIssueRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,7 +43,11 @@ public class MediaPipelineDispatcher {
     private final RestClient workerClient;
     private final SubtitleSegmentRepository subtitleSegmentRepository;
     private final QaIssueRepository qaIssueRepository;
+    private final NotificationService notificationService;
     private final boolean enabled;
+
+    /** Stage error code shown while RENDER waits for blocking QA issues to be fixed or overridden. */
+    public static final String QA_BLOCKED = "QA_BLOCKED";
 
     @Autowired
     public MediaPipelineDispatcher(MediaJobRepository jobRepository,
@@ -51,6 +56,7 @@ public class MediaPipelineDispatcher {
                                    @Qualifier("mediaWorkerRestClient") RestClient workerClient,
                                    SubtitleSegmentRepository subtitleSegmentRepository,
                                    QaIssueRepository qaIssueRepository,
+                                   NotificationService notificationService,
                                    @Value("${app.pipeline.enabled:true}") boolean enabled) {
         this.jobRepository = jobRepository;
         this.stageRepository = stageRepository;
@@ -58,6 +64,7 @@ public class MediaPipelineDispatcher {
         this.workerClient = workerClient;
         this.subtitleSegmentRepository = subtitleSegmentRepository;
         this.qaIssueRepository = qaIssueRepository;
+        this.notificationService = notificationService;
         this.enabled = enabled;
     }
 
@@ -67,7 +74,7 @@ public class MediaPipelineDispatcher {
                                    MediaStageMessagePublisher publisher,
                                    AppProperties props) {
         this(jobRepository, stageRepository, publisher,
-                RestClient.builder().baseUrl(props.mediaWorker().baseUrl()).build(), null, null, true);
+                RestClient.builder().baseUrl(props.mediaWorker().baseUrl()).build(), null, null, null, true);
     }
 
     /** Claim and publish the first runnable stage, if any. */
@@ -102,7 +109,9 @@ public class MediaPipelineDispatcher {
             if (blockedByManualCheckpoint(job, stage)) {
                 return;
             }
-            if (blockedByQaGate(job, stage)) {
+            long blockingIssues = blockingQaIssues(job, stage);
+            if (blockingIssues > 0) {
+                markWaitingForQa(job, stage, blockingIssues);
                 return;
             }
 
@@ -209,23 +218,46 @@ public class MediaPipelineDispatcher {
                 .orElse(true);
     }
 
-    private boolean blockedByQaGate(MediaJob job, MediaJobStage stage) {
+    /** Number of unresolved QA issues that block this stage (only RENDER has a QA gate). */
+    private long blockingQaIssues(MediaJob job, MediaJobStage stage) {
         if (stage.getStageName() != MediaJobStage.StageName.RENDER
                 || subtitleSegmentRepository == null || qaIssueRepository == null) {
-            return false;
+            return 0;
         }
 
         List<UUID> segmentIds = subtitleSegmentRepository.findByMediaJobIdOrderBySeq(job.getId()).stream()
                 .map(segment -> segment.getId())
                 .toList();
         if (segmentIds.isEmpty()) {
-            return false;
+            return 0;
         }
 
         return qaIssueRepository.findBySubtitleSegmentIdInAndResolvedAtIsNull(segmentIds).stream()
                 .map(QaIssue::getBlockingActions)
                 .filter(actions -> actions != null)
-                .anyMatch(actions -> actions.stream()
-                        .anyMatch(action -> "BLOCK_RENDER".equalsIgnoreCase(action)));
+                .filter(actions -> actions.stream()
+                        .anyMatch(action -> "BLOCK_RENDER".equalsIgnoreCase(action)))
+                .count();
+    }
+
+    /**
+     * The gate keeps RENDER PENDING (it runs as soon as the issues are resolved or overridden), but
+     * the wait must be visible: the stage carries {@link #QA_BLOCKED} and the job owner is notified
+     * once per blocking episode.
+     */
+    private void markWaitingForQa(MediaJob job, MediaJobStage stage, long blockingIssues) {
+        boolean firstTime = !QA_BLOCKED.equals(stage.getErrorCode());
+        String message = blockingIssues == 1
+                ? "Render is waiting for QA review: 1 issue blocks rendering"
+                : "Render is waiting for QA review: " + blockingIssues + " issues block rendering";
+        stage.setErrorCode(QA_BLOCKED);
+        stage.setErrorMessage(message);
+        stage.setErrorDetail(null);
+        stageRepository.save(stage);
+        if (firstTime && notificationService != null) {
+            notificationService.notify(job.getWorkspaceId(), job.getCreatedByUserId(), "JOB_QA_BLOCKED",
+                    job.getId(), message + ". Fix the subtitles or override the issues in Review.");
+        }
+        log.info("RENDER waiting for QA job={} blockingIssues={}", job.getId(), blockingIssues);
     }
 }

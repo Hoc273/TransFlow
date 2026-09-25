@@ -1383,6 +1383,11 @@
   background: var(--stage-stale-bg);
   color: var(--stage-stale);
 }
+/* RENDER held by QA: still PENDING backend-side, but it needs the user. */
+.media-stage-badge.media-stage-waiting-qa {
+  background: var(--color-status-partial-bg);
+  color: var(--color-status-partial);
+}
 .media-stage-SKIPPED {
   background: var(--stage-skipped-bg);
   color: var(--stage-skipped);
@@ -1923,13 +1928,94 @@
   gap: 10px;
 }
 .media-subtitle-timing-field {
-  flex: 1 1 120px;
-  max-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 170px;
+  max-width: 220px;
   margin: 0;
+}
+.media-subtitle-time-input {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.media-subtitle-time-input .field-input {
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: center;
+}
+.media-subtitle-nudge {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.media-subtitle-nudge:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.media-subtitle-use-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+.media-subtitle-use-time:hover {
+  text-decoration: underline;
+}
+.media-subtitle-nudge:focus-visible,
+.media-subtitle-use-time:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.media-subtitle-save-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-left: auto;
 }
 .media-subtitle-save-btn {
   flex-shrink: 0;
-  margin-bottom: 2px;
+}
+.media-subtitle-stats {
+  margin: -4px 0 0;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-tertiary);
+}
+.media-subtitle-stats.fast {
+  color: var(--color-status-partial);
+  font-weight: 600;
+}
+.media-subtitle-line-issues {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--color-status-partial-bg);
+  color: var(--color-status-partial);
+  border: 1px solid color-mix(in srgb, var(--color-status-partial) 25%, transparent);
+}
+.media-subtitle-line-issues .media-subtitle-field-label {
+  color: inherit;
+}
+.media-subtitle-line-issues ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.45;
 }
 
 /* ===== Review workbench (docs/19 §1.8.2 redesign): sticky video left,
@@ -1999,16 +2085,15 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 22rem;
+  max-height: 30rem;
   overflow-y: auto;
   padding-right: 2px;
 }
 .media-review-issue-row {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background: var(--color-bg-surface);
@@ -2019,30 +2104,56 @@
 }
 .media-review-issue-main {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
   min-width: 0;
   text-align: left;
   background: none;
   border: none;
   padding: 0;
   cursor: pointer;
+  color: inherit;
+}
+.media-review-issue-main:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.media-review-issue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 .media-review-issue-type {
-  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.media-review-issue-where {
+  margin-left: auto;
   font-size: 11.5px;
-  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-tertiary);
+}
+/* The flagged subtitle itself, so the row can be judged without opening the editor. */
+.media-review-issue-cue {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .media-review-issue-msg {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   min-width: 0;
-  flex: 1 1 200px;
   font-size: 12.5px;
+  line-height: 1.45;
   color: var(--color-text-secondary);
 }
 .media-review-issue-suggestion {
@@ -2050,11 +2161,22 @@
   font-size: 11.5px;
   color: var(--color-accent);
 }
+.media-review-issue-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
 .media-review-issue-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
   margin-left: auto;
+}
+.media-review-issue-note {
+  flex-basis: 100%;
+  font-size: 11.5px;
+  color: var(--color-text-tertiary);
 }
 .media-review-issue-resolved {
   font-size: 11.5px;
@@ -2163,6 +2285,16 @@
   min-width: 0;
   font-size: 13px;
   color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Source line under the translation in collapsed rows, for side-by-side checking. */
+.media-subtitle-row-source {
+  flex-basis: 100%;
+  padding-left: 22px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -163,8 +163,9 @@ describe('MediaReviewSection — QA + Subtitles review workbench (docs/19 §1.8.
     // …clicking the row opens the inline editor: source + textarea + timing.
     fireEvent.click(screen.getByTestId('subtitle-row-head-1'))
     expect(await screen.findByDisplayValue('Xin chào thế giới')).not.toBeNull()
-    expect(screen.getByDisplayValue('1000')).not.toBeNull()
-    expect(screen.getByDisplayValue('4000')).not.toBeNull()
+    // Timing is edited as m:ss.mmm timecodes, not raw milliseconds.
+    expect(screen.getByDisplayValue('0:01.000')).not.toBeNull()
+    expect(screen.getByDisplayValue('0:04.000')).not.toBeNull()
     expect(screen.getByText('Hello world')).not.toBeNull()
   })
 

@@ -292,6 +292,18 @@ QA issue được pipeline tự sinh sau stage `TRANSLATE`/`SUMMARIZE`, không c
 | GET | `/api/workspaces/{workspaceId}/media/jobs/{jobId}/qa-issues?resolved=false` | LEAD/MEMBER/CLIENT | List `qa_issues` (kèm `severity`, `blocking_actions`) của job. |
 | POST | `/api/workspaces/{workspaceId}/qa-issues/{issueId}/override` | **job-ownership** (Lead mọi job; Member chỉ job của mình; Client luôn `403`) | `{reason}` (≥10 ký tự, bắt buộc). Ghi `qa_issue_overrides`, luôn lưu vết. `403` với `ErrorCode.OVERRIDE_NOT_ALLOWED` (§15) nếu `issue_type` thuộc nhóm không bao giờ override được (ví dụ `subtitle_overlap` CRITICAL) — áp dụng cả với Lead. |
 
+**Cổng QA trước RENDER (hiển thị).** Khi còn issue chưa resolve có `BLOCK_RENDER`, stage `RENDER` giữ
+`status=PENDING` (không FAILED) nhưng mang `errorCode="QA_BLOCKED"` và `errorMessage` nêu số issue đang chặn;
+chủ job nhận một thông báo `JOB_QA_BLOCKED` cho mỗi lần bị chặn. Áp dụng cho cả AUTO lẫn MANUAL. Khi không còn
+issue chặn (override hoặc sửa phụ đề), dispatcher claim RENDER và xoá `errorCode`.
+
+**Sửa phụ đề là cách xử lý issue.** `PATCH …/subtitles/{segmentId}` và batch edit: issue AI của dòng được
+resolve khi đổi `targetText` (issue `timing`/`length` cũng resolve khi chỉ đổi thời gian); issue
+`subtitle_overlap`/`invalid_timing` được kiểm tra lại trên toàn timeline và chỉ resolve khi dòng hết vi phạm.
+RENDER đang chờ QA được chạy tiếp chỉ khi không còn stage `STALE` (sửa sau TTS thì người dùng tự chạy lại để
+tránh trừ Credit ngoài ý muốn). Script tự viết bằng ngôn ngữ đích (`AUTHORED_SCRIPT`) không chạy QA dịch AI,
+chỉ kiểm tra thời gian.
+
 ---
 
 ## 9. Preset — 3 cấp + template dùng chung (SRS §5.7; DB §9)
@@ -660,6 +672,21 @@ dẫn theo lô 8 đoạn, chỉ các đoạn lệch quá ±15%, tối đa 3 vòn
 `NARRATION_LENGTH_RESIDUAL` (không FAILED). Khi RENDER, Spring bù phần thiếu còn lại bằng tempo 0.9–1.1× rồi
 khoảng nghỉ cuối mỗi beat (≤ 35% giọng của beat và ≤ 2.5 s); worker đệm im lặng cho audio beat tới
 `tts_duration_ms`.
+
+**FastAPI `POST /media/summarize/script` — độ phủ section.** Section (segment) không do model quyết định
+độ phủ: gateway chia toàn bộ transcript thành các cửa sổ liên tiếp theo thời gian (~45 s, tối đa
+`requested_duration / 6 s` cửa sổ), chia `requested_duration` theo tỉ lệ độ dài cửa sổ, lấy một đoạn liền mạch
+trong mỗi cửa sổ (neo theo đoạn model đã chọn trong cửa sổ đó, không có thì chọn chỗ nhiều lời thoại nhất), rồi
+tách thành các beat ~6 s (≥ 4 s, ưu tiên ranh giới câu). Excerpt của model được gắn vào beat trùng nhiều nhất
+làm bản nháp; beat chưa có lời dẫn được viết theo ngân sách ký tự ở trên. Beat vẫn không có lời dẫn sau khi
+viết (mọi lần gọi lỗi) bị bỏ, kèm cảnh báo `SECTIONS_WITHOUT_NARRATION_DROPPED`.
+
+**Worker `AUDIO_MIX` / `LEGACY_DUBBED` — đặt giọng TTS.** Mỗi clip TTS được cắt khoảng lặng đầu/cuối của
+provider và chuẩn hoá về cùng mức âm lượng (−19 dBFS RMS, đỉnh ≤ −1 dBFS) trước `gain_db`. Dòng bắt đầu tại
+`start_ms` của phụ đề và được dùng cả khoảng nghỉ trước phụ đề kế tiếp; chỉ tăng tốc (atempo giữ cao độ, ≤ 1.35×)
+khi không vừa khoảng đó, được phép trễ và đẩy dòng sau lùi lại tới 1.2 s, và chỉ bị cắt kèm fade khi vượt
+ngưỡng đó (cảnh báo `AUDIO_TRUNCATED`; trễ trong ngưỡng → `AUDIO_DELAYED`). Ducking áp theo vị trí giọng thực
+tế. Spring không gửi `tempo` để fit khung nữa; `tempo` (0.8–1.2) trong MixPlan chỉ là tốc độ người dùng chọn.
 
 ---
 

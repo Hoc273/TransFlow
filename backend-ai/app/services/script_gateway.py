@@ -16,6 +16,7 @@ from app.schemas.script import (
 )
 from app.services.llm_gateway import chat, text_reasoning_extra
 from app.services.provider_errors import ProviderErrorCode, ProviderException
+from app.services.summary.coverage_plan import Sentence, plan_coverage
 from app.services.summary.narration_fill import NarrationSlot, fill_narration, join_narration
 from app.services.summary.script_timeline import (
     DurationUnreachable,
@@ -187,7 +188,9 @@ def _confidence(value) -> float | None:
         return None
 
 
-def _parse_response(req: ScriptSummarizeRequest | ScriptRefineRequest, raw: str, usage) -> ScriptSummarizeResponse:
+def _parse_response(
+    req: ScriptSummarizeRequest | ScriptRefineRequest, raw: str, usage
+) -> tuple[ScriptSummarizeResponse, list[TimelineSegment]]:
     try:
         payload = parse_json_object(raw)
     except ValueError as exc:
@@ -207,12 +210,32 @@ def _parse_response(req: ScriptSummarizeRequest | ScriptRefineRequest, raw: str,
 
     requested_ms = _requested_duration(req) * 1000
     before_ms = total_ms(segments)
+    model_ranges = [(s.start_ms, s.end_ms) for s in segments]
+    # Section coverage is deterministic (as the original allocator): the model's
+    # matches only anchor footage inside chronological blocks of the whole video.
+    segments = plan_coverage(
+        segments,
+        [Sentence(s.start_ms, s.end_ms, s.text or "") for s in req.transcript],
+        requested_ms,
+    )
     try:
-        segments, adjusted = fit_to_window(segments, sentences, requested_ms)
+        segments, _ = fit_to_window(segments, sentences, requested_ms)
     except DurationUnreachable as exc:
         raise _OutputViolation(
             str(exc), ProviderErrorCode.PROVIDER_OUTPUT_BUSINESS_RULE_VIOLATION, repairable=False
         ) from exc
+    adjusted = model_ranges != [(s.start_ms, s.end_ms) for s in segments]
+    _log.info(
+        "Script summary coverage correlation_id=%s model=%s model_segments=%d sections=%d "
+        "covered_span_ms=%d-%d source_extent_ms=%d",
+        req.correlation_id,
+        req.provider.model,
+        len(model_ranges),
+        len(segments),
+        segments[0].start_ms,
+        segments[-1].end_ms,
+        max((end for _, end in sentences), default=0),
+    )
 
     warnings = [str(w) for w in payload.get("warnings") or [] if isinstance(w, (str, int, float))]
     if adjusted:
@@ -226,26 +249,18 @@ def _parse_response(req: ScriptSummarizeRequest | ScriptRefineRequest, raw: str,
             total_ms(segments),
         )
     reasoning = payload.get("reasoning_note")
-    return ScriptSummarizeResponse(
+    parsed = ScriptSummarizeResponse(
         correlation_id=req.correlation_id,
         status="COMPLETED",
         script_content=script,
         script_language=str(payload.get("script_language") or req.target_lang),
-        segments=[
-            ScriptSegment(
-                start_ms=s.start_ms,
-                end_ms=s.end_ms,
-                script_excerpt=s.script_excerpt,
-                source_sentence_refs=s.source_sentence_refs,
-                reasoning_note=s.reasoning_note,
-            )
-            for s in segments
-        ],
         reasoning_note=reasoning if isinstance(reasoning, str) else None,
         confidence=_confidence(payload.get("confidence")),
         warnings=warnings,
         usage=usage,
     )
+    # Coverage beats may still lack narration; _fit_narration writes it before segments are built.
+    return parsed, segments
 
 
 def _safe_preview(text: str, limit: int = 600) -> str:
@@ -291,12 +306,13 @@ def _slot_source(req: ScriptSummarizeRequest | ScriptRefineRequest, start_ms: in
 
 async def _fit_narration(req: ScriptSummarizeRequest | ScriptRefineRequest,
                          parsed: ScriptSummarizeResponse,
+                         timeline: list[TimelineSegment],
                          usage: Usage | None) -> ScriptSummarizeResponse:
     """Budget each fitted footage segment's narration so the voice fills the requested duration."""
     cps = _narration_cps(req)
     slots = [
         NarrationSlot(s.start_ms, s.end_ms, s.script_excerpt.strip(), _slot_source(req, s.start_ms, s.end_ms))
-        for s in parsed.segments
+        for s in timeline
     ]
     before = sum(len(slot.text) for slot in slots)
     warnings = list(parsed.warnings)
@@ -320,12 +336,41 @@ async def _fit_narration(req: ScriptSummarizeRequest | ScriptRefineRequest,
     )
     if miss > NARRATION_TOLERANCE:
         warnings.append("NARRATION_LENGTH_RESIDUAL")
+    # A coverage beat with no draft stays empty only if every writer call failed;
+    # footage without narration cannot be voiced, so it is left out.
+    narrated = [
+        TimelineSegment(t.start_ms, t.end_ms, slot.text.strip(), list(t.source_sentence_refs), t.reasoning_note)
+        for t, slot in zip(timeline, slots)
+        if slot.text.strip()
+    ]
+    if not narrated:
+        raise ProviderException(
+            ProviderErrorCode.PROVIDER_EMPTY_RESPONSE,
+            "Model returned no narration for the summary sections",
+            provider=req.provider.base_url,
+            protocol=req.provider.protocol,
+            capability="TEXT",
+            model=req.provider.model,
+        )
+    if len(narrated) < len(slots):
+        warnings.append("SECTIONS_WITHOUT_NARRATION_DROPPED")
+        try:
+            narrated, _ = fit_to_window(
+                narrated, [(t.start_ms, t.end_ms) for t in req.transcript], _requested_duration(req) * 1000)
+        except DurationUnreachable:
+            pass  # keep the narrated beats; Spring validates the final window
     segments = [
-        segment.model_copy(update={"script_excerpt": slot.text})
-        for segment, slot in zip(parsed.segments, slots)
+        ScriptSegment(
+            start_ms=t.start_ms,
+            end_ms=t.end_ms,
+            script_excerpt=t.script_excerpt,
+            source_sentence_refs=t.source_sentence_refs,
+            reasoning_note=t.reasoning_note,
+        )
+        for t in narrated
     ]
     return parsed.model_copy(update={
-        "script_content": join_narration([slot.text for slot in slots], req.target_lang),
+        "script_content": join_narration([segment.script_excerpt for segment in segments], req.target_lang),
         "segments": segments,
         "warnings": list(dict.fromkeys(warnings)),
         "usage": usage,
@@ -387,7 +432,7 @@ async def _run(req: ScriptSummarizeRequest | ScriptRefineRequest, *, previous_sc
             return _failed(req, exc.message, error=exc)
         usage = _merge_usage(usage, result.usage)
         try:
-            parsed = _parse_response(req, result.text or "", usage)
+            parsed, timeline = _parse_response(req, result.text or "", usage)
         except _OutputViolation as exc:
             response = _failed(req, exc.message, exc.code.value)
             _log.warning(
@@ -408,7 +453,10 @@ async def _run(req: ScriptSummarizeRequest | ScriptRefineRequest, *, previous_sc
             continue
         # The footage is fitted; narration length is budgeted per segment, which
         # converges where whole-script "expand" repairs keep shrinking the text.
-        return await _fit_narration(req, parsed, usage)
+        try:
+            return await _fit_narration(req, parsed, timeline, usage)
+        except ProviderException as exc:
+            return _failed(req, exc.message, error=exc)
     assert response is not None
     return response
 

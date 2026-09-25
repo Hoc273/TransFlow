@@ -55,6 +55,18 @@ def _narration(user_prompt: str, chars: int) -> SimpleNamespace:
         {"id": key, "narration": "n" * chars} for key in ids]}), usage=None)
 
 
+def _on_budget(user_prompt: str, only: list[str] | None = None) -> SimpleNamespace:
+    """Answer each requested segment with exactly its target_chars."""
+    items = re.findall(r'<segment id="(\d+)"[^>]*target_chars="(\d+)"', user_prompt)
+    return SimpleNamespace(text=json.dumps({"segments": [
+        {"id": key, "narration": "n" * int(target)} for key, target in items
+        if only is None or key in only]}), usage=None)
+
+
+def _budget(segment: dict, cps: float) -> int:
+    return max(12, round((segment["end_ms"] - segment["start_ms"]) / 1000 * cps))
+
+
 def _post(body: dict, *outputs, narration=None):
     chat = AsyncMock(side_effect=[SimpleNamespace(text=o, usage=None) for o in outputs])
     fill = AsyncMock(side_effect=narration or [])
@@ -71,17 +83,25 @@ def _post(body: dict, *outputs, narration=None):
 
 
 def test_prompt_carries_the_narration_budget_from_the_voice_rate() -> None:
-    payload, chat, fill = _post(_body(17.5), _output(525))  # 60 s × 17.5 = 1050 chars
+    async def narrate(provider, system, user, **kwargs):
+        return _on_budget(user)
+
+    payload, chat, _ = _post(_body(17.5), _output(525), narration=narrate)  # 60 s × 17.5 = 1050 chars
 
     assert payload["status"] == "COMPLETED"
     prompt = chat.await_args_list[0].args[2]
     assert "about 1050 characters" in prompt
     assert chat.await_count == 1
-    assert fill.await_count == 0  # already inside every segment budget
+    total = sum(len(s["script_excerpt"]) for s in payload["segments"])
+    assert abs(total - 1050) <= 105
+    assert "NARRATION_LENGTH_RESIDUAL" not in payload["warnings"]
 
 
 def test_default_rate_matches_the_original_writer_when_no_calibration_exists() -> None:
-    payload, chat, _ = _post(_body(None), _output(420))  # 60 s × 14 = 840 chars
+    async def narrate(provider, system, user, **kwargs):
+        return _on_budget(user)
+
+    payload, chat, _ = _post(_body(None), _output(420), narration=narrate)  # 60 s × 14 = 840 chars
 
     assert payload["status"] == "COMPLETED"
     assert "about 840 characters" in chat.await_args_list[0].args[2]
@@ -89,15 +109,15 @@ def test_default_rate_matches_the_original_writer_when_no_calibration_exists() -
 
 def test_short_narration_is_rewritten_per_segment_to_its_budget() -> None:
     async def narrate(provider, system, user, **kwargs):
-        assert 'target_chars="525"' in user and "<source>" in user
-        return _narration(user, 520)
+        assert "target_chars=" in user and "<source>" in user
+        return _on_budget(user)
 
     payload, chat, fill = _post(_body(17.5), _output(200), narration=narrate)
 
     assert payload["status"] == "COMPLETED"
     assert chat.await_count == 1  # no whole-script repair round-trips
-    assert fill.await_count == 1  # both short segments in one batch
-    assert [len(s["script_excerpt"]) for s in payload["segments"]] == [520, 520]
+    assert fill.await_count == -(-len(payload["segments"]) // 8)  # one batched round
+    assert all(len(s["script_excerpt"]) == _budget(s, 17.5) for s in payload["segments"])
     assert "NARRATION_LENGTH_RESIDUAL" not in payload["warnings"]
     for segment in payload["segments"]:
         assert segment["script_excerpt"] in payload["script_content"]
@@ -105,14 +125,18 @@ def test_short_narration_is_rewritten_per_segment_to_its_budget() -> None:
 
 def test_rewrites_that_move_away_from_the_budget_are_discarded() -> None:
     async def narrate(provider, system, user, **kwargs):
-        return _narration(user, 50)  # worse than the 200-char draft
+        return _narration(user, 5000)  # far above every budget
 
     payload, _, fill = _post(_body(17.5), _output(200), narration=narrate)
 
     assert payload["status"] == "COMPLETED"
-    assert fill.await_count == 3  # bounded rounds, then keep the best draft
-    assert [len(s["script_excerpt"]) for s in payload["segments"]] == [200, 200]
+    assert fill.await_count == 3 * 2  # 3 bounded rounds x 2 batches of the 11 coverage sections
+    excerpts = [s["script_excerpt"] for s in payload["segments"]]
+    # The model's drafts are closer to budget than the runaway rewrites, so they survive;
+    # sections that never got usable narration are dropped rather than rendered silent.
+    assert excerpts == ["a" * 200, "b" * 200]
     assert "NARRATION_LENGTH_RESIDUAL" in payload["warnings"]
+    assert "SECTIONS_WITHOUT_NARRATION_DROPPED" in payload["warnings"]
 
 
 def test_segments_the_model_skips_are_retried_next_round() -> None:
@@ -121,12 +145,26 @@ def test_segments_the_model_skips_are_retried_next_round() -> None:
     async def narrate(provider, system, user, **kwargs):
         calls.append(user)
         ids = re.findall(r'<segment id="(\d+)"', user)
-        keep = ids[:1] if len(calls) == 1 else ids
-        return SimpleNamespace(text=json.dumps({"segments": [
-            {"id": key, "narration": "n" * 525} for key in keep]}), usage=None)
+        return _on_budget(user, only=ids[:1] if len(calls) == 1 else None)
 
     payload, _, fill = _post(_body(17.5), _output(200), narration=narrate)
 
-    assert fill.await_count == 2
-    assert 'id="2"' in calls[1] and 'id="1"' not in calls[1]
-    assert [len(s["script_excerpt"]) for s in payload["segments"]] == [525, 525]
+    first_round = -(-len(payload["segments"]) // 8)
+    assert fill.await_count == first_round + 1
+    retry = calls[first_round]
+    assert 'id="2"' in retry and 'id="1"' not in retry
+    assert all(len(s["script_excerpt"]) == _budget(s, 17.5) for s in payload["segments"])
+
+
+def test_sections_cover_the_whole_source_even_when_the_model_clusters_at_the_start() -> None:
+    async def narrate(provider, system, user, **kwargs):
+        return _on_budget(user)
+
+    payload, _, _ = _post(_body(17.5), _output(525), narration=narrate)  # model: only 0-60 s of 300 s
+
+    segments = payload["segments"]
+    assert len(segments) >= 8
+    assert segments[0]["start_ms"] < 45_000
+    assert segments[-1]["end_ms"] > 255_000
+    # No gap between consecutive sections is wider than two coverage windows.
+    assert all(b["start_ms"] - a["end_ms"] < 90_000 for a, b in zip(segments, segments[1:]))

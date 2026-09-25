@@ -700,6 +700,27 @@ export function hasEffectiveBlockRender(issues: QaIssue[] | undefined | null): b
   })
 }
 
+/** Backend stage errorCode while RENDER is held by unresolved BLOCK_RENDER QA issues. */
+export const QA_BLOCKED = 'QA_BLOCKED'
+
+/**
+ * RENDER is PENDING and the dispatcher recorded that QA holds it. Backend-owned
+ * (docs/API_Contract): never inferred from issue lists, which may still be loading.
+ */
+export function isRenderWaitingForQa(job: Pick<MediaJob, 'stages'> | null | undefined): boolean {
+  return !!job?.stages?.some(
+    (s) =>
+      s.stageName === 'RENDER' &&
+      String(s.status).toUpperCase() === 'PENDING' &&
+      s.errorCode === QA_BLOCKED,
+  )
+}
+
+/** Open issues that currently block rendering (not resolved, BLOCK_RENDER not overridden). */
+export function renderBlockingIssues(issues: QaIssue[] | undefined | null): QaIssue[] {
+  return (issues ?? []).filter((issue) => hasEffectiveBlockRender([issue]))
+}
+
 export function normalizeCutRanges(raw: unknown): Array<{ startMs: number; endMs: number }> {
   if (!Array.isArray(raw)) return []
   return raw

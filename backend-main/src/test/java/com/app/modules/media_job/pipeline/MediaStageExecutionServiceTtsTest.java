@@ -12,6 +12,10 @@ import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.repository.MediaJobStageRepository;
 import com.app.modules.media_job.repository.SubtitleSegmentRepository;
 import com.app.modules.provider.service.ProviderResolverService;
+import com.app.modules.qa.entity.QaIssue;
+import com.app.modules.qa.service.QaService;
+import com.app.modules.summarization.entity.SummaryProposal;
+import com.app.modules.summarization.entity.SummaryProposalSegment;
 import com.app.modules.summarization.service.SummarizationService;
 import com.app.modules.summarization.service.SummaryAiClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -181,7 +185,7 @@ class MediaStageExecutionServiceTtsTest {
         worker.expect(requestTo("http://worker.test/internal/media/audio-mix"))
                 .andExpect(jsonPath("$.mix_plan.inputs.length()").value(3))
                 .andExpect(jsonPath("$.mix_plan.inputs[1].segment_id").value(first.getId().toString()))
-                .andExpect(jsonPath("$.mix_plan.inputs[1].tempo").value(1.2))
+                .andExpect(jsonPath("$.mix_plan.inputs[1].tempo").doesNotExist())
                 .andExpect(jsonPath("$.mix_plan.inputs[2].start_ms").value(2_000))
                 .andExpect(jsonPath("$.mix_plan.inputs[2].end_ms").value(4_000))
                 .andExpect(jsonPath("$.mix_plan.inputs[2].tempo").doesNotExist())
@@ -433,6 +437,43 @@ class MediaStageExecutionServiceTtsTest {
                 subtitleSegmentRepository, null, null, null, null);
         pipeline.setTtsSegmentRetryDelayMs(0L);
         return pipeline;
+    }
+
+    @Test
+    void authoredSummaryScriptSkipsTranslationQaSoRenderIsNotBlockedByNotTranslated() {
+        stage(MediaJobStage.StageName.TRANSLATE);
+        job.setRecipeId(MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH);
+        job.setSourceLanguage("vi");
+        job.setTargetLang("en");
+        UUID proposalId = UUID.randomUUID();
+        job.setSelectedProposalId(proposalId);
+        SummaryProposal proposal = new SummaryProposal();
+        proposal.setScriptContent("First sentence. Second sentence.");
+        when(summarizationService.getProposalById(proposalId)).thenReturn(proposal);
+        SummaryProposalSegment one = new SummaryProposalSegment();
+        one.setScriptExcerpt("First sentence.");
+        one.setStartMs(0L);
+        one.setEndMs(2_000L);
+        SummaryProposalSegment two = new SummaryProposalSegment();
+        two.setScriptExcerpt("Second sentence.");
+        two.setStartMs(2_000L);
+        two.setEndMs(4_000L);
+        when(summarizationService.getSegments(proposalId)).thenReturn(List.of(one, two));
+        QaService qaService = mock(QaService.class);
+        RestClient.Builder aiBuilder = RestClient.builder().baseUrl("http://qa.test");
+        MockRestServiceServer qa = MockRestServiceServer.bindTo(aiBuilder).build(); // no /ai/qa call expected
+
+        new MediaStageExecutionService(jobRepository, stageRepository, assetRepository, storage,
+                providerResolver, summaryAiClient, summarizationService, callbackService, objectMapper,
+                new AppProperties(null, null, null, null, null, null),
+                RestClient.builder().baseUrl("http://ai.test").build(), RestClient.builder().build(),
+                aiBuilder.build(), RestClient.builder().build(),
+                subtitleSegmentRepository, qaService, null, null, null).execute(message("TRANSLATE"));
+
+        qa.verify();
+        verify(qaService, never()).recordIssue(any(), eq("accuracy"), any(QaIssue.Severity.class), any(), any());
+        verify(callbackService).completeStage(eq(jobId), eq(stageId), eq(MediaJobStage.StageName.TRANSLATE),
+                eq(true), any(), any(), any(), any(), any());
     }
 
     private void renderSource(long durationMs) {

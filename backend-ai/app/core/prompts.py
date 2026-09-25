@@ -464,6 +464,9 @@ def build_script_summarize_prompt(
             f"Select footage whose summed segment durations total about {requested_duration_seconds * 1000} ms "
             f"(allowed {requested_duration_seconds * 800}-{requested_duration_seconds * 1200} ms); "
             "prefer whole transcript sentences and cite them in source_sentence_refs.",
+            "Cover the whole video in chronological order: return about "
+            f"{max(1, requested_duration_seconds // 6)} short segments (about 6-10 seconds each) spread "
+            "from the beginning to the end of the transcript timeline, not clustered in one part.",
         ]
     )
     if narration_cps:
