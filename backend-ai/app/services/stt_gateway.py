@@ -50,6 +50,9 @@ _STT_TAIL_RECOVERY_WINDOW_MS = 120_000
 # chunks keep each timeline local and are offset to their real start.
 _STT_FALLBACK_CHUNK_MS = 120_000
 _STT_FALLBACK_MIN_MS = 150_000
+# A malformed chunk (output cap on dense dialogue, timestamps past the chunk)
+# gets one plain retry, then is re-transcribed as short windows.
+_STT_MALFORMED_RETRIES_BEFORE_SPLIT = 1
 
 
 class _CompressedTimeline(ProviderValidation):
@@ -163,7 +166,14 @@ def _log_sanity_verdict(
         ),
     }
     if verdict.result is TranscriptSanityResult.MALFORMED:
-        _int_log.warning("STT_TRANSCRIPT_SANITY_CHECK result=MALFORMED", extra=extra)
+        _int_log.warning(
+            "STT_TRANSCRIPT_SANITY_CHECK result=MALFORMED reason=%s segments=%d maxEndMs=%s durationMs=%s",
+            violation.reason if violation else None,
+            extra["segmentCount"],
+            extra["maxEndMs"],
+            duration_ms,
+            extra=extra,
+        )
     elif verdict.result is TranscriptSanityResult.SUSPICIOUS:
         _int_log.warning("STT_TRANSCRIPT_SANITY_CHECK result=SUSPICIOUS", extra=extra)
     else:
@@ -196,11 +206,18 @@ async def transcribe(req: "SttRequest") -> SttResponse:
             )
             try:
                 result = await _transcribe_with_retry(
-                    adapter, req, audio_input, stop_on_compressed=chunkable
+                    adapter,
+                    req,
+                    audio_input,
+                    stop_on_compressed=chunkable,
+                    malformed_retries=_STT_MALFORMED_RETRIES_BEFORE_SPLIT if chunkable else None,
                 )
-            except _CompressedTimeline as exc:
+            except ProviderException as exc:
+                if not chunkable or exc.code != ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED:
+                    raise
                 _int_log.warning(
-                    "STT timeline compressed on the single call; retranscribing in %d ms chunks",
+                    "STT single call stayed malformed (compressed timeline or output cap); "
+                    "retranscribing in %d ms chunks",
                     _STT_FALLBACK_CHUNK_MS,
                     extra={
                         "provider": req.provider.protocol,
@@ -374,6 +391,7 @@ async def _transcribe_long_audio(adapter, req, *, chunk_ms: int = _STT_CHUNK_DUR
             async def transcribe_local_audio(
                 path: Path,
                 duration_ms: int,
+                malformed_retries: int | None = None,
             ) -> TranscribeResult:
                 async with semaphore:
                     return await _transcribe_with_retry(
@@ -381,15 +399,54 @@ async def _transcribe_long_audio(adapter, req, *, chunk_ms: int = _STT_CHUNK_DUR
                         req,
                         AudioInput.from_file(path, mime_type="audio/wav"),
                         validation_duration_ms=duration_ms,
+                        malformed_retries=malformed_retries,
                     )
 
-            results = list(
-                await asyncio.gather(
-                    *(
-                        transcribe_local_audio(chunk.path, chunk.duration_ms)
-                        for chunk in chunks
+            async def transcribe_chunk(chunk: _AudioChunk) -> TranscribeResult:
+                try:
+                    return await transcribe_local_audio(
+                        chunk.path,
+                        chunk.duration_ms,
+                        malformed_retries=_STT_MALFORMED_RETRIES_BEFORE_SPLIT,
                     )
+                except ProviderException as exc:
+                    if (
+                        exc.code != ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED
+                        or chunk.duration_ms <= _STT_TAIL_RECOVERY_WINDOW_MS
+                    ):
+                        raise
+                    _int_log.warning(
+                        "STT chunk %d stayed malformed (%s); re-transcribing as %d ms windows",
+                        chunk.index,
+                        exc.message,
+                        _STT_TAIL_RECOVERY_WINDOW_MS,
+                        extra={"model": req.provider.model, "correlationId": req.correlation_id},
+                    )
+                windows = await _materialize_recovery_windows(
+                    source_path, chunk, 0, chunk.duration_ms, Path(chunk_dir), req
                 )
+                window_results = await asyncio.gather(
+                    *(transcribe_local_audio(w.path, w.duration_ms) for w in windows)
+                )
+                # Windows are timed globally; the merge expects chunk-local timing.
+                segments = [
+                    segment.model_copy(update={
+                        "start_ms": segment.start_ms - chunk.start_ms,
+                        "end_ms": segment.end_ms - chunk.start_ms,
+                    })
+                    for window, window_result in zip(windows, window_results)
+                    for segment in _offset_recovered_segments(window, window_result)
+                ]
+                return TranscribeResult(
+                    segments=segments,
+                    detected_lang=next(
+                        (r.detected_lang for r in window_results if r.detected_lang), None
+                    ),
+                    audio_seconds=sum(r.audio_seconds for r in window_results),
+                )
+
+            results = list(
+                await asyncio.gather(*(transcribe_chunk(chunk) for chunk in chunks))
             )
             peer_speech_indexes = {
                 chunk.index
@@ -777,6 +834,7 @@ async def _transcribe_with_retry(
     *,
     validation_duration_ms: int | None = None,
     stop_on_compressed: bool = False,
+    malformed_retries: int | None = None,
 ):
     attempt = 0
     duration_ms = (
@@ -825,7 +883,13 @@ async def _transcribe_with_retry(
         except ProviderException as exc:
             if stop_on_compressed and isinstance(exc, _CompressedTimeline):
                 raise
-            if exc.retryable and attempt < settings.max_retries:
+            retry_limit = settings.max_retries
+            if (
+                malformed_retries is not None
+                and exc.code == ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED
+            ):
+                retry_limit = min(retry_limit, malformed_retries)
+            if exc.retryable and attempt < retry_limit:
                 _prov_log.warning(
                     "STT provider retryable error (attempt %d): %s",
                     attempt,

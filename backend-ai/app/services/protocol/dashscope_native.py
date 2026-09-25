@@ -531,11 +531,13 @@ class DashScopeNativeAdapter(ProtocolAdapter):
         if salvaged:
             _prov_log.warning(
                 "DashScope STT detected %d complete segments in partial output model=%s "
-                "finish_reason=%s response_len=%d",
+                "finish_reason=%s response_len=%d head=%r tail=%r",
                 len(salvaged),
                 getattr(provider, "model", None),
                 finish_reason,
                 len(response_text),
+                _safe_preview(response_text[:300]),
+                _safe_preview(response_text[-300:]),
                 extra={"protocol": self.protocol, "capability": "STT"},
             )
             raise ProviderValidation(
