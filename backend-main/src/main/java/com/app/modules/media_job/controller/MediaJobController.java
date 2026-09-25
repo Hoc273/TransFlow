@@ -28,6 +28,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -67,8 +68,14 @@ public class MediaJobController {
                                                           @PathVariable UUID projectId,
                                                           @RequestParam(required = false) MediaJob.JobStatus status,
                                                           @RequestParam(required = false) String recipeId) {
-        List<MediaJobResponse> jobs = jobService.listJobs(workspaceId, user.id(), projectId, status, recipeId).stream()
-                .map(MediaJobResponse::from)
+        List<MediaJob> found = jobService.listJobs(workspaceId, user.id(), projectId, status, recipeId);
+        // The list's "current stage" column needs each job's stages; load them in one query.
+        Map<UUID, List<MediaJobStage>> stagesByJob = jobService.getStagesByJobIds(
+                found.stream().map(MediaJob::getId).toList());
+        List<MediaJobResponse> jobs = found.stream()
+                .map(job -> MediaJobResponse.from(job, stagesByJob.getOrDefault(job.getId(), List.of()).stream()
+                        .map(MediaJobStageResponse::from)
+                        .toList()))
                 .toList();
         return ApiResponse.<List<MediaJobResponse>>builder().data(jobs).build();
     }

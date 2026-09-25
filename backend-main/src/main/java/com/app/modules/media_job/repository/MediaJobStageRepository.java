@@ -15,6 +15,9 @@ public interface MediaJobStageRepository extends JpaRepository<MediaJobStage, UU
 
     List<MediaJobStage> findByMediaJobIdOrderByStageOrder(UUID mediaJobId);
 
+    /** Stages of several jobs in one query (job list view). */
+    List<MediaJobStage> findByMediaJobIdInOrderByStageOrder(Collection<UUID> mediaJobIds);
+
     Optional<MediaJobStage> findByMediaJobIdAndStageName(UUID mediaJobId, MediaJobStage.StageName stageName);
 
     /** Watchdog candidates: in-flight or cancelling attempts started before {@code cutoff}. */

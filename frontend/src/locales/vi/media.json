@@ -37,7 +37,9 @@
     "chipCompleted": "Xong",
     "clear": "Xóa bộ lọc",
     "noMatching": "Không tìm thấy job phù hợp với bộ lọc.",
-    "pageSize": "Dòng / trang:"
+    "pageSize": "Dòng / trang:",
+    "sortStatusAsc": "Trạng thái: cần xử lý trước",
+    "sortStatusDesc": "Trạng thái: hoàn tất trước"
   },
   "error": {
     "NO_AUDIO_STREAM": "Video không chứa âm thanh, không thể thực hiện dịch/tóm tắt."
@@ -914,5 +916,15 @@
     "voiceNotSet": "Chưa chọn giọng",
     "voiceFromPreset": "Giọng theo preset"
   },
-  "projectSourceShort": "Nguồn"
+  "projectSourceShort": "Nguồn",
+  "stageStatus": {
+    "PENDING": "Chờ",
+    "PROCESSING": "Đang chạy",
+    "COMPLETED": "Hoàn tất",
+    "FAILED": "Lỗi",
+    "STALE": "Cần chạy lại",
+    "SKIPPED": "Bỏ qua",
+    "CANCEL_REQUESTED": "Đang hủy",
+    "CANCELLED": "Đã hủy"
+  }
 }

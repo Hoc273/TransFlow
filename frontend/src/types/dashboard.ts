@@ -4,6 +4,8 @@ export type OperationUsage = {
   outputTokens: number
   totalTokens: number
   operationCount: number
+  /** Credits charged for this group (absent on older payloads). */
+  creditUsed?: number
 }
 
 export type ModelUsage = {
@@ -22,6 +24,8 @@ export type UsageSummary = {
   operationCount: number
   byOperation: OperationUsage[]
   byModel: ModelUsage[]
+  /** Total credits charged in scope (absent on older payloads). */
+  creditUsed?: number
   /** Always "Coming soon" at MVP (Q-DASH1). */
   cost: string
 }

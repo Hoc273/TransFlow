@@ -39,7 +39,7 @@
   },
   "usage": {
     "title": "Tài nguyên AI",
-    "subtitle": "Tiêu thụ token theo thao tác AI và model (PM / Admin)",
+    "subtitle": "Tiêu thụ token và credit theo thao tác AI, dự án và thành viên",
     "backToDashboard": "Về Bảng điều khiển",
     "empty": "Không có dữ liệu usage cho phạm vi này",
     "summary": {
@@ -48,7 +48,8 @@
       "total": "Tổng token",
       "operations": "Thao tác",
       "currentScope": "Phạm vi hiện tại",
-      "cost": "Chi phí ước tính"
+      "cost": "Chi phí ước tính",
+      "creditUsed": "Credit đã dùng"
     },
     "filter": {
       "project": "Dự án",
@@ -74,7 +75,19 @@
       "total": "Tổng",
       "calls": "Lượt gọi",
       "provider": "Provider",
-      "model": "Model"
+      "model": "Model",
+      "share": "Tỷ lệ",
+      "credit": "Credit",
+      "project": "Dự án",
+      "user": "Thành viên"
+    },
+    "byProject": {
+      "title": "Usage theo dự án",
+      "subtitle": "Token, lượt gọi và credit theo từng dự án"
+    },
+    "byUser": {
+      "title": "Usage theo thành viên",
+      "subtitle": "Token, lượt gọi và credit theo người thực hiện"
     }
   },
   "col": {

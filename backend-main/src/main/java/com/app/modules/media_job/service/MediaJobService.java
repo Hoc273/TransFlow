@@ -9,7 +9,9 @@ import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.entity.SubtitleSegment;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -31,6 +33,9 @@ public interface MediaJobService {
     MediaJob getJob(UUID workspaceId, UUID userId, UUID jobId);
 
     List<MediaJobStage> getStages(UUID jobId);
+
+    /** Stages of several jobs keyed by job id, ordered by stage order; loaded in one query. */
+    Map<UUID, List<MediaJobStage>> getStagesByJobIds(Collection<UUID> jobIds);
 
     MediaJob cancelJob(UUID workspaceId, UUID userId, UUID jobId);
 

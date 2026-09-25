@@ -24,6 +24,7 @@ export function getUsageApi(workspaceId: string, query: UsageQuery = {}): Promis
         outputTokens: Number(item.outputTokens ?? 0),
         totalTokens: Number(item.totalTokens ?? 0),
         operationCount: Number(item.operations ?? 0),
+        creditUsed: Number(item.creditUsed ?? 0),
       }))
 
       return {
@@ -33,6 +34,7 @@ export function getUsageApi(workspaceId: string, query: UsageQuery = {}): Promis
         operationCount: Number(res.totalOperations ?? 0),
         byOperation,
         byModel: [],
+        creditUsed: Number(res.totalCreditUsed ?? 0),
         cost: res.totalCreditUsed != null ? `${res.totalCreditUsed} credits` : 'Coming soon',
       }
     }

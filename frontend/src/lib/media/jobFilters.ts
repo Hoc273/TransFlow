@@ -1,7 +1,43 @@
 import type { MediaJob } from '@/types/media'
 import { isActiveMediaJobStatus, recipeLabelKey } from '@/lib/media'
 
-export type JobSortKey = 'created_desc' | 'created_asc' | 'name_asc' | 'name_desc'
+export type JobSortKey =
+  | 'created_desc'
+  | 'created_asc'
+  | 'name_asc'
+  | 'name_desc'
+  | 'status_asc'
+  | 'status_desc'
+
+const JOB_SORT_KEYS: readonly JobSortKey[] = [
+  'created_desc',
+  'created_asc',
+  'name_asc',
+  'name_desc',
+  'status_asc',
+  'status_desc',
+]
+
+/** Default table order: newest job first. Unknown values (e.g. stale ?sort= URLs) fall back to it. */
+export function normalizeJobSortKey(value: string | null | undefined): JobSortKey {
+  return JOB_SORT_KEYS.includes(value as JobSortKey) ? (value as JobSortKey) : 'created_desc'
+}
+
+/** Status sort order: jobs needing attention first, finished/terminal jobs last. */
+const STATUS_SORT_RANK: Record<string, number> = {
+  FAILED: 0,
+  PARTIALLY_FAILED: 1,
+  WAITING_APPROVAL: 2,
+  WAITING_INPUT: 3,
+  PROCESSING: 4,
+  PENDING: 5,
+  COMPLETED: 6,
+  CANCELLED: 7,
+}
+
+function statusRank(status: string | undefined): number {
+  return STATUS_SORT_RANK[String(status ?? '').toUpperCase()] ?? 99
+}
 
 export type JobFilterState = {
   search?: string
@@ -124,6 +160,12 @@ export function filterAndSortJobs(
       const nameB = assetMap.get(b.rootAssetId) || b.id
       const cmp = nameA.localeCompare(nameB)
       return sortBy === 'name_asc' ? cmp : -cmp
+    }
+    if (sortBy === 'status_asc' || sortBy === 'status_desc') {
+      const cmp = statusRank(a.status) - statusRank(b.status)
+      if (cmp !== 0) return sortBy === 'status_asc' ? cmp : -cmp
+      // Same status: newest first keeps the list stable and useful.
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     }
     return 0
   })

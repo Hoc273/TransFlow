@@ -10,12 +10,45 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/hooks/useMedia', () => ({
   useMediaLinkedJob: () => ({ data: { segments: linkedSegments }, isLoading: false }),
-  useMediaSubtitles: () => ({ data: [], isLoading: false }),
-  useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
+  useMediaSubtitles: () => ({ data: cuesOf(linkedSegments), isLoading: false }),
+  useMediaJobQaIssues: () => ({ data: issuesOf(linkedSegments), isLoading: false }),
   useEditMediaSegment: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useBatchEditMediaSegments: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useRerunTtsRender: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }))
+
+// The editor/QA panel read cues from useMediaSubtitles and issues from
+// useMediaJobQaIssues; derive both from the SegmentItem fixtures. Results are
+// cached by fixture content so the mocked hooks return stable references while the
+// data is unchanged (like react-query) — a fresh array on every render would loop
+// the component's effects — yet still reflect tests that mutate a fixture.
+const cueCache = new Map<string, unknown[]>()
+const issueCache = new Map<string, unknown[]>()
+
+function cached(cache: Map<string, unknown[]>, items: SegmentItem[], build: () => unknown[]) {
+  const key = JSON.stringify(items)
+  if (!cache.has(key)) cache.set(key, build())
+  return cache.get(key)
+}
+
+function cuesOf(items: SegmentItem[]) {
+  return cached(cueCache, items, () =>
+    items.map((s) => ({
+      id: s.id,
+      seq: s.seq,
+      sourceText: s.sourceText,
+      targetText: s.targetText,
+      startMs: s.startMs ?? 0,
+      endMs: s.endMs ?? 0,
+    })),
+  )
+}
+
+function issuesOf(items: SegmentItem[]) {
+  return cached(issueCache, items, () =>
+    items.flatMap((s) => (s.qaIssues ?? []).map((q) => ({ ...q, subtitleSegmentId: s.id }))),
+  )
+}
 
 const linkedSegments: SegmentItem[] = [
   {

@@ -39,7 +39,7 @@
   },
   "usage": {
     "title": "AI Resource Usage",
-    "subtitle": "Token consumption by AI operations and model (PM / Admin)",
+    "subtitle": "Token and credit consumption by AI operation, project and member",
     "backToDashboard": "Back to dashboard",
     "empty": "No usage data for this scope",
     "summary": {
@@ -48,7 +48,8 @@
       "total": "Total tokens",
       "operations": "Operations",
       "currentScope": "Current scope",
-      "cost": "Estimated cost"
+      "cost": "Estimated cost",
+      "creditUsed": "Credits used"
     },
     "filter": {
       "project": "Project",
@@ -74,7 +75,19 @@
       "total": "Total",
       "calls": "Calls",
       "provider": "Provider",
-      "model": "Model"
+      "model": "Model",
+      "share": "Share",
+      "credit": "Credits",
+      "project": "Project",
+      "user": "Member"
+    },
+    "byProject": {
+      "title": "Usage by project",
+      "subtitle": "Tokens, calls and credits per project"
+    },
+    "byUser": {
+      "title": "Usage by member",
+      "subtitle": "Tokens, calls and credits per member"
     }
   },
   "col": {

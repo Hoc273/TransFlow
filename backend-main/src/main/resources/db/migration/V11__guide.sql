@@ -1,5 +1,5 @@
 -- ============================================================================
--- V5 — Trang Hướng Dẫn (Guide Module)
+-- V11 — Trang Hướng Dẫn (Guide Module)
 -- Category and Article tables with multi-language (vi/en) support & sample seeds.
 -- ============================================================================
 

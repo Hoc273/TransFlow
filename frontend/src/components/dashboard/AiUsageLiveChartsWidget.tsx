@@ -30,13 +30,7 @@ import { usePermission } from '@/hooks/usePermission'
 import { useUiStore } from '@/store/uiStore'
 import { formatCompactNumber, formatNumber } from '@/lib/format'
 import { cn } from '@/lib/cn'
-
-const OP_COLORS: Record<string, string> = {
-  TRANSLATE: '#7c5cff',
-  QA: '#38bdf8',
-  EMBED: '#f59e0b',
-  SUMMARY: '#10b981',
-}
+import { assignUsageColors } from '@/lib/usageColors'
 
 const MODEL_PALETTE = ['#7c5cff', '#38bdf8', '#10b981', '#f59e0b', '#ec4899', '#6366f1']
 
@@ -45,7 +39,7 @@ export function AiUsageLiveChartsWidget() {
   const { workspaceId = '' } = useParams()
   const language = useUiStore((s) => s.language)
   const canView = usePermission('dashboard.usage')
-  const { data, isLoading, isFetching, isError } = useUsage(workspaceId)
+  const { data, isLoading, isFetching, isError } = useUsage(workspaceId, { groupBy: 'operation' })
   const { data: projectsData, isLoading: projectsLoading } = useProjects(workspaceId)
 
   const [activeTab, setActiveTab] = useState<'operation' | 'model'>('operation')
@@ -57,13 +51,14 @@ export function AiUsageLiveChartsWidget() {
   // Donut chart dataset
   const donutData = useMemo(() => {
     if (activeTab === 'operation') {
+      const colors = assignUsageColors(operations.map((op) => op.operation))
       return operations.map((op) => ({
         name: op.operation,
         value: op.totalTokens,
         calls: op.operationCount,
         input: op.inputTokens,
         output: op.outputTokens,
-        color: OP_COLORS[op.operation.toUpperCase()] || '#818cf8',
+        color: colors.get(op.operation) ?? '#818cf8',
       }))
     }
     return models.map((m, idx) => ({

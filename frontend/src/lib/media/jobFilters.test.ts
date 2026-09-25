@@ -4,6 +4,7 @@ import {
   computeJobCounts,
   filterAndSortJobs,
   isNeedReviewJob,
+  normalizeJobSortKey,
 } from './jobFilters'
 
 const mockJobs: MediaJob[] = [
@@ -139,5 +140,23 @@ describe('jobFilters', () => {
 
     const nameDesc = filterAndSortJobs(mockJobs, assetMap, { sortBy: 'name_desc' })
     expect(nameDesc.map((j) => j.id)).toEqual(['job-4', 'job-3', 'job-2', 'job-1'])
+  })
+
+  it('sorts by status: needs-attention first (asc) or finished first (desc)', () => {
+    const statusAsc = filterAndSortJobs(mockJobs, assetMap, { sortBy: 'status_asc' })
+    // FAILED, WAITING_APPROVAL, PROCESSING, COMPLETED
+    expect(statusAsc.map((j) => j.id)).toEqual(['job-3', 'job-4', 'job-2', 'job-1'])
+
+    const statusDesc = filterAndSortJobs(mockJobs, assetMap, { sortBy: 'status_desc' })
+    expect(statusDesc.map((j) => j.id)).toEqual(['job-1', 'job-2', 'job-4', 'job-3'])
+  })
+})
+
+describe('normalizeJobSortKey', () => {
+  it('defaults to newest-first for missing or unknown sort values', () => {
+    expect(normalizeJobSortKey(undefined)).toBe('created_desc')
+    expect(normalizeJobSortKey(null)).toBe('created_desc')
+    expect(normalizeJobSortKey('bogus')).toBe('created_desc')
+    expect(normalizeJobSortKey('status_asc')).toBe('status_asc')
   })
 })

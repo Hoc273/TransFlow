@@ -21,7 +21,7 @@ export function MobileDashboardPage() {
 
   const { data: projects, isLoading: isProjectsLoading } = useProjects(workspaceId)
   const { data: batches, isLoading: isBatchesLoading } = useBatches(workspaceId)
-  const { data: usage, isLoading: isUsageLoading } = useUsage(workspaceId)
+  const { data: usage, isLoading: isUsageLoading } = useUsage(workspaceId, { groupBy: 'operation' })
 
   const recentProjects = (projects ?? []).slice(0, 5)
 

@@ -37,7 +37,9 @@
     "chipCompleted": "Completed",
     "clear": "Clear filters",
     "noMatching": "No jobs match the current filters.",
-    "pageSize": "Rows per page:"
+    "pageSize": "Rows per page:",
+    "sortStatusAsc": "Status: needs attention first",
+    "sortStatusDesc": "Status: finished first"
   },
   "error": {
     "NO_AUDIO_STREAM": "This video has no audio track. Translation and summarization require audio."
@@ -914,5 +916,15 @@
     "voiceNotSet": "No voice yet",
     "voiceFromPreset": "Voice from preset"
   },
-  "projectSourceShort": "Source"
+  "projectSourceShort": "Source",
+  "stageStatus": {
+    "PENDING": "Pending",
+    "PROCESSING": "Running",
+    "COMPLETED": "Completed",
+    "FAILED": "Failed",
+    "STALE": "Stale",
+    "SKIPPED": "Skipped",
+    "CANCEL_REQUESTED": "Cancelling",
+    "CANCELLED": "Cancelled"
+  }
 }

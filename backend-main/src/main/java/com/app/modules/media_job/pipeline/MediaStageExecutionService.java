@@ -784,7 +784,7 @@ public class MediaStageExecutionService {
         JsonNode result = executeSttWithRetry(stage, body, provider,
                 response -> rejectTruncatedGenerativeTranscript(job, response, durationMs));
         chargeAiUsage(job, "STT", usageUnits(result, "STT", durationMs == null ? 0L : durationMs),
-                provider.personalApiKey());
+                result, provider.personalApiKey());
         completeSuccess(job, stage, message, result);
     }
 
@@ -893,6 +893,7 @@ public class MediaStageExecutionService {
                     result == null || result.usageTokens() == 0
                             ? estimateTokens(serialized + (result == null ? "" : result.scriptContent()))
                             : result.usageTokens(),
+                    result == null ? 0L : result.outputTokens(),
                     hasPersonalProvider(job, "TRANSLATE"));
             SummaryProposal proposal = summarizationService.persistAiProposalResult(
                     stage.getId(), (short) 1, result, null, duration);
@@ -916,7 +917,7 @@ public class MediaStageExecutionService {
                 .body(body).retrieve().body(JsonNode.class);
         ensureCompleted(result, "SUMMARIZE");
         chargeAiUsage(job, "SUMMARIZE_SCRIPT", usageUnits(result, "SUMMARIZE", serializedLength(segments)),
-                provider.personalApiKey());
+                result, provider.personalApiKey());
         completeSuccess(job, stage, message, result);
     }
 
@@ -1005,7 +1006,7 @@ public class MediaStageExecutionService {
                 .body(body).retrieve().body(JsonNode.class);
         ensureCompleted(result, "TRANSLATE");
         chargeAiUsage(job, "TRANSLATE", usageUnits(result, "TRANSLATE", sourceText.length()),
-                provider.personalApiKey());
+                result, provider.personalApiKey());
         persistSubtitleSegments(job, sourceSegments, result, contentSource(job));
         runQualityChecks(job, sourceSegments, result);
         completeSuccess(job, stage, message, result);
@@ -1278,16 +1279,35 @@ public class MediaStageExecutionService {
 
     /** Charge only after the FastAPI stage has returned COMPLETED. */
     private void chargeAiUsage(MediaJob job, String capability, long units, boolean personalApiKey) {
+        chargeAiUsage(job, capability, units, 0L, personalApiKey);
+    }
+
+    private void chargeAiUsage(MediaJob job, String capability, long units, JsonNode result,
+                               boolean personalApiKey) {
+        JsonNode usage = result == null ? null : result.get("usage");
+        long outputTokens = usage != null && usage.isObject() ? usage.path("output_tokens").asLong(0L) : 0L;
+        chargeAiUsage(job, capability, units, outputTokens, personalApiKey);
+    }
+
+    /**
+     * Charges {@code units} and logs them split into input/output tokens. Output tokens
+     * come from the provider-reported usage; the remainder of the billed units is input,
+     * so input + output always equals the billed units (non-token units count as input).
+     */
+    private void chargeAiUsage(MediaJob job, String capability, long units, long outputTokens,
+                               boolean personalApiKey) {
         if (creditService == null) {
             return;
         }
         long billableUnits = Math.max(1L, units);
+        long loggedOutputTokens = Math.min(billableUnits, Math.max(0L, outputTokens));
         java.math.BigDecimal creditUsed = creditService.chargeUsage(
                 job.getWorkspaceId(), job.getCreatedByUserId(), capability, billableUnits, personalApiKey);
         if (aiUsageLogService != null) {
             try {
                 aiUsageLogService.record(job.getWorkspaceId(), job.getProjectId(), job.getId(),
-                        job.getCreatedByUserId(), capability, personalApiKey, billableUnits, creditUsed);
+                        job.getCreatedByUserId(), capability, personalApiKey,
+                        billableUnits - loggedOutputTokens, loggedOutputTokens, creditUsed);
             } catch (Exception ex) {
                 // Usage logging must not turn a successfully charged/completed AI
                 // stage into a retry (the credit transaction is already durable).
@@ -1386,7 +1406,7 @@ public class MediaStageExecutionService {
                 context = fallback;
             }
             chargeAiUsage(job, "VISION", usageUnits(result, "VISION",
-                    Math.max(1L, result.path("frame_samples").size() * 800L)), provider.personalApiKey());
+                    Math.max(1L, result.path("frame_samples").size() * 800L)), result, provider.personalApiKey());
             return objectMapper.writeValueAsString(context);
         } catch (AppException ex) {
             // Credit failures are business failures, not an optional VLM outage.

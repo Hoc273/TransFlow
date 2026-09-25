@@ -32,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -334,6 +335,16 @@ public class MediaJobServiceImpl implements MediaJobService {
     @Transactional(readOnly = true)
     public List<MediaJobStage> getStages(UUID jobId) {
         return mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, List<MediaJobStage>> getStagesByJobIds(Collection<UUID> jobIds) {
+        if (jobIds == null || jobIds.isEmpty()) {
+            return Map.of();
+        }
+        return mediaJobStageRepository.findByMediaJobIdInOrderByStageOrder(jobIds).stream()
+                .collect(Collectors.groupingBy(MediaJobStage::getMediaJobId));
     }
 
     // ---- cancel ----

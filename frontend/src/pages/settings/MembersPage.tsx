@@ -202,15 +202,20 @@ export function MembersPage() {
                       </td>
                       {canManage && (
                         <td>
-                          <button
-                            type="button"
-                            className="btn-icon-danger"
-                            disabled={removeMember.isPending || disableDemote}
-                            title={t('settings:members.remove')}
-                            onClick={() => onRemove(m.memberId, m.userId, m.role)}
-                          >
-                            <IconTrash size={16} />
-                          </button>
+                          {/* BE rejects removing a LEAD (LEAD_CANNOT_BE_REMOVED) — hide the action. */}
+                          {m.role === 'LEAD' ? (
+                            <span className="text-[var(--color-text-tertiary)]">—</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-icon-danger"
+                              disabled={removeMember.isPending || disableDemote}
+                              title={t('settings:members.remove')}
+                              onClick={() => onRemove(m.memberId, m.userId, m.role)}
+                            >
+                              <IconTrash size={16} />
+                            </button>
+                          )}
                         </td>
                       )}
                     </tr>

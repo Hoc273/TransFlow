@@ -3420,6 +3420,100 @@
   align-items: center;
   gap: 8px;
 }
+.jobs-table {
+  width: 100%;
+  min-width: 1060px;
+  table-layout: fixed;
+}
+
+/* Every column has a content-based width; on wider screens the fixed table layout
+   spreads the leftover space proportionally across all columns, so no single
+   column (job or stage) swallows it as one big gap. */
+.jobs-table__col-job {
+  width: 330px;
+}
+
+.jobs-table__col-stage {
+  width: 230px;
+}
+
+.jobs-table__col-status {
+  width: 170px;
+}
+
+.jobs-table__col-created {
+  width: 130px;
+}
+
+.jobs-table__col-action {
+  width: 200px;
+}
+
+.dd-table.jobs-table thead th {
+  padding: 10px 16px;
+}
+
+.dd-table.jobs-table tbody td {
+  padding: 12px 16px;
+  height: auto;
+  vertical-align: middle;
+}
+
+.dd-table.jobs-table th,
+.dd-table.jobs-table td {
+  vertical-align: middle;
+  white-space: nowrap;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* Gutter after the job column so long titles never touch the stage column. */
+.dd-table.jobs-table th:first-child,
+.dd-table.jobs-table td:first-child {
+  padding-right: 40px;
+}
+
+.jobs-actions {
+  display: inline-grid;
+  grid-template-columns: auto 32px 32px;
+  align-items: center;
+  justify-items: center;
+  gap: 4px;
+}
+
+.jobs-actions__placeholder {
+  width: 32px;
+  height: 1px;
+}
+
+.jobs-sort-th {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.jobs-sort-th svg {
+  opacity: 0.45;
+}
+
+.jobs-sort-th:hover,
+.jobs-sort-th[data-active] {
+  color: var(--color-text-primary);
+}
+
+.jobs-sort-th[data-active] svg {
+  color: var(--color-accent);
+  opacity: 1;
+}
+
 .jobs-filter__select {
   height: 34px;
   min-width: 132px;

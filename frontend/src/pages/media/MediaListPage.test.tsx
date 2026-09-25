@@ -152,7 +152,7 @@ describe('JobsTable — Stage and Status column styling', () => {
     ],
   }
 
-  it('renders stage name without stage badge explanation', () => {
+  it('renders stage name with its stage status badge', () => {
     const { container } = render(
       <MemoryRouter>
         <JobsTable
@@ -172,8 +172,8 @@ describe('JobsTable — Stage and Status column styling', () => {
 
     // Stage name should be present
     expect(screen.getByText('media:stages.RENDER')).toBeTruthy()
-    // StageBadge explanation (.media-stage-badge) should NOT be present
-    expect(container.querySelector('.media-stage-badge')).toBeNull()
+    // Current stage carries its own status badge
+    expect(container.querySelector('.media-stage-badge')).not.toBeNull()
   })
 
   it('renders completed StatusBadge and hides redundant bottom row text', () => {

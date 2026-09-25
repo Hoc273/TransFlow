@@ -19,8 +19,8 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/hooks/useMedia', () => ({
   useMediaLinkedJob: () => ({ data: { segments: segments }, isLoading: false }),
-  useMediaSubtitles: () => ({ data: [], isLoading: false }),
-  useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
+  useMediaSubtitles: () => ({ data: cuesOf(segments), isLoading: false }),
+  useMediaJobQaIssues: () => ({ data: issuesOf(segments), isLoading: false }),
   useEditMediaSegment: () => ({ isPending: false, mutateAsync: editMutate }),
   useBatchEditMediaSegments: () => ({ isPending: false, mutateAsync: batchMutate }),
   useRerunTtsRender: () => ({ isPending: false, mutateAsync: vi.fn() }),
@@ -38,6 +38,39 @@ const { ReviewVideoPane } = await import('@/components/media-studio/ReviewVideoP
 
 import type { MediaJob, SegmentItem } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
+
+// The editor/QA panel read cues from useMediaSubtitles and issues from
+// useMediaJobQaIssues; derive both from the SegmentItem fixtures. Results are
+// cached by fixture content so the mocked hooks return stable references while the
+// data is unchanged (like react-query) — a fresh array on every render would loop
+// the component's effects — yet still reflect tests that mutate a fixture.
+const cueCache = new Map<string, unknown[]>()
+const issueCache = new Map<string, unknown[]>()
+
+function cached(cache: Map<string, unknown[]>, items: SegmentItem[], build: () => unknown[]) {
+  const key = JSON.stringify(items)
+  if (!cache.has(key)) cache.set(key, build())
+  return cache.get(key)
+}
+
+function cuesOf(items: SegmentItem[]) {
+  return cached(cueCache, items, () =>
+    items.map((s) => ({
+      id: s.id,
+      seq: s.seq,
+      sourceText: s.sourceText,
+      targetText: s.targetText,
+      startMs: s.startMs ?? 0,
+      endMs: s.endMs ?? 0,
+    })),
+  )
+}
+
+function issuesOf(items: SegmentItem[]) {
+  return cached(issueCache, items, () =>
+    items.flatMap((s) => (s.qaIssues ?? []).map((q) => ({ ...q, subtitleSegmentId: s.id }))),
+  )
+}
 
 const segments: SegmentItem[] = [
   {
@@ -161,7 +194,7 @@ describe('Review workbench — cue list batch save (§1.8.2 redesign)', () => {
 })
 
 describe('Review workbench — actionable QA strip (§1.8.2 redesign)', () => {
-  it('clicking an issue row jumps to its cue; resolve publishes the issue id', () => {
+  it('clicking an issue row jumps to its cue; no Resolve action is offered', () => {
     const onSelectIssue = vi.fn()
     render(<MediaQaPanel workspaceId="ws" job={job()} onSelectIssue={onSelectIssue} />)
 
@@ -172,9 +205,9 @@ describe('Review workbench — actionable QA strip (§1.8.2 redesign)', () => {
     expect(onSelectIssue).toHaveBeenCalledTimes(1)
     expect(onSelectIssue.mock.calls[0][0].id).toBe('seg-2')
 
-    fireEvent.click(screen.getByText('job:qa.resolve'))
-    expect(resolveMutate).toHaveBeenCalledTimes(1)
-    expect(resolveMutate.mock.calls[0][0].issueId).toBe(issue.id)
+    // Resolve was removed with the text-translation QA flow (17f5957); only Override remains.
+    expect(screen.queryByText('job:qa.resolve')).toBeNull()
+    expect(resolveMutate).not.toHaveBeenCalled()
   })
 })
 

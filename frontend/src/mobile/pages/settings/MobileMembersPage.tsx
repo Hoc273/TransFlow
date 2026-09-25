@@ -205,6 +205,7 @@ export function MobileMembersPage() {
                 <span className="max-w-[90px] truncate whitespace-nowrap rounded-full bg-neutral-100 dark:bg-neutral-800 px-2.5 py-0.5 text-[10px] font-semibold text-neutral-700 dark:text-neutral-300" title={m.role}>
                   {m.role}
                 </span>
+                {m.role.toUpperCase() !== 'LEAD' && (
                 <button
                   type="button"
                   onClick={() => setMemberToRemove(m)}
@@ -214,6 +215,7 @@ export function MobileMembersPage() {
                 >
                   <IconTrash size={16} />
                 </button>
+                )}
               </div>
             </MobileCard>
           ))}

@@ -7,5 +7,6 @@ import java.util.UUID;
 public interface AiUsageLogService {
 
     void record(UUID workspaceId, UUID projectId, UUID mediaJobId, UUID performedByUserId,
-                String operation, boolean usedPersonalApiKey, long unitsUsed, BigDecimal creditUsed);
+                String operation, boolean usedPersonalApiKey, long inputTokens, long outputTokens,
+                BigDecimal creditUsed);
 }

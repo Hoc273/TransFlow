@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
+  IconArrowDown,
+  IconArrowUp,
+  IconArrowsSort,
   IconChevronLeft,
   IconChevronRight,
   IconDownload,
@@ -19,6 +22,7 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { Modal } from '@/components/shared/Modal'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
+import { StageBadge } from '@/components/media-studio/StageBadge'
 import {
   exportTransformationJobApi,
   getTransformationRenderConfigApi,
@@ -37,6 +41,7 @@ import {
 import {
   computeJobCounts,
   filterAndSortJobs,
+  normalizeJobSortKey,
   type JobSortKey,
 } from '@/lib/media/jobFilters'
 import { formatRelativeTime } from '@/lib/format'
@@ -105,7 +110,7 @@ export function JobsTable({
   const [status, setStatus] = useState(initialStatus)
   const [targetLang, setTargetLang] = useState(initialLang)
   const [mode, setMode] = useState(initialMode)
-  const [sortBy, setSortBy] = useState<JobSortKey>(initialSort)
+  const [sortBy, setSortBy] = useState<JobSortKey>(() => normalizeJobSortKey(initialSort))
 
   // Preview & Action states
   // Before/after preview: 'source' = uploaded video, 'output' = rendered result.
@@ -413,6 +418,8 @@ export function JobsTable({
               <option value="created_asc">{t('media:filter.sortCreatedAsc', { defaultValue: 'Cũ nhất' })}</option>
               <option value="name_asc">{t('media:filter.sortNameAsc', { defaultValue: 'Tên A-Z' })}</option>
               <option value="name_desc">{t('media:filter.sortNameDesc', { defaultValue: 'Tên Z-A' })}</option>
+              <option value="status_asc">{t('media:filter.sortStatusAsc', { defaultValue: 'Trạng thái: cần xử lý trước' })}</option>
+              <option value="status_desc">{t('media:filter.sortStatusDesc', { defaultValue: 'Trạng thái: hoàn tất trước' })}</option>
             </select>
           </div>
         </div>
@@ -473,16 +480,40 @@ export function JobsTable({
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-[var(--color-border)]">
-          <table className="dd-table">
+          <table className="dd-table jobs-table">
+            <colgroup>
+              <col className="jobs-table__col-job" />
+              <col className="jobs-table__col-stage" />
+              <col className="jobs-table__col-status" />
+              <col className="jobs-table__col-created" />
+              <col className="jobs-table__col-action" />
+            </colgroup>
             <thead>
               <tr>
-                <th>{t('media:col.job')}</th>
-                <th>{t('media:col.mode')}</th>
-                <th>{t('media:col.targetLang')}</th>
+                <SortableTh
+                  label={t('media:col.job')}
+                  asc="name_asc"
+                  desc="name_desc"
+                  sortBy={sortBy}
+                  onSort={(next) => updateFilters({ sortBy: next })}
+                />
                 <th>{t('media:col.currentStage')}</th>
-                <th>{t('media:col.status')}</th>
-                <th>{t('media:col.created')}</th>
-                <th className="!text-center" style={{ width: 140, textAlign: 'center' }}>
+                <SortableTh
+                  label={t('media:col.status')}
+                  asc="status_asc"
+                  desc="status_desc"
+                  sortBy={sortBy}
+                  onSort={(next) => updateFilters({ sortBy: next })}
+                />
+                <SortableTh
+                  label={t('media:col.created')}
+                  asc="created_asc"
+                  desc="created_desc"
+                  sortBy={sortBy}
+                  onSort={(next) => updateFilters({ sortBy: next })}
+                  firstDirection="desc"
+                />
+                <th className="!text-center" style={{ textAlign: 'center' }}>
                   {t('media:col.action')}
                 </th>
               </tr>
@@ -504,33 +535,46 @@ export function JobsTable({
                         <div className="media-job-thumb shrink-0">
                           <IconVideo size={16} />
                         </div>
-                        <div className="min-w-0 max-w-[260px]">
-                          <div className="font-semibold text-[13px] truncate" title={videoTitle}>
+                        <div className="min-w-0 flex-1">
+                          <div className="max-w-[300px] truncate text-[13px] font-semibold" title={videoTitle}>
                             {videoTitle}
                           </div>
-                          <div className="font-mono text-[11px] text-[var(--color-text-tertiary)]">
-                            {job.id.slice(0, 8)}
+                          <div className="mt-1 flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
+                            <span
+                              className={`media-mode-badge ${recipeModeBadgeClass(job)}`}
+                              title={`Job ID: ${job.id}`}
+                            >
+                              {t(`media:${recipeLabelKey(job)}`)}
+                            </span>
+                            {job.targetLang && (
+                              <>
+                                <span className="text-[11px] text-[var(--color-text-tertiary)]" aria-hidden>
+                                  -
+                                </span>
+                                <span className="media-lang-badge">
+                                  {formatLanguageOption(job.targetLang, language)}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
                     </td>
                     <td>
-                      <span className={`media-mode-badge ${recipeModeBadgeClass(job)}`}>
-                        {t(`media:${recipeLabelKey(job)}`)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="media-lang-badge">
-                        {formatLanguageOption(job.targetLang, language)}
-                      </span>
-                    </td>
-                    <td>
                       {stage ? (
                         <div className="space-y-1">
-                          <div className="text-[12.5px] font-medium text-[var(--color-text-primary)]">
-                            {t(`media:stages.${stage.stageName}`, {
-                              defaultValue: stage.stageName.replaceAll('_', ' '),
-                            })}
+                          <div className="flex items-center gap-2 whitespace-nowrap text-[12.5px]">
+                            <span className="truncate font-medium text-[var(--color-text-primary)]">
+                              {t(`media:stages.${stage.stageName}`, {
+                                defaultValue: stage.stageName.replaceAll('_', ' '),
+                              })}
+                            </span>
+                            <StageBadge
+                              status={stage.status}
+                              label={t(`media:stageStatus.${String(stage.status).toUpperCase()}`, {
+                                defaultValue: String(stage.status).replaceAll('_', ' '),
+                              })}
+                            />
                           </div>
                           {isActiveMediaJobStatus(job.status) && (
                             <div className="flex max-w-[140px] items-center gap-2">
@@ -570,7 +614,8 @@ export function JobsTable({
                       {formatRelativeTime(job.createdAt, language)}
                     </td>
                     <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                      <div className="flex items-center justify-center gap-1">
+                      {/* Fixed grid: preview pair | status action slot | details — aligned on every row. */}
+                      <div className="jobs-actions">
                         <div className="job-preview-pair" role="group" aria-label={t('media:actions.preview')}>
                           <button
                             type="button"
@@ -596,8 +641,7 @@ export function JobsTable({
                             <span>{t('media:actions.previewOutputShort')}</span>
                           </button>
                         </div>
-                        {job.status === 'COMPLETED' && (
-                          <>
+                        {job.status === 'COMPLETED' ? (
                             <button
                               type="button"
                               className="btn-ghost btn-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
@@ -613,9 +657,7 @@ export function JobsTable({
                                 <IconDownload size={16} />
                               )}
                             </button>
-                          </>
-                        )}
-                        {(job.status === 'FAILED' || job.status === 'PARTIALLY_FAILED') && (
+                        ) : job.status === 'FAILED' || job.status === 'PARTIALLY_FAILED' ? (
                           <button
                             type="button"
                             className="btn-ghost btn-sm text-red-500 hover:text-red-600 dark:text-red-400"
@@ -631,6 +673,8 @@ export function JobsTable({
                               <IconRotate2 size={16} />
                             )}
                           </button>
+                        ) : (
+                          <span className="jobs-actions__placeholder" aria-hidden />
                         )}
                         <Link
                           to={`/w/${workspaceId}/media/jobs/${job.id}`}
@@ -836,5 +880,37 @@ export function JobsTable({
         </Modal>
       )}
     </div>
+  )
+}
+
+type SortableThProps = {
+  label: string
+  asc: JobSortKey
+  desc: JobSortKey
+  sortBy: JobSortKey
+  onSort: (next: JobSortKey) => void
+  /** Direction applied on the first click (dates read best newest-first). */
+  firstDirection?: 'asc' | 'desc'
+}
+
+/** Column header that sorts the table; clicking again flips the direction. */
+function SortableTh({ label, asc, desc, sortBy, onSort, firstDirection = 'asc' }: SortableThProps) {
+  const direction = sortBy === asc ? 'asc' : sortBy === desc ? 'desc' : null
+  const next =
+    direction === 'asc' ? desc : direction === 'desc' ? asc : firstDirection === 'asc' ? asc : desc
+  const Icon = direction === 'asc' ? IconArrowUp : direction === 'desc' ? IconArrowDown : IconArrowsSort
+
+  return (
+    <th aria-sort={direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none'}>
+      <button
+        type="button"
+        className="jobs-sort-th"
+        data-active={direction !== null || undefined}
+        onClick={() => onSort(next)}
+      >
+        <span>{label}</span>
+        <Icon size={12} aria-hidden />
+      </button>
+    </th>
   )
 }

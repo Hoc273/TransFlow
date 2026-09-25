@@ -22,7 +22,8 @@ public class AiUsageLogServiceImpl implements AiUsageLogService {
     @Override
     @Transactional
     public void record(UUID workspaceId, UUID projectId, UUID mediaJobId, UUID performedByUserId,
-                       String operation, boolean usedPersonalApiKey, long unitsUsed, BigDecimal creditUsed) {
+                       String operation, boolean usedPersonalApiKey, long inputTokens, long outputTokens,
+                       BigDecimal creditUsed) {
         AiUsageLogEntry entry = new AiUsageLogEntry();
         entry.setWorkspaceId(workspaceId);
         entry.setProjectId(projectId);
@@ -30,8 +31,8 @@ public class AiUsageLogServiceImpl implements AiUsageLogService {
         entry.setPerformedByUserId(performedByUserId);
         entry.setOperation(operation);
         entry.setUsedPersonalApiKey(usedPersonalApiKey);
-        entry.setInputTokens(toInt(unitsUsed));
-        entry.setOutputTokens(0);
+        entry.setInputTokens(toInt(inputTokens));
+        entry.setOutputTokens(toInt(outputTokens));
         entry.setCreditUsed(creditUsed == null ? BigDecimal.ZERO : creditUsed);
         entry.setCreatedAt(Instant.now());
         repository.save(entry);

@@ -20,7 +20,7 @@ const OPERATION_LABELS: Record<string, { label: string; color: string }> = {
 
 export function MobileUsagePage() {
   const { workspaceId = '' } = useParams<{ workspaceId: string }>()
-  const { data: usage, isLoading, isError } = useUsage(workspaceId)
+  const { data: usage, isLoading, isError } = useUsage(workspaceId, { groupBy: 'operation' })
 
   const totalTokens = usage?.totalTokens ?? 0
 
