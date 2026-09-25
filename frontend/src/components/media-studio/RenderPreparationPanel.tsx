@@ -423,6 +423,8 @@ export function AudioPresentationConfig({
  * with an index badge and an optional status mark; content stays the historical
  * controls (contracts/testids unchanged inside).
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export function RenderGroup({
   index,
   title,
@@ -1125,7 +1127,20 @@ export function RenderPreparationPanel({
           non-CP-B branch is gone; AUTO stays frozen while MANUAL remains
           editable until confirmed. Testids stay exclusive so the lock matrix
           is unambiguous. */}
-      {autoFrozen ? null : canReapplyRender && !isEditingReapply ? (
+      {autoFrozen ? (
+        <div
+          className="flex items-start gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] p-3 text-sm"
+          data-testid="render-prep-auto-frozen"
+        >
+          <IconLock size={16} className="mt-0.5 shrink-0 text-[var(--color-text-tertiary)]" />
+          <div>
+            <p className="m-0 font-semibold">{t('media:renderPrep.autoFrozenTitle')}</p>
+            <p className="mb-0 mt-0.5 text-[var(--color-text-secondary)]">
+              {t('media:renderPrep.autoFrozenDesc')}
+            </p>
+          </div>
+        </div>
+      ) : canReapplyRender && !isEditingReapply ? (
         <div
           className="flex items-start gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-[var(--color-text-primary)]"
           data-testid="render-prep-reapply-hint"
@@ -1140,7 +1155,7 @@ export function RenderPreparationPanel({
         </div>
       ) : locked && canEdit && !isEditingReapply ? (
         <div
-          className="flex items-start gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-sm text-[var(--color-text-secondary)]"
+          className="flex items-start gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] p-3 text-sm text-[var(--color-text-secondary)]"
           data-testid="render-prep-locked"
         >
           <IconLock size={16} className="mt-0.5 shrink-0 text-[var(--color-accent)]" />
@@ -1370,9 +1385,16 @@ export function RenderPreparationPanel({
         <span className="chip">
           {subtitleMode === 'HARD_SUB' ? t('media:subtitleHard') : t('media:subtitleSoft')}
         </span>
-        {(job.ttsVoiceDisplayName || job.voiceId) && (
-          <span className="chip">{job.ttsVoiceDisplayName ?? job.voiceId}</span>
-        )}
+        {(() => {
+          const bound = voices.find((v) => v.id === job.ttsVoiceId || v.id === job.voiceId)
+          const rawId = job.voiceId?.trim()
+          const label =
+            job.ttsVoiceDisplayName?.trim()
+            || bound?.displayName?.trim()
+            || bound?.voiceId?.trim()
+            || (rawId && !UUID_RE.test(rawId) ? rawId : null)
+          return label ? <span className="chip">{label}</span> : null
+        })()}
         {ownedByStyle && <span className="chip">{t('media:renderPrep.summaryStyleChip')}</span>}
       </div>
 
@@ -1518,11 +1540,14 @@ export function RenderPreparationPanel({
                       })
                   }}
                 >
-                  <span className="media-voice-avatar">{(voice.displayName || '?')[0]}</span>
+                  <span className="media-voice-avatar">{(voice.displayName || voice.voiceId || '?')[0]}</span>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold">{voice.displayName}</span>
+                    <span className="block truncate text-sm font-semibold">{voice.displayName || voice.voiceId}</span>
                     <span className="block text-xs text-[var(--color-text-tertiary)]">
-                      {voice.language} · {voice.gender}
+                      {voice.language}
+                      {voice.gender
+                        ? ` · ${t(`media:voice.gender.${voice.gender}`, { defaultValue: voice.gender })}`
+                        : ''}
                     </span>
                   </span>
                 </button>
@@ -1661,112 +1686,116 @@ export function RenderPreparationPanel({
               <p className="field-help m-0">{t('media:renderPrep.aspectHint')}</p>
             )}
 
-            <SubHead>{t('media:renderPrep.colorSection')}</SubHead>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={backgroundBox}
-                disabled={effectiveLocked || subtitleMode === 'SOFT_SUB' || appearanceDead('backgroundBox')}
-                onChange={(e) => setBackgroundBox(e.target.checked)}
-              />
-              {t('media:renderPrep.backgroundBox')}
-            </label>
-            {backgroundBox && subtitleMode === 'HARD_SUB' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="field-label">
-                  <span>{t('media:renderPrep.backgroundColor')}</span>
+            <details className="media-config-subgroup" data-testid="render-prep-color-group">
+              <summary>{t('media:renderPrep.colorSection')}</summary>
+              <div className="space-y-3 pt-3">
+                <label className="flex items-center gap-2 text-sm">
                   <input
-                    type="color"
-                    className="field-input h-9 w-full p-1"
-                    data-testid="render-prep-background-color"
-                    value={backgroundColor}
-                    disabled={effectiveLocked || appearanceDead('backgroundColor')}
-                    onChange={(e) => setBackgroundColor(e.target.value)}
+                    type="checkbox"
+                    checked={backgroundBox}
+                    disabled={effectiveLocked || subtitleMode === 'SOFT_SUB' || appearanceDead('backgroundBox')}
+                    onChange={(e) => setBackgroundBox(e.target.checked)}
                   />
+                  {t('media:renderPrep.backgroundBox')}
                 </label>
-                <label className="field-label">
-                  <span>{t('media:renderPrep.backgroundAlpha', { value: backgroundAlpha })}</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={backgroundAlpha}
-                    disabled={effectiveLocked || appearanceDead('backgroundColor')}
-                    data-testid="render-prep-background-alpha"
-                    onChange={(e) => setBackgroundAlpha(Number(e.target.value))}
-                  />
-                </label>
+                {backgroundBox && subtitleMode === 'HARD_SUB' && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="field-label">
+                      <span>{t('media:renderPrep.backgroundColor')}</span>
+                      <input
+                        type="color"
+                        className="field-input h-9 w-full p-1"
+                        data-testid="render-prep-background-color"
+                        value={backgroundColor}
+                        disabled={effectiveLocked || appearanceDead('backgroundColor')}
+                        onChange={(e) => setBackgroundColor(e.target.value)}
+                      />
+                    </label>
+                    <label className="field-label">
+                      <span>{t('media:renderPrep.backgroundAlpha', { value: backgroundAlpha })}</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={backgroundAlpha}
+                        disabled={effectiveLocked || appearanceDead('backgroundColor')}
+                        data-testid="render-prep-background-alpha"
+                        onChange={(e) => setBackgroundAlpha(Number(e.target.value))}
+                      />
+                    </label>
+                  </div>
+                )}
+                {backgroundBox && subtitleMode === 'HARD_SUB' && (
+                  <p className="field-help m-0">{t('media:renderPrep.bgColorStyleNote')}</p>
+                )}
+                {subtitleMode === 'HARD_SUB' && (
+                  <label className="field-label">
+                    <span>{t('media:renderPrep.textColor')}</span>
+                    <input
+                      type="color"
+                      className="field-input h-9 w-full p-1"
+                      data-testid="render-prep-text-color"
+                      value={textColor}
+                      disabled={effectiveLocked || appearanceDead('textColor')}
+                      onChange={(e) => setTextColor(e.target.value)}
+                    />
+                  </label>
+                )}
+                {/* 2026-09 dual-event: outline renders above the box (Layer 1),
+                    so it stays enabled in box mode. Old workers are gated at
+                    claim (SUBTITLE_BOX_OUTLINE), never silently dropped. */}
+                {subtitleMode === 'HARD_SUB' && !ownedByStyle && (
+                  <div className="grid gap-3 sm:grid-cols-2" data-testid="outline-controls">
+                    <label className="field-label">
+                      <span>{t('media:renderPrep.outlineWidth')}</span>
+                      <input
+                        type="number"
+                        className="field-input"
+                        min={0}
+                        max={8}
+                        step={1}
+                        value={outlineWidth ?? ''}
+                        placeholder={t('media:renderPrep.typographyDefault')}
+                        disabled={outlineDisabled || effectiveLocked}
+                        data-testid="render-prep-outline-width"
+                        onChange={(e) =>
+                          setOutlineWidth(e.target.value === '' ? null : Number(e.target.value))
+                        }
+                      />
+                    </label>
+                    <label className="field-label">
+                      <span>{t('media:renderPrep.outlineColor')}</span>
+                      <input
+                        type="color"
+                        className="field-input h-9 w-full p-1"
+                        data-testid="render-prep-outline-color"
+                        value={/^#[0-9A-Fa-f]{6}$/.test(outlineColor ?? '') ? (outlineColor as string) : '#000000'}
+                        disabled={outlineDisabled || effectiveLocked}
+                        onChange={(e) => setOutlineColor(e.target.value.toUpperCase())}
+                      />
+                    </label>
+                  </div>
+                )}
+                {subtitleMode === 'HARD_SUB' && !ownedByStyle && outlineDisabled && !effectiveLocked && (
+                  <p className="field-help m-0" data-testid="outline-box-warning">
+                    {t('media:renderPrep.outlineBoxWarning')}
+                  </p>
+                )}
+                {subtitleMode === 'HARD_SUB' && (
+                  <p className="field-help m-0">{t('media:renderPrep.textColorNote')}</p>
+                )}
+                {subtitleMode === 'SOFT_SUB' && (
+                  <p className="field-help m-0">{t('media:renderPrep.softSubWarning')}</p>
+                )}
               </div>
-            )}
-            {backgroundBox && subtitleMode === 'HARD_SUB' && (
-              <p className="field-help m-0">{t('media:renderPrep.bgColorStyleNote')}</p>
-            )}
-            {subtitleMode === 'HARD_SUB' && (
-              <label className="field-label">
-                <span>{t('media:renderPrep.textColor')}</span>
-                <input
-                  type="color"
-                  className="field-input h-9 w-full p-1"
-                  data-testid="render-prep-text-color"
-                  value={textColor}
-                  disabled={effectiveLocked || appearanceDead('textColor')}
-                  onChange={(e) => setTextColor(e.target.value)}
-                />
-              </label>
-            )}
-            {/* 2026-09 dual-event: outline renders above the box (Layer 1),
-                so it stays enabled in box mode. Old workers are gated at
-                claim (SUBTITLE_BOX_OUTLINE), never silently dropped. */}
-            {subtitleMode === 'HARD_SUB' && !ownedByStyle && (
-              <div className="grid gap-3 sm:grid-cols-2" data-testid="outline-controls">
-                <label className="field-label">
-                  <span>{t('media:renderPrep.outlineWidth')}</span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    min={0}
-                    max={8}
-                    step={1}
-                    value={outlineWidth ?? ''}
-                    placeholder={t('media:renderPrep.typographyDefault')}
-                    disabled={outlineDisabled || effectiveLocked}
-                    data-testid="render-prep-outline-width"
-                    onChange={(e) =>
-                      setOutlineWidth(e.target.value === '' ? null : Number(e.target.value))
-                    }
-                  />
-                </label>
-                <label className="field-label">
-                  <span>{t('media:renderPrep.outlineColor')}</span>
-                  <input
-                    type="color"
-                    className="field-input h-9 w-full p-1"
-                    data-testid="render-prep-outline-color"
-                    value={/^#[0-9A-Fa-f]{6}$/.test(outlineColor ?? '') ? (outlineColor as string) : '#000000'}
-                    disabled={outlineDisabled || effectiveLocked}
-                    onChange={(e) => setOutlineColor(e.target.value.toUpperCase())}
-                  />
-                </label>
-              </div>
-            )}
-            {subtitleMode === 'HARD_SUB' && !ownedByStyle && outlineDisabled && !effectiveLocked && (
-              <p className="field-help m-0" data-testid="outline-box-warning">
-                {t('media:renderPrep.outlineBoxWarning')}
-              </p>
-            )}
-            {subtitleMode === 'HARD_SUB' && (
-              <p className="field-help m-0">{t('media:renderPrep.textColorNote')}</p>
-            )}
-            {subtitleMode === 'SOFT_SUB' && (
-              <p className="field-help m-0">{t('media:renderPrep.softSubWarning')}</p>
-            )}
+            </details>
           </div>
         </RenderGroup>
 
         {/* Phase 6 — subtitle presentation (docs/19 §1.8.1): typography and mask
             are HARD_SUB-only — disabled + labeled for SOFT_SUB (the player
             controls mov_text presentation; the backend rejects them with 422). */}
-        <RenderGroup index="③" title={t('media:renderPrep.subtitleLayerContentTitle')} open={!effectiveLocked || isSummary || isEditingReapply}>
+        <RenderGroup index="③" title={t('media:renderPrep.subtitleLayerContentTitle')} open={(!effectiveLocked && isSummary) || isEditingReapply}>
           <div className="space-y-3">
             {isSummary && (
               <div
@@ -1882,7 +1911,7 @@ export function RenderPreparationPanel({
         <RenderGroup
           index="④"
           title={t('media:renderPrep.maskLayerTitle')}
-          open={!effectiveLocked || coverEnabled}
+          open={coverEnabled}
           testid="finish-mask-layer-block"
         >
           <p className="field-help mt-0 mb-3">{t('media:renderPrep.maskLayerHint')}</p>
@@ -1910,7 +1939,7 @@ export function RenderPreparationPanel({
         <RenderGroup
           index="⑤"
           title={t('media:renderPrep.audioTitle')}
-          open={!locked}
+          open={false}
           testid={embeddedAudio ? 'finish-audio-block' : undefined}
         >
           {audioAvailable ? (

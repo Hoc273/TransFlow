@@ -45,12 +45,23 @@ export function useProviders(_workspaceId?: string | undefined) {
   })
 }
 
+/**
+ * Old style: (workspaceId, providerId). New style: (providerId).
+ * The call style is decided by how many arguments were passed — NOT by
+ * `providerId ?? first`: an old-style call whose provider is still unresolved
+ * (`useTtsVoices(workspaceId, undefined)`) must stay disabled instead of
+ * requesting `/users/me/providers/<workspaceId>/voices` (404).
+ */
+export function resolveVoiceProviderArg(
+  args: [string | undefined] | [string | undefined, string | undefined],
+): string | undefined {
+  return args.length >= 2 ? args[1] : args[0]
+}
+
 export function useTtsVoices(
-  workspaceIdOrProviderId: string | undefined,
-  providerId?: string | undefined,
+  ...args: [providerId: string | undefined] | [workspaceId: string | undefined, providerId: string | undefined]
 ) {
-  // Old style: (workspaceId, providerId). New style: (providerId).
-  const resolvedProviderId = providerId ?? workspaceIdOrProviderId
+  const resolvedProviderId = resolveVoiceProviderArg(args)
   return useQuery({
     queryKey: queryKeys.ttsVoices('me', resolvedProviderId ?? ''),
     queryFn: () => listTtsVoicesApi(resolvedProviderId!),
@@ -63,10 +74,9 @@ export function useTtsVoices(
  * (aggregated client-side from the voice list — no dedicated backend endpoint).
  */
 export function useTtsVoiceLanguages(
-  workspaceIdOrProviderId: string | undefined,
-  providerId?: string | undefined,
+  ...args: [providerId: string | undefined] | [workspaceId: string | undefined, providerId: string | undefined]
 ) {
-  const resolvedProviderId = providerId ?? workspaceIdOrProviderId
+  const resolvedProviderId = resolveVoiceProviderArg(args)
   return useQuery({
     queryKey: queryKeys.ttsVoiceLanguages('me', resolvedProviderId ?? ''),
     queryFn: async () => {

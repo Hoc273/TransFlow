@@ -383,12 +383,16 @@ export function ProposalPanel({ workspaceId, job }: Props) {
                         <span className="text-sm font-semibold">
                           {primaryProposal.planBody?.title || t('media:proposals.planKindNarrative')}
                         </span>
-                        <span className="media-plan-kind-chip">
-                          {t('media:proposals.planKindNarrative')}
-                        </span>
+                        {primaryProposal.planBody?.title && (
+                          <span className="media-plan-kind-chip">
+                            {t('media:proposals.planKindNarrative')}
+                          </span>
+                        )}
                         {primaryProposal.confidence != null && (
                           <span className="font-mono text-[11px] text-[var(--color-text-tertiary)]">
-                            {(Number(primaryProposal.confidence) * 100).toFixed(0)}%
+                            {t('media:proposals.confidence', {
+                              value: (Number(primaryProposal.confidence) * 100).toFixed(0),
+                            })}
                           </span>
                         )}
                       </div>
@@ -449,9 +453,11 @@ export function ProposalPanel({ workspaceId, job }: Props) {
                         <span className="text-sm font-semibold">
                           {primaryProposal.planBody?.title || t('media:proposals.planKindNarrative')}
                         </span>
-                        <span className="media-plan-kind-chip">
-                          {t('media:proposals.planKindNarrative')}
-                        </span>
+                        {primaryProposal.planBody?.title && (
+                          <span className="media-plan-kind-chip">
+                            {t('media:proposals.planKindNarrative')}
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -796,7 +802,9 @@ export function ProposalCard({
         )}
         {proposal.confidence != null && (
           <span className="font-mono text-[11px] text-[var(--color-text-tertiary)]">
-            {(Number(proposal.confidence) * 100).toFixed(0)}%
+            {t('media:proposals.confidence', {
+              value: (Number(proposal.confidence) * 100).toFixed(0),
+            })}
           </span>
         )}
         <SelectionStateMark state={selectionState} />

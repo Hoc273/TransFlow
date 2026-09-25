@@ -33,6 +33,7 @@ const voicesMap = new Map<string, unknown[]>()
 
 vi.mock('@/hooks/useMedia', () => ({
   useMediaJob: () => jobQuery,
+  useMediaAsset: () => ({ data: undefined }),
   useMediaLinkedJob: () => linkedJobQuery,
   useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
   useCancelMediaJob: () => cancelQuery,
@@ -43,8 +44,8 @@ vi.mock('@/hooks/useMedia', () => ({
   useWorkflowResume: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }))
 
-vi.mock('@/components/media-studio/WorkflowCheckpointStrip', () => ({
-  WorkflowCheckpointStrip: () => null,
+vi.mock('@/components/media-studio/WorkflowCheckpointActions', () => ({
+  WorkflowCheckpointActions: () => null,
 }))
 
 // Child panels pull extra hooks; stub them so page layout tests stay focused.
@@ -234,7 +235,7 @@ describe('MediaJobPage — Phase C Job Studio voice binding', () => {
     // No crash; the page renders the pipeline. The binding resolution itself
     // is asserted via resolveJobVoiceProviderId below (accordion bodies are
     // not SSR-rendered while closed).
-    expect(html).toContain('media-studio-accordion')
+    expect(html).toContain('studio-tabs')
   })
 
   it('resolveJobVoiceProviderId prefers the job binding over the workspace default', () => {
@@ -395,10 +396,8 @@ describe('MediaJobPage — Phase C Job Studio voice binding', () => {
 
     const html = renderToStaticMarkup(<MediaJobPage />)
 
-    // No crash; the legacy voice id shows in the overview panel; the voice
-    // panel falls back to the workspace default for display only.
-    expect(html).toContain('legacy-voice')
-    expect(html).toContain('media-studio-accordion')
+    // No crash; the voice panel falls back to the workspace default for display only.
+    expect(html).toContain('studio-tabs')
   })
 
   it('W3: stage failureReason flows through to the pipeline stepper guidance', () => {
@@ -428,7 +427,7 @@ describe('MediaJobPage — Phase C Job Studio voice binding', () => {
 
     expect(html).toContain('pipeline.recovery.emptyCues')
     expect(html).toContain('Render aborted: subtitle timeline is empty')
-    expect(html).toContain('media-studio-accordion')
+    expect(html).toContain('studio-tabs')
   })
 })
 

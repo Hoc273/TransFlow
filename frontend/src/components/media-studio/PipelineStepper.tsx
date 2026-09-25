@@ -209,7 +209,9 @@ export function PipelineStepper({ job, className }: Props) {
             {stage.stageName === 'TRANSLATE' && translateScopeKey && (
               <div className="media-stage-meta">{t(translateScopeKey)}</div>
             )}
-            {attempts >= 1 && (
+            {/* A retry count on a finished stage only alarms users — show it while
+                the stage is still being retried or after it failed. */}
+            {attempts >= 1 && (st === 'PROCESSING' || st === 'PENDING' || st === 'FAILED') && (
               <div
                 className="media-stage-meta"
                 data-testid={`stage-attempt-${stage.stageName}`}

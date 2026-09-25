@@ -40,6 +40,7 @@ const { jobQuery, providersQuery, selectVoicePending, selectVoiceMutate } = voic
 
 vi.mock('@/hooks/useMedia', () => ({
   useMediaJob: () => jobQuery,
+  useMediaAsset: () => ({ data: undefined }),
   useMediaLinkedJob: () => ({ data: undefined as unknown, isLoading: false }),
   useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
   useRenderConfig: () => ({ data: undefined, isLoading: false }),
@@ -201,7 +202,7 @@ describe('MediaJobPage — W4-R4 voice change downstream rerun (docs/15 §5.6)',
 
     // Open the aggregated Finish & Render section (real VoiceSelector inside).
     fireEvent.click(
-      container.querySelector('[data-section-id="finish-render"] .media-accordion-trigger')!,
+      container.querySelector('[data-tab-id="finish-render"]')!,
     )
     expect(openState(container, 'finish-render')).toBe('true')
 
@@ -245,7 +246,7 @@ describe('MediaJobPage — W4-R4 voice change downstream rerun (docs/15 §5.6)',
     const { container } = render(<MediaJobPage />)
 
     fireEvent.click(
-      container.querySelector('[data-section-id="finish-render"] .media-accordion-trigger')!,
+      container.querySelector('[data-tab-id="finish-render"]')!,
     )
     const reviewOpenBefore = openState(container, 'review')
 
@@ -260,7 +261,7 @@ describe('MediaJobPage — W4-R4 voice change downstream rerun (docs/15 §5.6)',
     expect(container.textContent).not.toContain('media:renderPrep.actionRequired')
     expect(container.textContent).not.toContain('media:workflow.continueCut')
     expect(container.textContent).not.toContain('media:workflow.resume')
-    // The REVIEW checkpoint stays CONFIRMED in the workflow strip.
-    expect(container.textContent).toContain('media:workflow.state.CONFIRMED')
+    // REVIEW stays CONFIRMED → no checkpoint action banner is raised.
+    expect(container.querySelector('[data-testid="workflow-checkpoint-actions"]')).toBeNull()
   })
 })

@@ -85,6 +85,27 @@ describe('NarrativePlanViewer', () => {
     expect(html).not.toContain('Unrelated outside segment.')
   })
 
+  it('shows the section count summary and collapses long plans behind "show more"', () => {
+    const sections = Array.from({ length: 13 }, (_, i) => ({
+      seq: i + 1,
+      heading: null,
+      beat_type: null,
+      script_source_lang: `Script line ${i + 1}.`,
+      source_refs: [{ start_ms: i * 10_000, end_ms: i * 10_000 + 5_000 }],
+      notes: null,
+    }))
+    const html = renderToStaticMarkup(
+      <NarrativePlanViewer plan={{ ...plan, sections } as NarrativePlan} />,
+    )
+
+    expect(html).toContain('data-testid="narrative-summary"')
+    // Rows list only the first 10 sections (timeline tooltips still cover all).
+    expect(html.match(/class="media-narrative-row"/g)?.length).toBe(10)
+    expect(html).toContain('data-testid="narrative-toggle-all"')
+    // Single-ref sections do not repeat the span as a "source refs" chip row.
+    expect(html).not.toContain('narrative.sourceRefs')
+  })
+
   it('renders fallback when no original dialogue matches the section span', () => {
     const html = renderToStaticMarkup(
       <NarrativePlanViewer

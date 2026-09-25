@@ -117,7 +117,7 @@
     "upload": "Upload + Consent",
     "uploadSub": "Tải video, chấp nhận điều khoản, chọn recipe.",
     "jobOverview": "Tổng quan job",
-    "jobOverviewSub": "Định danh, recipe, ngôn ngữ, tiến độ & ghi đè nguồn.",
+    "jobOverviewSub": "Ngôn ngữ, loại phụ đề, độ dài và preset của job.",
     "pipeline": "Theo dõi pipeline",
     "pipelineSub": "6 stage × 8 trạng thái · polling ~5s",
     "proposals": "Phương án tóm tắt",
@@ -131,11 +131,11 @@
     "voice": "Giọng (tuỳ chọn)",
     "voiceSub": "Mặc định giữ audio gốc. TTS không bắt buộc để tiếp tục pipeline.",
     "export": "Xuất file",
-    "exportSub": "Video + .srt + .vtt · chặn bởi BLOCK_EXPORT",
+    "exportSub": "Tải video hoàn chỉnh và file phụ đề .srt / .vtt.",
     "subtitleStyle": "Kiểu phụ đề",
     "subtitleStyleSub": "Chọn preset hệ thống cho phụ đề khi render và khi xuất file.",
     "finishRender": "Hoàn thiện & Render",
-    "finishRenderSub": "Giọng, lớp phụ đề, presentation và tiến độ TTS → trộn → render.",
+    "finishRenderSub": "Chọn giọng lồng tiếng, kiểu phụ đề và khung hình trước khi render.",
     "finishProgress": "Tiến độ các bước sau"
   },
   "poll": {
@@ -143,7 +143,8 @@
     "idle": "Nhàn rỗi",
     "updated": "Cập nhật {{relative}}",
     "updating": "Đang cập nhật…",
-    "every5s": "Poll mỗi 5s"
+    "every5s": "Poll mỗi 5s",
+    "updatedAt": "Cập nhật lúc {{time}}"
   },
   "legend": {
     "title": "Chú giải stage",
@@ -171,7 +172,7 @@
     "RENDER": "Render"
   },
   "pipeline": {
-    "title": "Theo dõi pipeline",
+    "title": "Chi tiết job media",
     "stepperTitle": "Pipeline stage",
     "rerunFromStage": "Chạy lại bước",
     "rerunFromStageDesc": "Chọn bước để chạy lại từ đầu (không vượt quá bước hiện tại):",
@@ -190,9 +191,9 @@
     "autoDetect": "Tự nhận diện",
     "overrideLang": "Ghi đè ngôn ngữ nguồn",
     "applyLang": "Áp dụng",
-    "overrideConfirm": "Thao tác này chạy lại TRANSLATE → TTS → RENDER với ngôn ngữ nguồn mới. STT sẽ không chạy lại. Tiếp tục?",
+    "overrideConfirm": "Job này sẽ dịch lại, lồng tiếng lại và render lại video với ngôn ngữ nguồn mới. Tiếp tục?",
     "overrideConfirmApply": "Xác nhận & chạy lại",
-    "staleWarn": "Đổi ngôn ngữ nguồn sẽ chạy lại TRANSLATE → TTS → RENDER với ngôn ngữ mới. STT không chạy lại — transcript không phụ thuộc ngôn ngữ.",
+    "staleWarn": "Đổi ngôn ngữ nguồn sẽ dịch lại, lồng tiếng lại và render lại video. Bước nhận dạng giọng nói không chạy lại.",
     "progress": "Tiến độ tổng",
     "noStages": "Chưa có dữ liệu stage.",
     "providerErrors": {
@@ -213,7 +214,8 @@
       "generativeTtsDurationMismatch": "Lồng tiếng generative nằm ngoài thời lượng mục tiêu — chỉnh start/end phụ đề không khắc phục được mismatch TTS này."
     },
     "waitingForQa": "Chờ xử lý QA",
-    "waitingForQaReason": "Xử lý lỗi QA ở mục Review để tiếp tục"
+    "waitingForQaReason": "Xử lý lỗi QA ở mục Review để tiếp tục",
+    "changeSourceLang": "Đổi"
   },
   "upload": {
     "stepTitle": "Tải video",
@@ -259,7 +261,7 @@
     "lockedHint": "Đã chọn và khóa phương án. Pipeline tiếp tục với cut plan này.",
     "narrativeLockedHint": "Plan duy nhất đã chốt. Pipeline tự tiếp tục.",
     "singlePlanAuto": "Tự tiếp tục",
-    "singlePlanCommitted": "Đã chốt · tự tiếp tục",
+    "singlePlanCommitted": "Đã chốt · đang tự chạy tiếp",
     "aiSection": "Chọn phương án tóm tắt",
     "narrativeSection": "Xem kế hoạch tường thuật",
     "emptyTitle": "Chưa có phương án",
@@ -294,7 +296,8 @@
       "LONGER_THAN_REQUESTED": "Dài hơn thời lượng yêu cầu",
       "OUTSIDE_TOLERANCE": "Ngoài dung sai thời lượng",
       "generic": "Cảnh báo: {{code}}"
-    }
+    },
+    "confidence": "Độ tin cậy {{value}}%"
   },
   "refine": {
     "label": "Yêu cầu chỉnh sửa",
@@ -328,15 +331,20 @@
     "section": "Phần {{n}}",
     "beat": "Nhịp",
     "sourceRefs": "Tham chiếu nguồn",
-    "timeline": "Timeline",
+    "timeline": "Vị trí trong video gốc",
     "duration": "Thời lượng",
-    "sectionTimeline": "Phủ sóng theo phần",
+    "sectionTimeline": "Vị trí các phần trên video gốc",
     "tooltipSummaryScript": "Kịch bản tóm tắt AI",
     "tooltipOriginalDialogue": "Lời thoại gốc trong khoảng này",
     "tooltipNoDialogue": "Không có lời thoại ghi nhận trong khoảng này",
     "tooltipTimeSpan": "Khung thời gian gốc",
-    "engineCuts": "Tham chiếu render",
-    "engineCutsHint": "Tham chiếu render dùng nội bộ bởi pipeline render, không chỉnh sửa được. Narrative body (sections + script) mới là nguồn chân lý."
+    "engineCuts": "Các đoạn video gốc được dùng khi render",
+    "engineCutsHint": "Chỉ để tham khảo — hệ thống tự ghép các đoạn này khi render, không cần chỉnh sửa.",
+    "summary": "{{count}} phần · tổng {{duration}}",
+    "target": "Mục tiêu",
+    "reasoning": "Lý do AI xây dựng kịch bản này",
+    "showMore": "Xem thêm {{count}} phần",
+    "showLess": "Thu gọn"
   },
   "trim": {
     "hint": "Cắt tùy chọn. Bỏ qua để dịch nguyên video.",
@@ -431,7 +439,7 @@
     "blockRender": "Render đang bị chặn (BLOCK_RENDER).",
     "blockExport": "Export đang bị chặn (BLOCK_EXPORT).",
     "severitySummary": "Lỗi QA đang mở theo mức độ",
-    "noneOpen": "Không có lỗi QA đang mở.",
+    "noneOpen": "Không có lỗi QA cần xử lý",
     "band": {
       "high": "Cao",
       "medium": "Trung bình",
@@ -538,7 +546,7 @@
   "voice": {
     "optionalTitle": "Giọng nói là tùy chọn",
     "hint": "Mặc định giữ audio gốc. Bạn không cần chọn TTS để job tiếp tục — TTS sẽ SKIPPED khi không chọn giọng.",
-    "regenHint": "Đổi giọng sau này sẽ xếp lại Voice Dub và/hoặc Render sau khi Translate hoàn tất (audio được tạo lại theo lựa chọn mới).",
+    "regenHint": "Đổi giọng sẽ lồng tiếng lại và render lại video (sau khi bước dịch đã xong).",
     "defaultBadge": "Mặc định",
     "original": "Giữ giọng gốc",
     "originalHint": "Giữ âm thanh gốc, chỉ dịch phụ đề",
@@ -571,7 +579,12 @@
     "modeTtsHint": "Tạo giọng đọc mới bằng ngôn ngữ đích",
     "noCompatTitle": "{{provider}} chưa có giọng đọc cho ngôn ngữ đích",
     "changeProvider": "Đổi nhà cung cấp",
-    "useOriginal": "Dùng giọng gốc"
+    "useOriginal": "Dùng giọng gốc",
+    "gender": {
+      "MALE": "Nam",
+      "FEMALE": "Nữ",
+      "NEUTRAL": "Trung tính"
+    }
   },
   "renderPrep": {
     "title": "Chuẩn bị render",
@@ -599,14 +612,14 @@
     "confirm": "Xác nhận và bắt đầu render",
     "confirmed": "Đã xác nhận render",
     "readOnlyHint": "Job này không có checkpoint render thủ công — cấu hình chỉ hiển thị để tham khảo.",
-    "lockedHint": "Cấu hình render đã khóa. TTS và render đang chạy — không gửi lại yêu cầu.",
+    "lockedHint": "Cấu hình render đã khoá vì đang lồng tiếng và render.",
     "presentationSubtitle": "Định dạng & Phân đoạn hiển thị phụ đề",
     "appearanceTitle": "Giao diện phụ đề",
     "subtitleLayerTitle": "Lớp phụ đề",
     "subtitleLayerHint": "Điều khiển nội dung và kiểu chữ của phụ đề dịch. Lớp phủ được cấu hình riêng.",
     "subtitleLayerAppearanceTitle": "Lớp phụ đề · giao diện",
     "subtitleLayerContentTitle": "Lớp phụ đề · nhịp & kiểu chữ",
-    "displayMode": "Cách ngắt / nhóm phụ đề (Grouping)",
+    "displayMode": "Cách ngắt phụ đề",
     "displayModeSentence": "Cả câu (1 cue / phân đoạn — hiển thị cả đoạn văn)",
     "displayModePhrase": "Theo cụm từ (3–10 từ mỗi cue — khuyến nghị)",
     "displayModeWord": "Từng từ một (Word-by-word — phong cách Reels/TikTok)",
@@ -639,9 +652,9 @@
     "maskStyleBlur": "Làm mờ",
     "maskBlurRadius": "Bán kính mờ (2–20)",
     "maskColor": "Màu mặt nạ",
-    "ownershipChip": "Diện appearance do subtitle style sở hữu",
-    "ownershipTooltip": "Subtitle style đã gán sở hữu màu chữ/nền, bật/tắt hộp nền và vị trí phụ đề. Gỡ style để chỉnh lại các mục này.",
-    "styleReadoutTitle": "Style hiệu lực (chỉ đọc)",
+    "ownershipChip": "Giao diện phụ đề đang theo style preset",
+    "ownershipTooltip": "Style preset đang quyết định màu chữ, màu nền, hộp nền và vị trí phụ đề. Gỡ style khỏi job để tự chỉnh các mục này.",
+    "styleReadoutTitle": "Xem thiết lập của style (chỉ đọc)",
     "outlineWidth": "Độ dày viền chữ (0–8)",
     "outlineColor": "Màu viền chữ",
     "outlineBoxWarning": "Tắt hộp nền phía sau chữ để chỉnh viền chữ (stroke/border viền quanh chữ).",
@@ -671,14 +684,14 @@
     "saveConfig": "Lưu cấu hình",
     "draftBadge": "Bản nháp — chưa lưu",
     "draftBadgeClean": "Khớp cấu hình đã lưu",
-    "summaryStyleChip": "Style preset đang sở hữu màu",
+    "summaryStyleChip": "Màu theo style preset",
     "backgroundColor": "Màu nền",
     "backgroundAlpha": "Độ mờ nền {{value}}%",
-    "bgColorStyleNote": "Nếu job có style preset, màu nền lấy từ preset — các control này bị khoá.",
+    "bgColorStyleNote": "Nếu job dùng style preset, màu nền lấy theo preset.",
     "textColor": "Màu chữ",
-    "textColorNote": "Chỉ áp dụng cho phụ đề ghép cứng (HARD_SUB). Khi job có style preset, màu chữ do preset quyết định.",
+    "textColorNote": "Chỉ áp dụng cho phụ đề gắn cứng. Nếu job dùng style preset, màu chữ lấy theo preset.",
     "positionSection": "Vị trí & hiển thị",
-    "colorSection": "Màu sắc",
+    "colorSection": "Màu sắc & viền chữ",
     "coverEnable": "Bật lớp che",
     "coverHint": "Mỗi lớp che một vùng độc lập — đỉnh / giữa / đáy khung, hoặc bám theo dòng phụ đề — trong khi phụ đề có thể nằm ở vị trí khác. Tối đa 4 lớp; Solid tô màu đè, Blur làm mờ vùng chọn.",
     "coverAdd": "Thêm lớp",
@@ -697,7 +710,9 @@
     "layerAnchorBottom": "Đáy khung",
     "aspectSection": "Khung hình xuất",
     "aspectOriginal": "Gốc",
-    "aspectHint": "Worker sẽ đổi khung video trước khi đốt phụ đề — nền phóng to làm mờ, video gốc fit nguyên vẹn ở giữa (không cắt mất nội dung). Hình học phụ đề/mặt nạ theo khung mới."
+    "aspectHint": "Video sẽ được đặt vào khung mới với nền mờ phía sau — không bị cắt mất nội dung. Phụ đề và lớp che tự căn theo khung mới.",
+    "autoFrozenTitle": "Job chạy tự động",
+    "autoFrozenDesc": "Cấu hình render được áp dụng tự động theo preset và chỉ hiển thị để tham khảo."
   },
   "workflow": {
     "modeLabel": "Quy trình",
@@ -709,14 +724,16 @@
     "review": "Duyệt",
     "export": "Xuất",
     "continueCut": "Tiếp tục",
-    "resume": "Resume",
+    "resume": "Tiếp tục chạy",
     "state": {
       "PENDING": "đang chờ",
       "CONFIRMED": "đã xác nhận",
       "SKIPPED": "bỏ qua",
       "BLOCKED": "bị chặn",
       "COMPLETED": "hoàn tất"
-    }
+    },
+    "cutWaiting": "Job đang dừng ở bước Cắt — xem phương án rồi bấm Tiếp tục để chạy tiếp.",
+    "reviewBlocked": "QA đang chặn bước Duyệt — xử lý các lỗi QA rồi bấm Tiếp tục chạy."
   },
   "tabs": {
     "navLabel": "Điều hướng Media Studio",

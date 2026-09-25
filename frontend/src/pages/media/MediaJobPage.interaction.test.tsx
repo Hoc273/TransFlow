@@ -34,6 +34,7 @@ const { jobQuery, providersQuery, continueMutate } = vi.hoisted(() => ({
 
 vi.mock('@/hooks/useMedia', () => ({
   useMediaJob: () => jobQuery,
+  useMediaAsset: () => ({ data: undefined }),
   useMediaLinkedJob: () => ({ data: undefined as unknown, isLoading: false }),
   useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
   useCancelMediaJob: () => ({ isPending: false, mutateAsync: vi.fn() }),
@@ -44,8 +45,8 @@ vi.mock('@/hooks/useMedia', () => ({
   useWorkflowResume: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }))
 
-vi.mock('@/components/media-studio/WorkflowCheckpointStrip', () => ({
-  WorkflowCheckpointStrip: () => null,
+vi.mock('@/components/media-studio/WorkflowCheckpointActions', () => ({
+  WorkflowCheckpointActions: () => null,
 }))
 
 vi.mock('@/components/media-studio/ProposalPanel', () => ({

@@ -382,8 +382,9 @@ export function VoiceSelector({
                 {compatibleVoices.map((voice) => (
                   <option key={voice.id} value={voice.id}>
                     {voice.displayName || voice.voiceId}
-                    {' · '}
-                    {voice.gender}
+                    {voice.gender
+                      ? ` · ${t(`media:voice.gender.${voice.gender}`, { defaultValue: voice.gender })}`
+                      : ''}
                   </option>
                 ))}
               </select>

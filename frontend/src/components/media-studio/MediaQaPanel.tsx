@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconAlertTriangle, IconPencil } from '@tabler/icons-react'
+import { IconAlertTriangle, IconCircleCheck, IconPencil } from '@tabler/icons-react'
 import { QaOverrideModal } from '@/components/qa/QaOverrideModal'
 import { SeverityBadge } from '@/components/qa/SeverityBadge'
 import { useMediaJobQaIssues, useMediaSubtitles, useOverrideQaIssue } from '@/hooks/useMedia'
@@ -202,7 +202,10 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
       )}
 
       {openTotal === 0 && (
-        <p className="mb-0 text-sm text-[var(--color-text-tertiary)]">{t('qa.noneOpen')}</p>
+        <p className="media-qa-clear m-0" data-testid="qa-none-open">
+          <IconCircleCheck size={14} />
+          {t('qa.noneOpen')}
+        </p>
       )}
 
       <div className="media-review-issue-list">

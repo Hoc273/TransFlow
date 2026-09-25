@@ -1054,7 +1054,7 @@
   font-weight: 800;
   color: #fff;
   background: color-mix(in srgb, var(--color-media, var(--color-accent)) 88%, #0f172a);
-  min-width: 14px;
+  min-width: 4px;
   cursor: pointer;
 }
 .media-narrative-timeline-seg:hover,
@@ -1064,6 +1064,42 @@
 .media-narrative-engine-cuts {
   padding-top: 8px;
   border-top: 1px dashed var(--color-border);
+}
+.media-narrative-engine-cuts > summary,
+.media-narrative-reasoning > summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.media-narrative-reasoning {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--color-bg-surface-2);
+  font-size: 12px;
+}
+.media-narrative-reasoning > summary {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.media-narrative-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.media-narrative-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--color-bg-surface);
+}
+.media-narrative-row + .media-narrative-row {
+  border-top: 1px solid var(--color-border);
+}
+.media-narrative-row:hover {
+  background: var(--color-bg-hover);
 }
 .media-domain-phase-badge {
   display: inline-flex;
@@ -1195,103 +1231,180 @@
   color: var(--color-accent);
   border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
+.media-qa-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent);
+}
 .media-banner.warn {
   background: var(--color-status-partial-bg);
   color: var(--color-status-partial);
   border: 1px solid color-mix(in srgb, var(--color-status-partial) 25%, transparent);
 }
 
-.media-studio-accordion {
+/* Media Studio horizontal tabs — sticky tab bar + single visible panel. */
+.media-studio-tabs {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
-.media-accordion-item {
+.media-tabs-bar {
+  position: sticky;
+  /* Mobile shell scrolls the window under a sticky 56px header (MobileHeader h-14). */
+  top: calc(3.5rem + env(safe-area-inset-top, 0px));
+  z-index: 15;
+  margin: 0 -4px;
+  padding: 8px 4px;
+  background: var(--color-bg-app);
+}
+.media-tabs-list {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  overflow: hidden;
   box-shadow: var(--shadow-sm);
 }
-.media-accordion-item.open {
-  border-color: color-mix(in srgb, var(--color-media) 40%, var(--color-border));
-  overflow: visible;
+.media-tabs-list::-webkit-scrollbar {
+  display: none;
 }
-.media-accordion-item.disabled {
-  opacity: 0.55;
-}
-.media-accordion-trigger {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  border: none;
-  background: transparent;
-  color: var(--color-text-primary);
-  font-family: inherit;
-  cursor: pointer;
-  text-align: left;
-  flex-wrap: wrap;
-}
-.media-accordion-trigger:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-}
-.media-accordion-trigger:disabled {
-  cursor: not-allowed;
-}
-.media-accordion-index {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: var(--color-media-soft);
-  color: var(--color-media);
+.media-tab {
+  flex: 1 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  flex-shrink: 0;
-}
-.media-accordion-icon {
-  color: var(--color-media);
-  display: inline-flex;
-}
-.media-accordion-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.media-accordion-title {
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: inherit;
   font-size: 13.5px;
   font-weight: 600;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.media-accordion-subtitle {
-  font-size: 11.5px;
-  color: var(--color-text-tertiary);
+.media-tab:hover:not(:disabled):not(.active) {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
 }
-.media-accordion-badge {
-  margin-left: auto;
-  flex-shrink: 0;
+.media-tab:focus-visible {
+  outline: 2px solid var(--color-media);
+  outline-offset: 1px;
+}
+.media-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.media-tab.active {
+  background: var(--color-media-soft);
+  border-color: color-mix(in srgb, var(--color-media) 35%, transparent);
+  color: var(--color-media);
+}
+.media-tab-index {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
-}
-.media-accordion-chevron {
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--color-bg-surface-2);
   color: var(--color-text-tertiary);
-  transition: transform 0.15s;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+.media-tab.active .media-tab-index {
+  background: var(--color-media);
+  color: #fff;
+}
+.media-tab-index.is-done {
+  background: color-mix(in srgb, var(--color-success) 16%, transparent);
+  color: var(--color-success);
+}
+.media-tab.active .media-tab-index.is-done {
+  background: var(--color-success);
+  color: #fff;
+}
+.media-tab-index.is-attention {
+  position: relative;
+  background: var(--color-status-partial-bg);
+  color: var(--color-status-partial);
+}
+.media-tab-index.is-attention::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-status-partial);
+  box-shadow: 0 0 0 2px var(--color-bg-surface);
+}
+.media-tab-icon {
+  display: inline-flex;
   flex-shrink: 0;
 }
-.media-accordion-chevron.rotated {
-  transform: rotate(180deg);
+.media-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
-.media-accordion-body {
-  padding: 0 16px 16px;
-  border-top: 1px solid var(--color-border);
-  padding-top: 14px;
+.media-tab-panel {
+  scroll-margin-top: calc(3.5rem + 72px); /* clear header + sticky tab bar when auto-scrolled */
+}
+/* Desktop shell: .app-content is the scroll container, header sits outside it.
+   Sticky insets are measured from its 24px padding edge — cancel it so content
+   never peeks above the tab bar, and push sticky preview columns below the bar. */
+.app-content .media-tabs-bar {
+  top: -24px;
+}
+.app-content .media-studio-tabs .media-review-video-col,
+.app-content .media-studio-tabs .media-render-preview-col {
+  top: 56px;
+}
+.app-content .media-tab-panel {
+  scroll-margin-top: 72px;
+}
+.media-tab-panel-body {
+  padding: 16px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.media-tab-panel-desc {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--color-text-tertiary);
+}
+@media (max-width: 640px) {
+  .media-tab {
+    flex: 0 0 auto;
+    padding: 8px 10px;
+  }
+  .media-tab-icon {
+    display: none;
+  }
+  .media-tab-panel-body {
+    padding: 12px;
+  }
 }
 .media-count-pill {
   font-size: 10px;
@@ -2284,10 +2397,14 @@
   flex: 1 1 180px;
   min-width: 0;
   font-size: 13px;
+  line-height: 1.45;
   color: var(--color-text-primary);
-  white-space: nowrap;
+  /* Two lines keep long cues readable without expanding the row. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 /* Source line under the translation in collapsed rows, for side-by-side checking. */
 .media-subtitle-row-source {
@@ -4509,4 +4626,28 @@
     min-height: 0;
     overflow-y: auto;
   }
+}
+
+/* Collapsed advanced sub-group inside a render config group (e.g. colours). */
+.media-config-subgroup {
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.media-config-subgroup > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.media-config-subgroup[open] > summary {
+  color: var(--color-text-primary);
+}
+
+.media-page-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
 }

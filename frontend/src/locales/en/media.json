@@ -117,7 +117,7 @@
     "upload": "Upload + Consent",
     "uploadSub": "Upload video, accept terms, choose a recipe.",
     "jobOverview": "Job overview",
-    "jobOverviewSub": "Identifiers, recipe, languages, progress & source override.",
+    "jobOverviewSub": "Languages, subtitle type, duration and preset of this job.",
     "pipeline": "Pipeline tracking",
     "pipelineSub": "6 stages × 8 statuses · polling ~5s",
     "proposals": "Summary proposals",
@@ -131,11 +131,11 @@
     "voice": "Voice (optional)",
     "voiceSub": "Default keeps original audio. TTS is optional — not required to continue.",
     "export": "Export",
-    "exportSub": "Video + .srt + .vtt · gated by BLOCK_EXPORT",
+    "exportSub": "Download the final video and .srt / .vtt subtitle files.",
     "subtitleStyle": "Subtitle style",
     "subtitleStyleSub": "Pick a system preset for burned-in and exported subtitles.",
     "finishRender": "Finish & Render",
-    "finishRenderSub": "Voice, subtitle layer, presentation, and TTS → mix → render progress.",
+    "finishRenderSub": "Pick the dubbing voice, subtitle style and frame before rendering.",
     "finishProgress": "Downstream progress"
   },
   "poll": {
@@ -143,7 +143,8 @@
     "idle": "Idle",
     "updated": "Updated {{relative}}",
     "updating": "Updating…",
-    "every5s": "Poll every 5s"
+    "every5s": "Poll every 5s",
+    "updatedAt": "Updated at {{time}}"
   },
   "legend": {
     "title": "Stage legend",
@@ -171,7 +172,7 @@
     "RENDER": "Render"
   },
   "pipeline": {
-    "title": "Stage Pipeline Tracking",
+    "title": "Media job details",
     "stepperTitle": "Stage pipeline",
     "rerunFromStage": "Rerun stage",
     "rerunFromStageDesc": "Select a stage to rerun from the beginning (up to the current active stage):",
@@ -190,9 +191,9 @@
     "autoDetect": "Auto-detected",
     "overrideLang": "Override source language",
     "applyLang": "Apply",
-    "overrideConfirm": "This re-runs TRANSLATE → TTS → RENDER with the new source language. STT is not re-run. Continue?",
+    "overrideConfirm": "This job will be re-translated, re-dubbed and re-rendered with the new source language. Continue?",
     "overrideConfirmApply": "Confirm & re-run",
-    "staleWarn": "Changing the source language re-runs TRANSLATE → TTS → RENDER with the new language. STT is not re-run — the transcript is language-independent.",
+    "staleWarn": "Changing the source language re-translates, re-dubs and re-renders the video. Speech recognition is not re-run.",
     "progress": "Overall progress",
     "noStages": "No stage data available yet.",
     "providerErrors": {
@@ -213,7 +214,8 @@
       "generativeTtsDurationMismatch": "Generative narration is outside the requested duration — subtitle start/end edits cannot fix this TTS mismatch."
     },
     "waitingForQa": "Waiting for QA",
-    "waitingForQaReason": "Handle QA issues in Review to continue"
+    "waitingForQaReason": "Handle QA issues in Review to continue",
+    "changeSourceLang": "Change"
   },
   "upload": {
     "stepTitle": "Upload video",
@@ -259,7 +261,7 @@
     "lockedHint": "A proposal is selected and locked. The pipeline continues with this cut plan.",
     "narrativeLockedHint": "Single committed plan. The pipeline continues automatically.",
     "singlePlanAuto": "Auto-continue",
-    "singlePlanCommitted": "Committed · auto-continue",
+    "singlePlanCommitted": "Committed · continuing automatically",
     "aiSection": "Choose a summary cut",
     "narrativeSection": "Review narrative plan",
     "emptyTitle": "No proposals yet",
@@ -294,7 +296,8 @@
       "LONGER_THAN_REQUESTED": "Longer than requested duration",
       "OUTSIDE_TOLERANCE": "Outside duration tolerance",
       "generic": "Warning: {{code}}"
-    }
+    },
+    "confidence": "Confidence {{value}}%"
   },
   "refine": {
     "label": "Refinement request",
@@ -328,15 +331,20 @@
     "section": "Section {{n}}",
     "beat": "Beat",
     "sourceRefs": "Source refs",
-    "timeline": "Timeline",
+    "timeline": "Position in the original video",
     "duration": "Duration",
-    "sectionTimeline": "Section coverage",
+    "sectionTimeline": "Where each section sits in the original video",
     "tooltipSummaryScript": "AI summary script",
     "tooltipOriginalDialogue": "Original dialogue in this range",
     "tooltipNoDialogue": "No original dialogue recorded in this range",
     "tooltipTimeSpan": "Original time span",
-    "engineCuts": "Render references",
-    "engineCutsHint": "Rendering references used internally by the rendering pipeline. Not editable. The narrative body (sections + script) is the source of truth."
+    "engineCuts": "Original clips used for rendering",
+    "engineCutsHint": "For reference only — these clips are stitched automatically at render time and need no editing.",
+    "summary": "{{count}} sections · {{duration}} total",
+    "target": "Target",
+    "reasoning": "Why the AI built this script",
+    "showMore": "Show {{count}} more sections",
+    "showLess": "Show less"
   },
   "trim": {
     "hint": "Optional trim. Skip to translate the full video.",
@@ -431,7 +439,7 @@
     "blockRender": "Render is currently blocked (BLOCK_RENDER).",
     "blockExport": "Export is currently blocked (BLOCK_EXPORT).",
     "severitySummary": "Open QA issues by severity",
-    "noneOpen": "No open QA issues.",
+    "noneOpen": "No open QA issues",
     "band": {
       "high": "High",
       "medium": "Medium",
@@ -538,7 +546,7 @@
   "voice": {
     "optionalTitle": "Voice is optional",
     "hint": "Default keeps the original audio. You do not need to pick a TTS voice for the job to continue — TTS is skipped automatically when no voice is set.",
-    "regenHint": "Changing the voice later re-queues Voice Dub and/or Render after Translate has completed (audio is regenerated with the new choice).",
+    "regenHint": "Changing the voice re-dubs and re-renders the video (once translation has finished).",
     "defaultBadge": "Default",
     "original": "Keep original voice",
     "originalHint": "Keep the original audio, translate subtitles only",
@@ -571,7 +579,12 @@
     "modeTtsHint": "Generate a new voice-over in the target language",
     "noCompatTitle": "{{provider}} has no voice for the target language",
     "changeProvider": "Change provider",
-    "useOriginal": "Keep original voice"
+    "useOriginal": "Keep original voice",
+    "gender": {
+      "MALE": "Male",
+      "FEMALE": "Female",
+      "NEUTRAL": "Neutral"
+    }
   },
   "renderPrep": {
     "title": "Prepare render",
@@ -599,14 +612,14 @@
     "confirm": "Confirm and start render",
     "confirmed": "Render confirmed",
     "readOnlyHint": "This job has no manual render checkpoint - the configuration is shown for reference.",
-    "lockedHint": "Render settings are locked. TTS and rendering are already in progress.",
+    "lockedHint": "Render settings are locked while dubbing and rendering run.",
     "presentationSubtitle": "Subtitle Formatting & Segmentation",
     "appearanceTitle": "Subtitle appearance",
     "subtitleLayerTitle": "Subtitle layer",
     "subtitleLayerHint": "Controls translated subtitle content and typography. Cover overlays are configured separately.",
     "subtitleLayerAppearanceTitle": "Subtitle layer · appearance",
     "subtitleLayerContentTitle": "Subtitle layer · timing & type",
-    "displayMode": "Subtitle segmentation / grouping",
+    "displayMode": "Subtitle grouping",
     "displayModeSentence": "Full sentence (1 cue per segment — entire paragraph)",
     "displayModePhrase": "Phrase (3–10 words per cue — recommended)",
     "displayModeWord": "Word-by-word (one cue per word — Reels/TikTok style)",
@@ -639,9 +652,9 @@
     "maskStyleBlur": "Blur",
     "maskBlurRadius": "Blur radius (2–20)",
     "maskColor": "Mask color",
-    "ownershipChip": "Appearance owned by subtitle style",
-    "ownershipTooltip": "An assigned subtitle style owns text/background colors, the box toggle and subtitle placement. Clear the style to edit these controls.",
-    "styleReadoutTitle": "Effective style (read-only)",
+    "ownershipChip": "Subtitle look follows the style preset",
+    "ownershipTooltip": "The style preset controls text colour, background, background box and subtitle position. Remove the style from the job to edit these yourself.",
+    "styleReadoutTitle": "View style settings (read-only)",
     "outlineWidth": "Outline width (0–8)",
     "outlineColor": "Outline color",
     "outlineBoxWarning": "Turn off the text background box to customize the letter stroke outline.",
@@ -671,14 +684,14 @@
     "saveConfig": "Save config",
     "draftBadge": "Draft — unsaved",
     "draftBadgeClean": "Matches saved config",
-    "summaryStyleChip": "Style preset owns colors",
+    "summaryStyleChip": "Colours from style preset",
     "backgroundColor": "Background color",
     "backgroundAlpha": "Background opacity {{value}}%",
-    "bgColorStyleNote": "If a subtitle style preset is assigned, the background color comes from the preset — these controls are locked.",
+    "bgColorStyleNote": "When the job uses a style preset, the background colour comes from the preset.",
     "textColor": "Text color",
-    "textColorNote": "Applies to burned-in (HARD_SUB) subtitles only. When a style preset is assigned, the text color is owned by the preset.",
+    "textColorNote": "Hard subtitles only. When the job uses a style preset, the text colour comes from the preset.",
     "positionSection": "Position & visibility",
-    "colorSection": "Colors",
+    "colorSection": "Colours & outline",
     "coverEnable": "Enable cover layers",
     "coverHint": "Each layer covers an independent region — top / middle / bottom edge of the frame, or following the subtitle line — while the subtitle itself can sit elsewhere. Up to 4 layers; Solid fills a colour, Blur frosts the region.",
     "coverAdd": "Add layer",
@@ -697,7 +710,9 @@
     "layerAnchorBottom": "Bottom edge",
     "aspectSection": "Output frame",
     "aspectOriginal": "Original",
-    "aspectHint": "The worker reframes the output before burning subtitles — blurred cover background with the full video fitted centered (no content cropped). Subtitle/mask geometry follows the new frame."
+    "aspectHint": "The video is placed in the new frame over a blurred background — nothing is cropped. Subtitles and masks follow the new frame.",
+    "autoFrozenTitle": "Automatic job",
+    "autoFrozenDesc": "Render settings were applied automatically from the preset and are shown for reference only."
   },
   "workflow": {
     "modeLabel": "Workflow",
@@ -716,7 +731,9 @@
       "SKIPPED": "skipped",
       "BLOCKED": "blocked",
       "COMPLETED": "completed"
-    }
+    },
+    "cutWaiting": "The job is paused at the Cut step — review the plan, then press Continue.",
+    "reviewBlocked": "QA is blocking the Review step — resolve the QA issues, then press Resume."
   },
   "tabs": {
     "navLabel": "Media Studio Navigation",

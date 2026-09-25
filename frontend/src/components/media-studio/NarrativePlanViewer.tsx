@@ -1,6 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconClock, IconLink, IconMessage, IconScript } from '@tabler/icons-react'
+import { IconClock, IconMessage, IconScript } from '@tabler/icons-react'
 import { formatDurationMs } from '@/lib/media'
 import type { NarrativePlan } from '@/types/media'
 
@@ -27,6 +27,9 @@ type Props = {
   sourceSegments?: SourceDialogueSegment[]
 }
 
+/** Long plans render the first sections and reveal the rest on demand. */
+const INITIAL_VISIBLE_SECTIONS = 10
+
 export function NarrativePlanViewer({
   plan,
   cutRanges = [],
@@ -34,6 +37,7 @@ export function NarrativePlanViewer({
   sourceSegments = [],
 }: Props) {
   const { t } = useTranslation('media')
+  const [showAll, setShowAll] = useState(false)
 
   const sectionSpans = useMemo(() => {
     return plan.sections.map((section) => {
@@ -46,6 +50,11 @@ export function NarrativePlanViewer({
       return { startMs, endMs, durationMs }
     })
   }, [plan.sections])
+
+  const totalSectionsMs = useMemo(
+    () => sectionSpans.reduce((sum, span) => sum + span.durationMs, 0),
+    [sectionSpans],
+  )
 
   const timelineMaxMs = useMemo(() => {
     const fromSections = Math.max(
@@ -71,28 +80,43 @@ export function NarrativePlanViewer({
     })
   }, [sectionSpans, sourceSegments])
 
+  const hiddenCount = Math.max(0, plan.sections.length - INITIAL_VISIBLE_SECTIONS)
+  const visibleSections = showAll ? plan.sections : plan.sections.slice(0, INITIAL_VISIBLE_SECTIONS)
+
   return (
     <div className="space-y-3" data-testid="narrative-plan-viewer">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0 space-y-0.5">
           {plan.title && <h4 className="m-0 text-sm font-semibold">{plan.title}</h4>}
-          {plan.global_reasoning_note && (
-            <p className="mb-0 mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
-              {plan.global_reasoning_note}
-            </p>
-          )}
+          <p className="m-0 text-xs text-[var(--color-text-secondary)]" data-testid="narrative-summary">
+            {t('narrative.summary', {
+              count: plan.sections.length,
+              duration: formatDurationMs(totalSectionsMs),
+            })}
+          </p>
         </div>
         {plan.target_duration_ms != null && (
-          <span className="media-range-chip inline-flex items-center gap-1">
+          <span className="media-range-chip inline-flex items-center gap-1" title={t('narrative.target')}>
             <IconClock size={12} />
-            {formatDurationMs(plan.target_duration_ms)}
+            {t('narrative.target')}: {formatDurationMs(plan.target_duration_ms)}
           </span>
         )}
       </div>
 
+      {plan.global_reasoning_note && (
+        <details className="media-narrative-reasoning" data-testid="narrative-reasoning">
+          <summary>{t('narrative.reasoning')}</summary>
+          <p className="mb-0 mt-2 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+            {plan.global_reasoning_note}
+          </p>
+        </details>
+      )}
+
       {/* Section beat timeline — source-grounded spans on the original timeline.
           Primary narrative visualization, derived from plan_body.source_refs
-          (the narrative source of truth), NOT from denormalized cut_ranges. */}
+          (the narrative source of truth), NOT from denormalized cut_ranges.
+          Segments carry no inline numbers (they overlap on long plans); the
+          section number + script live in the hover/focus tooltip. */}
       {plan.sections.length > 0 && (
         <div className="media-narrative-timeline" data-testid="narrative-section-timeline">
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
@@ -104,7 +128,7 @@ export function NarrativePlanViewer({
               if (span.startMs == null || span.endMs == null) return null
               const left = Math.max(0, Math.min(100, (span.startMs / timelineMaxMs) * 100))
               const width = Math.max(
-                2,
+                0.8,
                 Math.min(100 - left, ((span.endMs - span.startMs) / timelineMaxMs) * 100),
               )
               const matched = matchedDialoguesBySection[idx] ?? []
@@ -121,16 +145,15 @@ export function NarrativePlanViewer({
                   className="media-narrative-timeline-seg group"
                   style={{ left: `${left}%`, width: `${width}%` }}
                   tabIndex={0}
+                  aria-label={`#${section.seq} ${formatDurationMs(span.startMs)}–${formatDurationMs(span.endMs)}`}
                 >
-                  {section.seq}
-
                   <div
                     className="media-narrative-tooltip pointer-events-none absolute bottom-full mb-2 hidden group-hover:block group-focus:block z-50 w-72 sm:w-80 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-3 text-left shadow-2xl transition-all"
                     style={tooltipStyle}
                     data-testid={`narrative-tooltip-${section.seq}`}
                   >
                     <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--color-border)] pb-2">
-                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-[var(--color-media,var(--color-accent))] text-[10px] font-bold text-white">
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-[var(--color-media,var(--color-accent))] px-1 text-[10px] font-bold text-white">
                         #{section.seq}
                       </span>
                       <span className="text-xs font-semibold text-[var(--color-text-primary)]">
@@ -184,72 +207,80 @@ export function NarrativePlanViewer({
         </div>
       )}
 
-      <div className="space-y-2">
-        {plan.sections.map((section, idx) => {
+      {/* One compact row per section: number · script · original-timeline span.
+          Extra source refs are listed only when a section stitches several
+          ranges (a single ref would just repeat the span). */}
+      <ol className="media-narrative-rows" data-testid="narrative-section-rows">
+        {visibleSections.map((section, idx) => {
           const span = sectionSpans[idx]
-
+          const hasHeading = Boolean(section.heading?.trim())
           return (
-            <section
-              key={section.seq}
-              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-3"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="media-proposal-rank">{section.seq}</span>
-                <span className="text-sm font-semibold">
-                  {section.heading || t('narrative.section', { n: section.seq })}
-                </span>
-                {section.beat_type && (
-                  <span className="media-range-chip">
-                    {t('narrative.beat')}: {section.beat_type}
-                  </span>
+            <li key={section.seq} className="media-narrative-row">
+              <span className="media-proposal-rank">{section.seq}</span>
+              <div className="min-w-0 flex-1 space-y-1">
+                {(hasHeading || section.beat_type) && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {hasHeading && <span className="text-xs font-semibold">{section.heading}</span>}
+                    {section.beat_type && (
+                      <span className="media-range-chip">
+                        {t('narrative.beat')}: {section.beat_type}
+                      </span>
+                    )}
+                  </div>
                 )}
-                <span className="ml-auto font-mono text-[11px] text-[var(--color-text-tertiary)]">
-                  {span.durationMs > 0 ? formatDurationMs(span.durationMs) : '—'}
-                </span>
+                <p className="m-0 text-sm leading-relaxed text-[var(--color-text-primary)]">
+                  {section.script_source_lang}
+                </p>
+                {section.source_refs.length > 1 && (
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="text-[11px] text-[var(--color-text-tertiary)]">
+                      {t('narrative.sourceRefs')}:
+                    </span>
+                    {section.source_refs.map((ref, index) => (
+                      <span key={`${ref.start_ms}-${ref.end_ms}-${index}`} className="media-range-chip">
+                        {formatDurationMs(ref.start_ms)}–{formatDurationMs(ref.end_ms)}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-
-              <div className="mt-2 flex items-start gap-2 text-xs leading-relaxed text-[var(--color-text-primary)]">
-                <IconScript size={14} className="mt-0.5 shrink-0 text-[var(--color-media)]" />
-                <span>{section.script_source_lang}</span>
-              </div>
-
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--color-text-tertiary)]">
-                  <IconLink size={12} />
-                  {t('narrative.sourceRefs')}
-                </span>
-                {section.source_refs.map((ref, index) => (
-                  <span key={`${ref.start_ms}-${ref.end_ms}-${index}`} className="media-range-chip">
-                    {formatDurationMs(ref.start_ms)}–{formatDurationMs(ref.end_ms)}
-                  </span>
-                ))}
-              </div>
-
-              <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-[var(--color-text-tertiary)]">
-                <span>
-                  {t('narrative.timeline')}:{' '}
+              <div
+                className="shrink-0 text-right font-mono text-[11px] leading-5 text-[var(--color-text-tertiary)]"
+                title={t('narrative.timeline')}
+              >
+                <div className="text-[var(--color-text-secondary)]">
                   {span.startMs != null ? formatDurationMs(span.startMs) : '—'}–
                   {span.endMs != null ? formatDurationMs(span.endMs) : '—'}
-                </span>
-                <span>
-                  {t('narrative.duration')}:{' '}
+                </div>
+                <div title={t('narrative.duration')}>
                   {span.durationMs > 0 ? formatDurationMs(span.durationMs) : '—'}
-                </span>
+                </div>
               </div>
-            </section>
+            </li>
           )
         })}
-      </div>
+      </ol>
+
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          className="btn-media-secondary btn-sm w-full justify-center"
+          data-testid="narrative-toggle-all"
+          onClick={() => setShowAll((v) => !v)}
+        >
+          {showAll ? t('narrative.showLess') : t('narrative.showMore', { count: hiddenCount })}
+        </button>
+      )}
 
       {/* Rendering references (denormalized cut_ranges) — secondary, internal,
-          non-editable. Not the authoritative narrative body; shown for
-          transparency into the render pipeline's coverage only. */}
+          non-editable. Not the authoritative narrative body; collapsed by
+          default and shown for transparency into render coverage only. */}
       {cutRanges.length > 0 && (
-        <div className="media-narrative-engine-cuts" data-testid="narrative-engine-cuts">
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
+        <details className="media-narrative-engine-cuts" data-testid="narrative-engine-cuts">
+          <summary className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
             {t('narrative.engineCuts')}
-          </div>
-          <p className="mb-2 mt-0 text-[11px] leading-relaxed text-[var(--color-text-tertiary)]">
+          </summary>
+          <p className="mb-2 mt-2 text-[11px] leading-relaxed text-[var(--color-text-tertiary)]">
             {t('narrative.engineCutsHint')}
           </p>
           <div className="media-cut-timeline-track media-cut-timeline-track-engine" aria-hidden>
@@ -275,7 +306,7 @@ export function NarrativePlanViewer({
               </span>
             ))}
           </div>
-        </div>
+        </details>
       )}
     </div>
   )

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/cn'
 import type { MediaStageStatus } from '@/types/media'
 
@@ -19,6 +20,7 @@ type Props = {
 }
 
 export function StageBadge({ status, className, label }: Props) {
+  const { t } = useTranslation('media')
   const s = String(status ?? 'PENDING').toUpperCase()
   const safe = KNOWN.has(s) ? s : 'PENDING'
   const pulse = safe === 'PROCESSING' || safe === 'CANCEL_REQUESTED'
@@ -26,7 +28,7 @@ export function StageBadge({ status, className, label }: Props) {
   return (
     <span className={cn('media-stage-badge', `media-stage-${safe}`, className)}>
       <span className={cn('media-stage-dot', pulse && 'pulse-dot')} />
-      {label ?? safe.replaceAll('_', ' ')}
+      {label ?? t(`stageStatus.${safe}`, { defaultValue: safe.replaceAll('_', ' ') })}
     </span>
   )
 }

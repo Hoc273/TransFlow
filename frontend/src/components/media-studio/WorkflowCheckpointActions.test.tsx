@@ -15,7 +15,7 @@ vi.mock('@/hooks/useMedia', () => ({
 }))
 
 const { renderToStaticMarkup } = await import('react-dom/server')
-const { WorkflowCheckpointStrip } = await import('./WorkflowCheckpointStrip')
+const { WorkflowCheckpointActions } = await import('./WorkflowCheckpointActions')
 
 import type { MediaJob } from '@/types/media'
 
@@ -44,29 +44,19 @@ function job(partial: Partial<MediaJob>): MediaJob {
   }
 }
 
-describe('WorkflowCheckpointStrip — W0 (docs/19 §1.8.2)', () => {
-  it('renders mode badge and all three checkpoint states', () => {
-    const html = renderToStaticMarkup(
-      <WorkflowCheckpointStrip workspaceId="ws" job={job({})} />,
-    )
-    expect(html).toContain('media:workflow.manual')
-    expect(html).toContain('media:workflow.cut')
-    expect(html).toContain('media:workflow.review')
-    expect(html).toContain('media:workflow.export')
-    expect(html).toContain('media:workflow.state.PENDING')
-  })
-
+describe('WorkflowCheckpointActions — W0 (docs/19 §1.8.2)', () => {
   it('shows Continue only when the CUT checkpoint canContinue (MANUAL)', () => {
     const html = renderToStaticMarkup(
-      <WorkflowCheckpointStrip workspaceId="ws" job={job({})} />,
+      <WorkflowCheckpointActions workspaceId="ws" job={job({})} />,
     )
+    expect(html).toContain('media:workflow.cutWaiting')
     expect(html).toContain('media:workflow.continueCut')
     expect(html).not.toContain('media:workflow.resume')
   })
 
-  it('hides Continue once CUT is confirmed', () => {
+  it('renders nothing once CUT is confirmed and REVIEW is not blocked', () => {
     const html = renderToStaticMarkup(
-      <WorkflowCheckpointStrip
+      <WorkflowCheckpointActions
         workspaceId="ws"
         job={job({
           workflowCheckpoints: [
@@ -77,12 +67,12 @@ describe('WorkflowCheckpointStrip — W0 (docs/19 §1.8.2)', () => {
         })}
       />,
     )
-    expect(html).not.toContain('media:workflow.continueCut')
+    expect(html).toBe('')
   })
 
   it('shows Resume when REVIEW is gate-blocked (QA resume)', () => {
     const html = renderToStaticMarkup(
-      <WorkflowCheckpointStrip
+      <WorkflowCheckpointActions
         workspaceId="ws"
         job={job({
           workflowCheckpoints: [
@@ -93,12 +83,13 @@ describe('WorkflowCheckpointStrip — W0 (docs/19 §1.8.2)', () => {
         })}
       />,
     )
+    expect(html).toContain('media:workflow.reviewBlocked')
     expect(html).toContain('media:workflow.resume')
   })
 
-  it('AUTO renders a read-only strip without any action buttons', () => {
+  it('AUTO job with nothing actionable renders nothing (no read-only strip)', () => {
     const html = renderToStaticMarkup(
-      <WorkflowCheckpointStrip
+      <WorkflowCheckpointActions
         workspaceId="ws"
         job={job({
           workflowMode: 'AUTO',
@@ -110,20 +101,16 @@ describe('WorkflowCheckpointStrip — W0 (docs/19 §1.8.2)', () => {
         })}
       />,
     )
-    expect(html).toContain('media:workflow.auto')
-    expect(html).toContain('media:workflow.state.SKIPPED')
-    expect(html).not.toContain('media:workflow.continueCut')
-    expect(html).not.toContain('media:workflow.resume')
+    expect(html).toBe('')
   })
 
-  it('legacy job without workflowMode derives the recipe default (AUTO)', () => {
+  it('legacy job without checkpoints renders nothing', () => {
     const html = renderToStaticMarkup(
-      <WorkflowCheckpointStrip
+      <WorkflowCheckpointActions
         workspaceId="ws"
         job={job({ workflowMode: null, workflowCheckpoints: null })}
       />,
     )
-    // localization.full legacy → AUTO badge, no actions.
-    expect(html).toContain('media:workflow.auto')
+    expect(html).toBe('')
   })
 })

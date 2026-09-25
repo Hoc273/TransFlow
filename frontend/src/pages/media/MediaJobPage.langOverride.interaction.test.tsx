@@ -39,6 +39,7 @@ const { jobQuery, providersQuery, overrideLangMutate } = langState
 
 vi.mock('@/hooks/useMedia', () => ({
   useMediaJob: () => jobQuery,
+  useMediaAsset: () => ({ data: undefined }),
   useMediaLinkedJob: () => ({ data: undefined as unknown, isLoading: false }),
   useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
   useRenderConfig: () => ({ data: undefined, isLoading: false }),
@@ -149,52 +150,50 @@ describe('MediaJobPage — source language override confirmation', () => {
     })
   })
 
-  it('asks for confirmation when the pipeline already ran, then applies on confirm', async () => {
+  const pickLanguage = (container: HTMLElement, lang: string) => {
+    fireEvent.click(container.querySelector('[data-testid="source-lang-edit"]')!)
+    const langSelect = document.querySelector(
+      '[data-testid="source-lang-editor"] select',
+    ) as HTMLSelectElement
+    fireEvent.change(langSelect, { target: { value: lang } })
+  }
+
+  it('warns about the rerun in the dialog when the pipeline already ran, then applies', async () => {
     jobQuery.data = job({ recipeId: 'localization.full', workflowMode: 'AUTO' })
 
     const { container } = render(<MediaJobPage />)
+    pickLanguage(container, 'vi')
 
-    const langSelect = container.querySelector(
-      '[data-testid="job-overview-section"] select',
-    ) as HTMLSelectElement
-    fireEvent.change(langSelect, { target: { value: 'vi' } })
-    fireEvent.click(container.querySelector('[data-testid="job-overview-section"] button')!)
-
-    // Confirm row appears; nothing published yet.
-    expect(container.querySelector('[data-testid="lang-override-confirm"]')).not.toBeNull()
+    // Rerun warning is shown inside the dialog; nothing published yet.
+    expect(document.querySelector('[data-testid="lang-override-confirm"]')).not.toBeNull()
     expect(overrideLangMutate).not.toHaveBeenCalled()
 
-    fireEvent.click(container.querySelector('[data-testid="lang-override-confirm-apply"]')!)
+    fireEvent.click(document.querySelector('[data-testid="source-lang-apply"]')!)
 
     await waitFor(() =>
       expect(overrideLangMutate).toHaveBeenCalledWith({ sourceLang: 'vi' }),
     )
-    expect(container.querySelector('[data-testid="lang-override-confirm"]')).toBeNull()
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="source-lang-editor"]')).toBeNull(),
+    )
   })
 
-  it('cancel dismisses the confirmation without publishing', () => {
+  it('cancel closes the dialog without publishing', () => {
     jobQuery.data = job({ recipeId: 'localization.full', workflowMode: 'AUTO' })
 
     const { container } = render(<MediaJobPage />)
+    pickLanguage(container, 'vi')
 
-    const langSelect = container.querySelector(
-      '[data-testid="job-overview-section"] select',
-    ) as HTMLSelectElement
-    fireEvent.change(langSelect, { target: { value: 'vi' } })
-    fireEvent.click(container.querySelector('[data-testid="job-overview-section"] button')!)
-
-    expect(container.querySelector('[data-testid="lang-override-confirm"]')).not.toBeNull()
-
-    const cancelButton = container.querySelector(
-      '[data-testid="lang-override-confirm"] button',
+    const cancelButton = Array.from(document.querySelectorAll('[role="dialog"] button')).find(
+      (b) => b.getAttribute('data-testid') !== 'source-lang-apply' && b.textContent?.trim(),
     ) as HTMLButtonElement
     fireEvent.click(cancelButton)
 
-    expect(container.querySelector('[data-testid="lang-override-confirm"]')).toBeNull()
+    expect(document.querySelector('[data-testid="source-lang-editor"]')).toBeNull()
     expect(overrideLangMutate).not.toHaveBeenCalled()
   })
 
-  it('applies immediately on a fresh job that has not run anything', async () => {
+  it('applies without the rerun warning on a fresh job that has not run anything', async () => {
     jobQuery.data = job({
       recipeId: 'localization.full',
       workflowMode: 'AUTO',
@@ -207,14 +206,10 @@ describe('MediaJobPage — source language override confirmation', () => {
     })
 
     const { container } = render(<MediaJobPage />)
+    pickLanguage(container, 'vi')
 
-    const langSelect = container.querySelector(
-      '[data-testid="job-overview-section"] select',
-    ) as HTMLSelectElement
-    fireEvent.change(langSelect, { target: { value: 'vi' } })
-    fireEvent.click(container.querySelector('[data-testid="job-overview-section"] button')!)
-
-    expect(container.querySelector('[data-testid="lang-override-confirm"]')).toBeNull()
+    expect(document.querySelector('[data-testid="lang-override-confirm"]')).toBeNull()
+    fireEvent.click(document.querySelector('[data-testid="source-lang-apply"]')!)
     await waitFor(() =>
       expect(overrideLangMutate).toHaveBeenCalledWith({ sourceLang: 'vi' }),
     )

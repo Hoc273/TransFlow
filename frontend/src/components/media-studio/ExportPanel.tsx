@@ -38,6 +38,9 @@ type Props = {
  *   - Right column: Video specifications & metadata, plus attached subtitle files (SRT, VTT)
  *     with their download actions and inline content preview.
  */
+/** `<uuid>.<ext>` storage keys (render outputs) — not a user-facing name. */
+const INTERNAL_FILE_NAME_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z0-9]+$/i
+
 export function ExportPanel({ workspaceId, job }: Props) {
   const { t } = useTranslation(['media', 'common'])
   const exportJob = useExportMediaJob(workspaceId, job.id)
@@ -595,12 +598,17 @@ export function ExportPanel({ workspaceId, job }: Props) {
                             </div>
 
                             <dl className="m-0 grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-2 text-xs">
-                              <dt className="text-[var(--color-text-tertiary)]">
-                                {t('media:export.fileNameLabel')}
-                              </dt>
-                              <dd className="m-0 truncate font-mono font-medium text-[var(--color-text-primary)]">
-                                {item.fileName}
-                              </dd>
+                              {/* Storage object keys are UUIDs — meaningless to users, so skip the row. */}
+                              {!INTERNAL_FILE_NAME_RE.test(item.fileName) && (
+                                <>
+                                  <dt className="text-[var(--color-text-tertiary)]">
+                                    {t('media:export.fileNameLabel')}
+                                  </dt>
+                                  <dd className="m-0 truncate font-mono font-medium text-[var(--color-text-primary)]">
+                                    {item.fileName}
+                                  </dd>
+                                </>
+                              )}
 
                               <dt className="text-[var(--color-text-tertiary)]">
                                 {t('media:export.formatLabel')}

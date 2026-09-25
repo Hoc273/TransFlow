@@ -1,8 +1,8 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 import { useState } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { StudioAccordion, type StudioPanel } from './StudioAccordion'
+import { StudioTabs, type StudioPanel } from './StudioTabs'
 
 afterEach(() => cleanup())
 
@@ -11,54 +11,55 @@ function openState(container: HTMLElement, sectionId: string): string | null | u
 }
 
 function Harness() {
-  const [openId, setOpenId] = useState<string | null>('a')
+  const [activeId, setActiveId] = useState<string>('a')
   const panels: StudioPanel[] = [
     { id: 'a', index: 1, title: 'Section A', children: <input data-testid="input-a" /> },
     { id: 'b', index: 2, title: 'Section B', children: <input data-testid="input-b" /> },
     { id: 'c', index: 3, title: 'Section C', children: <div data-testid="body-c">C body</div> },
   ]
-  return (
-    <StudioAccordion
-      panels={panels}
-      openId={openId}
-      onToggle={(id) => setOpenId((cur) => (cur === id ? null : id))}
-    />
-  )
+  return <StudioTabs panels={panels} activeId={activeId} onSelect={setActiveId} />
 }
 
-describe('StudioAccordion â€” real interaction single-open', () => {
-  it('clicking B closes A â€” never two top-level sections open', () => {
+describe('StudioTabs — real interaction', () => {
+  it('clicking tab B hides A — exactly one panel visible', () => {
     const { container } = render(<Harness />)
     expect(openState(container, 'a')).toBe('true')
 
-    fireEvent.click(screen.getByText('Section B'))
+    fireEvent.click(screen.getByRole('tab', { name: /Section B/ }))
     expect(openState(container, 'a')).toBe('false')
     expect(openState(container, 'b')).toBe('true')
   })
 
-  it('A â†’ B â†’ C keeps exactly one section open (B closes when C opens)', () => {
+  it('clicking the active tab keeps it open (tabs never collapse)', () => {
     const { container } = render(<Harness />)
-
-    fireEvent.click(screen.getByText('Section B'))
-    fireEvent.click(screen.getByText('Section C'))
-
-    expect(openState(container, 'a')).toBe('false')
-    expect(openState(container, 'b')).toBe('false')
-    expect(openState(container, 'c')).toBe('true')
+    fireEvent.click(screen.getByRole('tab', { name: /Section A/ }))
+    expect(openState(container, 'a')).toBe('true')
   })
 
-  it('typed form state survives switching sections and coming back', () => {
+  it('arrow keys move between tabs and wrap around', () => {
+    const { container } = render(<Harness />)
+    const tabA = screen.getByRole('tab', { name: /Section A/ })
+
+    fireEvent.keyDown(tabA, { key: 'ArrowRight' })
+    expect(openState(container, 'b')).toBe('true')
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: /Section B/ }), { key: 'End' })
+    expect(openState(container, 'c')).toBe('true')
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: /Section C/ }), { key: 'ArrowRight' })
+    expect(openState(container, 'a')).toBe('true')
+  })
+
+  it('typed form state survives switching tabs and coming back', () => {
     const { container } = render(<Harness />)
 
     const inputA = screen.getByTestId('input-a') as HTMLInputElement
     fireEvent.change(inputA, { target: { value: 'hello world' } })
-    expect(inputA.value).toBe('hello world')
 
-    fireEvent.click(screen.getByText('Section B'))
-    expect(openState(container, 'a')).toBe('false')
+    fireEvent.click(screen.getByRole('tab', { name: /Section B/ }))
     expect(openState(container, 'b')).toBe('true')
 
-    fireEvent.click(screen.getByText('Section A'))
+    fireEvent.click(screen.getByRole('tab', { name: /Section A/ }))
     expect(openState(container, 'a')).toBe('true')
     expect((screen.getByTestId('input-a') as HTMLInputElement).value).toBe('hello world')
   })

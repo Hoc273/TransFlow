@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   IconDownload,
-  IconGitBranch,
   IconListDetails,
   IconRefresh,
   IconRocket,
@@ -20,14 +19,15 @@ import { MediaReviewSection } from '@/components/media-studio/MediaReviewSection
 import { PipelineStepper } from '@/components/media-studio/PipelineStepper'
 import { RenderAndVoiceSection } from '@/components/media-studio/RenderAndVoiceSection'
 import { StageRerunDropdown } from '@/components/media-studio/StageRerunDropdown'
-import { WorkflowCheckpointStrip } from '@/components/media-studio/WorkflowCheckpointStrip'
+import { WorkflowCheckpointActions } from '@/components/media-studio/WorkflowCheckpointActions'
 import { ProposalPanel } from '@/components/media-studio/ProposalPanel'
-import { StageLegend } from '@/components/media-studio/StageLegend'
-import { StudioAccordion, type StudioPanel } from '@/components/media-studio/StudioAccordion'
+import { SourceLangModal } from '@/components/media-studio/SourceLangModal'
+import { StudioTabs, type StudioPanel } from '@/components/media-studio/StudioTabs'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import {
   useCancelMediaJob,
+  useMediaAsset,
   useMediaJob,
   useMediaJobQaIssues,
   useMediaLinkedJob,
@@ -68,15 +68,15 @@ import {
   resolveEffectivePhase,
   resolveWorkflowMode,
 } from '@/lib/media'
-import { formatRelativeTime } from '@/lib/format'
-import { formatLanguageOption, LANG_OPTIONS } from '@/lib/languages'
+import { formatDateTimeDetailed } from '@/lib/format'
+import { formatLanguageOption } from '@/lib/languages'
 import { asJobStatus } from '@/lib/status'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
 
 /**
- * Media Job Studio — pinned pipeline stepper + numbered accordion panels.
- * Pipeline tracking lives only in the pinned card (not duplicated in accordion).
+ * Media Job Studio — pinned pipeline stepper + numbered horizontal tabs.
+ * Pipeline tracking lives only in the pinned card (not duplicated in tabs).
  */
 export function MediaJobPage() {
   const { t } = useTranslation(['media', 'common'])
@@ -88,7 +88,7 @@ export function MediaJobPage() {
   const { data: job, isLoading, isError, error, isFetching, dataUpdatedAt, refetch } =
     useMediaJob(workspaceId, jobId)
 
-  // QA summary for the review accordion trigger (count + worst tone).
+  // QA summary for the review tab (count + worst tone).
   const { data: linkedJobForQa } = useMediaLinkedJob(workspaceId, job?.translationJobId)
   const { data: realQaIssues = [] } = useMediaJobQaIssues(workspaceId, jobId)
   const qaBadge = useMemo(() => {
@@ -105,11 +105,11 @@ export function MediaJobPage() {
   const selectVoice = useSelectVoice(workspaceId, jobId)
   const rerunStage = useRerunStage(workspaceId, jobId)
 
-  const [openPanel, setOpenPanel] = useState<string | null>('overview')
+  const [openPanel, setOpenPanel] = useState<string>('overview')
   const [cancelOpen, setCancelOpen] = useState(false)
-  const [sourceLangDraft, setSourceLangDraft] = useState('')
   const [panelError, setPanelError] = useState<string | null>(null)
-  const [confirmLangChange, setConfirmLangChange] = useState(false)
+  const [langModalOpen, setLangModalOpen] = useState(false)
+  const [langError, setLangError] = useState<string | null>(null)
 
   // W4-R4: synchronous voice-change operation lock. React state
   // (selectVoice.isPending) updates asynchronously — two rapid events before a
@@ -117,7 +117,13 @@ export function MediaJobPage() {
   // synchronously in the handler and released only when the mutation settles.
   const voiceChangeLockRef = useRef(false)
 
-  useDocumentTitle(job ? `Media ${job.id.slice(0, 8)}` : t('media:pipeline.title'))
+  // Page heading = the source video's file name (existing asset endpoint).
+  const { data: rootAsset } = useMediaAsset(workspaceId, job?.rootAssetId)
+  const assetTitle = rootAsset?.fileName?.replace(/\.[a-z0-9]{2,4}$/i, '') || null
+
+  useDocumentTitle(
+    assetTitle ?? (job ? `Media ${job.id.slice(0, 8)}` : t('media:pipeline.title')),
+  )
 
   const { data: providers = [] } = useProviders(workspaceId)
   const ttsProviders = providers.filter(isTtsProvider)
@@ -152,11 +158,6 @@ export function MediaJobPage() {
   const voiceProvider = ttsProviders.find((p) => p.id === voiceProviderId)
   const { data: voices = [] } = useTtsVoices(workspaceId, voiceProviderId ?? undefined)
   const availableVoices = filterCompatibleActiveVoices(voices, job?.targetLang)
-
-  const selectedVoiceDisplay = useMemo(
-    () => resolveJobVoiceDisplay(job, voices, t('media:voice.original')),
-    [job, voices, t],
-  )
 
   const stage = job ? currentStage(job) : null
   const progress = job ? overallProgress(job) : 0
@@ -233,12 +234,6 @@ export function MediaJobPage() {
     }
   }, [awaitProposalSelection, isLocalization])
 
-  useEffect(() => {
-    if (job?.sourceLanguage) {
-      setSourceLangDraft(job.sourceLanguage)
-    }
-  }, [job?.sourceLanguage])
-
   const handleVoiceSelection = useCallback(
     (selection: { providerId: string | null; voiceId: string | null }) => {
       if (voiceChangeLockRef.current || selectVoice.isPending) return
@@ -263,15 +258,32 @@ export function MediaJobPage() {
     [job, selectVoice, t],
   )
 
-  const submitLangOverride = useCallback(() => {
-    setConfirmLangChange(false)
-    setPanelError(null)
-    return overrideLang
-      .mutateAsync({ sourceLang: sourceLangDraft.trim() })
-      .catch((e) =>
-        setPanelError(e instanceof ApiError ? e.message : t('common:error.generic')),
-      )
-  }, [overrideLang, sourceLangDraft, t])
+  const selectedVoiceDisplay = useMemo(
+    () => resolveJobVoiceDisplay(job, voices, t('media:voice.original')),
+    [job, voices, t],
+  )
+
+  // A language change re-runs TRANSLATE → TTS → RENDER; the dialog warns when
+  // anything already ran (the dialog itself is the confirmation step).
+  const langChangeWillRerun = Boolean(
+    job?.stages.some((s) => {
+      const st = String(s.status).toUpperCase()
+      return st !== 'PENDING' && st !== 'SKIPPED'
+    }),
+  )
+
+  const submitLangOverride = useCallback(
+    (sourceLang: string) => {
+      setLangError(null)
+      return overrideLang
+        .mutateAsync({ sourceLang })
+        .then(() => setLangModalOpen(false))
+        .catch((e) =>
+          setLangError(e instanceof ApiError ? e.message : t('common:error.generic')),
+        )
+    },
+    [overrideLang, t],
+  )
 
   const handleRerunStage = useCallback(
     async (stageName: string) => {
@@ -288,170 +300,71 @@ export function MediaJobPage() {
   const panels: StudioPanel[] = useMemo(() => {
     if (!job) return []
 
+    // Tab step markers — derived only from backend stage statuses / signals.
+    const stageDone = (name: string) =>
+      job.stages.some(
+        (s) => s.stageName === name && String(s.status).toUpperCase() === 'COMPLETED',
+      )
+    const renderDone = stageDone('RENDER')
+
+    const sourceLangLabel = job.sourceLanguage
+      ? formatLanguageOption(job.sourceLanguage, language)
+      : t('media:pipeline.autoDetect')
+
     const overviewChildren = (
       <div
-        className="space-y-4"
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm"
         data-testid="job-overview-section"
         data-recipe-id={job.recipeId}
       >
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
-          <Info label={t('media:col.id')} value={job.id} mono />
-          <Info label={t('media:col.mode')} value={t(`media:${recipeLabelKey(job)}`)} />
-          <Info
-            label={t('media:workflow.modeLabel')}
-            value={
-              <span
-                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                  workflowMode === 'MANUAL'
-                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20'
-                    : 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20'
-                }`}
-              >
-                {workflowMode === 'MANUAL' ? t('media:workflow.manual') : t('media:workflow.auto')}
-              </span>
-            }
-          />
-          <Info
-            label={t('media:col.targetLang')}
-            value={formatLanguageOption(job.targetLang, language)}
-          />
-          <Info
-            label={t('media:pipeline.sourceLang')}
-            value={
-              job.sourceLanguage
-                ? formatLanguageOption(job.sourceLanguage, language)
-                : t('media:pipeline.autoDetect')
-            }
-          />
-          <Info
-            label={t('media:subtitleModeLabel')}
-            value={
-              job.subtitleMode === 'HARD_SUB' ? t('media:subtitleHard') : t('media:subtitleSoft')
-            }
-          />
-          <Info
-            label={t('media:create.durationLabel')}
-            value={
-              job.requestedDurationSeconds != null
-                ? `${job.requestedDurationSeconds}s`
-                : isLocalization
-                  ? t('media:fullVideoDuration')
-                  : '—'
-            }
-          />
-          <Info
-            label={t('media:col.status')}
-            value={<StatusBadge status={asJobStatus(job.status)} />}
-          />
-          <Info
-            label={t('media:workflowPreset.label')}
-            value={presetName ?? t('media:workflowPreset.noPreset')}
-          />
-          {phase && (
-            <Info
-              label={t('media:col.domainPhase')}
-              value={t(`media:${domainPhaseLabelKey(phase)}`, {
-                defaultValue: String(phase).replaceAll('_', ' '),
-              })}
-            />
-          )}
-          <Info
-            label={t('media:pipeline.progress')}
-            value={
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-1.5 rounded-full bg-[var(--color-bg-surface-3)] overflow-hidden">
-                  <div
-                    className="h-full bg-[var(--color-accent)] transition-all duration-300"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                <span className="text-xs font-semibold tabular-nums">{progress}%</span>
-              </div>
-            }
-          />
-          <Info
-            label={t('media:voice.selected')}
-            value={selectedVoiceDisplay.text}
-            mono={selectedVoiceDisplay.isMono}
-          />
-        </div>
-
-        <div className="media-config-block">
-          <div className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
-            {t('media:pipeline.overrideLang')}
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="field-label max-w-[220px] flex-1">
-              <span>{t('media:pipeline.sourceLang')}</span>
-              <select
-                className="field-input"
-                value={sourceLangDraft}
-                onChange={(e) => setSourceLangDraft(e.target.value)}
-                disabled={!canEdit}
-              >
-                <option value="">{t('media:pipeline.selectSourceLang')}</option>
-                {LANG_OPTIONS.map((lang) => (
-                  <option key={lang} value={lang}>
-                    {formatLanguageOption(lang, language)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {canEdit && (
+        <Info
+          label={t('media:col.targetLang')}
+          value={formatLanguageOption(job.targetLang, language)}
+        />
+        <Info
+          label={t('media:pipeline.sourceLang')}
+          action={
+            canEdit ? (
               <button
                 type="button"
-                className="btn-secondary"
-                disabled={!sourceLangDraft.trim() || overrideLang.isPending}
+                className="btn-link text-xs"
+                data-testid="source-lang-edit"
                 onClick={() => {
-                  setPanelError(null)
-                  // A language change re-runs the translation pipeline (TRANSLATE →
-                  // TTS → RENDER). When anything already ran, ask for explicit
-                  // confirmation before rewinding the job.
-                  const alreadyRan = job.stages.some((s) => {
-                    const st = String(s.status).toUpperCase()
-                    return st !== 'PENDING' && st !== 'SKIPPED'
-                  })
-                  if (alreadyRan) {
-                    setConfirmLangChange(true)
-                    return
-                  }
-                  void submitLangOverride()
+                  setLangError(null)
+                  setLangModalOpen(true)
                 }}
               >
-                {t('media:pipeline.applyLang')}
+                {t('media:pipeline.changeSourceLang')}
               </button>
-            )}
-          </div>
-          {confirmLangChange && canEdit && (
-            <div
-              className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-bg-surface-2)] p-3"
-              data-testid="lang-override-confirm"
-            >
-              <p className="m-0 flex-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
-                {t('media:pipeline.overrideConfirm')}
-              </p>
-              <button
-                type="button"
-                className="btn-danger-outline"
-                disabled={overrideLang.isPending}
-                onClick={() => setConfirmLangChange(false)}
-              >
-                {t('common:actions.cancel')}
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={overrideLang.isPending}
-                data-testid="lang-override-confirm-apply"
-                onClick={() => void submitLangOverride()}
-              >
-                {t('media:pipeline.overrideConfirmApply')}
-              </button>
-            </div>
-          )}
-          <p className="field-help mt-2 mb-0">{t('media:pipeline.staleWarn')}</p>
-        </div>
-
+            ) : undefined
+          }
+          value={sourceLangLabel}
+        />
+        <Info
+          label={t('media:subtitleModeLabel')}
+          value={
+            job.subtitleMode === 'HARD_SUB' ? t('media:subtitleHard') : t('media:subtitleSoft')
+          }
+        />
+        <Info
+          label={t('media:create.durationLabel')}
+          value={
+            job.requestedDurationSeconds != null
+              ? `${job.requestedDurationSeconds}s`
+              : isLocalization
+                ? t('media:fullVideoDuration')
+                : '—'
+          }
+        />
+        <Info
+          label={t('media:workflowPreset.label')}
+          value={presetName ?? t('media:workflowPreset.noPreset')}
+        />
+        <Info
+          label={t('media:voice.selected')}
+          value={selectedVoiceDisplay.text}
+          mono={selectedVoiceDisplay.isMono}
+        />
       </div>
     )
 
@@ -484,6 +397,11 @@ export function MediaJobPage() {
               ? t('media:panels.proposalsSub')
               : t('media:panels.trimSub'),
         icon: <IconScissors size={16} />,
+        status: awaitProposalSelection
+          ? 'attention'
+          : stageDone('SUMMARIZE') && (job.selectedProposalId || renderDone)
+            ? 'done'
+            : null,
         badge: awaitProposalSelection ? (
           <span className="media-action-needed-pill">
             {t('media:waitingForProposal.badge')}
@@ -501,6 +419,7 @@ export function MediaJobPage() {
       title: t('media:panels.review'),
       subtitle: t('media:panels.reviewSub'),
       icon: <IconShieldLock size={16} />,
+      status: waitingForQa ? 'attention' : renderDone ? 'done' : null,
       badge:
         qaBadge.high + qaBadge.medium + qaBadge.low > 0 ? (
           <span className="qa-trigger-badge" data-testid="review-qa-badge">
@@ -537,6 +456,7 @@ export function MediaJobPage() {
       title: t('media:panels.finishRender'),
       subtitle: t('media:panels.finishRenderSub'),
       icon: <IconRocket size={16} />,
+      status: renderDone ? 'done' : null,
       children: (
         <RenderAndVoiceSection
           workspaceId={workspaceId}
@@ -558,6 +478,7 @@ export function MediaJobPage() {
       title: t('media:panels.export'),
       subtitle: t('media:panels.exportSub'),
       icon: <IconDownload size={16} />,
+      status: renderDone ? 'done' : null,
       children: <ExportPanel workspaceId={workspaceId} job={job} />,
     })
 
@@ -566,9 +487,7 @@ export function MediaJobPage() {
     job,
     t,
     progress,
-    sourceLangDraft,
     canEdit,
-    overrideLang,
     workspaceId,
     availableVoices,
     selectVoice.isPending,
@@ -581,19 +500,20 @@ export function MediaJobPage() {
     isLocalization,
     workflowMode,
     qaBadge,
+    waitingForQa,
     handleVoiceSelection,
-    submitLangOverride,
-    confirmLangChange,
     presetName,
+    selectedVoiceDisplay,
   ])
 
   return (
     <div className="media-studio-page">
       <div className="page-header">
         <div className="min-w-0 flex-1">
-          <h1 className="page-title">
-            <IconGitBranch size={26} className="text-[var(--color-media)]" />
-            {t('media:pipeline.title')}
+          <div className="media-page-eyebrow">{t('media:pipeline.title')}</div>
+          <h1 className="page-title min-w-0" title={assetTitle ?? undefined}>
+            <IconVideo size={26} className="shrink-0 text-[var(--color-media)]" />
+            <span className="truncate">{assetTitle ?? t('media:pipeline.title')}</span>
           </h1>
           <div className="page-subtitle flex flex-wrap items-center gap-2">
             {job && <StatusBadge status={asJobStatus(job.status)} />}
@@ -617,33 +537,34 @@ export function MediaJobPage() {
                 {formatLanguageOption(job.targetLang, language)}
               </span>
             )}
-            {isFetching && (
-              <span className="text-[var(--color-accent)]">{t('media:poll.updating')}</span>
-            )}
-            {dataUpdatedAt > 0 && (
-              <span className="text-[var(--color-text-tertiary)]">
-                {t('media:poll.updated', {
-                  relative: formatRelativeTime(
-                    new Date(dataUpdatedAt).toISOString(),
-                    language,
-                  ),
-                })}
-              </span>
-            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="media-poll-status">
+          {dataUpdatedAt > 0 && (
             <span
-              className={`media-poll-dot ${
-                job && isActiveMediaJobStatus(job.status) ? 'pulse-dot' : ''
-              }`}
-            />
-            <span>{t('media:poll.every5s')}</span>
-          </div>
-          <StageLegend />
-          <button type="button" className="btn-media-secondary" onClick={() => void refetch()}>
-            <IconRefresh size={16} />
+              className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-tertiary)]"
+              data-testid="job-updated-at"
+              data-fetching={isFetching ? 'true' : 'false'}
+            >
+              <span
+                className={`media-poll-dot ${
+                  job && isActiveMediaJobStatus(job.status) ? 'pulse-dot' : ''
+                }`}
+                aria-hidden
+              />
+              {t('media:poll.updatedAt', {
+                time: formatDateTimeDetailed(new Date(dataUpdatedAt).toISOString(), language),
+              })}
+            </span>
+          )}
+          <button
+            type="button"
+            className="btn-media-secondary"
+            data-testid="job-refresh"
+            disabled={isFetching}
+            onClick={() => void refetch()}
+          >
+            <IconRefresh size={16} className={isFetching ? 'animate-spin' : undefined} />
             {t('common:refresh')}
           </button>
           {canCancel && cancellable && (
@@ -732,8 +653,8 @@ export function MediaJobPage() {
             </div>
           )}
 
-          {/* W0 workflow checkpoint projection strip (docs/19 §1.8.2). */}
-          <WorkflowCheckpointStrip workspaceId={workspaceId} job={job} />
+          {/* W0 workflow checkpoint actions (docs/19 §1.8.2) — only when actionable. */}
+          <WorkflowCheckpointActions workspaceId={workspaceId} job={job} />
 
           <div className="app-card mb-4 overflow-visible">
             <div className="app-card-header relative z-20 flex flex-wrap items-center justify-between gap-2">
@@ -787,14 +708,25 @@ export function MediaJobPage() {
             </div>
           )}
 
-          <StudioAccordion
+          <StudioTabs
             panels={panels}
-            openId={openPanel}
-            onToggle={(id) => {
+            activeId={openPanel}
+            onSelect={(id) => {
               userToggledRef.current = true
-              setOpenPanel((cur) => (cur === id ? null : id))
+              setOpenPanel(id)
             }}
           />
+
+      <SourceLangModal
+        open={langModalOpen}
+        currentLang={job.sourceLanguage}
+        uiLanguage={language}
+        willRerun={langChangeWillRerun}
+        loading={overrideLang.isPending}
+        error={langError}
+        onClose={() => setLangModalOpen(false)}
+        onApply={(lang) => void submitLangOverride(lang)}
+      />
 
       {cancelOpen && (
         <CancelJobModal
@@ -945,16 +877,20 @@ export function resolveJobVoiceDisplay(
   // 2. Authoritative voice row ID looked up in cached voices
   if (job.ttsVoiceId) {
     const matched = voices.find((v) => v.id === job.ttsVoiceId)
-    if (matched && matched.displayName && matched.displayName.trim() !== '') {
-      return { text: matched.displayName.trim(), isMono: false }
+    // Catalog rows may carry only the provider voice code (e.g. "Ethan").
+    const name = matched?.displayName?.trim() || matched?.voiceId?.trim()
+    if (name) {
+      return { text: name, isMono: false }
     }
   }
 
   // 3. Fallback to voiceId: if it matches a voice row UUID, use displayName; otherwise raw mono string
   if (job.voiceId && job.voiceId.trim() !== '') {
     const matched = voices.find((v) => v.id === job.voiceId)
-    if (matched && matched.displayName && matched.displayName.trim() !== '') {
-      return { text: matched.displayName.trim(), isMono: false }
+    // Catalog rows may carry only the provider voice code (e.g. "Ethan").
+    const name = matched?.displayName?.trim() || matched?.voiceId?.trim()
+    if (name) {
+      return { text: name, isMono: false }
     }
     return { text: job.voiceId.trim(), isMono: true }
   }
@@ -971,15 +907,20 @@ function Info({
   label,
   value,
   mono,
+  action,
 }: {
   label: string
   value: React.ReactNode
   mono?: boolean
+  action?: React.ReactNode
 }) {
   return (
     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface-2)] p-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
-        {label}
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
+          {label}
+        </div>
+        {action}
       </div>
       <div className={`mt-1 text-sm ${mono ? 'font-mono text-xs break-all' : ''}`}>{value}</div>
     </div>

@@ -429,6 +429,15 @@ describe('PipelineStepper dynamic stage order', () => {
     expect(html).toContain('Attempt 1 failed: DashScope STT response requires detected_lang')
   })
 
+  it('hides the attempt badge once the stage completed after retries', () => {
+    const stages = stagesWith({ STT: 'COMPLETED' })
+    const stt = stages.find((s) => s.stageName === 'STT')!
+    stt.attemptCount = 2
+    const html = renderToStaticMarkup(<PipelineStepper job={job('PROCESSING', stages)} />)
+
+    expect(html).not.toContain('data-testid="stage-attempt-STT"')
+  })
+
   it('hides the attempt badge before any retry (attemptCount=0)', () => {
     const stages = stagesWith({ STT: 'PROCESSING' })
     const stt = stages.find((s) => s.stageName === 'STT')!
