@@ -1,6 +1,7 @@
 package com.app.modules.media_job.pipeline;
 
 import com.app.common.config.AppProperties;
+import com.app.common.exception.AiStageException;
 import com.app.common.exception.AppException;
 import com.app.modules.credit.service.CreditService;
 import com.app.modules.credit.service.AiUsageLogService;
@@ -13,6 +14,7 @@ import com.app.modules.media_job.callback.service.MediaCallbackService;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.entity.SubtitleSegment;
+import com.app.modules.media_job.pipeline.dto.ExtractAudioRequest;
 import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.repository.MediaJobStageRepository;
 import com.app.modules.media_job.repository.SubtitleSegmentRepository;
@@ -28,14 +30,19 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.io.ByteArrayInputStream;
+import java.net.SocketTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.util.Base64;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -52,6 +59,15 @@ import java.util.UUID;
 public class MediaStageExecutionService {
 
     private static final Logger log = LoggerFactory.getLogger(MediaStageExecutionService.class);
+    private static final int TTS_BATCH_SIZE = 8;
+    /** Same budget as the original pipeline: 3 retry rounds, 10s apart, failed segments only. */
+    private static final int MAX_TTS_SEGMENT_RETRIES = 3;
+    /** Worker MixPlan bounds TTS tempo to 0.8..1.2; only speed-up is used to fit a slot. */
+    private static final double MAX_TTS_TEMPO = 1.2d;
+    /** Narration retime bound: beyond ±10 % a voice audibly drags or rushes. */
+    private static final double MIN_NARRATION_TEMPO = 0.9d;
+    private static final double MAX_NARRATION_TEMPO = 1.1d;
+    private static final double NARRATION_TEMPO_DEADBAND = 0.03d;
 
     private final MediaJobRepository jobRepository;
     private final MediaJobStageRepository stageRepository;
@@ -63,6 +79,8 @@ public class MediaStageExecutionService {
     private final MediaCallbackService callbackService;
     private final ObjectMapper objectMapper;
     private final RestClient aiClient;
+    private final RestClient mediaAiClient;
+    private final RestClient sourceSeparationAiClient;
     private final RestClient workerClient;
     private final AppProperties props;
     private final SubtitleSegmentRepository subtitleSegmentRepository;
@@ -70,6 +88,8 @@ public class MediaStageExecutionService {
     private final CreditService creditService;
     private final AiUsageLogService aiUsageLogService;
     private final GlossaryService glossaryService;
+    private long ttsSegmentRetryDelayMs = 10_000L;
+    private NarrationPacingEstimator narrationPacingEstimator;
 
     @Autowired
     public MediaStageExecutionService(MediaJobRepository jobRepository,
@@ -82,6 +102,10 @@ public class MediaStageExecutionService {
                                       MediaCallbackService callbackService,
                                       ObjectMapper objectMapper,
                                       AppProperties props,
+                                      @Qualifier("mediaAiRestClient") RestClient mediaAiClient,
+                                      @Qualifier("sourceSeparationAiRestClient") RestClient sourceSeparationAiClient,
+                                      @Qualifier("aiRestClient") RestClient aiClient,
+                                      @Qualifier("mediaWorkerRestClient") RestClient workerClient,
                                       SubtitleSegmentRepository subtitleSegmentRepository,
                                       QaService qaService,
                                       CreditService creditService,
@@ -97,13 +121,38 @@ public class MediaStageExecutionService {
         this.callbackService = callbackService;
         this.objectMapper = objectMapper;
         this.props = props;
-        this.aiClient = RestClient.builder().baseUrl(props.ai().baseUrl()).build();
-        this.workerClient = RestClient.builder().baseUrl(props.mediaWorker().baseUrl()).build();
+        this.aiClient = aiClient;
+        this.mediaAiClient = mediaAiClient;
+        this.sourceSeparationAiClient = sourceSeparationAiClient;
+        this.workerClient = workerClient;
         this.subtitleSegmentRepository = subtitleSegmentRepository;
         this.qaService = qaService;
         this.creditService = creditService;
         this.aiUsageLogService = aiUsageLogService;
         this.glossaryService = glossaryService;
+    }
+
+    /** Compatibility constructor for tests and callers that provide a single AI client. */
+    public MediaStageExecutionService(MediaJobRepository jobRepository,
+                                      MediaJobStageRepository stageRepository,
+                                      MediaAssetRepository assetRepository,
+                                      MediaStorageService storage,
+                                      ProviderResolverService providerResolver,
+                                      SummaryAiClient summaryAiClient,
+                                      SummarizationService summarizationService,
+                                      MediaCallbackService callbackService,
+                                      ObjectMapper objectMapper,
+                                      AppProperties props,
+                                      RestClient aiClient,
+                                      RestClient workerClient,
+                                      SubtitleSegmentRepository subtitleSegmentRepository,
+                                      QaService qaService,
+                                      CreditService creditService,
+                                      AiUsageLogService aiUsageLogService,
+                                      GlossaryService glossaryService) {
+        this(jobRepository, stageRepository, assetRepository, storage, providerResolver, summaryAiClient,
+                summarizationService, callbackService, objectMapper, props, aiClient, aiClient, aiClient, workerClient,
+                subtitleSegmentRepository, qaService, creditService, aiUsageLogService, glossaryService);
     }
 
     /** Compatibility constructor for focused pipeline tests that do not wire QA/credit/glossary. */
@@ -119,16 +168,39 @@ public class MediaStageExecutionService {
                                       AppProperties props) {
         this(jobRepository, stageRepository, assetRepository, storage, providerResolver,
                 summaryAiClient, summarizationService, callbackService, objectMapper, props,
+                RestClient.builder().baseUrl(props.ai().baseUrl()).build(),
+                RestClient.builder().baseUrl(props.ai().baseUrl()).build(),
+                RestClient.builder().baseUrl(props.ai().baseUrl()).build(),
+                RestClient.builder().baseUrl(props.mediaWorker().baseUrl()).build(),
                 null, null, null, null, null);
+    }
+
+    @Autowired(required = false)
+    void setNarrationPacingEstimator(NarrationPacingEstimator narrationPacingEstimator) {
+        this.narrationPacingEstimator = narrationPacingEstimator;
+    }
+
+    /** Test hook: the production delay mirrors the original pipeline. */
+    void setTtsSegmentRetryDelayMs(long millis) {
+        this.ttsSegmentRetryDelayMs = Math.max(0L, millis);
     }
 
     public void execute(MediaStageMessage message) {
         MediaJob job = jobRepository.findById(message.jobId()).orElse(null);
         MediaJobStage stage = stageRepository.findById(message.stageId()).orElse(null);
         if (job == null || stage == null || !message.jobId().equals(stage.getMediaJobId())
-                || stage.getStatus() != MediaJobStage.StageStatus.PROCESSING
                 || !message.correlationId().toString().equals(stage.getWorkerId())) {
             return; // stale/duplicate delivery; the DB claim is authoritative.
+        }
+        if (stage.getStatus() == MediaJobStage.StageStatus.CANCEL_REQUESTED) {
+            // Cancelled before this attempt started: nothing is running, so the
+            // graceful cancel completes now instead of waiting for a result forever.
+            callbackService.completeStage(job.getId(), stage.getId(), stage.getStageName(), false, null,
+                    null, null, null, completionKey(message));
+            return;
+        }
+        if (stage.getStatus() != MediaJobStage.StageStatus.PROCESSING) {
+            return;
         }
         try {
             switch (stage.getStageName()) {
@@ -140,9 +212,25 @@ public class MediaStageExecutionService {
                 case TTS -> executeTts(job, stage, message);
             }
         } catch (Exception ex) {
-            log.warn("Media stage failed before callback job={} stage={}: {}",
-                    message.jobId(), stage.getStageName(), ex.getMessage());
-            completeFailure(job, stage, message, ex.getMessage());
+            String service = downstreamService(stage.getStageName());
+            AiStageException failure = stageFailure(stage, ex);
+            Integer downstreamStatus = ex instanceof RestClientResponseException response
+                    ? response.getStatusCode().value() : null;
+            // A typed AiStageException is already classified with a safe message:
+            // log that reason instead of a stack. Anything else is unexpected, so
+            // keep the stack but strip the original message (it may echo request data).
+            String logLine = "Media stage failed job={} stage={} service={} errorCode={} protocol={} capability={} model={} retryable={} downstreamStatus={} errorType={} reason={}";
+            Object[] fields = {message.jobId(), stage.getStageName(), service,
+                    failure.getErrorCode(), failure.getProtocol(), failure.getCapability(), failure.getModel(),
+                    failure.isRetryable(), downstreamStatus, ex.getClass().getSimpleName(), failure.getMessage()};
+            if (ex instanceof AiStageException) {
+                log.error(logLine, fields);
+            } else {
+                Object[] withStack = java.util.Arrays.copyOf(fields, fields.length + 1);
+                withStack[fields.length] = sanitizedStack(ex);
+                log.error(logLine, withStack);
+            }
+            completeFailure(job, stage, message, failure);
         }
     }
 
@@ -173,17 +261,114 @@ public class MediaStageExecutionService {
                 body.putIfAbsent("source_video_ref", sourceRef);
                 body.putIfAbsent("callback_base_url", props.mediaWorker().callbackBaseUrl());
                 long duration = asset.getDurationMs() == null ? 60_000L : asset.getDurationMs();
-                body.putIfAbsent("cut_ranges", defaultCutRanges(job, duration));
                 body.putIfAbsent("audio_input_version", "1");
-                addDefaultRenderAudio(job, body, duration);
-                body.put("subtitle_track", defaultSubtitleTrack(job, duration));
+                List<NarrationBeat> narration = narrationBeats(job);
+                List<RenderSubtitleCues.Cue> cues = new ArrayList<>();
+                long timelineMs;
+                if (!narration.isEmpty()) {
+                    // Script summary with a voice track: measured narration owns the
+                    // output timeline (as the original generative render). Each beat's
+                    // footage is retimed to its clip, so a cue is never shown without voice.
+                    List<Map<String, Object>> beats = new ArrayList<>();
+                    List<Map<String, Object>> outputRanges = new ArrayList<>();
+                    double tempo = narrationTempo(job, narration, duration);
+                    long cursor = 0L;
+                    for (NarrationBeat beat : narration) {
+                        SubtitleSegment segment = beat.segment();
+                        long beatMs = tempo == 1.0 ? beat.durationMs() : Math.round(beat.durationMs() / tempo);
+                        Map<String, Object> wire = new LinkedHashMap<>();
+                        wire.put("id", segment.getId().toString());
+                        wire.put("source_start_ms", segment.getStartMs());
+                        wire.put("source_end_ms", segment.getEndMs());
+                        wire.put("tts_duration_ms", beatMs);
+                        wire.put("audio_ref", beat.audioRef());
+                        wire.put("narration_segment", segment.getTargetText());
+                        if (tempo != 1.0) {
+                            wire.put("tempo", tempo);
+                        }
+                        beats.add(wire);
+                        outputRanges.add(Map.of("start_ms", cursor, "end_ms", cursor + beatMs));
+                        cues.add(new RenderSubtitleCues.Cue(cursor, cursor + beatMs, segment.getTargetText()));
+                        cursor += beatMs;
+                    }
+                    body.put("generative_beats", beats);
+                    body.put("cut_ranges", outputRanges);
+                    body.putIfAbsent("audio_source", "LEGACY_DUBBED");
+                    body.putIfAbsent("audio_mode", "DUBBED");
+                    timelineMs = cursor;
+                } else {
+                    body.putIfAbsent("cut_ranges", defaultCutRanges(job, duration));
+                    addDefaultRenderAudio(job, body, duration);
+                    // Cues are authored on the source timeline; the worker concatenates
+                    // the cuts, so place them on that output timeline.
+                    List<long[]> ranges = cutRangeBounds(body.get("cut_ranges"));
+                    cues = RenderSubtitleCues.toOutputTimeline(sourceCues(job), ranges);
+                    timelineMs = ranges.stream().mapToLong(range -> Math.max(0L, range[1] - range[0])).sum();
+                }
+                body.put("subtitle_track", defaultSubtitleTrack(job, timelineMs, cues));
                 Map<String, Object> renderConfig = jsonObject(job.getRenderConfig());
                 body.put("output_aspect_ratio", stringValue(renderConfig.get("outputAspectRatio"), "ORIGINAL"));
             }
             default -> throw new IllegalStateException("Not a worker stage");
         }
-        workerClient.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(body)
+        Object requestBody = body;
+        if (stage.getStageName() == MediaJobStage.StageName.EXTRACT_AUDIO) {
+            requestBody = new ExtractAudioRequest(
+                    message.correlationId().toString(),
+                    job.getId().toString(),
+                    stage.getId().toString(),
+                    sourceRef);
+        }
+        workerClient.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(requestBody)
                 .retrieve().toBodilessEntity();
+    }
+
+    private String downstreamService(MediaJobStage.StageName stage) {
+        return switch (stage) {
+            case EXTRACT_AUDIO, AUDIO_MIX, RENDER -> "Media worker";
+            default -> "AI gateway";
+        };
+    }
+
+    private AiStageException stageFailure(MediaJobStage stage, Exception ex) {
+        String capability = switch (stage.getStageName()) {
+            case STT -> "STT";
+            case TTS -> "TTS";
+            case TRANSLATE, SUMMARIZE -> "TEXT";
+            default -> null;
+        };
+        if (ex instanceof AiStageException typed) return typed;
+        if (ex instanceof RestClientResponseException response) {
+            return AiStageException.fromRestClientResponse(response, objectMapper, capability, null);
+        }
+        if (ex instanceof AppException appException) {
+            return AiStageException.fromAppException(appException, capability);
+        }
+        if (ex instanceof ResourceAccessException) {
+            String code = isTimeoutFailure(ex) ? "PROVIDER_TIMEOUT" : "PROVIDER_UNAVAILABLE";
+            String message = isTimeoutFailure(ex) ? "AI provider request timed out"
+                    : "AI provider is unavailable";
+            return AiStageException.safeFailure(code, message,
+                    true, "Try again later or check the provider service.", capability, null);
+        }
+        return AiStageException.safeFailure("MEDIA_STAGE_EXECUTION_FAILED", "Media stage execution failed",
+                false, null, capability, null);
+    }
+
+    private boolean isTimeoutFailure(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SocketTimeoutException || cause instanceof HttpTimeoutException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Downstream messages may echo request data, so log the stack without the original message. */
+    private Throwable sanitizedStack(Exception ex) {
+        RuntimeException safe = new RuntimeException(ex.getClass().getSimpleName());
+        safe.setStackTrace(ex.getStackTrace());
+        return safe;
     }
 
     private Map<String, Object> defaultMixPlan(MediaJob job) {
@@ -199,30 +384,51 @@ public class MediaStageExecutionService {
                 }
             }
         }
-        String ttsRef = objectRef(findStage(job.getId(), MediaJobStage.StageName.TTS) == null
-                ? null : findStage(job.getId(), MediaJobStage.StageName.TTS).getOutputRef());
-        if (musicRef == null || ttsRef == null) {
-            throw new IllegalArgumentException("AUDIO_MIX requires MUSIC and TTS outputs");
-        }
         long duration = assetRepository.findById(job.getRootAssetId()).map(MediaAsset::getDurationMs)
                 .orElse(60_000L);
+        List<TtsPlacement> placements = ttsPlacements(job, duration);
+        if (musicRef == null || placements.isEmpty()) {
+            throw new IllegalArgumentException("AUDIO_MIX requires MUSIC and TTS outputs");
+        }
         Map<String, Object> bed = new LinkedHashMap<>();
         bed.put("input_id", "music");
         bed.put("role", "STEM_MUSIC");
         bed.put("audio_ref", musicRef);
-        Map<String, Object> voice = new LinkedHashMap<>();
-        voice.put("input_id", "tts-1");
-        voice.put("role", "TTS_SEGMENT");
-        voice.put("audio_ref", ttsRef);
-        voice.put("segment_id", "tts-1");
-        voice.put("start_ms", 0);
-        voice.put("end_ms", duration);
+        List<Object> inputs = new ArrayList<>();
+        inputs.add(bed);
+        List<String> speechIds = new ArrayList<>();
+        for (TtsPlacement placement : placements) {
+            String inputId = "tts-" + (speechIds.size() + 1);
+            Map<String, Object> voice = new LinkedHashMap<>();
+            voice.put("input_id", inputId);
+            voice.put("role", "TTS_SEGMENT");
+            voice.put("audio_ref", placement.audioRef());
+            voice.put("segment_id", placement.segmentId());
+            voice.put("start_ms", placement.startMs());
+            voice.put("end_ms", placement.endMs());
+            Double tempo = fitTempo(placement);
+            if (tempo != null) {
+                voice.put("tempo", tempo);
+            }
+            inputs.add(voice);
+            speechIds.add(inputId);
+        }
         return new LinkedHashMap<>(Map.of(
                 "plan_version", 1,
-                "inputs", List.of(bed, voice),
-                "ducking", Map.of("kind", "WHOLE_MIX", "speech_input_ids", List.of("tts-1"),
+                "inputs", inputs,
+                "ducking", Map.of("kind", "WHOLE_MIX", "speech_input_ids", speechIds,
                         "target_input_id", "music", "duck_gain_db", -12),
                 "output", Map.of("asset_type", "MIXED_AUDIO", "format", "wav")));
+    }
+
+    /** Speed a clip up (bounded) when it is longer than its subtitle slot; the worker trims the rest. */
+    private Double fitTempo(TtsPlacement placement) {
+        long window = placement.endMs() - placement.startMs();
+        if (placement.durationMs() == null || window <= 0 || placement.durationMs() <= window) {
+            return null;
+        }
+        double tempo = Math.min(MAX_TTS_TEMPO, (double) placement.durationMs() / window);
+        return Math.round(tempo * 1000d) / 1000d;
     }
 
     /** Apply the persisted Render Studio audio controls to the worker MixPlan. */
@@ -332,45 +538,140 @@ public class MediaStageExecutionService {
                 return;
             }
         }
-        String tts = objectRef(output(job.getId(), MediaJobStage.StageName.TTS));
-        if (job.getOutputAudioMode() == MediaJob.OutputAudioMode.DUB_REPLACE && tts != null) {
+        List<TtsPlacement> placements = job.getOutputAudioMode() == MediaJob.OutputAudioMode.DUB_REPLACE
+                ? ttsPlacements(job, duration) : List.of();
+        if (!placements.isEmpty()) {
+            List<Map<String, Object>> segmentAudios = new ArrayList<>();
+            for (TtsPlacement placement : placements) {
+                segmentAudios.add(Map.of("segment_id", placement.segmentId(), "audio_ref", placement.audioRef(),
+                        "start_ms", placement.startMs(), "end_ms", placement.endMs()));
+            }
             body.putIfAbsent("audio_source", "LEGACY_DUBBED");
             body.putIfAbsent("audio_mode", "DUBBED");
-            body.putIfAbsent("segment_audios", List.of(Map.of(
-                    "segment_id", "tts-1", "audio_ref", tts, "start_ms", 0, "end_ms", duration)));
+            body.putIfAbsent("segment_audios", segmentAudios);
             return;
         }
         body.putIfAbsent("audio_source", "LEGACY_ORIGINAL");
         body.putIfAbsent("audio_mode", "ORIGINAL");
     }
 
-    private Map<String, Object> defaultSubtitleTrack(MediaJob job, long duration) {
-        Map<String, Object> renderConfig = jsonObject(job.getRenderConfig());
-        Map<String, Object> style = jsonObject(job.getSubtitleStyle());
+    private List<RenderSubtitleCues.Cue> sourceCues(MediaJob job) {
         List<SubtitleSegment> segments = subtitleSegmentRepository == null
                 ? List.of() : subtitleSegmentRepository.findByMediaJobIdOrderBySeq(job.getId());
+        List<RenderSubtitleCues.Cue> raw = new ArrayList<>();
+        for (SubtitleSegment segment : segments) {
+            raw.add(new RenderSubtitleCues.Cue(segment.getStartMs(), segment.getEndMs(), segment.getTargetText()));
+        }
+        return raw;
+    }
+
+    private List<long[]> cutRangeBounds(Object rawRanges) {
+        List<long[]> ranges = new ArrayList<>();
+        JsonNode node = objectMapper.valueToTree(rawRanges);
+        if (node == null || !node.isArray()) {
+            return ranges;
+        }
+        for (JsonNode range : node) {
+            long start = range.path("start_ms").asLong(range.path("startMs").asLong(-1));
+            long end = range.path("end_ms").asLong(range.path("endMs").asLong(-1));
+            if (start >= 0 && end > start) {
+                ranges.add(new long[] {start, end});
+            }
+        }
+        return ranges;
+    }
+
+    /**
+     * Narrated script summaries render per beat: every subtitle row is one beat whose
+     * footage is retimed to its measured TTS clip. Empty when the job has no voice track
+     * (ORIGINAL_ONLY, localization) so the cut-based render applies.
+     */
+    private List<NarrationBeat> narrationBeats(MediaJob job) {
+        if (!MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(job.getRecipeId())
+                || (job.getOutputAudioMode() != MediaJob.OutputAudioMode.DUB_REPLACE
+                && job.getOutputAudioMode() != MediaJob.OutputAudioMode.DUB_MIX)
+                || subtitleSegmentRepository == null) {
+            return List.of();
+        }
+        List<SubtitleSegment> segments = subtitleSegmentRepository.findByMediaJobIdOrderBySeq(job.getId()).stream()
+                .filter(segment -> segment.getTargetText() != null && !segment.getTargetText().isBlank()
+                        && segment.getEndMs() > segment.getStartMs())
+                .toList();
+        if (segments.stream().noneMatch(segment -> segment.getTtsAudioRef() != null
+                && !segment.getTtsAudioRef().isBlank())) {
+            return List.of();
+        }
+        Map<String, Long> durations = new LinkedHashMap<>();
+        JsonNode output = parseJson(output(job.getId(), MediaJobStage.StageName.TTS));
+        if (output != null) {
+            for (JsonNode item : output.path("segments")) {
+                if (item.path("duration_ms").asLong(0L) > 0L) {
+                    durations.put(item.path("segment_id").asText(), item.path("duration_ms").asLong());
+                }
+            }
+        }
+        List<NarrationBeat> beats = new ArrayList<>();
+        for (SubtitleSegment segment : segments) {
+            Long durationMs = durations.get(segment.getId().toString());
+            if (segment.getTtsAudioRef() == null || segment.getTtsAudioRef().isBlank() || durationMs == null) {
+                throw AiStageException.safeFailure("TTS_SEGMENTS_INCOMPLETE",
+                        "Narration audio is missing for subtitle segment " + segment.getSeq(), false,
+                        "Run TTS again so every script segment has a voice clip before rendering.", "TTS", null);
+            }
+            beats.add(new NarrationBeat(segment, segment.getTtsAudioRef(), durationMs));
+        }
+        return beats;
+    }
+
+    /**
+     * One uniform, pitch-preserving tempo that brings the measured narration onto the
+     * requested duration (the writer's character budget is only an estimate). Bounded to
+     * 0.9-1.1x so speech stays natural; a miss within 3 % keeps the voice untouched.
+     */
+    private double narrationTempo(MediaJob job, List<NarrationBeat> narration, long sourceDurationMs) {
+        if (job.getRequestedDurationSeconds() == null || job.getRequestedDurationSeconds() <= 0) {
+            return 1.0;
+        }
+        long targetMs = Math.min(job.getRequestedDurationSeconds() * 1000L, sourceDurationMs);
+        long narrationMs = narration.stream().mapToLong(NarrationBeat::durationMs).sum();
+        if (targetMs <= 0L || narrationMs <= 0L) {
+            return 1.0;
+        }
+        double ratio = (double) narrationMs / targetMs;
+        if (Math.abs(ratio - 1.0) <= NARRATION_TEMPO_DEADBAND) {
+            return 1.0;
+        }
+        double tempo = Math.max(MIN_NARRATION_TEMPO, Math.min(MAX_NARRATION_TEMPO, ratio));
+        log.info("Narration tempo job={} narrationMs={} targetMs={} tempo={}", job.getId(), narrationMs, targetMs,
+                Math.round(tempo * 1000d) / 1000d);
+        return Math.round(tempo * 1000d) / 1000d;
+    }
+
+    private Map<String, Object> defaultSubtitleTrack(MediaJob job, long duration, List<RenderSubtitleCues.Cue> raw) {
+        Map<String, Object> renderConfig = jsonObject(job.getRenderConfig());
+        Map<String, Object> style = jsonObject(job.getSubtitleStyle());
+
+        // Pre-render check: repair blank/out-of-range/overlapping cues, then group them per displayMode.
+        List<RenderSubtitleCues.Cue> cues = RenderSubtitleCues.sanitize(raw, duration);
+        if (cues.isEmpty()) {
+            // Never burn a placeholder (the whole translation as one cue over the video).
+            throw AiStageException.safeFailure("SUBTITLE_CUES_MISSING", "No valid subtitle cues to render",
+                    false, "Run TRANSLATE again or fix the subtitles in the editor before rendering.", null, null);
+        }
+        if (cues.size() != raw.size()) {
+            log.info("Pre-render subtitle check job={} segments={} renderable={}", job.getId(), raw.size(), cues.size());
+        }
+        Map<String, Object> subtitlePresentation = mapValue(mapValue(renderConfig.get("presentation")).get("subtitle"));
+        cues = RenderSubtitleCues.group(cues, stringValue(subtitlePresentation.get("displayMode"), null),
+                integerOrNull(subtitlePresentation.get("wordsPerPhrase")));
 
         StringBuilder srt = new StringBuilder();
         int seq = 1;
-        for (SubtitleSegment segment : segments) {
-            if (segment.getTargetText() == null || segment.getTargetText().isBlank()) {
-                continue;
-            }
-            long start = Math.max(0L, segment.getStartMs());
-            long end = Math.max(start + 1L, segment.getEndMs());
+        for (RenderSubtitleCues.Cue cue : cues) {
             srt.append(seq++).append('\n')
-                    .append(srtTimestamp(start)).append(" --> ").append(srtTimestamp(end)).append('\n')
-                    .append(segment.getTargetText().replace("\r", "").replace("\n", " ").trim())
+                    .append(srtTimestamp(cue.startMs())).append(" --> ").append(srtTimestamp(cue.endMs())).append('\n')
+                    .append(cue.text())
                     .append("\n\n");
-        }
-        // A render request can be replayed from an older job that predates subtitle
-        // materialisation. Keep a valid sidecar for that compatibility case only.
-        if (seq == 1) {
-            String text = translatedSubtitleText(job);
-            String end = srtTimestamp(Math.max(1, duration));
-            srt.append("1\n00:00:00,000 --> ").append(end).append('\n')
-                    .append(text == null ? "" : text.replace("\r", "").replace("\n", " ").trim())
-                    .append("\n");
         }
         String key = "subtitles/" + job.getId() + "/" + UUID.randomUUID() + ".srt";
         String content = srt.toString();
@@ -455,7 +756,7 @@ public class MediaStageExecutionService {
                 "runId", message.correlationId().toString(),
                 "sourceAudioRef", audioRef,
                 "profile", "VOCAL_MUSIC");
-        JsonNode result = aiClient.post().uri("/media/source-separate")
+        JsonNode result = sourceSeparationAiClient.post().uri("/media/source-separate")
                 .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(JsonNode.class);
         completeSuccess(job, stage, message, result);
     }
@@ -480,32 +781,114 @@ public class MediaStageExecutionService {
         }
         ProviderContext provider = provider(job, "STT");
         body.put("provider", provider.payload());
-        JsonNode result = aiClient.post().uri("/media/stt").contentType(MediaType.APPLICATION_JSON)
-                .body(body).retrieve().body(JsonNode.class);
-        ensureCompleted(result, "STT");
+        JsonNode result = executeSttWithRetry(stage, body, provider,
+                response -> rejectTruncatedGenerativeTranscript(job, response, durationMs));
         chargeAiUsage(job, "STT", usageUnits(result, "STT", durationMs == null ? 0L : durationMs),
                 provider.personalApiKey());
         completeSuccess(job, stage, message, result);
+    }
+
+    private JsonNode executeSttWithRetry(MediaJobStage stage, Map<String, Object> body,
+                                         ProviderContext provider,
+                                         java.util.function.Consumer<JsonNode> transcriptCheck) {
+        int retries = props.ai().maxRetries();
+        int attempt = 0;
+        while (true) {
+            try {
+                JsonNode result = mediaAiClient.post().uri("/media/stt").contentType(MediaType.APPLICATION_JSON)
+                        .body(body).retrieve().body(JsonNode.class);
+                ensureCompleted(result, "STT");
+                transcriptCheck.accept(result);
+                return result;
+            } catch (RuntimeException ex) {
+                AiStageException failure = stageFailure(stage, ex, provider);
+                if (!failure.isRetryable() || attempt >= retries) {
+                    throw failure;
+                }
+                long delayMs = 250L << Math.min(attempt, 10);
+                log.warn("Retrying STT after retryable failure errorCode={} attempt={}/{}",
+                        failure.getErrorCode(), attempt + 1, retries);
+                attempt++;
+                try {
+                    Thread.sleep(delayMs);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted while retrying STT", interrupted);
+                }
+            }
+        }
+    }
+
+    /**
+     * Ported from the original pipeline: LLM-based ASR sometimes stops after the
+     * first sentence (observed: one 0-1250 ms segment for a 531 s video). A
+     * script-first summary cannot be grounded in that, so the transcript is
+     * rejected as retryable instead of failing SUMMARIZE later.
+     */
+    private void rejectTruncatedGenerativeTranscript(MediaJob job, JsonNode response, Long assetDurationMs) {
+        if (!MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(job.getRecipeId())
+                || assetDurationMs == null || assetDurationMs <= 0L) {
+            return;
+        }
+        JsonNode segments = response.path("segments");
+        if (!segments.isArray() || segments.isEmpty()) {
+            return;
+        }
+        boolean allZeroSentinel = true;
+        long maxEndMs = 0L;
+        for (JsonNode segment : segments) {
+            long start = segment.path("start_ms").asLong(0L);
+            long end = segment.path("end_ms").asLong(0L);
+            if (start != 0L || end != 0L) {
+                allZeroSentinel = false;
+            }
+            maxEndMs = Math.max(maxEndMs, end);
+        }
+        if (!allZeroSentinel && maxEndMs < assetDurationMs / 100L) {
+            log.warn("STT catastrophic early truncation job={} maxEndMs={} assetDurationMs={}",
+                    job.getId(), maxEndMs, assetDurationMs);
+            throw AiStageException.safeFailure("PROVIDER_RESPONSE_MALFORMED",
+                    "STT transcript was catastrophically truncated before 1% of the source duration",
+                    true, "Try again or switch the STT model.", "STT", null);
+        }
+    }
+
+    private AiStageException stageFailure(MediaJobStage stage, RuntimeException ex,
+                                          ProviderContext provider) {
+        AiStageException failure = stageFailure(stage, ex);
+        if (!(ex instanceof ResourceAccessException) || failure.getProtocol() != null) {
+            return failure;
+        }
+        String protocol = String.valueOf(provider.payload().getOrDefault("protocol", ""));
+        String model = String.valueOf(provider.payload().getOrDefault("model", ""));
+        Map<String, Object> detail = new LinkedHashMap<>(failure.getErrorDetail());
+        if (!protocol.isBlank()) detail.put("protocol", protocol);
+        if (!model.isBlank()) detail.put("model", model);
+        return new AiStageException(failure.getErrorCode(), failure.getMessage(), failure.isRetryable(),
+                failure.getRecommendedAction(), protocol.isBlank() ? null : protocol, "STT",
+                model.isBlank() ? null : model, detail);
     }
 
     private void executeSummarize(MediaJob job, MediaJobStage stage, MediaStageMessage message) throws Exception {
         MediaJobStage stt = findStage(job.getId(), MediaJobStage.StageName.STT);
         JsonNode transcript = parseJson(stt == null ? null : stt.getOutputRef());
         List<Map<String, Object>> segments = transcriptSegments(transcript);
+        Integer sourceSeconds = assetRepository.findById(job.getRootAssetId()).map(MediaAsset::getDurationMs)
+                .map(ms -> Math.max(1, Math.round(ms / 1000f))).orElse(null);
         int duration = job.getRequestedDurationSeconds() != null ? job.getRequestedDurationSeconds()
-                : assetRepository.findById(job.getRootAssetId()).map(MediaAsset::getDurationMs)
-                .map(ms -> Math.max(1, Math.round(ms / 1000f))).orElse(60);
+                : sourceSeconds != null ? sourceSeconds : 60;
+        // Short-source fallback (as in the original narrative gateway): a summary
+        // cannot be longer than the real media. The same value feeds the AI
+        // request and the proposal tolerance check so both layers agree.
+        if (sourceSeconds != null && duration > sourceSeconds) {
+            duration = sourceSeconds;
+        }
         if (MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(job.getRecipeId())) {
             String serialized = objectMapper.writeValueAsString(segments);
             String visualContext = job.isVisualContextEnabled()
                     ? fetchVisualContext(job, message, segments) : null;
-            SummaryAiClient.ScriptProposalResult result;
-            if (summaryAiClient instanceof UserAwareSummaryAiClient userAware) {
-                result = userAware.generateScript(serialized, visualContext, duration, job.getTargetLang(),
-                        job.getId(), job.getCreatedByUserId());
-            } else {
-                result = summaryAiClient.generateScript(serialized, visualContext, duration, job.getTargetLang());
-            }
+            SummaryAiClient.ScriptProposalResult result =
+                    generateScriptWithRetry(job, serialized, visualContext, duration);
             chargeAiUsage(job, "SUMMARIZE_SCRIPT",
                     result == null || result.usageTokens() == 0
                             ? estimateTokens(serialized + (result == null ? "" : result.scriptContent()))
@@ -529,12 +912,43 @@ public class MediaStageExecutionService {
         body.put("duration_tolerance", Map.of("lower_seconds", 20, "upper_seconds", 20));
         ProviderContext provider = provider(job, "TRANSLATE");
         body.put("provider", provider.payload());
-        JsonNode result = aiClient.post().uri("/media/summarize").contentType(MediaType.APPLICATION_JSON)
+        JsonNode result = mediaAiClient.post().uri("/media/summarize").contentType(MediaType.APPLICATION_JSON)
                 .body(body).retrieve().body(JsonNode.class);
         ensureCompleted(result, "SUMMARIZE");
         chargeAiUsage(job, "SUMMARIZE_SCRIPT", usageUnits(result, "SUMMARIZE", serializedLength(segments)),
                 provider.personalApiKey());
         completeSuccess(job, stage, message, result);
+    }
+
+    /**
+     * The AI gateway already repairs model-output contract violations; here only
+     * failures it marks retryable (timeouts, rate limits, unavailable provider)
+     * are retried with backoff, mirroring the STT policy.
+     */
+    private SummaryAiClient.ScriptProposalResult generateScriptWithRetry(MediaJob job, String serialized,
+                                                                         String visualContext, int duration) {
+        int retries = props.ai().maxRetries();
+        int attempt = 0;
+        Double narrationCps = narrationPacingEstimator == null ? null : narrationPacingEstimator.estimateCps(job);
+        log.info("Narration pacing job={} narrationCps={} ({})", job.getId(), narrationCps,
+                narrationCps == null ? "gateway default" : "measured TTS history");
+        while (true) {
+            try {
+                if (summaryAiClient instanceof UserAwareSummaryAiClient userAware) {
+                    return userAware.generateScript(serialized, visualContext, duration, job.getTargetLang(),
+                            job.getId(), job.getCreatedByUserId(), narrationCps);
+                }
+                return summaryAiClient.generateScript(serialized, visualContext, duration, job.getTargetLang());
+            } catch (AiStageException failure) {
+                if (!failure.isRetryable() || attempt >= retries) {
+                    throw failure;
+                }
+                log.warn("Retrying SUMMARIZE after retryable failure job={} errorCode={} attempt={}/{}",
+                        job.getId(), failure.getErrorCode(), attempt + 1, retries);
+                pause(250L << Math.min(attempt, 10));
+                attempt++;
+            }
+        }
     }
 
     private void executeTranslate(MediaJob job, MediaJobStage stage, MediaStageMessage message) throws Exception {
@@ -597,75 +1011,256 @@ public class MediaStageExecutionService {
         completeSuccess(job, stage, message, result);
     }
 
+    /**
+     * Synthesize one clip per timed subtitle segment so AUDIO_MIX/RENDER can place
+     * each clip at its own start_ms. Segments go out in bounded batches; failed
+     * segments are retried a few times, and the stage completes when at least one
+     * segment has audio (per-segment failures are reported in the output).
+     */
     private void executeTts(MediaJob job, MediaJobStage stage, MediaStageMessage message) {
-        MediaJobStage translation = findStage(job.getId(), MediaJobStage.StageName.TRANSLATE);
-        JsonNode translated = parseJson(translation == null ? null : translation.getOutputRef());
-        String text = translated != null && translated.has("translation")
-                ? translated.get("translation").asText() : String.valueOf(translated);
-        Map<String, Object> segment = Map.of("segment_id", message.correlationId().toString(), "target_text", text);
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("correlation_id", message.correlationId().toString());
-        body.put("media_job_id", job.getId().toString());
+        List<SubtitleSegment> all = subtitleSegmentRepository == null
+                ? List.of() : subtitleSegmentRepository.findByMediaJobIdOrderBySeq(job.getId());
+        List<SubtitleSegment> segments = all.stream()
+                .filter(segment -> segment.getTargetText() != null && !segment.getTargetText().isBlank())
+                .toList();
+        if (segments.isEmpty()) {
+            throw AiStageException.safeFailure("TTS_SEGMENTS_MISSING", "No subtitle segments available for TTS",
+                    false, "Run TRANSLATE again or fix the subtitles in the editor before generating the voice track.",
+                    "TTS", null);
+        }
         String voiceId = job.getTtsVoiceId() == null ? "default"
                 : providerResolver.resolveVoiceIdentifier(job.getCreatedByUserId(), job.getTtsProviderId(), job.getTtsVoiceId())
                 .orElse(job.getTtsVoiceId().toString());
-        body.put("voice_id", voiceId);
-        body.put("segments", List.of(segment));
         ProviderContext provider = provider(job, "TTS");
-        body.put("provider", provider.payload());
-        JsonNode result = aiClient.post().uri("/media/tts").contentType(MediaType.APPLICATION_JSON)
-                .body(body).retrieve().body(JsonNode.class);
-        ensureCompleted(result, "TTS");
-        chargeAiUsage(job, "TTS", usageUnits(result, "TTS", text == null ? 0L : text.length()),
-                provider.personalApiKey());
-        JsonNode persisted = persistTtsAudio(job, result);
-        completeSuccess(job, stage, message, persisted);
+
+        Map<UUID, TtsClip> clips = new LinkedHashMap<>();
+        JsonNode lastFailure = null;
+        long characters = 0L;
+        List<SubtitleSegment> pending = segments;
+        boolean retryable = true;
+        for (int round = 0; round <= MAX_TTS_SEGMENT_RETRIES && !pending.isEmpty() && retryable; round++) {
+            if (round > 0) {
+                log.warn("Retrying TTS segments job={} failed={} round={}/{}",
+                        job.getId(), pending.size(), round, MAX_TTS_SEGMENT_RETRIES);
+                pause(ttsSegmentRetryDelayMs);
+            }
+            for (int from = 0; from < pending.size(); from += TTS_BATCH_SIZE) {
+                if (cancelRequested(stage)) {
+                    // Graceful cancel: the current provider call has finished; do not start another.
+                    callbackService.completeStage(job.getId(), stage.getId(), stage.getStageName(), false, null,
+                            null, null, null, completionKey(message));
+                    return;
+                }
+                List<SubtitleSegment> batch = pending.subList(from, Math.min(pending.size(), from + TTS_BATCH_SIZE));
+                JsonNode response = requestTts(job, message, voiceId, provider, batch);
+                if (response == null) {
+                    continue;
+                }
+                characters += response.path("usage").path("characters").asLong(0L);
+                for (JsonNode result : response.path("results")) {
+                    UUID segmentId = parseUuid(result.path("segment_id").asText(null));
+                    if (segmentId == null || !"SUCCESS".equalsIgnoreCase(result.path("status").asText())
+                            && !"COMPLETED".equalsIgnoreCase(result.path("status").asText())) {
+                        continue;
+                    }
+                    TtsClip clip = storeTtsClip(job, segmentId, result);
+                    if (clip != null) {
+                        clips.put(segmentId, clip);
+                    }
+                }
+                if (!"COMPLETED".equalsIgnoreCase(response.path("status").asText())) {
+                    lastFailure = response;
+                    // Auth/quota/unsupported-model failures will not heal on retry.
+                    retryable = response.path("error_detail").path("retryable").asBoolean(true);
+                }
+            }
+            pending = pending.stream().filter(segment -> !clips.containsKey(segment.getId())).toList();
+        }
+        if (clips.isEmpty()) {
+            if (lastFailure != null) {
+                throw AiStageException.fromOperationResponse(lastFailure);
+            }
+            throw AiStageException.safeFailure("PROVIDER_EMPTY_RESPONSE", "TTS returned no audio for any segment",
+                    true, "Try again or switch the TTS model.", "TTS", null);
+        }
+
+        for (SubtitleSegment segment : all) {
+            TtsClip clip = clips.get(segment.getId());
+            segment.setTtsAudioRef(clip == null ? null : clip.audioRef());
+        }
+        subtitleSegmentRepository.saveAll(all);
+        if (characters <= 0L) {
+            characters = segments.stream().filter(segment -> clips.containsKey(segment.getId()))
+                    .mapToLong(segment -> segment.getTargetText().length()).sum();
+        }
+        chargeAiUsage(job, "TTS", Math.max(1L, characters), provider.personalApiKey());
+        completeSuccess(job, stage, message, ttsOutput(segments, clips));
     }
 
-    private JsonNode persistTtsAudio(MediaJob job, JsonNode response) {
-        JsonNode first = response == null || !response.path("results").isArray()
-                || response.path("results").isEmpty() ? null : response.path("results").get(0);
-        if (first == null) return response;
-        String existingRef = first.path("audio_ref").asText(null);
-        if (existingRef == null || existingRef.isBlank()) {
-            existingRef = first.path("audioRef").asText(null);
+    private JsonNode requestTts(MediaJob job, MediaStageMessage message, String voiceId,
+                                ProviderContext provider, List<SubtitleSegment> batch) {
+        List<Map<String, Object>> payload = new ArrayList<>();
+        for (SubtitleSegment segment : batch) {
+            payload.add(Map.of("segment_id", segment.getId().toString(), "target_text", segment.getTargetText()));
         }
-        String base64 = first.path("audio_base64").asText(null);
-        if ((existingRef == null || existingRef.isBlank()) && base64 != null && !base64.isBlank()) {
-            try {
-                byte[] bytes = Base64.getDecoder().decode(base64);
-                String key = "dubbed/" + job.getId() + "/" + UUID.randomUUID() + ".mp3";
-                storage.putMediaObject(key, new ByteArrayInputStream(bytes), bytes.length, "audio/mpeg");
-                existingRef = storage.mediaBucket() + "/" + key;
-            } catch (IllegalArgumentException ex) {
-                throw new IllegalStateException("TTS returned invalid base64 audio", ex);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("correlation_id", message.correlationId().toString());
+        body.put("media_job_id", job.getId().toString());
+        body.put("voice_id", voiceId);
+        body.put("segments", payload);
+        body.put("provider", provider.payload());
+        return mediaAiClient.post().uri("/media/tts").contentType(MediaType.APPLICATION_JSON)
+                .body(body).retrieve().body(JsonNode.class);
+    }
+
+    /** Upload one synthesized clip; the object extension/content type follow the real audio bytes. */
+    private TtsClip storeTtsClip(MediaJob job, UUID segmentId, JsonNode result) {
+        // The AI gateway measures every clip (any audio format); WAV parsing is the fallback.
+        Long measuredMs = result.path("duration_ms").asLong(0L) > 0L ? result.path("duration_ms").asLong() : null;
+        String existingRef = firstText(result, "audio_ref", "audioRef");
+        if (existingRef != null) {
+            return new TtsClip(existingRef, measuredMs);
+        }
+        String base64 = result.path("audio_base64").asText(null);
+        if (base64 == null || base64.isBlank()) {
+            return null;
+        }
+        byte[] bytes;
+        try {
+            bytes = Base64.getDecoder().decode(base64);
+        } catch (IllegalArgumentException ex) {
+            log.warn("TTS returned invalid base64 audio job={} segment={}", job.getId(), segmentId);
+            return null;
+        }
+        if (bytes.length == 0) {
+            return null;
+        }
+        String[] format = audioFormat(bytes);
+        String key = "dubbed/" + job.getId() + "/" + segmentId + "-" + UUID.randomUUID() + "." + format[0];
+        storage.putMediaObject(key, new ByteArrayInputStream(bytes), bytes.length, format[1]);
+        return new TtsClip(storage.mediaBucket() + "/" + key, measuredMs != null ? measuredMs : wavDurationMs(bytes));
+    }
+
+    private String[] audioFormat(byte[] bytes) {
+        if (bytes.length >= 12 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
+                && bytes[8] == 'W' && bytes[9] == 'A' && bytes[10] == 'V' && bytes[11] == 'E') {
+            return new String[] {"wav", "audio/wav"};
+        }
+        if (bytes.length >= 4 && bytes[0] == 'O' && bytes[1] == 'g' && bytes[2] == 'g' && bytes[3] == 'S') {
+            return new String[] {"ogg", "audio/ogg"};
+        }
+        return new String[] {"mp3", "audio/mpeg"};
+    }
+
+    private Long wavDurationMs(byte[] bytes) {
+        try {
+            javax.sound.sampled.AudioFileFormat format = javax.sound.sampled.AudioSystem
+                    .getAudioFileFormat(new ByteArrayInputStream(bytes));
+            float frameRate = format.getFormat().getFrameRate();
+            long frames = format.getFrameLength();
+            if (frameRate > 0 && frames > 0) {
+                return Math.round(frames * 1000.0 / frameRate);
+            }
+        } catch (Exception ignored) {
+            // Non-WAV clips have no cheap duration probe; the mix falls back to window fitting.
+        }
+        return null;
+    }
+
+    private JsonNode ttsOutput(List<SubtitleSegment> segments, Map<UUID, TtsClip> clips) {
+        ObjectNode output = objectMapper.createObjectNode();
+        output.put("status", "COMPLETED");
+        output.put("total_segments", segments.size());
+        output.put("success_count", clips.size());
+        output.put("failure_count", segments.size() - clips.size());
+        var failed = output.putArray("failed_segment_ids");
+        var items = output.putArray("segments");
+        for (SubtitleSegment segment : segments) {
+            TtsClip clip = clips.get(segment.getId());
+            if (clip == null) {
+                failed.add(segment.getId().toString());
+                continue;
+            }
+            ObjectNode item = items.addObject();
+            item.put("segment_id", segment.getId().toString());
+            item.put("seq", segment.getSeq());
+            item.put("audio_ref", clip.audioRef());
+            item.put("start_ms", segment.getStartMs());
+            item.put("end_ms", segment.getEndMs());
+            if (clip.durationMs() != null) {
+                item.put("duration_ms", clip.durationMs());
             }
         }
-        ObjectNode output = objectMapper.createObjectNode();
-        if (existingRef != null && !existingRef.isBlank()) output.put("objectRef", existingRef);
-        output.set("response", response);
         return output;
     }
 
-    private ProviderContext provider(MediaJob job, String capability) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        try {
-            ProviderResolverService.ProviderResolution p = providerResolver.resolveForCapability(
-                    job.getCreatedByUserId(), capability);
-            payload.put("protocol", valueOrEmpty(p.providerType()));
-            payload.put("base_url", valueOrEmpty(p.endpointUrl()));
-            payload.put("api_key", valueOrEmpty(p.apiKey()));
-            payload.put("model", "");
-            payload.put("capabilities", List.of(providerCapability(capability)));
-            return new ProviderContext(payload, p.isPersonalApiKey());
-        } catch (Exception ignored) {
-            payload.put("protocol", "openai_compatible");
-            payload.put("base_url", props.ai().baseUrl());
-            payload.put("api_key", "");
-            payload.put("model", "");
-            payload.put("capabilities", List.of(providerCapability(capability)));
-            return new ProviderContext(payload, false);
+    /**
+     * Timed voice clips for AUDIO_MIX/RENDER. Timing comes from the current
+     * subtitle rows; editing a subtitle marks TTS STALE, so refs never outlive
+     * the timing they were synthesized for. Legacy single-track outputs keep
+     * their old "one clip from 0ms" behaviour.
+     */
+    private List<TtsPlacement> ttsPlacements(MediaJob job, long durationMs) {
+        List<TtsPlacement> placements = new ArrayList<>();
+        Map<String, Long> durations = new LinkedHashMap<>();
+        JsonNode output = parseJson(output(job.getId(), MediaJobStage.StageName.TTS));
+        for (JsonNode item : output.path("segments")) {
+            if (item.hasNonNull("duration_ms")) {
+                durations.put(item.path("segment_id").asText(), item.path("duration_ms").asLong());
+            }
         }
+        List<SubtitleSegment> segments = subtitleSegmentRepository == null
+                ? List.of() : subtitleSegmentRepository.findByMediaJobIdOrderBySeq(job.getId());
+        for (SubtitleSegment segment : segments) {
+            if (segment.getTtsAudioRef() == null || segment.getTtsAudioRef().isBlank()
+                    || segment.getEndMs() <= segment.getStartMs()) {
+                continue;
+            }
+            String id = segment.getId().toString();
+            placements.add(new TtsPlacement(id, segment.getTtsAudioRef(), segment.getStartMs(),
+                    segment.getEndMs(), durations.get(id)));
+        }
+        if (placements.isEmpty()) {
+            String legacy = objectRef(output(job.getId(), MediaJobStage.StageName.TTS));
+            if (legacy != null) {
+                placements.add(new TtsPlacement("tts-1", legacy, 0L, Math.max(1L, durationMs), null));
+            }
+        }
+        return placements;
+    }
+
+    private void pause(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while retrying an AI stage", interrupted);
+        }
+    }
+
+    private UUID parseUuid(String raw) {
+        try {
+            return raw == null ? null : UUID.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    ProviderContext provider(MediaJob job, String capability) {
+        ProviderResolverService.ProviderResolution p = providerResolver.resolveForCapability(
+                job.getCreatedByUserId(), capability);
+        if (p.model() == null || p.model().isBlank()) {
+            throw new AppException(com.app.common.exception.ErrorCode.PROVIDER_MODEL_NOT_CONFIGURED);
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("protocol", p.providerType());
+        payload.put("base_url", p.baseUrl());
+        payload.put("api_key", p.apiKey());
+        payload.put("model", p.model());
+        payload.put("capabilities", List.of(providerCapability(capability)));
+        log.info("Resolved provider protocol={} capability={} model={} personal={}",
+                p.providerType(), capability, p.model(), p.isPersonalApiKey());
+        return new ProviderContext(payload, p.isPersonalApiKey());
     }
 
     private String providerCapability(String capability) {
@@ -678,11 +1273,7 @@ public class MediaStageExecutionService {
     }
 
     private boolean hasPersonalProvider(MediaJob job, String capability) {
-        try {
-            return providerResolver.resolveForCapability(job.getCreatedByUserId(), capability).isPersonalApiKey();
-        } catch (Exception ignored) {
-            return false;
-        }
+        return providerResolver.resolveForCapability(job.getCreatedByUserId(), capability).isPersonalApiKey();
     }
 
     /** Charge only after the FastAPI stage has returned COMPLETED. */
@@ -1197,18 +1788,38 @@ public class MediaStageExecutionService {
         }
     }
 
-    private void completeSuccess(MediaJob job, MediaJobStage stage, MediaStageMessage message, JsonNode output) {
-        callbackService.completeStage(job.getId(), stage.getId(), stage.getStageName(), true, output, null);
+    /** Re-reads the stage row: a cancel is recorded by another transaction while a long stage runs. */
+    private boolean cancelRequested(MediaJobStage stage) {
+        return stageRepository.findById(stage.getId())
+                .map(current -> current.getStatus() == MediaJobStage.StageStatus.CANCEL_REQUESTED)
+                .orElse(false);
     }
 
-    private void completeFailure(MediaJob job, MediaJobStage stage, MediaStageMessage message, String error) {
+    /** Same "<stage>:<correlation>:complete" shape as worker callbacks, so a superseded attempt is ignored. */
+    private String completionKey(MediaStageMessage message) {
+        return "internal:" + message.correlationId() + ":complete";
+    }
+
+    private void completeSuccess(MediaJob job, MediaJobStage stage, MediaStageMessage message, JsonNode output) {
+        callbackService.completeStage(job.getId(), stage.getId(), stage.getStageName(), true, output, null,
+                null, null, completionKey(message));
+    }
+
+    private void completeFailure(MediaJob job, MediaJobStage stage, MediaStageMessage message,
+                                 AiStageException failure) {
+        JsonNode detail = objectMapper.valueToTree(failure.getErrorDetail());
         callbackService.completeStage(job.getId(), stage.getId(), stage.getStageName(), false, null,
-                error == null ? "Stage execution failed" : error);
+                failure.getMessage(), failure.getErrorCode(), detail, completionKey(message));
     }
 
     private void ensureCompleted(JsonNode result, String stage) {
-        if (result == null || (result.has("status") && !"COMPLETED".equalsIgnoreCase(result.get("status").asText()))) {
-            throw new IllegalStateException(stage + " returned a non-completed response");
+        if (result == null || !"COMPLETED".equalsIgnoreCase(result.path("status").asText())) {
+            if (result != null && "FAILED".equalsIgnoreCase(result.path("status").asText())) {
+                throw AiStageException.fromOperationResponse(result);
+            }
+            throw AiStageException.safeFailure("PROVIDER_RESPONSE_MALFORMED",
+                    "AI provider returned an incomplete response", false,
+                    "Check the configured provider model and try the provider test again.", null, null);
         }
     }
 
@@ -1307,15 +1918,6 @@ public class MediaStageExecutionService {
                 .filter(text -> !text.isBlank())
                 .reduce((left, right) -> left + " " + right)
                 .orElse(null);
-    }
-
-    private String translatedSubtitleText(MediaJob job) {
-        MediaJobStage translated = findStage(job.getId(), MediaJobStage.StageName.TRANSLATE);
-        JsonNode node = parseJson(translated == null ? null : translated.getOutputRef());
-        if (node == null || node.isNull()) return null;
-        JsonNode value = node.get("translation");
-        if (value == null) value = node.get("scriptContent");
-        return value != null && value.isTextual() ? value.asText() : null;
     }
 
     private JsonNode scriptProposalOutput(SummaryProposal proposal) {
@@ -1465,13 +2067,22 @@ public class MediaStageExecutionService {
         return null;
     }
 
-    private record ProviderContext(Map<String, Object> payload, boolean personalApiKey) {
+    record ProviderContext(Map<String, Object> payload, boolean personalApiKey) {
     }
 
     private record SourceSubtitle(String sourceText, long startMs, long endMs) {
     }
 
     private record TargetSubtitle(String text, long startMs, long endMs) {
+    }
+
+    private record NarrationBeat(SubtitleSegment segment, String audioRef, long durationMs) {
+    }
+
+    private record TtsClip(String audioRef, Long durationMs) {
+    }
+
+    private record TtsPlacement(String segmentId, String audioRef, long startMs, long endMs, Long durationMs) {
     }
 
     private String srtTimestamp(long milliseconds) {

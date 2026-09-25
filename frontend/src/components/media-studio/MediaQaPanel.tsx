@@ -2,16 +2,12 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconAlertTriangle,
-  IconCheck,
-  IconShieldLock,
-  IconSparkles,
 } from '@tabler/icons-react'
-import { EmptyState } from '@/components/shared/EmptyState'
 import { QaOverrideModal } from '@/components/qa/QaOverrideModal'
 import { SeverityBadge } from '@/components/qa/SeverityBadge'
-import { useMediaLinkedJob, useOverrideQaIssue, useResolveQaIssue } from '@/hooks/useMedia'
+import { useMediaJobQaIssues, useMediaSubtitles, useOverrideQaIssue } from '@/hooks/useMedia'
 import { asSeverity, issueBlockingActions } from '@/lib/qa'
-import { hasEffectiveBlockExport, hasEffectiveBlockRender } from '@/lib/media'
+import { hasEffectiveBlockExport, hasEffectiveBlockRender, subtitleToSegmentItem } from '@/lib/media'
 import { featureFlags } from '@/config/featureFlags'
 import { usePermission } from '@/hooks/usePermission'
 import { cn } from '@/lib/cn'
@@ -108,22 +104,21 @@ type IssuePair = { seg: SegmentItem; issue: QaIssue }
  */
 export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
   const { t } = useTranslation(['media', 'job', 'common'])
-  const { data: linkedJob, isLoading } = useMediaLinkedJob(workspaceId, job.translationJobId)
+  const { data: subtitles = [], isLoading: subtitlesLoading } = useMediaSubtitles(workspaceId, job.id)
+  const { data: qaIssues = [], isLoading: issuesLoading } = useMediaJobQaIssues(workspaceId, job.id)
   const [expanded, setExpanded] = useState(false)
   const [overrideIssue, setOverrideIssue] = useState<QaIssue | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const resolve = useResolveQaIssue(workspaceId, job.translationJobId ?? undefined)
-  const override = useOverrideQaIssue(workspaceId, job.translationJobId ?? undefined)
-  const canResolve = usePermission('qa.resolve')
+  const override = useOverrideQaIssue(workspaceId, job.id)
   const canOverride = usePermission('qa.override') && featureFlags.qaOverride
 
   const pairs: IssuePair[] = useMemo(
     () =>
-      (linkedJob?.segments ?? []).flatMap((seg) =>
+      subtitles.map((subtitle) => subtitleToSegmentItem(subtitle, qaIssues)).flatMap((seg) =>
         (seg.qaIssues ?? []).map((issue) => ({ seg, issue })),
       ),
-    [linkedJob],
+    [subtitles, qaIssues],
   )
 
   const issues = useMemo(() => pairs.map((p) => p.issue), [pairs])
@@ -147,17 +142,6 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
     : sortedPairs.filter((p) => !p.issue.resolved).slice(0, QA_VISIBLE_LIMIT)
   const hiddenOpen = Math.max(0, openTotal - QA_VISIBLE_LIMIT)
 
-  const handleResolve = (issueId: string, applySuggestion: boolean) => {
-    setActionError(null)
-    resolve.mutate(
-      { issueId, body: { applySuggestion } },
-      {
-        onError: (e) =>
-          setActionError(e instanceof ApiError ? e.message : t('common:error.generic')),
-      },
-    )
-  }
-
   const handleOverride = (issueId: string, body: { blockingAction: BlockingAction; reason: string }) => {
     setActionError(null)
     override.mutate(
@@ -170,18 +154,7 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
     )
   }
 
-  if (!job.translationJobId) {
-    return (
-      <EmptyState
-        icon={<IconShieldLock size={36} stroke={1.25} />}
-        title={t('qa.waitTitle')}
-        description={t('qa.waitDesc')}
-        className="py-10"
-      />
-    )
-  }
-
-  if (isLoading) {
+  if (subtitlesLoading || issuesLoading) {
     return (
       <div className="py-8 text-center text-sm text-[var(--color-text-tertiary)]">
         {t('common:loading')}
@@ -217,7 +190,6 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
         {visible.map(({ seg, issue }) => {
           const actions = issueBlockingActions(issue)
           const overridden = new Set((issue.overrides ?? []).map((o) => o.blockingAction))
-          const busy = resolve.isPending && resolve.variables?.issueId === issue.id
           const overriding = override.isPending && override.variables?.issueId === issue.id
           return (
             <div
@@ -256,29 +228,6 @@ export function MediaQaPanel({ workspaceId, job, onSelectIssue }: Props) {
               </button>
               {!issue.resolved && (
                 <div className="media-review-issue-actions">
-                  {canResolve && issue.suggestion && (
-                    <button
-                      type="button"
-                      className="btn-secondary btn-sm"
-                      disabled={busy}
-                      onClick={() => handleResolve(issue.id, true)}
-                      title={t('job:qa.applyAndResolve')}
-                    >
-                      <IconSparkles size={13} />
-                      {t('job:qa.apply')}
-                    </button>
-                  )}
-                  {canResolve && (
-                    <button
-                      type="button"
-                      className="btn-ghost btn-sm"
-                      disabled={busy}
-                      onClick={() => handleResolve(issue.id, false)}
-                    >
-                      <IconCheck size={13} />
-                      {t('job:qa.resolve')}
-                    </button>
-                  )}
                   {canOverride && actions.length > 0 && (
                     <button
                       type="button"

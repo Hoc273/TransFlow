@@ -5,8 +5,15 @@ import type { MediaJob, MediaJobStage } from '@/types/media'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: Record<string, unknown>) =>
-      String(options?.defaultValue ?? key),
+    t: (key: string, options?: Record<string, unknown>) => {
+      const messages: Record<string, string> = {
+        'pipeline.providerErrors.quotaExceeded': 'The AI provider quota for {{stage}} has been exhausted. Check billing/quota or choose another provider.',
+        'pipeline.providerErrors.authFailed': 'The AI provider API key for {{stage}} is invalid or expired. Check the key configuration.',
+        'pipeline.providerErrors.modelNotFound': 'The configured model for {{stage}} was not found. Check its name in Provider Settings.',
+      }
+      return String(options?.defaultValue ?? messages[key] ?? key)
+        .replaceAll('{{stage}}', String(options?.stage ?? ''))
+    },
   }),
 }))
 
@@ -79,6 +86,22 @@ function stagesWith(
 }
 
 describe('PipelineStepper dynamic stage order', () => {
+  it.each([
+    ['PROVIDER_QUOTA_EXCEEDED', 'The AI provider quota for TRANSLATE has been exhausted'],
+    ['PROVIDER_AUTH_FAILED', 'The AI provider API key for TRANSLATE is invalid or expired'],
+    ['PROVIDER_MODEL_NOT_FOUND', 'The configured model for TRANSLATE was not found'],
+  ])('renders localized provider guidance for %s from errorCode', (errorCode, expected) => {
+    const stages = stagesWith({ TRANSLATE: 'FAILED' }).map((stage) =>
+      stage.stageName === 'TRANSLATE'
+        ? { ...stage, errorCode, errorMessage: 'RuntimeException: raw vendor response' }
+        : stage,
+    )
+    const html = renderToStaticMarkup(<PipelineStepper job={job('FAILED', stages)} />)
+
+    expect(html).toContain(expected)
+    expect(html).not.toContain('raw vendor response')
+  })
+
   it('renders legacy 6-stage jobs without inventing extra steps', () => {
     const html = renderToStaticMarkup(<PipelineStepper job={job('COMPLETED', legacySixStages)} />)
 

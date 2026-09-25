@@ -21,5 +21,12 @@ public record CreateUserAiProviderRequest(
         String apiKey,
 
         @Size(max = 200, message = "defaultModel cannot exceed 200 characters")
-        String defaultModel
-) {}
+        String defaultModel,
+
+        List<String> defaultForCapabilities
+) {
+    public CreateUserAiProviderRequest(String protocol, List<String> capabilities, String baseUrl,
+                                      String apiKey, String defaultModel) {
+        this(protocol, capabilities, baseUrl, apiKey, defaultModel, List.of());
+    }
+}

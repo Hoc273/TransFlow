@@ -12,6 +12,7 @@ import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -73,11 +74,26 @@ public class TtsVoice {
     }
 
     public boolean isLanguageCompatible(String targetLang) {
-        if (targetLang == null) return false;
-        if (targetLang.equalsIgnoreCase(this.language)) return true;
-        if (this.languages != null) {
-            return this.languages.stream().anyMatch(targetLang::equalsIgnoreCase);
+        String targetPrimary = primaryLanguage(targetLang);
+        if (targetPrimary == null) {
+            return false;
         }
-        return false;
+        if (targetPrimary.equals(primaryLanguage(language))) {
+            return true;
+        }
+        return languages != null && languages.stream()
+                .map(TtsVoice::primaryLanguage)
+                .anyMatch(targetPrimary::equals);
+    }
+
+    private static String primaryLanguage(String languageTag) {
+        if (languageTag == null || languageTag.isBlank()) {
+            return null;
+        }
+        String primary = languageTag.trim().split("[-_]", 2)[0].trim();
+        if (primary.isEmpty() || primary.equalsIgnoreCase("und")) {
+            return null;
+        }
+        return primary.toLowerCase(Locale.ROOT);
     }
 }

@@ -109,6 +109,25 @@ _TINY_VISION_DATA_URL = (
 )
 
 
+def _probe_error_detail(error: ProviderException, provider: ProviderPayload, capability: str) -> dict:
+    detail = error.to_error_detail()
+    detail["protocol"] = detail.get("protocol") or provider.protocol
+    detail["capability"] = detail.get("capability") or capability
+    detail["model"] = detail.get("model") or provider.model
+    return detail
+
+
+def _probe_unexpected_error(provider: ProviderPayload, capability: str) -> dict:
+    error = ProviderException(
+        ProviderErrorCode.PROVIDER_UNAVAILABLE,
+        "Provider capability probe failed",
+        protocol=provider.protocol,
+        capability=capability,
+        model=provider.model,
+    )
+    return error.to_error_detail()
+
+
 # ── Phase 1: CONNECTION ──────────────────────────────────────────────────────
 
 async def probe_connection(req: ConnectionProbeRequest) -> ConnectionProbeResponse:
@@ -249,7 +268,8 @@ async def probe_stt_capability(req: SttProbeRequest) -> SttProbeResponse:
     try:
         adapter = require_adapter(provider.protocol, capability="STT")
     except ProviderException as exc:
-        return SttProbeResponse(ok=False, duration_ms=0, message=exc.message or str(exc))
+        return SttProbeResponse(ok=False, duration_ms=0, message=exc.message,
+                                error_detail=_probe_error_detail(exc, provider, "STT"))
 
     if req.audio_base64:
         audio = AudioInput.from_base64(req.audio_base64, filename="probe.wav", mime_type="audio/wav")
@@ -277,10 +297,12 @@ async def probe_stt_capability(req: SttProbeRequest) -> SttProbeResponse:
             if exc.code == ProviderErrorCode.PROVIDER_EMPTY_RESPONSE and attempt == 0:
                 continue
             elapsed = int((time.monotonic() - start) * 1000)
-            return SttProbeResponse(ok=False, duration_ms=elapsed, message=exc.message or str(exc))
-        except Exception as exc:
+            return SttProbeResponse(ok=False, duration_ms=elapsed, message=exc.message,
+                                    error_detail=_probe_error_detail(exc, provider, "STT"))
+        except Exception:
             elapsed = int((time.monotonic() - start) * 1000)
-            return SttProbeResponse(ok=False, duration_ms=elapsed, message=str(exc))
+            return SttProbeResponse(ok=False, duration_ms=elapsed, message="Provider capability probe failed",
+                                    error_detail=_probe_unexpected_error(provider, "STT"))
 
 
 async def probe_vision_capability(req: VisionProbeRequest) -> VisionProbeResponse:
@@ -304,10 +326,16 @@ async def probe_vision_capability(req: VisionProbeRequest) -> VisionProbeRespons
         elapsed = int((time.monotonic() - start) * 1000)
         answer = (result.text or "").strip()
         if not answer:
+            error = ProviderException(
+                ProviderErrorCode.PROVIDER_EMPTY_RESPONSE,
+                "Provider returned an empty response",
+                protocol=provider.protocol, capability="VISION", model=provider.model,
+            )
             return VisionProbeResponse(
                 ok=False,
                 duration_ms=elapsed,
-                message="VISION provider returned an empty answer",
+                message=error.message,
+                error_detail=_probe_error_detail(error, provider, "VISION"),
             )
         return VisionProbeResponse(
             ok=True,
@@ -317,10 +345,12 @@ async def probe_vision_capability(req: VisionProbeRequest) -> VisionProbeRespons
         )
     except ProviderException as exc:
         elapsed = int((time.monotonic() - start) * 1000)
-        return VisionProbeResponse(ok=False, duration_ms=elapsed, message=exc.message or str(exc))
-    except Exception as exc:
+        return VisionProbeResponse(ok=False, duration_ms=elapsed, message=exc.message,
+                                   error_detail=_probe_error_detail(exc, provider, "VISION"))
+    except Exception:
         elapsed = int((time.monotonic() - start) * 1000)
-        return VisionProbeResponse(ok=False, duration_ms=elapsed, message=str(exc))
+        return VisionProbeResponse(ok=False, duration_ms=elapsed, message="Provider capability probe failed",
+                                   error_detail=_probe_unexpected_error(provider, "VISION"))
 
 
 async def probe_tts_capability(req: TtsProbeRequest) -> TtsProbeResponse:
@@ -338,7 +368,8 @@ async def probe_tts_capability(req: TtsProbeRequest) -> TtsProbeResponse:
     try:
         adapter = require_adapter(provider.protocol, capability="TTS")
     except ProviderException as exc:
-        return TtsProbeResponse(ok=False, duration_ms=0, message=exc.message or str(exc), audio_bytes=0)
+        return TtsProbeResponse(ok=False, duration_ms=0, message=exc.message, audio_bytes=0,
+                                error_detail=_probe_error_detail(exc, provider, "TTS"))
 
     if settings.mock_mode or (adapter.requires_api_key and not settings.key_is_usable(provider.api_key)):
         return TtsProbeResponse(ok=True, duration_ms=0, message="TTS probe skipped (mock mode)", audio_bytes=1024)
@@ -362,7 +393,13 @@ async def probe_tts_capability(req: TtsProbeRequest) -> TtsProbeResponse:
         synth = await adapter.synthesize(provider, req.text, voice_id)
         elapsed = int((time.monotonic() - start) * 1000)
         if not synth.audio_bytes:
-            return TtsProbeResponse(ok=False, duration_ms=elapsed, message="TTS returned empty audio", audio_bytes=0)
+            error = ProviderException(
+                ProviderErrorCode.PROVIDER_EMPTY_RESPONSE,
+                "Provider returned an empty response",
+                protocol=provider.protocol, capability="TTS", model=provider.model,
+            )
+            return TtsProbeResponse(ok=False, duration_ms=elapsed, message=error.message, audio_bytes=0,
+                                    error_detail=_probe_error_detail(error, provider, "TTS"))
         return TtsProbeResponse(
             ok=True, duration_ms=elapsed,
             message=f"TTS synthesis probe successful (voice={voice_id})",
@@ -370,10 +407,12 @@ async def probe_tts_capability(req: TtsProbeRequest) -> TtsProbeResponse:
         )
     except ProviderException as exc:
         elapsed = int((time.monotonic() - start) * 1000)
-        return TtsProbeResponse(ok=False, duration_ms=elapsed, message=exc.message or str(exc), audio_bytes=0)
-    except Exception as exc:
+        return TtsProbeResponse(ok=False, duration_ms=elapsed, message=exc.message, audio_bytes=0,
+                                error_detail=_probe_error_detail(exc, provider, "TTS"))
+    except Exception:
         elapsed = int((time.monotonic() - start) * 1000)
-        return TtsProbeResponse(ok=False, duration_ms=elapsed, message=str(exc), audio_bytes=0)
+        return TtsProbeResponse(ok=False, duration_ms=elapsed, message="Provider capability probe failed",
+                                audio_bytes=0, error_detail=_probe_unexpected_error(provider, "TTS"))
 
 
 async def _resolve_probe_voice(provider: ProviderPayload, adapter) -> str | None:

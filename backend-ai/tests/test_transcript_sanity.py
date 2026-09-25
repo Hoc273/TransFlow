@@ -161,6 +161,24 @@ class TranscriptSanityValidatorTest(unittest.TestCase):
         self.assertEqual(verdict.violation.first_invalid_index, 1)
         self.assertEqual(verdict.violation.first_invalid_start_ms, 200_000)
 
+    def test_compressed_timeline_with_impossible_speaking_rate_is_malformed(self):
+        # Real case: 531 s video, 75 Vietnamese sentences squeezed into 0-63 s.
+        text = "Trong khi ba chú thỏ con đang đi dạo trong rừng thì chúng thấy"
+        segments = [_seg(i * 850, (i + 1) * 850, text) for i in range(75)]
+        verdict = TranscriptSanityValidator.validate(segments, 531_505)
+        self.assertEqual(TranscriptSanityResult.MALFORMED, verdict.result)
+        self.assertIn("speaking rate", verdict.violation.reason)
+
+    def test_normal_speaking_rate_is_valid(self):
+        text = "Trong khi ba chú thỏ con đang đi dạo trong rừng thì chúng thấy"
+        segments = [_seg(i * 6_500, (i + 1) * 6_500 - 200, text) for i in range(75)]
+        verdict = TranscriptSanityValidator.validate(segments, 531_505)
+        self.assertEqual(TranscriptSanityResult.VALID, verdict.result)
+
+    def test_speaking_rate_skipped_for_tiny_transcripts(self):
+        verdict = TranscriptSanityValidator.validate([_seg(0, 100, "Hello there!")], 10_000)
+        self.assertEqual(TranscriptSanityResult.VALID, verdict.result)
+
     def test_non_integer_timestamps_malformed(self):
         verdict = TranscriptSanityValidator.validate(
             [{"text": "x", "start_ms": "0", "end_ms": 1000}], 131_243

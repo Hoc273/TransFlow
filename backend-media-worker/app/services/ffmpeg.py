@@ -140,6 +140,11 @@ def _sanitize_ffmpeg_log(text: str) -> str:
     return re.sub(r'([a-zA-Z]:[\\/][^\s"\'<>]+|/(?:[^\s"\'<>]+/)+[^\s"\'<>]*)', '<path>', text)
 
 
+# Final deliverables only: move the MP4 index (moov) to the front so browsers
+# can start playback from a presigned URL without fetching the file tail.
+_FASTSTART = ["-movflags", "+faststart"]
+
+
 def _run(cmd: List[str], timeout: int = _DEFAULT_TIMEOUT, **kwargs) -> None:
     logger.info("Running ffmpeg operation=%s", cmd[0])
     try:
@@ -907,6 +912,7 @@ def burn_subtitles(
             "-c:a", "copy",
             "-c:v", "libx264",
             "-preset", "fast",
+            *_FASTSTART,
             output_path,
         ]
         _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 1800))
@@ -934,6 +940,22 @@ def burn_subtitles(
         # percentage offsets deterministic across landscape and portrait video.
         alignment = 8
         margin_v = round(height * desired_percent / 100)
+    # font_size / outline_width are authored against a 1080-line frame (the
+    # Render Studio preview's PLAY_RES_Y). PlayRes is pinned to the real output
+    # frame, so scale them to its height — otherwise a 720p source reframed to
+    # 9:16 (404x720) burns text 1.5x larger than the preview on a narrow frame.
+    if font_size is not None and not 16 <= font_size <= 120:
+        raise FFmpegError(
+            f"Invalid font_size: {font_size}",
+            "INVALID_INPUT",
+            retryable=False,
+        )
+    if outline_width is not None:
+        _validate_ring_outline_width(outline_width)
+    font_px = _scale_to_frame(font_size, height, minimum=8)
+    outline_px = _scale_to_frame(outline_width, height, minimum=1 if outline_width else 0)
+    if outline_px is not None:
+        outline_px = min(outline_px, _RING_OUTLINE_WIDTH_MAX)
     # PRESET-VIZ (docs/97 §19.16): background_color (#RRGGBBAA) overrides the
     # historical fixed &H80000000 for the legacy force_style path. Absent →
     # byte-identical historical behavior. ASS/styled path is unaffected (the
@@ -972,7 +994,7 @@ def burn_subtitles(
         # V2 outline override on the legacy ring path (docs/97 §19.17 Mục F):
         # explicit width/colour replace the historical Outline=2 black defaults;
         # absent fields keep those exact historical values byte-for-byte.
-        ring_width = _validate_ring_outline_width(outline_width)
+        ring_width = _validate_ring_outline_width(outline_px)
         ring_colour = (
             _hex_to_ass_primarycolour(_normalize_outline_color(outline_color))
             if outline_color is not None else "&H00000000"
@@ -983,15 +1005,8 @@ def burn_subtitles(
         )
     else:
         box_style = "BorderStyle=1,Outline=2,Shadow=0"
-    # Phase 3 additive typography (legacy path only): force_style Fontsize/Bold.
-    # Bounds are enforced by the Spring API contract; defensive validation here
-    # keeps malformed direct dispatches fail-closed.
-    if font_size is not None and not 16 <= font_size <= 120:
-        raise FFmpegError(
-            f"Invalid font_size: {font_size}",
-            "INVALID_INPUT",
-            retryable=False,
-        )
+    # Phase 3 additive typography (legacy path only): force_style Fontsize/Bold
+    # (validated and frame-scaled above).
     style_parts = [f"Alignment={alignment}", f"MarginV={margin_v}", box_style]
     # PRESET-VIZ (docs/97 §19.16) additive: text_color (#RRGGBB / #RRGGBBAA,
     # opaque default) overrides the historical fixed &H00FFFFFF PrimaryColour
@@ -1001,8 +1016,8 @@ def burn_subtitles(
     if text_color is not None:
         normalized_text = _normalize_text_color(text_color)
         style_parts.append(f"PrimaryColour={_hex_to_ass_primarycolour(normalized_text)}")
-    if font_size is not None:
-        style_parts.append(f"Fontsize={font_size}")
+    if font_px is not None:
+        style_parts.append(f"Fontsize={font_px}")
     if bold is not None:
         style_parts.append(f"Bold={-1 if bold else 0}")
     force_style = ",".join(style_parts)
@@ -1029,7 +1044,7 @@ def burn_subtitles(
             background_box=background_box,
             background_color=background_color,
             text_color=text_color,
-            outline_width=outline_width,
+            outline_width=outline_px,
             outline_color=outline_color,
         )
         # 2026-09 dual-event: the converted ASS already bakes Box + outlined
@@ -1037,8 +1052,8 @@ def burn_subtitles(
         # which apply to both styles) — never box/PrimaryColour, which would
         # override both baked styles with one. Other combos keep force_style.
         ass_force_parts = [f"Alignment={alignment}", f"MarginV={margin_v}"]
-        if font_size is not None:
-            ass_force_parts.append(f"Fontsize={font_size}")
+        if font_px is not None:
+            ass_force_parts.append(f"Fontsize={font_px}")
         if bold is not None:
             ass_force_parts.append(f"Bold={-1 if bold else 0}")
         ass_force_style = (
@@ -1059,6 +1074,7 @@ def burn_subtitles(
                 "-c:a", "copy",
                 "-c:v", "libx264",
                 "-preset", "fast",
+                *_FASTSTART,
                 output_path,
             ]
             _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 1800))
@@ -1086,6 +1102,7 @@ def burn_subtitles(
             "-c:a", "copy",
             "-c:v", "libx264",
             "-preset", "fast",
+            *_FASTSTART,
             output_path,
         ]
         _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 1800))
@@ -1552,6 +1569,16 @@ def _build_layer_filters(
     return ";".join(segments)
 
 
+_TYPOGRAPHY_REFERENCE_HEIGHT = 1080
+
+
+def _scale_to_frame(value: int | None, frame_height: int, *, minimum: int) -> int | None:
+    """Scale a size authored for a 1080-line frame to ``frame_height`` pixels."""
+    if value is None:
+        return None
+    return max(minimum, round(value * frame_height / _TYPOGRAPHY_REFERENCE_HEIGHT))
+
+
 def _validate_ring_outline_width(outline_width: int | None) -> int:
     """Ring outline width 0..8 (wire contract §B); absent keeps the historical
     Outline=2 default byte-for-byte."""
@@ -1667,6 +1694,7 @@ def mux_soft_subtitles(
             "-map", "0:v:0",
             "-map", "0:a:0?",
             "-map", "1:0",
+            *_FASTSTART,
             output_path,
         ]
     else:
@@ -1682,6 +1710,7 @@ def mux_soft_subtitles(
             "-map", "0:v:0",
             "-map", "0:a:0?",
             "-map", "1:0",
+            *_FASTSTART,
             output_path,
         ]
     _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 900))

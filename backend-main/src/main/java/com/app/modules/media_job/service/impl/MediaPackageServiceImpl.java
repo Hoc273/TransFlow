@@ -13,6 +13,7 @@ import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.service.MediaExportService;
 import com.app.modules.media_job.service.MediaJobService;
 import com.app.modules.media_job.service.MediaPackageService;
+import com.app.modules.media_job.util.StageOutputRefs;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -125,7 +126,7 @@ public class MediaPackageServiceImpl implements MediaPackageService {
     private String doneOutputRef(List<MediaJobStage> stages, MediaJobStage.StageName name) {
         return stages.stream()
                 .filter(s -> s.getStageName() == name && s.getStatus() == MediaJobStage.StageStatus.COMPLETED)
-                .map(s -> MediaExportServiceImpl.parseRef(s.getOutputRef()))
+                .map(s -> StageOutputRefs.storageRef(s.getOutputRef()))
                 .filter(r -> r != null && !r.isBlank())
                 .findFirst().orElse(null);
     }

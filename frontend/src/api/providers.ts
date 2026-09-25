@@ -45,13 +45,21 @@ type UserAiProviderDto = {
   baseUrl: string
   apiKeyHint: string | null
   defaultModel: string | null
+  defaultForCapabilities?: string[] | null
   isActive?: boolean
   enabled?: boolean
   displayName?: string | null
   defaultFor?: ProviderCapability[] | null
 }
 
-type TestConnectionDto = { success?: boolean; ok?: boolean; message?: string | null; model?: string | null }
+type TestConnectionDto = {
+  success?: boolean
+  ok?: boolean
+  message?: string | null
+  model?: string | null
+  authSuccess?: boolean
+  capabilityResults?: TestConnectionResponse['capabilityResults']
+}
 
 function capabilityFromWire(capability: string): ProviderCapability {
   const upper = capability.toUpperCase()
@@ -69,7 +77,7 @@ export function normalizeProvider(dto: UserAiProviderDto): ProviderConfig {
     displayName: dto.displayName || defaultModel || dto.protocol,
     protocol: dto.protocol,
     capabilities: (dto.capabilities ?? []).map(capabilityFromWire),
-    defaultFor: dto.defaultFor ?? [],
+    defaultFor: (dto.defaultForCapabilities ?? dto.defaultFor ?? []).map(capabilityFromWire),
     baseUrl: dto.baseUrl,
     apiKeyHint: dto.apiKeyHint,
     defaultModel,
@@ -104,6 +112,7 @@ export function createProviderApi(
       baseUrl: payload.baseUrl,
       apiKey: payload.apiKey,
       defaultModel: payload.defaultModel,
+      defaultForCapabilities: capabilitiesToWire(payload.defaultForCapabilities),
     },
   }).then(normalizeProvider)
 }
@@ -136,6 +145,9 @@ export function updateProviderApi(
       apiKey: payload.apiKey || undefined,
       defaultModel: payload.defaultModel,
       isActive: payload.enabled,
+      defaultForCapabilities: payload.defaultForCapabilities
+        ? capabilitiesToWire(payload.defaultForCapabilities)
+        : undefined,
     },
   }).then(normalizeProvider)
 }
@@ -153,58 +165,63 @@ export function deleteProviderApi(
   })
 }
 
-// ── Default provider: không có backend ───────────────────────────
+// ── Default provider ──────────────────────────────────────────────
+// Không có endpoint /default riêng: PUT `defaultForCapabilities` thay thế toàn bộ
+// capability default của provider này (API_Contract §11). Backend tự chuyển
+// default (user + capability) từ provider cũ sang provider mới, nên chỉ cần đọc
+// danh sách hiện tại rồi thêm/bớt đúng capability.
 
-/** @deprecated No backend endpoint — provider `defaultFor` is set via create/update `defaultForCapabilities`. */
-export function setDefaultProviderApi(
-  _workspaceId: string,
-  _providerId: string,
-  _body: ProviderDefaultRequest,
+async function replaceProviderDefaults(
+  providerId: string,
+  change: (current: ProviderCapability[]) => ProviderCapability[],
 ): Promise<ProviderConfig> {
-  return Promise.reject(new Error('setDefaultProvider is not supported by the backend (API_Contract §11)'))
+  const current = normalizeProvider(
+    await apiRequest<UserAiProviderDto>(`/users/me/providers/${providerId}`),
+  )
+  return updateProviderApi(providerId, {
+    defaultForCapabilities: change(current.defaultFor),
+  })
 }
 
-/** @deprecated No backend endpoint. */
+/** Make this provider the user's default for `capability`. `workspaceId` is ignored. */
+export function setDefaultProviderApi(
+  _workspaceId: string,
+  providerId: string,
+  body: ProviderDefaultRequest,
+): Promise<ProviderConfig> {
+  return replaceProviderDefaults(providerId, (current) =>
+    current.includes(body.capability) ? current : [...current, body.capability],
+  )
+}
+
+/** Clear this provider's default for `capability`. `workspaceId` is ignored. */
 export function unsetDefaultProviderApi(
   _workspaceId: string,
-  _providerId: string,
-  _body: ProviderDefaultRequest,
+  providerId: string,
+  body: ProviderDefaultRequest,
 ): Promise<ProviderConfig> {
-  return Promise.reject(new Error('unsetDefaultProvider is not supported by the backend (API_Contract §11)'))
+  return replaceProviderDefaults(providerId, (current) =>
+    current.filter((capability) => capability !== body.capability),
+  )
 }
 
 // ── Test connection ─────────────────────────────────────────────
-// Backend `POST /users/me/providers/{id}/test` không nhận `capability`
-// (param thừa sẽ bị Spring bỏ qua) — giữ param để tương thích chữ ký cũ.
-
+// The provider test endpoint is user-scoped and accepts the capability to probe.
 export function testProviderApi(
-  providerId: string,
-  _capability?: ProviderCapability,
-): Promise<TestConnectionResponse>
-/** @deprecated Pass (providerId, capability?) — workspaceId is ignored. */
-export function testProviderApi(
-  workspaceId: string,
   providerId: string,
   capability?: ProviderCapability,
-): Promise<TestConnectionResponse>
-export function testProviderApi(
-  workspaceIdOrId: string,
-  providerIdOrCapability?: string | ProviderCapability,
-  _capability?: ProviderCapability,
 ): Promise<TestConnectionResponse> {
-  const providerId =
-    typeof providerIdOrCapability === 'string' &&
-    (providerIdOrCapability.length > 16 || providerIdOrCapability.includes('-'))
-      ? providerIdOrCapability
-      : workspaceIdOrId
-  void workspaceIdOrId
-  void _capability
-  return apiRequest<TestConnectionDto>(`/users/me/providers/${providerId}/test`, {
+  const query = capability
+    ? `?capability=${encodeURIComponent(capabilitiesToWire([capability])[0])}`
+    : ''
+  return apiRequest<TestConnectionDto>(`/users/me/providers/${providerId}/test${query}`, {
     method: 'POST',
   }).then((res) => ({
     ok: res.ok ?? res.success ?? false,
     model: res.model ?? null,
     message: res.message ?? null,
+    authSuccess: res.authSuccess ?? res.success ?? res.ok ?? false,
+    capabilityResults: res.capabilityResults ?? [],
   }))
 }
 

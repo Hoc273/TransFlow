@@ -15,6 +15,7 @@ from app.services import cancel_registry
 from app.services.callback import send_complete, send_progress
 from app.services.legacy_render_audio import resolve_legacy_audio
 from app.services.media_probe import probe_video
+from app.services.mix_executor import _apply_tempo
 from app.services.ffmpeg import (
     CutRange,
     FFmpegError,
@@ -167,6 +168,9 @@ class GenerativeBeatRequest(BaseModel):
     visual_strategy: str = "SOURCE_CUT"
     visual_description: Optional[str] = None
     narration_segment: Optional[str] = None
+    # Uniform narration tempo chosen by Spring to fit the requested duration
+    # (bounded 0.9-1.1 there); tts_duration_ms is already the retimed length.
+    tempo: Optional[float] = None
 
 
 class RenderRequest(BaseModel):
@@ -334,6 +338,10 @@ async def _process_render(req: RenderRequest) -> None:
                 if audio_ref:
                     raw_audio_path = os.path.join(temp_dir, f"beat_audio_{idx}_raw.wav")
                     await _blocking(storage.download, audio_ref, raw_audio_path)
+                    if beat.tempo and abs(beat.tempo - 1.0) > 1e-3:
+                        raw_audio_path = await _blocking(
+                            _apply_tempo, raw_audio_path, beat.tempo, temp_dir
+                        )
                     # The measured TTS file is already the beat's timeline
                     # authority. Do not pad it to the source visual duration.
                     tts_audio_paths.append(raw_audio_path)

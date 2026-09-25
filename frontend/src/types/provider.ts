@@ -78,6 +78,14 @@ export type TestConnectionResponse = {
   ok: boolean
   model: string | null
   message: string | null
+  authSuccess?: boolean
+  capabilityResults?: Array<{
+    capability: string
+    success: boolean
+    model: string | null
+    errorCode: string | null
+    message: string | null
+  }>
 }
 
 // ── 4-phase provider validation result (docs/07 §L, Q-PV-9) ──────────────

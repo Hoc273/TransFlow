@@ -25,6 +25,7 @@ import {
   useUpdateRenderConfig,
 } from '@/hooks/useMedia'
 import { useVoicePreview } from '@/hooks/useProviders'
+import { useStableMediaUrl } from '@/hooks/useStableMediaUrl'
 import { deriveStyleAssignment, useJobSubtitleStyle } from '@/hooks/useSubtitleStyle'
 import {
   applyTypographyToEnvelope,
@@ -647,7 +648,7 @@ export function RenderPreparationPanel({
   const [textColor, setTextColor] = useState('#000000')
   // Phase 6 presentation draft (docs/19 §1.8.1) — hydrated from the server.
   const [displayMode, setDisplayMode] = useState<SubtitleDisplayMode>('SENTENCE')
-  const [wordsPerPhrase, setWordsPerPhrase] = useState(3)
+  const [wordsPerPhrase, setWordsPerPhrase] = useState(5)
   // M-B (W2): 10..80 when CHARACTERS — the mid-range default keeps a mode
   // switch to CHARACTERS always valid; the backend remains the authority.
   const [maxCharactersPerCue, setMaxCharactersPerCue] = useState(40)
@@ -715,7 +716,7 @@ export function RenderPreparationPanel({
     const aud = configQuery.data.presentation?.audio
     const mask = sub?.mask
     setDisplayMode(sub?.displayMode ?? 'SENTENCE')
-    setWordsPerPhrase(sub?.wordsPerPhrase ?? 3)
+    setWordsPerPhrase(sub?.wordsPerPhrase ?? 5)
     setMaxCharactersPerCue(sub?.maxCharactersPerCue ?? 40)
     setFontSize(sub?.typography?.fontSize ?? null)
     setBold(sub?.typography?.bold ?? null)
@@ -743,7 +744,7 @@ export function RenderPreparationPanel({
         ? (configQuery.data.textColor as string).toUpperCase()
         : '#FFFFFF',
       displayMode: sub?.displayMode ?? 'SENTENCE',
-      wordsPerPhrase: sub?.wordsPerPhrase ?? 3,
+      wordsPerPhrase: sub?.wordsPerPhrase ?? 5,
       maxCharactersPerCue: sub?.maxCharactersPerCue ?? 40,
       fontSize: sub?.typography?.fontSize ?? null,
       bold: sub?.typography?.bold ?? null,
@@ -947,7 +948,9 @@ export function RenderPreparationPanel({
   // explicit values mirror the worker blur-pad target (dims never exceed the
   // source there, so the ratio alone describes the frame).
   const isReframedPreview = outputAspectRatio !== 'ORIGINAL'
-  const previewSourceVideoUrl = configQuery.data?.sourceVideoUrl ?? null
+  // Each render-config refetch re-signs the source URL; keep the player's src
+  // stable so saving a style change does not reload the video from zero.
+  const previewSourceVideoUrl = useStableMediaUrl(configQuery.data?.sourceVideoUrl)
   // A new source resets the intrinsic ratio (stale dims would frame the new
   // video with the previous aspect until its metadata loads).
   useEffect(() => {
@@ -1189,10 +1192,12 @@ export function RenderPreparationPanel({
                 data-testid="render-prep-preview-blur-bg"
                 aria-hidden="true"
               >
+                {/* Decorative backdrop: follows the foreground player instead of
+                    autoplaying, so the source is not downloaded twice on open. */}
                 <video
                   ref={blurVideoRef}
                   src={previewSourceVideoUrl}
-                  autoPlay
+                  preload="metadata"
                   muted
                   loop
                   playsInline
@@ -1531,12 +1536,12 @@ export function RenderPreparationPanel({
                     setNotice(null)
                     void preview.mutateAsync({
                       providerId: provider.id,
-                      voiceId: voice.voiceId,
+                      voiceRowId: voice.id,
                       language: job.targetLang,
                     }).catch(fail)
                   }}
                 >
-                  {preview.isPending && preview.variables?.voiceId === voice.voiceId
+                  {preview.isPending && preview.variables?.voiceRowId === voice.id
                     ? <IconLoader2 size={15} className="animate-spin" />
                     : <IconPlayerPlay size={15} />}
                   {t('media:voice.preview.action')}

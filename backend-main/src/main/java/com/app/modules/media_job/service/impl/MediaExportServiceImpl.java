@@ -9,9 +9,8 @@ import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.entity.SubtitleSegment;
 import com.app.modules.media_job.service.MediaExportService;
 import com.app.modules.media_job.service.MediaJobService;
+import com.app.modules.media_job.util.StageOutputRefs;
 import com.app.modules.qa.service.QaService;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -26,7 +25,6 @@ public class MediaExportServiceImpl implements MediaExportService {
     private final MediaJobService jobService;
     private final QaService qaService;
     private final MediaStorageService storage;
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     public MediaExportServiceImpl(MediaJobService jobService, QaService qaService,
                                   MediaStorageService storage) {
@@ -43,11 +41,13 @@ public class MediaExportServiceImpl implements MediaExportService {
         }
 
         if (!fmt.equals("VIDEO")) { // SUBTITLE is the legacy alias of SRT
-            checkPublishable(workspaceId, userId, jobId);
-            List<SubtitleSegment> segments = jobService.listSubtitles(workspaceId, userId, jobId);
+            checkSubtitlesReady(workspaceId, userId, jobId);
             boolean vtt = fmt.equals("VTT");
-            return new MediaExportResponse(fmt, "subtitles_" + jobId + (vtt ? ".vtt" : ".srt"), null,
-                    vtt ? toVtt(segments) : toSrt(segments));
+            String rendered = renderedSubtitle(jobId, vtt);
+            String content = rendered != null ? rendered : vtt
+                    ? toVtt(jobService.listSubtitles(workspaceId, userId, jobId))
+                    : toSrt(jobService.listSubtitles(workspaceId, userId, jobId));
+            return new MediaExportResponse(fmt, "subtitles_" + jobId + (vtt ? ".vtt" : ".srt"), null, content);
         }
 
         String ref = renderOutputRef(workspaceId, userId, jobId);
@@ -76,6 +76,21 @@ public class MediaExportServiceImpl implements MediaExportService {
         requirePublishAllowed(workspaceId, userId, jobId);
     }
 
+    /**
+     * Subtitle files come from the job's segments, which TRANSLATE materialises — they do not wait for
+     * RENDER / job completion. The QA publish gate still applies.
+     */
+    private void checkSubtitlesReady(UUID workspaceId, UUID userId, UUID jobId) {
+        jobService.getJob(workspaceId, userId, jobId); // project read access
+        boolean translated = jobService.getStages(jobId).stream()
+                .anyMatch(s -> s.getStageName() == MediaJobStage.StageName.TRANSLATE
+                        && s.getStatus() == MediaJobStage.StageStatus.COMPLETED);
+        if (!translated) {
+            throw new AppException(ErrorCode.STAGE_NOT_READY);
+        }
+        requirePublishAllowed(workspaceId, userId, jobId);
+    }
+
     @Override
     public void requirePublishAllowed(UUID workspaceId, UUID userId, UUID jobId) {
         // Unresolved (not fixed / not overridden) issues that block publishing — SRS §5.3.
@@ -86,17 +101,31 @@ public class MediaExportServiceImpl implements MediaExportService {
         }
     }
 
-    /** Stage {@code output_ref} is JSON text holding the worker's {@code "<bucket>/<key>"} string. */
-    static String parseRef(String outputRef) {
-        if (outputRef == null) {
+    /**
+     * The sidecar the current render burned/muxed. Rows keep source-timeline times, while a
+     * summary render concatenates cuts or retimes footage to narration, so only the sidecar
+     * matches the exported video. Editing subtitles marks RENDER stale, which falls back to rows.
+     */
+    private String renderedSubtitle(UUID jobId, boolean vtt) {
+        String ref = jobService.getStages(jobId).stream()
+                .filter(s -> s.getStageName() == MediaJobStage.StageName.RENDER
+                        && s.getStatus() == MediaJobStage.StageStatus.COMPLETED)
+                .map(s -> StageOutputRefs.field(s.getOutputRef(), vtt ? "vttRef" : "srtRef"))
+                .filter(r -> r != null && !r.isBlank())
+                .findFirst()
+                .orElse(null);
+        if (ref == null) {
             return null;
         }
-        try {
-            JsonNode node = JSON.readTree(outputRef);
-            return node.isTextual() ? node.asText() : null;
+        try (java.io.InputStream in = storage.getMediaObject(ref)) {
+            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
         } catch (Exception ex) {
-            return outputRef;
+            return null; // the rows remain a valid (source-timeline) export
         }
+    }
+
+    static String parseRef(String outputRef) {
+        return StageOutputRefs.storageRef(outputRef);
     }
 
     static String toSrt(List<SubtitleSegment> segments) {

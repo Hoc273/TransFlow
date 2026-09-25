@@ -37,6 +37,7 @@ import {
   type TermsVersionResponse,
 } from '@/api/media'
 import { listMediaJobQaIssuesApi, overrideQaIssueApi, resolveQaIssueApi } from '@/api/segments'
+import { ApiError } from '@/types/api'
 import type { OverrideQaIssueBody, ResolveIssueBody } from '@/types/qa'
 import { hasActiveMediaStages, isActiveMediaJobStatus } from '@/lib/media'
 import { STALE, queryKeys } from '@/lib/queryClient'
@@ -170,6 +171,7 @@ export function useOverrideQaIssue(workspaceId: string | undefined, jobId: strin
     onSuccess: () => {
       if (workspaceId && jobId) {
         void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, jobId) })
+        void qc.invalidateQueries({ queryKey: queryKeys.mediaQaIssues(workspaceId, jobId) })
       }
     },
   })
@@ -291,6 +293,8 @@ export function useOutputPackage(workspaceId: string, jobId: string, enabled: bo
     queryFn: () => getOutputPackageApi(workspaceId, jobId),
     enabled,
     staleTime: 60_000,
+    retry: (failureCount, error) =>
+      !(error instanceof ApiError && error.status === 409) && failureCount < 2,
   })
 }
 
@@ -461,6 +465,7 @@ export function useRerunRender(workspaceId: string, jobId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, jobId) })
       void qc.invalidateQueries({ queryKey: queryKeys.renderConfig(workspaceId, jobId) })
+      void qc.invalidateQueries({ queryKey: queryKeys.outputPackage(workspaceId, jobId) })
     },
   })
 }
@@ -474,6 +479,7 @@ export function useRerunStage(workspaceId: string, jobId: string) {
       void qc.invalidateQueries({ queryKey: queryKeys.mediaJob(workspaceId, jobId) })
       void qc.invalidateQueries({ queryKey: queryKeys.mediaProposals(workspaceId, jobId) })
       void qc.invalidateQueries({ queryKey: queryKeys.renderConfig(workspaceId, jobId) })
+      void qc.invalidateQueries({ queryKey: queryKeys.outputPackage(workspaceId, jobId) })
     },
   })
 }

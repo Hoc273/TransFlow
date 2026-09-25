@@ -335,14 +335,22 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
                 return False
 
             def stream(self, *a, **k):
+                sent.update(k.get("json") or {})
                 return _StreamResponse()
 
+        sent: dict = {}
         with patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()):
             result = await DashScopeNativeAdapter().synthesize(
                 _provider("dashscope_native", "qwen-omni-turbo"),
                 "Xin chao",
                 "Serena",
             )
+
+        # Omni models answer a bare <speak> block conversationally; the
+        # read-aloud instruction must be in the user turn itself.
+        user_turn = sent["messages"][-1]["content"]
+        self.assertIn("word for word", user_turn)
+        self.assertTrue(user_turn.endswith("<speak>Xin chao</speak>"))
 
         # Raw PCM is wrapped as a real WAV container (RIFF/WAVE + s16le @ 24 kHz).
         self.assertTrue(result.audio_bytes.startswith(b"RIFF"), result.audio_bytes[:16])
@@ -759,6 +767,31 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
         self.assertIn("no usable timed segments", str(ctx.exception))
+
+    async def test_synthesize_rejects_text_only_model_before_request(self):
+        with patch("app.services.protocol.dashscope_native.httpx.AsyncClient") as client_cls:
+            with self.assertRaises(ProviderValidation) as ctx:
+                await DashScopeNativeAdapter().synthesize(
+                    _provider("dashscope_native", "qwen-plus"),
+                    "Xin chao",
+                    "Serena",
+                )
+        client_cls.assert_not_called()
+        self.assertEqual(ProviderErrorCode.PROVIDER_UNSUPPORTED_MODEL, ctx.exception.code)
+        self.assertIn("qwen-plus", str(ctx.exception))
+
+    def test_voice_catalog_matches_versioned_omni_flash(self):
+        from app.services.protocol.static_voices import (
+            DASHSCOPE_FLASH_VOICES,
+            DASHSCOPE_QWEN35_VOICES,
+            DASHSCOPE_TURBO_VOICES,
+            voices_for_dashscope_model,
+        )
+
+        self.assertEqual(DASHSCOPE_FLASH_VOICES, voices_for_dashscope_model("qwen3.8-omni-flash"))
+        self.assertEqual(DASHSCOPE_FLASH_VOICES, voices_for_dashscope_model("qwen3-omni-flash"))
+        self.assertEqual(DASHSCOPE_QWEN35_VOICES, voices_for_dashscope_model("qwen3.5-omni-flash"))
+        self.assertEqual(DASHSCOPE_TURBO_VOICES, voices_for_dashscope_model("qwen-omni-turbo"))
 
     async def test_synthesize_rejects_conversational_audio_text(self):
         audio = base64.b64encode(b"AAAA").decode()
@@ -1195,6 +1228,29 @@ class OpenAIThinkingCompatibilityTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("thinking", calls[1])
 
         self.assertEqual({"type": "json_object"}, calls[1]["response_format"])
+
+    async def test_unsupported_json_mode_retries_once_without_response_format(self):
+        # Local / proxy OpenAI-compatible servers often lack JSON mode; the
+        # gateways parse JSON from plain text, so the hint is safe to drop.
+        adapter = OpenAICompatibleAdapter()
+        provider = _provider("openai_compatible", "no-json-mode-model")
+        client, calls = self._client_for_responses([
+            httpx.Response(400, text="response_format is not supported by this model"),
+            self._ok_response('{"ok":true}'),
+        ])
+
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            result = await adapter.chat(
+                provider,
+                system="sys",
+                user="hi",
+                response_format={"type": "json_object"},
+            )
+
+        self.assertEqual('{"ok":true}', result.text)
+        self.assertEqual(2, len(calls))
+        self.assertNotIn("response_format", calls[1])
+        self.assertEqual(calls[0]["messages"], calls[1]["messages"])
 
     async def test_arbitrary_400_does_not_retry(self):
         adapter = OpenAICompatibleAdapter()

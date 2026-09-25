@@ -3,7 +3,8 @@ import { MediaQaPanel } from '@/components/media-studio/MediaQaPanel'
 import { MediaSubtitleEditor } from '@/components/media-studio/MediaSubtitleEditor'
 import { ReviewVideoPane } from '@/components/media-studio/ReviewVideoPane'
 import { countIssuesByBand } from '@/components/media-studio/MediaQaPanel'
-import { useMediaLinkedJob, useRenderConfig } from '@/hooks/useMedia'
+import { useMediaJobQaIssues, useMediaSubtitles, useRenderConfig } from '@/hooks/useMedia'
+import { subtitleToSegmentItem } from '@/lib/media'
 import type { MediaJob, SegmentItem } from '@/types/media'
 
 type Props = {
@@ -23,13 +24,17 @@ export function MediaReviewSection({ workspaceId, job, onProceedToNextStep }: Pr
   const [selectedCueId, setSelectedCueId] = useState<string | null>(null)
   const [playingTimeMs, setPlayingTimeMs] = useState(0)
 
-  const { data: linkedJob } = useMediaLinkedJob(workspaceId, job.translationJobId)
+  const { data: subtitles = [] } = useMediaSubtitles(workspaceId, job.id)
+  const { data: issues = [] } = useMediaJobQaIssues(workspaceId, job.id)
   const translateReady = job.stages.some(
     (stage) => stage.stageName === 'TRANSLATE' && stage.status === 'COMPLETED',
   )
   const configQuery = useRenderConfig(workspaceId, job.id, translateReady)
 
-  const segments: SegmentItem[] = useMemo(() => linkedJob?.segments ?? [], [linkedJob])
+  const segments: SegmentItem[] = useMemo(
+    () => subtitles.map((subtitle) => subtitleToSegmentItem(subtitle, issues)),
+    [subtitles, issues],
+  )
   const qaCounts = useMemo(
     () => countIssuesByBand(segments.flatMap((s) => s.qaIssues ?? [])),
     [segments],

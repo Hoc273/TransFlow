@@ -13,6 +13,9 @@ public interface AiGatewayClient {
      */
     boolean testConnection(String protocol, String baseUrl, String apiKey);
 
+    ProviderCapabilityProbe probeCapability(String protocol, String baseUrl, String apiKey,
+                                             String model, String capability);
+
     /**
      * Discovers and retrieves available TTS voices for a provider via FastAPI.
      */
@@ -33,4 +36,6 @@ public interface AiGatewayClient {
             String gender,
             String displayName
     ) {}
+
+    record ProviderCapabilityProbe(boolean success, String model, String errorCode, String message) {}
 }

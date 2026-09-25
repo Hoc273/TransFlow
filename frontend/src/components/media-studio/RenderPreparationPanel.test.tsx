@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 const t = (key: string) => key
 
@@ -12,7 +14,11 @@ const confirmRender = { isPending: false, mutateAsync: vi.fn() }
 const rerunRender = { isPending: false, mutateAsync: vi.fn() }
 const selectVoiceMutate = vi.fn()
 const selectVoice = { isPending: false, mutateAsync: selectVoiceMutate }
-const preview = { isPending: false, variables: undefined, mutateAsync: vi.fn() }
+const preview = {
+  isPending: false as boolean,
+  variables: undefined as { voiceRowId: string } | undefined,
+  mutateAsync: vi.fn(),
+}
 
 vi.mock('@/hooks/useMedia', () => ({
   useRenderConfig: () => configQuery,
@@ -49,6 +55,10 @@ import type { AudioPresentationValues } from './RenderPreparationPanel'
 
 import type { MediaJob, RenderConfig } from '@/types/media'
 import type { ProviderConfig, TtsVoice } from '@/types/provider'
+
+afterEach(() => {
+  cleanup()
+})
 
 function provider(partial: Partial<ProviderConfig>): ProviderConfig {
   return {
@@ -106,6 +116,8 @@ describe('RenderPreparationPanel — Phase C authoritative voice binding', () =>
     vi.clearAllMocks()
     configQuery.data = { confirmed: false }
     selectVoiceMutate.mockReset().mockResolvedValue(undefined)
+    preview.isPending = false
+    preview.variables = undefined
     preview.mutateAsync.mockReset().mockResolvedValue({ audioUrl: 'x', expiresInSeconds: 60 })
   })
 
@@ -151,6 +163,46 @@ describe('RenderPreparationPanel — Phase C authoritative voice binding', () =>
     ).rejects.toThrow(/provider is required/)
 
     expect(selectVoiceMutate).not.toHaveBeenCalled()
+  })
+
+  it('previews the voice row UUID instead of the provider voice key', () => {
+    const providerRowId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const voiceRowId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    render(
+      <RenderPreparationPanel
+        workspaceId="ws"
+        job={job({ targetLang: 'en', ttsProviderId: providerRowId, ttsVoiceId: voiceRowId })}
+        provider={provider({ id: providerRowId })}
+        voices={[voice({ id: voiceRowId, voiceId: 'Kai', language: 'vi', languages: ['vi', 'en'] })]}
+        canEdit
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'media:voice.preview.action' }))
+
+    expect(preview.mutateAsync).toHaveBeenCalledWith({
+      providerId: providerRowId,
+      voiceRowId,
+      language: 'en',
+    })
+  })
+
+  it('matches the preview spinner against the voice row UUID', () => {
+    const voiceRowId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    preview.isPending = true
+    preview.variables = { voiceRowId }
+    render(
+      <RenderPreparationPanel
+        workspaceId="ws"
+        job={job({ targetLang: 'en' })}
+        provider={provider({ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' })}
+        voices={[voice({ id: voiceRowId, voiceId: 'Kai', language: 'en' })]}
+        canEdit
+      />,
+    )
+
+    const button = screen.getByRole('button', { name: 'media:voice.preview.action' })
+    expect(button.querySelector('svg')?.classList.contains('animate-spin')).toBe(true)
   })
 })
 

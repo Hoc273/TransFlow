@@ -193,6 +193,18 @@
     "staleWarn": "Đổi ngôn ngữ nguồn sẽ chạy lại TRANSLATE → TTS → RENDER với ngôn ngữ mới. STT không chạy lại — transcript không phụ thuộc ngôn ngữ.",
     "progress": "Tiến độ tổng",
     "noStages": "Chưa có dữ liệu stage.",
+    "providerErrors": {
+      "quotaExceeded": "Hạn mức của nhà cung cấp AI cho bước {{stage}} đã hết. Kiểm tra billing/quota hoặc chọn provider khác.",
+      "authFailed": "Khóa API của nhà cung cấp AI cho bước {{stage}} không hợp lệ hoặc đã hết hiệu lực. Kiểm tra lại cấu hình khóa.",
+      "permissionDenied": "Nhà cung cấp AI từ chối quyền truy cập cho bước {{stage}}. Kiểm tra quyền của khóa hoặc model.",
+      "rateLimited": "Nhà cung cấp AI đang giới hạn yêu cầu cho bước {{stage}}. Chờ một lúc rồi thử chạy lại.",
+      "timeout": "Nhà cung cấp AI phản hồi quá lâu ở bước {{stage}}. Thử chạy lại sau.",
+      "unavailable": "Nhà cung cấp AI hiện không khả dụng cho bước {{stage}}. Kiểm tra trạng thái dịch vụ hoặc thử lại sau.",
+      "modelNotFound": "Không tìm thấy model đã cấu hình cho bước {{stage}}. Chọn đúng tên model trong Provider Settings.",
+      "unsupportedModel": "Model đã chọn không hỗ trợ bước {{stage}}. Chọn model có hỗ trợ capability này.",
+      "badRequest": "Nhà cung cấp AI từ chối yêu cầu ở bước {{stage}}. Kiểm tra model và cấu hình capability.",
+      "responseMalformed": "Model trả về dữ liệu không đúng định dạng ở bước {{stage}}. Kiểm tra model hoặc chọn provider khác."
+    },
     "recovery": {
       "emptyCues": "Timeline phụ đề không có cue hợp lệ — hãy khôi phục hoặc chỉnh lại nội dung bản dịch và timing, sau đó Lưu và chạy lại Lồng tiếng & Render.",
       "durationMismatch": "Timeline phụ đề chưa phủ đủ video — hãy kiểm tra timing các dòng phụ đề, đặc biệt khu vực gần cuối, sau đó Lưu và chạy lại Lồng tiếng & Render.",
@@ -677,7 +689,7 @@
   "workflowPreset": {
     "label": "Preset quy trình",
     "managePresets": "Quản lý presets",
-    "none": "Không dùng preset (mặc định theo recipe)",
+    "none": "Không dùng preset (phụ đề mềm, giữ khung hình gốc)",
     "noPreset": "Không",
     "loading": "Đang tải presets…",
     "error": "Không tải được workflow presets.",
@@ -689,6 +701,7 @@
     "default": "mặc định",
     "mode": "Chế độ quy trình: {{mode}}",
     "subtitle": "Phụ đề: {{mode}}",
+    "aspect": "Khung hình: {{value}}",
     "display": "Hiển thị phụ đề: {{mode}}",
     "maxCharacters": "Số ký tự tối đa mỗi cue: {{value}}",
     "voice": "Giọng: {{value}}",

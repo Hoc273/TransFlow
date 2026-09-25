@@ -1,5 +1,8 @@
 package com.app.modules.preset.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -11,4 +14,11 @@ import java.util.UUID;
 public interface PresetResolverService {
 
     UUID resolveForJobCreation(UUID explicitPresetId, UUID projectId, UUID workspaceId);
+
+    /** Config of an already-resolved preset, frozen by the caller into {@code media_jobs.preset_snapshot}. */
+    Optional<PresetJobConfig> findJobConfig(UUID presetId);
+
+    record PresetJobConfig(UUID presetId, String name, JsonNode subtitleStyle,
+                           JsonNode voiceConfig, JsonNode renderConfig) {
+    }
 }

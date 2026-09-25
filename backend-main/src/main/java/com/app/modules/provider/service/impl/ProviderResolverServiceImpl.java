@@ -8,6 +8,7 @@ import com.app.modules.provider.entity.TtsVoice;
 import com.app.modules.provider.entity.UserAiProvider;
 import com.app.modules.provider.repository.PlatformAiProviderRepository;
 import com.app.modules.provider.repository.TtsVoiceRepository;
+import com.app.modules.provider.repository.UserAiProviderDefaultRepository;
 import com.app.modules.provider.repository.UserAiProviderRepository;
 import com.app.modules.provider.service.ProviderResolverService;
 import org.springframework.stereotype.Service;
@@ -31,15 +32,18 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
     private final UserAiProviderRepository userAiProviderRepository;
     private final PlatformAiProviderRepository platformAiProviderRepository;
     private final TtsVoiceRepository ttsVoiceRepository;
+    private final UserAiProviderDefaultRepository userAiProviderDefaultRepository;
     private final CryptoService cryptoService;
 
     public ProviderResolverServiceImpl(UserAiProviderRepository userAiProviderRepository,
                                        PlatformAiProviderRepository platformAiProviderRepository,
                                        TtsVoiceRepository ttsVoiceRepository,
+                                       UserAiProviderDefaultRepository userAiProviderDefaultRepository,
                                        CryptoService cryptoService) {
         this.userAiProviderRepository = userAiProviderRepository;
         this.platformAiProviderRepository = platformAiProviderRepository;
         this.ttsVoiceRepository = ttsVoiceRepository;
+        this.userAiProviderDefaultRepository = userAiProviderDefaultRepository;
         this.cryptoService = cryptoService;
     }
 
@@ -51,22 +55,33 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
         }
         String normCap = capability.trim().toUpperCase();
 
-        // 1. Check user personal BYOK provider first
+        // 1. Use the explicit capability default when configured.
         if (userId != null) {
             List<UserAiProvider> userProviders = userAiProviderRepository.findByUserIdAndIsActiveTrue(userId);
-            Optional<UserAiProvider> matchingUserProvider = userProviders.stream()
-                    .filter(p -> p.hasCapability(normCap))
-                    .findFirst();
-
-            if (matchingUserProvider.isPresent()) {
-                UserAiProvider p = matchingUserProvider.get();
+            Optional<com.app.modules.provider.entity.UserAiProviderDefault> configuredDefault =
+                    userAiProviderDefaultRepository.findForCapability(userId, normCap);
+            if (configuredDefault.isPresent()) {
+                UserAiProvider p = userAiProviderRepository.findByIdAndUserId(
+                                configuredDefault.get().getProviderId(), userId)
+                        .filter(UserAiProvider::isActive)
+                        .filter(provider -> provider.hasCapability(normCap))
+                        .orElseThrow(() -> new AppException(ErrorCode.PROVIDER_DEFAULT_NOT_CONFIGURED));
                 String rawApiKey = cryptoService.decrypt(p.getApiKeyEnc());
-                return new ProviderResolution(
-                        p.getProtocol(),
-                        rawApiKey,
-                        p.getBaseUrl(),
-                        true // isPersonalApiKey
-                );
+                return userResolution(p.getId(), p.getProtocol(), p.getBaseUrl(), rawApiKey,
+                        p.getDefaultModel(), true);
+            }
+
+            List<UserAiProvider> matchingUserProviders = userProviders.stream()
+                    .filter(p -> p.hasCapability(normCap))
+                    .toList();
+            if (matchingUserProviders.size() > 1) {
+                throw new AppException(ErrorCode.PROVIDER_DEFAULT_NOT_CONFIGURED);
+            }
+            if (matchingUserProviders.size() == 1) {
+                UserAiProvider p = matchingUserProviders.get(0);
+                String rawApiKey = cryptoService.decrypt(p.getApiKeyEnc());
+                return userResolution(p.getId(), p.getProtocol(), p.getBaseUrl(), rawApiKey,
+                        p.getDefaultModel(), true);
             }
         }
 
@@ -79,16 +94,20 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
         if (matchingPlatform.isPresent()) {
             PlatformAiProvider p = matchingPlatform.get();
             String rawApiKey = cryptoService.decrypt(p.getApiKeyEnc());
-            return new ProviderResolution(
-                    p.getProtocol(),
-                    rawApiKey,
-                    p.getBaseUrl(),
-                    false // isPersonalApiKey
-            );
+            return userResolution(p.getId(), p.getProtocol(), p.getBaseUrl(), rawApiKey,
+                    p.getDefaultModel(), false);
         }
 
         // 3. No active provider configured for capability
         throw new AppException(ErrorCode.PLATFORM_PROVIDER_NOT_CONFIGURED);
+    }
+
+    private ProviderResolution userResolution(UUID providerId, String protocol, String baseUrl,
+                                              String apiKey, String model, boolean personal) {
+        if (model == null || model.isBlank()) {
+            throw new AppException(ErrorCode.PROVIDER_MODEL_NOT_CONFIGURED);
+        }
+        return new ProviderResolution(providerId, protocol, baseUrl, apiKey, model.trim(), personal);
     }
 
     @Override
@@ -101,6 +120,19 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
                 .filter(TtsVoice::isActive)
                 .filter(voice -> providerOwnsVoiceAndIsAvailable(userId, ttsProviderId, voice))
                 .map(TtsVoice::getLanguage);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isVoiceLanguageCompatible(UUID userId, UUID ttsProviderId, UUID ttsVoiceId, String targetLang) {
+        if (ttsProviderId == null || ttsVoiceId == null) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
+        TtsVoice voice = ttsVoiceRepository.findById(ttsVoiceId)
+                .filter(TtsVoice::isActive)
+                .filter(candidate -> providerOwnsVoiceAndIsAvailable(userId, ttsProviderId, candidate))
+                .orElseThrow(() -> new AppException(ErrorCode.VALIDATION_ERROR));
+        return voice.isLanguageCompatible(targetLang);
     }
 
     @Override

@@ -18,6 +18,7 @@ class ProviderErrorDetail(BaseModel):
     provider: str | None = None
     protocol: str | None = None
     capability: str | None = None
+    model: str | None = None
     retryable: bool
     recommendedAction: str
     documentation: str

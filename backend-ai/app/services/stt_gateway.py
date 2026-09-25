@@ -46,6 +46,17 @@ _STT_CHUNK_CONCURRENCY = 2
 _STT_CHUNK_BOUNDARY_TOLERANCE_MS = 3_000
 _STT_TAIL_RECOVERY_TRIGGER_MS = 120_000
 _STT_TAIL_RECOVERY_WINDOW_MS = 120_000
+# Generative ASR may compress the timestamps of a long single call; short
+# chunks keep each timeline local and are offset to their real start.
+_STT_FALLBACK_CHUNK_MS = 120_000
+_STT_FALLBACK_MIN_MS = 150_000
+# A malformed chunk (output cap on dense dialogue, timestamps past the chunk)
+# gets one plain retry, then is re-transcribed as short windows.
+_STT_MALFORMED_RETRIES_BEFORE_SPLIT = 1
+
+
+class _CompressedTimeline(ProviderValidation):
+    """A transcript whose timestamps were squeezed; retrying the same long call rarely helps."""
 
 
 @dataclass(frozen=True)
@@ -155,7 +166,14 @@ def _log_sanity_verdict(
         ),
     }
     if verdict.result is TranscriptSanityResult.MALFORMED:
-        _int_log.warning("STT_TRANSCRIPT_SANITY_CHECK result=MALFORMED", extra=extra)
+        _int_log.warning(
+            "STT_TRANSCRIPT_SANITY_CHECK result=MALFORMED reason=%s segments=%d maxEndMs=%s durationMs=%s",
+            violation.reason if violation else None,
+            extra["segmentCount"],
+            extra["maxEndMs"],
+            duration_ms,
+            extra=extra,
+        )
     elif verdict.result is TranscriptSanityResult.SUSPICIOUS:
         _int_log.warning("STT_TRANSCRIPT_SANITY_CHECK result=SUSPICIOUS", extra=extra)
     else:
@@ -182,7 +200,35 @@ async def transcribe(req: "SttRequest") -> SttResponse:
             # (e.g. DashScope). For multipart-only adapters (OpenAI Whisper),
             # download first and pass BYTES.
             audio_input = await _prepare_audio_input(adapter, req.audio_url)
-            result = await _transcribe_with_retry(adapter, req, audio_input)
+            chunkable = (
+                req.asset_duration_ms is not None
+                and req.asset_duration_ms > _STT_FALLBACK_MIN_MS
+            )
+            try:
+                result = await _transcribe_with_retry(
+                    adapter,
+                    req,
+                    audio_input,
+                    stop_on_compressed=chunkable,
+                    malformed_retries=_STT_MALFORMED_RETRIES_BEFORE_SPLIT if chunkable else None,
+                )
+            except ProviderException as exc:
+                if not chunkable or exc.code != ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED:
+                    raise
+                _int_log.warning(
+                    "STT single call stayed malformed (compressed timeline or output cap); "
+                    "retranscribing in %d ms chunks",
+                    _STT_FALLBACK_CHUNK_MS,
+                    extra={
+                        "provider": req.provider.protocol,
+                        "model": req.provider.model,
+                        "assetDurationMs": req.asset_duration_ms,
+                        "reason": exc.message,
+                    },
+                )
+                result = await _transcribe_long_audio(
+                    adapter, req, chunk_ms=_STT_FALLBACK_CHUNK_MS
+                )
             if not result.segments:
                 raise ProviderValidation(
                     "STT detected no speech in the audio",
@@ -326,7 +372,7 @@ def _log_long_audio_diagnostic(message: str, diagnostic: dict[str, object]) -> N
     )
 
 
-async def _transcribe_long_audio(adapter, req) -> TranscribeResult:
+async def _transcribe_long_audio(adapter, req, *, chunk_ms: int = _STT_CHUNK_DURATION_MS) -> TranscribeResult:
     """Materialize one long input, transcribe chunks, and recover large tails."""
     source_path = await _download_audio(req.audio_url)
     chunk_diagnostics: list[dict[str, object]] = []
@@ -338,13 +384,14 @@ async def _transcribe_long_audio(adapter, req) -> TranscribeResult:
     try:
         with tempfile.TemporaryDirectory(prefix="transflow-stt-") as chunk_dir:
             chunks = await _materialize_audio_chunks(
-                source_path, req.asset_duration_ms, Path(chunk_dir), req
+                source_path, req.asset_duration_ms, Path(chunk_dir), req, chunk_ms=chunk_ms
             )
             semaphore = asyncio.Semaphore(_STT_CHUNK_CONCURRENCY)
 
             async def transcribe_local_audio(
                 path: Path,
                 duration_ms: int,
+                malformed_retries: int | None = None,
             ) -> TranscribeResult:
                 async with semaphore:
                     return await _transcribe_with_retry(
@@ -352,15 +399,54 @@ async def _transcribe_long_audio(adapter, req) -> TranscribeResult:
                         req,
                         AudioInput.from_file(path, mime_type="audio/wav"),
                         validation_duration_ms=duration_ms,
+                        malformed_retries=malformed_retries,
                     )
 
-            results = list(
-                await asyncio.gather(
-                    *(
-                        transcribe_local_audio(chunk.path, chunk.duration_ms)
-                        for chunk in chunks
+            async def transcribe_chunk(chunk: _AudioChunk) -> TranscribeResult:
+                try:
+                    return await transcribe_local_audio(
+                        chunk.path,
+                        chunk.duration_ms,
+                        malformed_retries=_STT_MALFORMED_RETRIES_BEFORE_SPLIT,
                     )
+                except ProviderException as exc:
+                    if (
+                        exc.code != ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED
+                        or chunk.duration_ms <= _STT_TAIL_RECOVERY_WINDOW_MS
+                    ):
+                        raise
+                    _int_log.warning(
+                        "STT chunk %d stayed malformed (%s); re-transcribing as %d ms windows",
+                        chunk.index,
+                        exc.message,
+                        _STT_TAIL_RECOVERY_WINDOW_MS,
+                        extra={"model": req.provider.model, "correlationId": req.correlation_id},
+                    )
+                windows = await _materialize_recovery_windows(
+                    source_path, chunk, 0, chunk.duration_ms, Path(chunk_dir), req
                 )
+                window_results = await asyncio.gather(
+                    *(transcribe_local_audio(w.path, w.duration_ms) for w in windows)
+                )
+                # Windows are timed globally; the merge expects chunk-local timing.
+                segments = [
+                    segment.model_copy(update={
+                        "start_ms": segment.start_ms - chunk.start_ms,
+                        "end_ms": segment.end_ms - chunk.start_ms,
+                    })
+                    for window, window_result in zip(windows, window_results)
+                    for segment in _offset_recovered_segments(window, window_result)
+                ]
+                return TranscribeResult(
+                    segments=segments,
+                    detected_lang=next(
+                        (r.detected_lang for r in window_results if r.detected_lang), None
+                    ),
+                    audio_seconds=sum(r.audio_seconds for r in window_results),
+                )
+
+            results = list(
+                await asyncio.gather(*(transcribe_chunk(chunk) for chunk in chunks))
             )
             peer_speech_indexes = {
                 chunk.index
@@ -558,10 +644,13 @@ async def _transcribe_long_audio(adapter, req) -> TranscribeResult:
             pass
 
 
-def _chunk_ranges(asset_duration_ms: int) -> list[tuple[int, int]]:
+def _chunk_ranges(
+    asset_duration_ms: int,
+    chunk_ms: int = _STT_CHUNK_DURATION_MS,
+) -> list[tuple[int, int]]:
     return [
-        (start_ms, min(start_ms + _STT_CHUNK_DURATION_MS, asset_duration_ms))
-        for start_ms in range(0, asset_duration_ms, _STT_CHUNK_DURATION_MS)
+        (start_ms, min(start_ms + chunk_ms, asset_duration_ms))
+        for start_ms in range(0, asset_duration_ms, chunk_ms)
     ]
 
 
@@ -570,10 +659,12 @@ async def _materialize_audio_chunks(
     asset_duration_ms: int,
     output_dir: Path,
     req,
+    *,
+    chunk_ms: int = _STT_CHUNK_DURATION_MS,
 ) -> list[_AudioChunk]:
     output_dir.mkdir(parents=True, exist_ok=True)
     chunks: list[_AudioChunk] = []
-    for index, (start_ms, end_ms) in enumerate(_chunk_ranges(asset_duration_ms)):
+    for index, (start_ms, end_ms) in enumerate(_chunk_ranges(asset_duration_ms, chunk_ms)):
         chunk_path = output_dir / f"chunk-{index:04d}.wav"
         await _run_ffmpeg_chunk(source_path, chunk_path, start_ms, end_ms, req)
         chunks.append(_AudioChunk(index, start_ms, end_ms, chunk_path))
@@ -742,6 +833,8 @@ async def _transcribe_with_retry(
     audio_input: AudioInput,
     *,
     validation_duration_ms: int | None = None,
+    stop_on_compressed: bool = False,
+    malformed_retries: int | None = None,
 ):
     attempt = 0
     duration_ms = (
@@ -778,7 +871,8 @@ async def _transcribe_with_retry(
             )
             if verdict.result is TranscriptSanityResult.MALFORMED:
                 violation = verdict.violation
-                raise ProviderValidation(
+                compressed = violation is not None and "compressed" in violation.reason
+                raise (_CompressedTimeline if compressed else ProviderValidation)(
                     _malformed_message(violation, duration_ms),
                     code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
                     provider=req.provider.base_url,
@@ -787,7 +881,15 @@ async def _transcribe_with_retry(
                 )
             return result
         except ProviderException as exc:
-            if exc.retryable and attempt < settings.max_retries:
+            if stop_on_compressed and isinstance(exc, _CompressedTimeline):
+                raise
+            retry_limit = settings.max_retries
+            if (
+                malformed_retries is not None
+                and exc.code == ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED
+            ):
+                retry_limit = min(retry_limit, malformed_retries)
+            if exc.retryable and attempt < retry_limit:
                 _prov_log.warning(
                     "STT provider retryable error (attempt %d): %s",
                     attempt,

@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Keep this within the lowest verified supported narrative-model limit
     # (DashScope qwen-max/qwen-plus: 8192 output tokens).
     narrative_summarize_max_tokens: int = 8192
+    # Extra script-first summary calls when the model output violates the
+    # script contract (excerpt drift, duration window, malformed JSON).
+    script_output_repair_attempts: int = 2
     # Translate outputs are short (one segment ≈ one sentence), but
     # reasoning-capable models still spend tokens on chain-of-thought
     # before emitting the JSON payload. Match the summarize budget so

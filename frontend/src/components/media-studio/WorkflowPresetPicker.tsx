@@ -55,6 +55,12 @@ export function presetScopeLabelKey(scope: WorkflowPresetScope): string {
   return `media:workflowPreset.scope${scope.charAt(0) + scope.slice(1).toLowerCase()}`
 }
 
+/** " (16:9)" / " (9:16)" so same-named presets for different screens read apart; ORIGINAL adds nothing. */
+export function presetAspectSuffix(preset: Pick<WorkflowPreset, 'config'>): string {
+  const aspect = preset.config?.outputAspectRatio
+  return aspect && aspect !== 'ORIGINAL' ? ` (${aspect})` : ''
+}
+
 /** '' renders as "no preset" — the select uses a sentinel empty option. */
 export function optionToPresetId(value: string): string | null {
   return value || null
@@ -209,6 +215,7 @@ export function WorkflowPresetPicker({
                 {items.map((preset) => (
                   <option key={preset.id} value={preset.id}>
                     {preset.name}
+                    {presetAspectSuffix(preset)}
                     {preset.isDefault ? ` (${t('media:workflowPreset.default')})` : ''}
                   </option>
                 ))}
@@ -254,6 +261,11 @@ export function WorkflowPresetPicker({
             {subtitleLabelKey && (
               <p className="media-preset-chip m-0">
                 {t('media:workflowPreset.subtitle', { mode: t(subtitleLabelKey) })}
+              </p>
+            )}
+            {selected?.config?.outputAspectRatio && (
+              <p className="media-preset-chip m-0" data-testid="preset-aspect-chip">
+                {t('media:workflowPreset.aspect', { value: selected.config.outputAspectRatio })}
               </p>
             )}
             {displayLabelKey && (

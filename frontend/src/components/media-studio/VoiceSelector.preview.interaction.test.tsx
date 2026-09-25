@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // C2 UX (docs/19 §1.8.2) — VoiceSelector preview button (showPreview): with a
 // complete provider+voice pair the button is enabled and clicking it fires
-// the preview mutation with the CATALOG voice id + the target language
-// (never part of the create payload).
+// the preview mutation with the tts_voices row id + the target language
+// (never the provider's voice key).
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ProviderConfig, TtsVoice } from '@/types/provider'
@@ -60,8 +60,9 @@ describe('VoiceSelector — showPreview preview (C2 UX)', () => {
     vi.clearAllMocks()
   })
 
-  it('enables the preview button on a complete pair and fires with catalog voice id + language', () => {
-    voicesByProvider.set('p1', [voice({ id: 'vi1', language: 'en', voiceId: 'catalog-1' })])
+  it('previews by tts_voices row UUID when the provider key is Kai', () => {
+    const voiceRowId = '11111111-1111-4111-8111-111111111111'
+    voicesByProvider.set('p1', [voice({ id: voiceRowId, language: 'en', voiceId: 'Kai' })])
     previewMutate.mockResolvedValue({ audioUrl: 'x', expiresInSeconds: 60 })
 
     render(
@@ -70,7 +71,7 @@ describe('VoiceSelector — showPreview preview (C2 UX)', () => {
         providers={[provider({ id: 'p1' })]}
         targetLang="en"
         selectedProviderId="p1"
-        selectedVoiceId="vi1"
+        selectedVoiceId={voiceRowId}
         showPreview
         onChange={() => {}}
       />,
@@ -84,7 +85,7 @@ describe('VoiceSelector — showPreview preview (C2 UX)', () => {
     expect(previewMutate).toHaveBeenCalledTimes(1)
     expect(previewMutate).toHaveBeenCalledWith({
       providerId: 'p1',
-      voiceId: 'catalog-1', // catalog id — not the row id
+      voiceRowId,
       language: 'en', // target language drives the sample text
     })
   })

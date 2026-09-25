@@ -9,6 +9,8 @@ import com.app.modules.media_job.dto.BatchEditSegmentsRequest;
 import com.app.modules.media_job.dto.CreateMediaJobRequest;
 import com.app.modules.media_job.dto.PatchSubtitleRequest;
 import com.app.modules.media_job.dto.VoiceRequest;
+import com.app.modules.media_job.dto.render.UpdateRenderConfigRequest;
+import com.app.modules.media_job.dto.style.SubtitleStyleSnapshot;
 import com.app.modules.media_job.entity.Checkpoint;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
@@ -148,6 +150,7 @@ public class MediaJobServiceImpl implements MediaJobService {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
 
+        // SOFT_SUB unless requested; a resolved preset may still choose it below.
         MediaJob.SubtitleMode subtitleMode = req.subtitleMode() != null
                 ? parseEnum(MediaJob.SubtitleMode.class, req.subtitleMode()) : MediaJob.SubtitleMode.SOFT_SUB;
         MediaJob.OutputAudioMode outputAudioMode;
@@ -187,6 +190,13 @@ public class MediaJobServiceImpl implements MediaJobService {
         }
 
         UUID resolvedPresetId = presetResolver.resolveForJobCreation(req.presetId(), req.projectId(), workspaceId);
+        PresetResolverService.PresetJobConfig preset = resolvedPresetId == null
+                ? null : presetResolver.findJobConfig(resolvedPresetId).orElse(null);
+        UpdateRenderConfigRequest presetRender = PresetJobDefaults.renderConfig(preset);
+        // explicit request field > preset > SOFT_SUB (API_Contract.md §9)
+        if (req.subtitleMode() == null && presetRender.subtitleMode() != null) {
+            subtitleMode = MediaJob.SubtitleMode.valueOf(presetRender.subtitleMode());
+        }
 
         MediaJob job = new MediaJob();
         job.setWorkspaceId(workspaceId);
@@ -207,7 +217,16 @@ public class MediaJobServiceImpl implements MediaJobService {
         job.setTtsVoiceId(req.ttsVoiceId());
         job.setVisualContextEnabled(visualContextEnabled);
         job.setPresetId(resolvedPresetId);
-        job.setPresetSnapshot(resolvedPresetId != null ? "{\"presetId\":\"" + resolvedPresetId + "\"}" : "{}");
+        job.setPresetSnapshot(PresetJobDefaults.snapshot(preset));
+        if (preset != null) {
+            // the job's own subtitle mode wins over the preset's (it may come from the request)
+            job.setRenderConfig(PresetJobDefaults.write(presetRender.merge(new UpdateRenderConfigRequest(
+                    subtitleMode.name(), null, null, null, null, null, null, null))));
+            SubtitleStyleSnapshot presetStyle = PresetJobDefaults.subtitleStyle(preset);
+            if (presetStyle != null) {
+                job.setSubtitleStyle(PresetJobDefaults.write(presetStyle));
+            }
+        }
         job.setWorkflowMode(workflowMode);
         job.setPerformedByUserId(userId);
         job.setCreatedByUserId(userId);
@@ -258,9 +277,7 @@ public class MediaJobServiceImpl implements MediaJobService {
     }
 
     private void requireVoiceLanguageMatches(UUID userId, UUID ttsProviderId, UUID ttsVoiceId, String targetLang) {
-        String voiceLang = providerResolver.resolveVoiceLanguage(userId, ttsProviderId, ttsVoiceId)
-                .orElseThrow(() -> new AppException(ErrorCode.VALIDATION_ERROR));
-        if (!voiceLang.equalsIgnoreCase(targetLang)) {
+        if (!providerResolver.isVoiceLanguageCompatible(userId, ttsProviderId, ttsVoiceId, targetLang)) {
             throw new AppException(ErrorCode.VOICE_LANGUAGE_MISMATCH);
         }
     }
@@ -457,6 +474,8 @@ public class MediaJobServiceImpl implements MediaJobService {
                 stage.setStatus(MediaJobStage.StageStatus.PENDING);
                 stage.setProgressPercent((short) 0);
                 stage.setErrorMessage(null);
+                stage.setErrorCode(null);
+                stage.setErrorDetail(null);
                 stage.setOutputRef(null);
                 stage.setCompletedAt(null);
                 mediaJobStageRepository.save(stage);
@@ -688,6 +707,9 @@ public class MediaJobServiceImpl implements MediaJobService {
         job.setVisualContextEnabled(false);
         job.setPresetId(source.getPresetId());
         job.setPresetSnapshot(source.getPresetSnapshot());
+        // a derived language keeps the source job's frame and subtitle look
+        job.setRenderConfig(source.getRenderConfig());
+        job.setSubtitleStyle(source.getSubtitleStyle());
         job.setWorkflowMode(source.getWorkflowMode());
         job.setPerformedByUserId(userId);
         job.setCreatedByUserId(userId);

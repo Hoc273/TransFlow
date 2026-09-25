@@ -4,10 +4,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 afterEach(() => cleanup())
 
-const { linkedJobData, exportMutate, outputPackageData, openSpy } = vi.hoisted(() => ({
+const { linkedJobData, exportMutate, outputPackageData, outputPackageCalls, openSpy } = vi.hoisted(() => ({
   linkedJobData: { data: undefined as unknown, isLoading: false },
   exportMutate: vi.fn(),
-  outputPackageData: { data: undefined as unknown, isError: false, isPending: false },
+  outputPackageData: { data: undefined as unknown, error: undefined as unknown, isError: false, isPending: false },
+  outputPackageCalls: vi.fn(),
   openSpy: vi.fn(),
 }))
 
@@ -20,10 +21,18 @@ vi.mock('react-i18next', () => ({
 vi.mock('@/hooks/useMedia', () => ({
   useMediaLinkedJob: () => linkedJobData,
   useExportMediaJob: () => ({ isPending: false, mutateAsync: exportMutate }),
-  useOutputPackage: () => outputPackageData,
+  useOutputPackage: (workspaceId: string, jobId: string, enabled: boolean) => {
+    outputPackageCalls(workspaceId, jobId, enabled)
+    return outputPackageData
+  },
+}))
+
+vi.mock('@/api/transformation', () => ({
+  exportTransformationJobApi: vi.fn(() => new Promise(() => {})),
 }))
 
 const { ExportPanel } = await import('./ExportPanel')
+import { ApiError } from '@/types/api'
 import type { MediaJob, JobDetail } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
 
@@ -42,6 +51,16 @@ function job(partial: Partial<MediaJob>): MediaJob {
     createdAt: '2026-08-12T00:00:00Z',
     translationJobId: 'linked-1',
     stages: [
+      {
+        id: 's0',
+        stageName: 'TRANSLATE',
+        stageOrder: 3,
+        status: 'COMPLETED',
+        progressPercent: 100,
+        outputRef: null,
+        startedAt: null,
+        completedAt: null,
+      },
       {
         id: 's1',
         stageName: 'RENDER',
@@ -89,7 +108,9 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
     linkedJobData.data = undefined
     linkedJobData.isLoading = false
     outputPackageData.data = undefined
+    outputPackageData.error = undefined
     outputPackageData.isError = false
+    outputPackageCalls.mockReset()
     exportMutate.mockReset()
     exportMutate.mockImplementation(async (format: string) =>
       format === 'VIDEO'
@@ -158,6 +179,137 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
     expect(video.src).toBe('https://preview.test/video.mp4')
     expect(screen.getByTestId('export-video-detail').textContent).toContain('2:11')
     expect(openSpy).not.toHaveBeenCalled()
+  })
+
+  it('uses a completed RENDER storage ref for package loading and the displayed file name', () => {
+    linkedJobData.data = linkedJob([])
+    outputPackageData.data = {
+      jobId: 'job-1',
+      primaryVideoRef: 'transflow-media/rendered/j/abc.mp4',
+      primaryVideoDownloadUrl: 'https://preview.test/video.mp4',
+      durationMs: 131000,
+      subtitleTracks: [],
+      audioTracks: [],
+      artifactPins: [],
+    }
+
+    render(
+      <ExportPanel
+        workspaceId="ws"
+        job={job({
+          stages: [{
+            id: 's1',
+            stageName: 'RENDER',
+            stageOrder: 6,
+            status: 'COMPLETED',
+            progressPercent: 100,
+            outputRef: 'transflow-media/rendered/j/abc.mp4',
+            startedAt: null,
+            completedAt: null,
+          }],
+        })}
+      />,
+    )
+
+    expect(outputPackageCalls).toHaveBeenCalledWith('ws', 'job-1', true)
+    expect(screen.queryByText('media:export.needArtifactDesc')).toBeNull()
+    expect(screen.getByTestId('export-video-detail').textContent).toContain('abc.mp4')
+  })
+
+  it('checks output-package when RENDER is done without a stage output ref', () => {
+    linkedJobData.data = linkedJob([])
+    outputPackageData.data = {
+      jobId: 'job-1',
+      primaryVideoRef: 'transflow-media/rendered/j/abc.mp4',
+      primaryVideoDownloadUrl: 'https://preview.test/video.mp4',
+      durationMs: 131000,
+      subtitleTracks: [],
+      audioTracks: [],
+      artifactPins: [],
+    }
+
+    render(
+      <ExportPanel
+        workspaceId="ws"
+        job={job({
+          stages: [{
+            id: 's1',
+            stageName: 'RENDER',
+            stageOrder: 6,
+            status: 'COMPLETED',
+            progressPercent: 100,
+            outputRef: null,
+            startedAt: null,
+            completedAt: null,
+          }],
+        })}
+      />,
+    )
+
+    expect(outputPackageCalls).toHaveBeenCalledWith('ws', 'job-1', true)
+    expect(screen.queryByText('media:export.needArtifactDesc')).toBeNull()
+    expect(screen.getByTestId('export-video-preview').querySelector('video')).toBeTruthy()
+  })
+
+  it('shows the missing-artifact message only when output-package reports STAGE_NOT_READY', () => {
+    linkedJobData.data = linkedJob([])
+    outputPackageData.error = new ApiError({
+      status: 409,
+      code: '2902',
+      message: 'Stage output is not ready',
+    })
+    outputPackageData.isError = true
+
+    render(
+      <ExportPanel
+        workspaceId="ws"
+        job={job({
+          stages: [{
+            id: 's1',
+            stageName: 'RENDER',
+            stageOrder: 6,
+            status: 'COMPLETED',
+            progressPercent: 100,
+            outputRef: null,
+            startedAt: null,
+            completedAt: null,
+          }],
+        })}
+      />,
+    )
+
+    expect(screen.queryByText('media:export.needArtifactDesc')).not.toBeNull()
+  })
+
+  it('does not show the missing-artifact message for another output-package error', () => {
+    linkedJobData.data = linkedJob([])
+    outputPackageData.error = new ApiError({
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Unexpected error',
+    })
+    outputPackageData.isError = true
+
+    render(
+      <ExportPanel
+        workspaceId="ws"
+        job={job({
+          stages: [{
+            id: 's1',
+            stageName: 'RENDER',
+            stageOrder: 6,
+            status: 'COMPLETED',
+            progressPercent: 100,
+            outputRef: null,
+            startedAt: null,
+            completedAt: null,
+          }],
+        })}
+      />,
+    )
+
+    expect(screen.queryByText('media:export.needArtifactDesc')).toBeNull()
+    expect(screen.queryAllByText('media:export.previewUnavailable').length).toBeGreaterThan(0)
   })
 
   it('primary video download button in detail runs the VIDEO export', async () => {
@@ -266,5 +418,39 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
     expect(screen.getByTestId('export-video-detail').textContent).toContain(
       'media:export.needTranslateDesc',
     )
+  })
+
+  it('subtitle downloads unlock as soon as TRANSLATE is done, before RENDER / job completion', () => {
+    linkedJobData.data = linkedJob([])
+    render(
+      <ExportPanel
+        workspaceId="ws"
+        job={job({
+          translationJobId: null,
+          status: 'PROCESSING',
+          stages: [{
+            id: 's0',
+            stageName: 'TRANSLATE',
+            stageOrder: 3,
+            status: 'COMPLETED',
+            progressPercent: 100,
+            outputRef: null,
+            startedAt: null,
+            completedAt: null,
+          }],
+        })}
+      />,
+    )
+
+    expect((screen.getByTestId('export-quick-download-srt') as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByTestId('export-quick-download-vtt') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('subtitle downloads unlock from the TRANSLATE stage without a legacy translationJobId', () => {
+    linkedJobData.data = linkedJob([])
+    render(<ExportPanel workspaceId="ws" job={job({ translationJobId: null })} />)
+
+    expect((screen.getByTestId('export-quick-download-srt') as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByTestId('export-quick-download-vtt') as HTMLButtonElement).disabled).toBe(false)
   })
 })

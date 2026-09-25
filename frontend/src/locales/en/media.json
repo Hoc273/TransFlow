@@ -193,6 +193,18 @@
     "staleWarn": "Changing the source language re-runs TRANSLATE → TTS → RENDER with the new language. STT is not re-run — the transcript is language-independent.",
     "progress": "Overall progress",
     "noStages": "No stage data available yet.",
+    "providerErrors": {
+      "quotaExceeded": "The AI provider quota for {{stage}} has been exhausted. Check billing/quota or choose another provider.",
+      "authFailed": "The AI provider API key for {{stage}} is invalid or expired. Check the key configuration.",
+      "permissionDenied": "The AI provider denied access for {{stage}}. Check the key permissions or model access.",
+      "rateLimited": "The AI provider is rate limiting {{stage}}. Wait a moment and try again.",
+      "timeout": "The AI provider timed out during {{stage}}. Try again later.",
+      "unavailable": "The AI provider is unavailable for {{stage}}. Check service status or try again later.",
+      "modelNotFound": "The configured model for {{stage}} was not found. Check its name in Provider Settings.",
+      "unsupportedModel": "The selected model does not support {{stage}}. Choose a model that supports this capability.",
+      "badRequest": "The AI provider rejected the {{stage}} request. Check the model and capability configuration.",
+      "responseMalformed": "The model returned an invalid response for {{stage}}. Check the model or choose another provider."
+    },
     "recovery": {
       "emptyCues": "Subtitle timeline has no usable cues — restore or edit the translated text and timing, then Save and re-run Voice Dub & Render.",
       "durationMismatch": "Subtitle timing does not cover the video sufficiently — check the timing of your subtitle lines, especially around the ending, then Save and re-run Voice Dub & Render.",
@@ -677,7 +689,7 @@
   "workflowPreset": {
     "label": "Workflow preset",
     "managePresets": "Manage presets",
-    "none": "No preset (recipe default)",
+    "none": "No preset (soft subtitles, original frame)",
     "noPreset": "None",
     "loading": "Loading presets…",
     "error": "Could not load workflow presets.",
@@ -689,6 +701,7 @@
     "default": "default",
     "mode": "Workflow mode: {{mode}}",
     "subtitle": "Subtitles: {{mode}}",
+    "aspect": "Frame: {{value}}",
     "display": "Subtitle display: {{mode}}",
     "maxCharacters": "Max characters per cue: {{value}}",
     "voice": "Voice: {{value}}",

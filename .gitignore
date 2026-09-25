@@ -97,3 +97,5 @@ stt_segments.json
 /backend-smoke-results.json
 /backend-smoke.ps1
 /transflow_origin/
+/open-6-terminals.bat
+/transflow.pem

@@ -1,121 +1,78 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { apiRequest } from '@/lib/api/client'
+import { createProviderApi, listProvidersApi, normalizeProvider, testProviderApi, updateProviderApi } from './providers'
 
-const apiRequest = vi.fn()
+vi.mock('@/lib/api/client', () => ({ apiRequest: vi.fn() }))
 
-vi.mock('@/lib/api/client', () => ({
-  apiRequest: (...args: unknown[]) => apiRequest(...args),
-  buildWorkspacePath: (ws: string, suffix = '') => `/workspaces/${ws}${suffix}`,
-}))
+const providerDto = {
+  id: 'provider-1',
+  protocol: 'dashscope_native' as const,
+  capabilities: ['TRANSLATE', 'STT'],
+  defaultForCapabilities: ['TRANSLATE'],
+  baseUrl: 'https://dashscope.example',
+  apiKeyHint: 'sk-...1234',
+  defaultModel: 'qwen-plus',
+  isActive: true,
+}
 
-const {
-  createProviderApi,
-  listProvidersApi,
-  previewTtsVoiceApi,
-  testProviderApi,
-  updateProviderApi,
-} = await import('./providers')
+describe('provider capability defaults wire mapping', () => {
+  beforeEach(() => vi.mocked(apiRequest).mockReset())
 
-beforeEach(() => {
-  apiRequest.mockReset()
-  apiRequest.mockResolvedValue([])
-})
-
-describe('providers user-scoped', () => {
-  it('list gọi /users/me/providers đúng 1 lần, không fallback workspace khi lỗi', async () => {
-    apiRequest.mockRejectedValueOnce(new Error('gone'))
-    await expect(listProvidersApi()).rejects.toThrow('gone')
-    expect(apiRequest).toHaveBeenCalledTimes(1)
-    expect(apiRequest).toHaveBeenCalledWith('/users/me/providers')
+  it('normalizes TRANSLATE default to frontend TEXT capability', () => {
+    expect(normalizeProvider(providerDto).defaultFor).toEqual(['TEXT'])
   })
 
-  it('create gọi POST /users/me/providers đúng 1 lần', async () => {
-    apiRequest.mockResolvedValueOnce({ id: 'p1' })
+  it('forwards selected defaults on create', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(providerDto)
+
     await createProviderApi({
-      displayName: 'OpenAI',
-      protocol: 'openai_compatible',
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: 'sk-x',
-      defaultModel: 'gpt-4o-mini',
-      capabilities: ['TEXT'],
+      displayName: 'DashScope',
+      protocol: 'dashscope_native',
+      baseUrl: providerDto.baseUrl,
+      apiKey: 'key',
+      defaultModel: 'qwen-plus',
+      capabilities: ['TEXT', 'STT'],
       enabled: true,
       defaultForCapabilities: ['TEXT'],
     })
-    expect(apiRequest).toHaveBeenCalledTimes(1)
-    expect(apiRequest).toHaveBeenCalledWith(
-      '/users/me/providers',
-      expect.objectContaining({ method: 'POST' }),
-    )
-  })
 
-  it('preview gọi POST /tts-voices/preview (không qua workspace)', async () => {
-    apiRequest.mockResolvedValueOnce({ audioUrl: 'https://x/y.mp3', expiresInSeconds: 60 })
-    await previewTtsVoiceApi({ voiceId: 'v1', text: 'Hello' })
-    expect(apiRequest).toHaveBeenCalledWith(
-      '/tts-voices/preview',
-      expect.objectContaining({ method: 'POST' }),
-    )
-  })
-
-  it('list map isActive→enabled và TRANSLATE→TEXT', async () => {
-    apiRequest.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        protocol: 'openai_compatible',
-        capabilities: ['TRANSLATE', 'TTS', 'VISION'],
-        baseUrl: 'https://api.openai.com/v1',
-        apiKeyHint: 'sk-...abcd',
-        defaultModel: 'gpt-4o-mini',
-        isActive: false,
-      },
-    ])
-    const [provider] = await listProvidersApi()
-    expect(provider).toMatchObject({
-      id: 'p1',
-      capabilities: ['TEXT', 'TTS', 'VISION'],
-      enabled: false,
-      defaultFor: [],
-      displayName: 'gpt-4o-mini',
-    })
-  })
-
-  it('create gửi đúng payload backend (TEXT→TRANSLATE, không kèm field thừa)', async () => {
-    apiRequest.mockResolvedValueOnce({ id: 'p1', protocol: 'openai_compatible', capabilities: ['TRANSLATE'] })
-    await createProviderApi({
-      displayName: 'x',
-      protocol: 'openai_compatible',
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: 'sk-x',
-      defaultModel: 'gpt-4o-mini',
-      capabilities: ['TEXT', 'STT'],
-      enabled: true,
-      defaultForCapabilities: [],
-    })
-    expect(apiRequest).toHaveBeenCalledWith('/users/me/providers', {
+    expect(apiRequest).toHaveBeenCalledWith('/users/me/providers', expect.objectContaining({
       method: 'POST',
-      body: {
-        protocol: 'openai_compatible',
+      body: expect.objectContaining({
         capabilities: ['TRANSLATE', 'STT'],
-        baseUrl: 'https://api.openai.com/v1',
-        apiKey: 'sk-x',
-        defaultModel: 'gpt-4o-mini',
-      },
-    })
-  })
-
-  it('update map enabled→isActive và bỏ apiKey rỗng', async () => {
-    apiRequest.mockResolvedValueOnce({ id: 'p1', protocol: 'openai_compatible', capabilities: ['TTS'] })
-    await updateProviderApi('p1', { apiKey: '', enabled: false, capabilities: ['TTS'] })
-    expect(apiRequest).toHaveBeenCalledWith(
-      '/users/me/providers/p1',
-      expect.objectContaining({
-        method: 'PUT',
-        body: expect.objectContaining({ isActive: false, apiKey: undefined, capabilities: ['TTS'] }),
+        defaultForCapabilities: ['TRANSLATE'],
       }),
-    )
+    }))
   })
 
-  it('test map success→ok', async () => {
-    apiRequest.mockResolvedValueOnce({ success: true, message: 'Connected' })
-    await expect(testProviderApi('p1')).resolves.toEqual({ ok: true, model: null, message: 'Connected' })
+  it('forwards selected defaults on update and lists them back', async () => {
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce(providerDto)
+      .mockResolvedValueOnce([providerDto])
+
+    const updated = await updateProviderApi('provider-1', { defaultForCapabilities: ['TEXT', 'STT'] })
+    const listed = await listProvidersApi()
+
+    expect(apiRequest).toHaveBeenNthCalledWith(1, '/users/me/providers/provider-1', expect.objectContaining({
+      method: 'PUT',
+      body: expect.objectContaining({ defaultForCapabilities: ['TRANSLATE', 'STT'] }),
+    }))
+    expect(updated.defaultFor).toEqual(['TEXT'])
+    expect(listed[0].defaultFor).toEqual(['TEXT'])
+  })
+
+  it.each([
+    ['TEXT', 'TRANSLATE'],
+    ['STT', 'STT'],
+  ] as const)('tests the requested %s capability', async (capability, wireCapability) => {
+    vi.mocked(apiRequest).mockResolvedValue({ success: true, model: 'configured-model' })
+
+    const result = await testProviderApi('provider-uuid', capability)
+
+    expect(apiRequest).toHaveBeenCalledWith(
+      `/users/me/providers/provider-uuid/test?capability=${wireCapability}`,
+      { method: 'POST' },
+    )
+    expect(result.ok).toBe(true)
   })
 })

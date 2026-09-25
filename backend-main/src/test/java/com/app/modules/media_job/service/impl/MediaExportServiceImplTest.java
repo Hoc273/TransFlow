@@ -47,6 +47,14 @@ class MediaExportServiceImplTest {
         job.setStatus(MediaJob.JobStatus.COMPLETED);
         lenient().when(jobService.getJob(ws, user, jobId)).thenReturn(job);
         lenient().when(qaService.listIssues(ws, user, jobId, false)).thenReturn(List.of());
+        lenient().when(jobService.getStages(jobId)).thenReturn(List.of(translateStage(MediaJobStage.StageStatus.COMPLETED)));
+    }
+
+    private static MediaJobStage translateStage(MediaJobStage.StageStatus status) {
+        MediaJobStage s = new MediaJobStage();
+        s.setStageName(MediaJobStage.StageName.TRANSLATE);
+        s.setStatus(status);
+        return s;
     }
 
     private static AppException expectError(Runnable r) {
@@ -81,6 +89,22 @@ class MediaExportServiceImplTest {
         job.setStatus(MediaJob.JobStatus.PROCESSING);
         assertEquals(ErrorCode.STAGE_NOT_READY,
                 expectError(() -> service.export(ws, user, jobId, "VIDEO")).getErrorCode());
+    }
+
+    @Test
+    void subtitles_areAvailableOnceTranslateCompleted_evenBeforeJobCompletes() {
+        job.setStatus(MediaJob.JobStatus.PROCESSING);
+        when(jobService.listSubtitles(ws, user, jobId)).thenReturn(List.of(seg(0, 1500, "Hello")));
+
+        assertEquals("WEBVTT\n\n00:00:00.000 --> 00:00:01.500\nHello\n\n",
+                service.export(ws, user, jobId, "VTT").content());
+    }
+
+    @Test
+    void subtitles_beforeTranslateCompleted_isStageNotReady() {
+        when(jobService.getStages(jobId)).thenReturn(List.of(translateStage(MediaJobStage.StageStatus.PROCESSING)));
+        assertEquals(ErrorCode.STAGE_NOT_READY,
+                expectError(() -> service.export(ws, user, jobId, "SRT")).getErrorCode());
     }
 
     @Test
@@ -136,6 +160,31 @@ class MediaExportServiceImplTest {
         assertEquals("http://minio/signed", res.downloadUrl());
         assertEquals("abc.mp4", res.fileName());
         assertNull(res.content());
+    }
+
+    @Test
+    void video_presignsRenderOutputRef_fromWorkerCallbackObject() {
+        when(jobService.getStages(jobId)).thenReturn(List.of(renderStage(
+                "{\"objectRef\":\"transflow-media/rendered/j1/finished.mp4\",\"mediaProbe\":{\"durationMs\":97250}}")));
+        when(storage.presignedGetUrl("transflow-media/rendered/j1/finished.mp4")).thenReturn("http://minio/signed");
+
+        MediaExportResponse res = service.export(ws, user, jobId, "VIDEO");
+
+        assertEquals("http://minio/signed", res.downloadUrl());
+        assertEquals("finished.mp4", res.fileName());
+    }
+
+    @Test
+    void subtitles_followTheRenderedTimeline_whenTheRenderIsCurrent() {
+        // Summary renders retime footage to narration; the sidecars carry the timing the video plays.
+        when(jobService.getStages(jobId)).thenReturn(List.of(
+                translateStage(MediaJobStage.StageStatus.COMPLETED),
+                renderStage("{\"objectRef\":\"transflow-media/rendered/j1/v.mp4\","
+                        + "\"srtRef\":\"transflow-media/rendered/j1/s.srt\",\"vttRef\":\"transflow-media/rendered/j1/s.vtt\"}")));
+        when(storage.getMediaObject("transflow-media/rendered/j1/s.vtt"))
+                .thenReturn(new java.io.ByteArrayInputStream("WEBVTT\n\nrendered".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+
+        assertEquals("WEBVTT\n\nrendered", service.export(ws, user, jobId, "VTT").content());
     }
 
     @Test

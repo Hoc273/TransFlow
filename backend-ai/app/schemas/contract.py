@@ -83,6 +83,7 @@ class TranslateResponse(BaseModel):
     applied_glossary: list[str] = Field(default_factory=list)
     usage: Optional[Usage] = None
     error: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 # ── /ai/qa ───────────────────────────────────────────────────────────────────
@@ -98,7 +99,8 @@ class QARequest(BaseModel):
 
 
 BlockingAction = Literal[
-    "BLOCK_EXPORT",
+    "BLOCK_APPROVAL",
+    "BLOCK_PUBLISH",
     "BLOCK_RENDER",
 ]
 
@@ -120,6 +122,7 @@ class QAResponse(BaseModel):
     score: Optional[float] = None
     usage: Optional[Usage] = None
     error: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 # ── /ai/validate-provider ────────────────────────────────────────────────────
@@ -131,6 +134,7 @@ class ValidateProviderResponse(BaseModel):
     ok: bool
     model: Optional[str] = None
     message: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 # ── /media/stt ──────────────────────────────────────────────────────────────
@@ -345,6 +349,8 @@ class TtsResult(BaseModel):
     audio_ref: Optional[str] = None
     # Base64 audio payload; Spring Boot uploads to media bucket (C4)
     audio_base64: Optional[str] = None
+    # Measured clip length; Spring builds the narration timeline from it.
+    duration_ms: Optional[int] = None
     error: Optional[str] = None
     # OI-01 (D2.6, `93` §4.19.12): typed per-segment error code — canonical
     # ProviderErrorCode name/value (e.g. "PROVIDER_TTS_VOICE_NOT_FOUND").
@@ -384,6 +390,7 @@ class TtsResponse(BaseModel):
     results: list[TtsResult] = Field(default_factory=list)
     usage: Optional[TtsUsage] = None
     error: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 class TtsVoice(BaseModel):

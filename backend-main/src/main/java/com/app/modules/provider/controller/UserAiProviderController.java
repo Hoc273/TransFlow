@@ -71,9 +71,10 @@ public class UserAiProviderController {
 
     @PostMapping("/{id}/test")
     public ApiResponse<TestConnectionResponse> testProvider(@AuthenticationPrincipal AuthenticatedUser user,
-                                                            @PathVariable UUID id) {
+                                                            @PathVariable UUID id,
+                                                            @RequestParam(required = false) String capability) {
         return ApiResponse.<TestConnectionResponse>builder()
-                .data(providerService.testProvider(user.id(), id))
+                .data(providerService.testProvider(user.id(), id, capability))
                 .build();
     }
 

@@ -17,7 +17,6 @@ import { useParams } from 'react-router-dom'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Modal } from '@/components/shared/Modal'
 import { RoleGuard } from '@/components/auth/RoleGuard'
-import { ProviderTestPanel } from '@/components/settings/ProviderTestPanel'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
   useCreateProvider,
@@ -25,12 +24,11 @@ import {
   usePresets,
   useProviders,
   useRefreshTtsVoices,
-  useSetDefaultProvider,
   useTtsVoiceLanguages,
   useTtsVoices,
   useUpdateProvider,
   useUpsertTtsVoice,
-  useValidateProvider,
+  useTestProvider,
   useVoicePreview,
 } from '@/hooks/useProviders'
 import {
@@ -44,7 +42,7 @@ import type {
   ProviderConfig,
   ProviderPreset,
   ProviderProtocol,
-  ProviderTestResult,
+  TestConnectionResponse,
   UpsertTtsVoiceRequest,
 } from '@/types/provider'
 
@@ -263,8 +261,7 @@ export function ProvidersPageInner() {
   const createProvider = useCreateProvider(workspaceId)
   const updateProvider = useUpdateProvider(workspaceId)
   const deleteProvider = useDeleteProvider(workspaceId)
-  const setDefault = useSetDefaultProvider(workspaceId)
-  const validateProvider = useValidateProvider(workspaceId)
+  const testProvider = useTestProvider(workspaceId)
   const refreshTtsVoices = useRefreshTtsVoices(workspaceId)
   const upsertTtsVoice = useUpsertTtsVoice(workspaceId)
 
@@ -280,15 +277,8 @@ export function ProvidersPageInner() {
   const [formError, setFormError] = useState<string | null>(null)
   const [baseUrlHint, setBaseUrlHint] = useState<string | null>(null)
   const [testState, setTestState] = useState<
-    Record<string, { status: 'idle' | 'testing' | 'success' | 'failed'; message?: string }>
+    Record<string, { status: 'testing' | 'done'; result?: TestConnectionResponse; message?: string }>
   >({})
-  const [validateState, setValidateState] = useState<
-    Record<string, { status: 'idle' | 'validating' | 'done'; result?: ProviderTestResult }>
-  >({})
-  const [validationModal, setValidationModal] = useState<{
-    result: ProviderTestResult
-    providerName: string
-  } | null>(null)
   const [voiceProvider, setVoiceProvider] = useState<ProviderConfig | null>(null)
   const [voiceForm, setVoiceForm] = useState<UpsertTtsVoiceRequest>(EMPTY_VOICE_FORM)
   const [voiceError, setVoiceError] = useState<string | null>(null)
@@ -442,32 +432,20 @@ export function ProvidersPageInner() {
     }
   }
 
-  const onValidate = (id: string, capability: ProviderCapability) => {
+  const onTest = (id: string, capability: ProviderCapability) => {
     const stateKey = `${id}:${capability}`
-    setValidateState((s) => ({ ...s, [stateKey]: { status: 'validating' } }))
-    validateProvider.mutate(
+    setTestState((s) => ({ ...s, [stateKey]: { status: 'testing' } }))
+    testProvider.mutate(
       { providerId: id, capability },
       {
         onSuccess: (res) => {
-          setValidateState((s) => ({
-            ...s,
-            [stateKey]: { status: 'done', result: res },
-          }))
-          const provider = providers.find((p) => p.id === id)
-          setValidationModal({
-            result: res,
-            providerName: provider?.displayName ?? id,
-          })
+          setTestState((s) => ({ ...s, [stateKey]: { status: 'done', result: res } }))
         },
         onError: (err) => {
-          setValidateState((s) => ({
-            ...s,
-            [stateKey]: { status: 'done' },
-          }))
           setTestState((s) => ({
             ...s,
             [stateKey]: {
-              status: 'failed',
+              status: 'done',
               message: err instanceof ApiError ? err.message : t('common:error.generic'),
             },
           }))
@@ -659,9 +637,12 @@ export function ProvidersPageInner() {
                 </thead>
                 <tbody>
                   {sectionProviders.map((p) => {
-                    const ts = testState[`${p.id}:${section.capability}`]
-                    const vs = validateState[`${p.id}:${section.capability}`]
-                    const isDefault = defaultProvider?.id === p.id
+                    const testStateKey = `${p.id}:${section.capability}`
+                    const ts = testState[testStateKey]
+                    const capabilityResult = ts?.result?.capabilityResults?.find((result) =>
+                      result.capability === (section.capability === 'TEXT' ? 'TRANSLATE' : section.capability),
+                    )
+                    const isDefault = p.defaultFor?.includes(section.capability) ?? false
                     return (
                       <tr key={`${section.capability}-${p.id}`}>
                         <td>
@@ -712,13 +693,11 @@ export function ProvidersPageInner() {
                             <button
                               type="button"
                               className="btn-ghost-sm"
-                              disabled={setDefault.isPending || !p.enabled}
-                              onClick={() =>
-                                setDefault.mutate({
-                                  providerId: p.id,
-                                  capability: section.capability,
-                                })
-                              }
+                              disabled={updateProvider.isPending || !p.enabled}
+                              onClick={() => updateProvider.mutate({
+                                providerId: p.id,
+                                body: { defaultForCapabilities: [...new Set([...(p.defaultFor ?? []), section.capability])] },
+                              })}
                             >
                               {t('settings:providers.setDefault')}
                             </button>
@@ -729,27 +708,19 @@ export function ProvidersPageInner() {
                             <button
                               type="button"
                               className="btn-secondary btn-sm"
-                              disabled={vs?.status === 'validating' || ts?.status === 'testing'}
-                              onClick={() => onValidate(p.id, section.capability)}
+                              disabled={ts?.status === 'testing'}
+                              onClick={() => onTest(p.id, section.capability)}
                             >
                               <IconPlugConnected size={14} />
-                              {vs?.status === 'validating'
+                              {ts?.status === 'testing'
                                 ? t('settings:providers.validation.validating')
                                 : t('settings:providers.validation.validateBtn')}
                             </button>
-                            {vs?.status === 'done' && vs.result && (
-                              <span className="text-[11px] font-medium text-[var(--color-success)]">
-                                {vs.result.overall === 'PASS'
-                                  ? t('settings:providers.testOk')
-                                  : t('settings:providers.testFail')}
-                              </span>
-                            )}
-                            {!vs?.result && ts?.status === 'failed' && (
-                              <span
-                                className="max-w-[140px] truncate text-[11px] font-medium text-[var(--color-error)]"
-                                title={ts.message}
-                              >
-                                {t('settings:providers.testFail')}
+                            {ts?.status === 'done' && (
+                              <span className={`max-w-[220px] truncate text-[11px] font-medium ${capabilityResult?.success ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]'}`}>
+                                {capabilityResult?.success
+                                  ? `${section.capability}: ${t('settings:providers.testOk')}`
+                                  : `${section.capability}: ${capabilityResult?.errorCode ? `${capabilityResult.errorCode}${capabilityResult.message ? ` — ${capabilityResult.message}` : ''}` : capabilityResult?.message || ts.result?.message || ts.message || t('settings:providers.testFail')}`}
                               </span>
                             )}
                             {section.capability === 'TTS' && (
@@ -1283,7 +1254,7 @@ export function ProvidersPageInner() {
                             setVoiceError(null)
                             void voicePreview.mutateAsync({
                               providerId: voiceProvider.id,
-                              voiceId: voice.voiceId,
+                              voiceRowId: voice.id,
                               language: voice.language,
                             }).catch((error: unknown) => {
                               setVoiceError(
@@ -1295,7 +1266,7 @@ export function ProvidersPageInner() {
                           }}
                         >
                           {voicePreview.isPending
-                            && voicePreview.variables?.voiceId === voice.voiceId
+                            && voicePreview.variables?.voiceRowId === voice.id
                             ? <IconLoader2 size={14} className="animate-spin" />
                             : <IconPlayerPlay size={14} />}
                           {t('settings:providers.voices.preview')}
@@ -1385,18 +1356,6 @@ export function ProvidersPageInner() {
         </div>
       </Modal>
 
-      <Modal
-        open={validationModal !== null}
-        onClose={() => setValidationModal(null)}
-        title={t('settings:providers.validation.resultTitle', {
-          name: validationModal?.providerName ?? '',
-        })}
-        size="lg"
-      >
-        {validationModal?.result && (
-          <ProviderTestPanel result={validationModal.result} />
-        )}
-      </Modal>
     </div>
   )
 }

@@ -330,6 +330,28 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
                         json=fallback_payload,
                     )
                     _debug_dump_response(resp, resp.text)
+                    payload = fallback_payload
+
+                if self._should_retry_without_response_format(resp, payload):
+                    # JSON mode is only a hint: the gateways parse JSON from plain text.
+                    fallback_payload = dict(payload)
+                    fallback_payload.pop("response_format", None)
+                    _prov_log.info(
+                        "OpenAI-compatible model rejected response_format; retrying once without it",
+                        extra={
+                            "protocol": self.protocol,
+                            "capability": "TEXT",
+                            "model": provider.model,
+                            "vendorStatus": resp.status_code,
+                        },
+                    )
+                    _debug_dump_request(fallback_payload, url, request_headers)
+                    resp = await client.post(
+                        url,
+                        headers=request_headers,
+                        json=fallback_payload,
+                    )
+                    _debug_dump_response(resp, resp.text)
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             raise ProviderTransport(
                 str(exc),

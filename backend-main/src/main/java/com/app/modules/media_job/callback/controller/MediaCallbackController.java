@@ -21,10 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /**
- * Worker -> Spring callback for the 4 FFmpeg-driven stages (API_Contract.md §14,
+ * Worker -> Spring callbacks for media stages (API_Contract.md §14,
  * Backend_Java_TaskSplit_MemberB.md §2.7). No JWT — authenticated by HMAC-SHA256 over the raw body
- * (see {@link HmacVerifier}), idempotent per {@code dedupeKey}. {@code {stage}} matches the same path
- * segments the doc itself uses: extract-audio, source-separation, audio-mix, render.
+ * (see {@link HmacVerifier}), idempotent per {@code dedupeKey}. {@code {stage}} matches the path
+ * segments the contract uses. The active SOURCE_SEPARATION executor calls FastAPI synchronously;
+ * this controller still recognizes its callback path for compatible callers.
  */
 @RestController
 @RequestMapping("/internal/media")
@@ -77,7 +78,8 @@ public class MediaCallbackController {
 
         if (!dedupeStore.isProcessed(payload.dedupeKey())) {
             callbackService.completeStage(payload.jobId(), payload.stageId(), stageName,
-                    payload.success(), payload.outputRef(), payload.errorMessage());
+                    payload.success(), payload.outputRef(), payload.errorMessage(),
+                    payload.errorCode(), payload.errorDetail(), payload.dedupeKey());
             dedupeStore.markProcessed(payload.dedupeKey());
         }
         return ApiResponse.<Void>builder().build();

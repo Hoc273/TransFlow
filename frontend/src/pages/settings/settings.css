@@ -36,35 +36,44 @@
   width: 18%;
 }
 
-/* Personal BYOK table (5 cols: Protocol/Model/Capabilities/Key/Actions) —
+/* Personal BYOK table (6 cols: Protocol/Model/Capabilities/Key/Default/Actions) —
    own geometry so the action buttons stay on one line. */
 .user-providers-table .providers-col-name {
-  width: 30%;
+  width: 26%;
 }
 
 .user-providers-table .providers-col-model {
-  width: 17%;
+  width: 16%;
 }
 
 .user-providers-table .providers-col-capabilities {
-  width: 15%;
+  width: 13%;
 }
 
-.user-providers-table .providers-col-default {
+.user-providers-table .providers-col-key {
   width: 10%;
 }
 
+.user-providers-table .providers-col-default {
+  width: 13%;
+}
+
 .user-providers-table .providers-col-actions {
-  width: 28%;
+  width: 22%;
 }
 
-.user-providers-table td:last-child > div {
-  flex-wrap: nowrap;
-  justify-content: flex-end;
+/* Below this width the wrapper scrolls horizontally instead of clipping the action buttons. */
+.dd-table.user-providers-table {
+  min-width: 880px;
 }
 
-.user-providers-table thead th:last-child {
+/* Every column but Protocol (name + base URL) is centered, header and body alike. */
+.dd-table.user-providers-table thead th:not(:first-child) {
   text-align: center;
+}
+
+.dd-table.user-providers-table tbody td {
+  vertical-align: middle;
 }
 
 /* Test group vs manage group divider + status badge */

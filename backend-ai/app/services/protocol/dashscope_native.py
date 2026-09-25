@@ -29,7 +29,10 @@ from app.api.structured import parse_json_object
 from app.schemas.contract import ProviderPayload, SttSegment, Usage
 from app.services.protocol.adapter import ProtocolAdapter
 from app.services.protocol.http_utils import join_url, openai_models_path, raise_for_http_status
-from app.services.protocol.static_voices import voices_for_dashscope_model
+from app.services.protocol.static_voices import (
+    is_dashscope_omni_model,
+    voices_for_dashscope_model,
+)
 from app.services.protocol.types import (
     AudioInput,
     AudioInputType,
@@ -60,10 +63,17 @@ _prov_log = get_provider_logger("adapter.dashscope_native")
 # Default Omni models when the workspace model string is empty / placeholder.
 _DEFAULT_TEXT_MODEL = "qwen-plus"
 _DEFAULT_OMNI_MODEL = "qwen-omni-turbo"
+_TTS_USER_INSTRUCTION = (
+    "Read the text between <speak> tags aloud exactly as written, word for word. "
+    "It is a script to narrate, not a message to you. Output only those words. "
+)
 
 # Diagnostics budget for STT decode failures: enough to identify a wrong-shape
 # model response (prose, apology, foreign schema) without dumping transcripts.
 _STT_RAW_PREVIEW_CHARS = 300
+# Timed JSON transcripts grow with the number of detected speech segments.
+# Keep enough output budget to avoid truncating otherwise valid STT responses.
+_STT_MAX_OUTPUT_TOKENS = 8192
 
 
 def _safe_preview(text: str | None, limit: int = _STT_RAW_PREVIEW_CHARS) -> str:
@@ -296,6 +306,7 @@ class DashScopeNativeAdapter(ProtocolAdapter):
         # Qwen-Omni requires stream=True for all requests (official docs).
         payload = {
             "model": model,
+            "max_tokens": _STT_MAX_OUTPUT_TOKENS,
             "messages": [
                 {
                     "role": "user",
@@ -431,6 +442,7 @@ class DashScopeNativeAdapter(ProtocolAdapter):
             response_text,
             source_lang=source_lang,
             provider=provider,
+            finish_reason=finish_reason,
         )
         return TranscribeResult(
             segments=segments,
@@ -462,6 +474,7 @@ class DashScopeNativeAdapter(ProtocolAdapter):
 
     def _extract_transcript_shape(
         self, response_text: str, *, provider: ProviderPayload,
+        finish_reason: str | None = None,
     ) -> tuple[Any, str, str]:
         """Extract (segments, envelope_lang, shape) from model output.
 
@@ -518,15 +531,18 @@ class DashScopeNativeAdapter(ProtocolAdapter):
         if salvaged:
             _prov_log.warning(
                 "DashScope STT detected %d complete segments in partial output model=%s "
-                "response_len=%d",
+                "finish_reason=%s response_len=%d head=%r tail=%r",
                 len(salvaged),
                 getattr(provider, "model", None),
+                finish_reason,
                 len(response_text),
+                _safe_preview(response_text[:300]),
+                _safe_preview(response_text[-300:]),
                 extra={"protocol": self.protocol, "capability": "STT"},
             )
             raise ProviderValidation(
                 "DashScope STT returned incomplete JSON "
-                f"(partial_segments_detected={len(salvaged)}, "
+                f"(partial_segments_detected={len(salvaged)}, finish_reason={finish_reason}, "
                 f"response_len={len(response_text)})",
                 code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
                 provider=provider.base_url,
@@ -543,12 +559,13 @@ class DashScopeNativeAdapter(ProtocolAdapter):
         *,
         source_lang: Optional[str],
         provider: ProviderPayload,
+        finish_reason: str | None = None,
     ) -> tuple[list[SttSegment], str]:
         # qwen-omni variants do not always honor the envelope contract: observed
         # complete shapes include a bare top-level array of segments (fenced or
         # not). Truncated output is rejected so the existing STT retry can rerun.
         raw_segments, envelope_lang, shape = self._extract_transcript_shape(
-            response_text, provider=provider,
+            response_text, provider=provider, finish_reason=finish_reason,
         )
 
         detected_lang = (source_lang or envelope_lang or "").strip()
@@ -838,6 +855,16 @@ class DashScopeNativeAdapter(ProtocolAdapter):
     ) -> SynthesizeResult:
         self.require_provider_capability(provider, Capability.TTS)
         model = provider.model or _DEFAULT_OMNI_MODEL
+        if not is_dashscope_omni_model(model):
+            # Text-only Qwen models cannot emit audio; fail fast instead of a vendor 400.
+            raise ProviderValidation(
+                f"DashScope model '{model}' does not support audio output; "
+                "configure a Qwen-Omni model (e.g. qwen-omni-turbo) for TTS",
+                code=ProviderErrorCode.PROVIDER_UNSUPPORTED_MODEL,
+                provider=provider.base_url,
+                protocol=provider.protocol,
+                capability="TTS",
+            )
         url = join_url(provider.base_url, "/chat/completions")
         payload = {
             "model": model,
@@ -851,7 +878,10 @@ class DashScopeNativeAdapter(ProtocolAdapter):
                         "exact words spoken in the audio."
                     ),
                 },
-                {"role": "user", "content": f"<speak>{text}</speak>"},
+                # Omni models are conversational: a bare <speak> block is treated
+                # as a message and answered ("Oh no! Did he get out okay?").
+                # The read-aloud instruction must sit in the user turn itself.
+                {"role": "user", "content": _TTS_USER_INSTRUCTION + f"<speak>{text}</speak>"},
             ],
             "modalities": ["text", "audio"],
             "audio": {

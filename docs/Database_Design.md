@@ -317,6 +317,13 @@ user_ai_providers(
 )
 CREATE INDEX ix_user_ai_providers_user ON user_ai_providers(user_id) WHERE is_active;
 
+user_ai_provider_defaults(
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  capability VARCHAR(20) NOT NULL CHECK (capability IN ('STT','TRANSLATE','TTS','VISION')),
+  provider_id UUID NOT NULL REFERENCES user_ai_providers(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, capability)
+)
+
 platform_ai_providers(
   id UUID PK,
   protocol VARCHAR NOT NULL,
@@ -491,7 +498,7 @@ CREATE INDEX ix_media_jobs_created_by ON media_jobs(created_by_user_id);
 - `created_by_user_id` **không được update sau khi tạo** (immutable ở service layer) — là nguồn sự thật duy
   nhất cho quy tắc "Member chỉ duyệt QA/checkpoint job của chính mình" (SRS §3.3, khác `performed_by_user_id`
   vốn chỉ phục vụ công thức Credit).
-- Voice ngôn ngữ khớp `target_lang`: enforce ở service layer (cần join `tts_voices.language`).
+- Voice ngôn ngữ tương thích `target_lang`: enforce ở service layer trên `tts_voices.language` và `languages[]`, so case-insensitive theo primary subtag (`en`, `en-US`, `en_US` → `en`); blank/`und` không tự khớp ngôn ngữ thật.
 
 ### 6.3 `media_job_stages`
 ```sql
@@ -512,6 +519,8 @@ media_job_stages(
   attempt_count SMALLINT NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
   execution_time_ms BIGINT,
   error_message TEXT,
+  error_code VARCHAR(100),
+  error_detail JSONB,
   started_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
   UNIQUE (media_job_id, stage_name),
@@ -682,6 +691,17 @@ CREATE UNIQUE INDEX ux_preset_default_per_scope
 - `SYSTEM` preset không gắn tenant và tuyệt đối không chứa API key, media asset, job hoặc dữ liệu riêng.
 - Khi user dùng template, hệ thống snapshot config vào `media_jobs.preset_snapshot`; không tạo membership
   vào Workspace/Project khác.
+- `render_config` dùng đúng key của `media_jobs.render_config` (`subtitleMode`, `subtitlePosition`,
+  `verticalOffsetPercent`, `backgroundBox`, `backgroundColor`, `textColor`, `outputAspectRatio`);
+  `subtitle_style` là `SubtitleStyleSnapshot` đủ 13 field snake_case. Khi tạo job, giá trị hợp lệ được chép vào
+  `media_jobs.render_config` / `media_jobs.subtitle_style` (giá trị sai miền bị bỏ qua); `subtitleMode` gửi
+  tường minh trong request thắng preset.
+- Không có preset `SYSTEM` mặc định (V8): job tạo không kèm preset giữ `SOFT_SUB` + khung hình gốc.
+- System template (V8): `Standard Subtitle & Dub` (HARD_SUB, 16:9, dòng phụ đề ở 80% chiều cao) và
+  `Social Media Shorts / Reels` (HARD_SUB, 9:16, dòng phụ đề ở 75% chiều cao, chữ đậm cỡ 40). V10: cả hai dùng chữ đen trên nền vàng nhạt `#FFF59DE6`, viền trắng 4, phụ đề ngắt cụm ≤ 5 từ (`presentation.subtitle.displayMode=PHRASE`).
+  `font_size`/`outline_width` được tính trên khung chuẩn 1080 dòng (như preview Render Studio); media worker
+  quy đổi theo chiều cao khung đầu ra thật. `Cinematic Subtitles` đã xoá
+  (tỉ lệ 21:9 worker không hỗ trợ).
 
 ---
 

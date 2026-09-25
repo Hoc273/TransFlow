@@ -4,8 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 afterEach(() => cleanup())
 
-const { linkedJobData } = vi.hoisted(() => ({
-  linkedJobData: { data: undefined as unknown, isLoading: false },
+const { reviewData } = vi.hoisted(() => ({
+  reviewData: { subtitles: [] as unknown[], issues: [] as unknown[] },
 }))
 
 vi.mock('react-i18next', () => ({
@@ -15,9 +15,8 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('@/hooks/useMedia', () => ({
-  useMediaLinkedJob: () => linkedJobData,
-  useMediaSubtitles: () => ({ data: [], isLoading: false }),
-  useMediaJobQaIssues: () => ({ data: [], isLoading: false }),
+  useMediaSubtitles: () => ({ data: reviewData.subtitles, isLoading: false }),
+  useMediaJobQaIssues: () => ({ data: reviewData.issues, isLoading: false }),
   useEditMediaSegment: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useBatchEditMediaSegments: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useRerunTtsRender: () => ({ isPending: false, mutateAsync: vi.fn() }),
@@ -96,15 +95,24 @@ function linkedJob(): JobDetail {
   }
 }
 
+function setReviewData(detail: JobDetail) {
+  reviewData.subtitles = detail.segments.map(({ id, seq, sourceText, targetText, startMs, endMs }) =>
+    ({ id, seq, sourceText, targetText, startMs, endMs }),
+  )
+  reviewData.issues = detail.segments.flatMap((seg) =>
+    seg.qaIssues.map((qa) => ({ ...qa, subtitleSegmentId: seg.id })),
+  )
+}
+
 describe('MediaReviewSection — QA + Subtitles review workbench (docs/19 §1.8.2 redesign)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    linkedJobData.data = undefined
-    linkedJobData.isLoading = false
+    reviewData.subtitles = []
+    reviewData.issues = []
   })
 
   it('renders actionable QA rows without the old severity-band cards', () => {
-    linkedJobData.data = linkedJob()
+    setReviewData(linkedJob())
     render(<MediaReviewSection workspaceId="ws" job={job('linked-1')} />)
 
     // Band cards were replaced by the accordion-trigger pill — never rendered here.
@@ -124,7 +132,7 @@ describe('MediaReviewSection — QA + Subtitles review workbench (docs/19 §1.8.
     seg.qaIssues = Array.from({ length: 8 }, (_, i) =>
       issue({ id: `i-${i}`, severity: i % 2 === 0 ? 'HIGH' : 'LOW' }),
     )
-    linkedJobData.data = many
+    setReviewData(many)
     render(<MediaReviewSection workspaceId="ws" job={job('linked-1')} />)
 
     // Collapsed: only the first 5 open issues render.
@@ -139,7 +147,7 @@ describe('MediaReviewSection — QA + Subtitles review workbench (docs/19 §1.8.
   })
 
   it('opens the inline cue editor from the cue row while the QA strip stays visible', async () => {
-    linkedJobData.data = linkedJob()
+    setReviewData(linkedJob())
     render(<MediaReviewSection workspaceId="ws" job={job('linked-1')} />)
 
     const section = screen.getByTestId('media-review-section')
@@ -160,17 +168,16 @@ describe('MediaReviewSection — QA + Subtitles review workbench (docs/19 §1.8.
     expect(screen.getByText('Hello world')).not.toBeNull()
   })
 
-  it('waits gracefully when the translation job is not linked yet', () => {
-    linkedJobData.data = undefined
+  it('shows an empty review when the media job has no subtitles yet', () => {
     render(<MediaReviewSection workspaceId="ws" job={job(null)} />)
 
     expect(screen.getByTestId('media-review-section')).not.toBeNull()
-    expect(screen.getByText('qa.waitTitle')).not.toBeNull()
-    expect(screen.getByText('media:subtitles.waitTitle')).not.toBeNull()
+    expect(screen.getByText('qa.noneOpen')).not.toBeNull()
+    expect(screen.getByText('media:subtitles.emptyTitle')).not.toBeNull()
   })
 
   it('triggers onProceedToNextStep when next step button is clicked', () => {
-    linkedJobData.data = linkedJob()
+    setReviewData(linkedJob())
     const onNext = vi.fn()
     render(
       <MediaReviewSection

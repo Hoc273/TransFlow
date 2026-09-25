@@ -21,6 +21,7 @@ const {
   consentTransformationAssetApi,
   createTransformationJobApi,
   getTransformationCapabilitiesApi,
+  listTransformationProposalsApi,
   rerunTransformationRenderApi,
 } = await import('./transformation')
 
@@ -130,5 +131,45 @@ describe('consentTransformationAssetApi', () => {
       '/workspaces/ws-1/media/assets/asset-1/consent',
       { method: 'POST', body: { termsVersion: 'v1' } },
     )
+  })
+})
+
+describe('listTransformationProposalsApi', () => {
+  it('derives a narrative plan from script-first segments so the cut timeline renders', async () => {
+    apiRequest.mockResolvedValue([
+      {
+        id: 'p1',
+        generatedBy: 'AI',
+        scriptContent: 'Mở đầu. Kết luận.',
+        reasoningNote: 'Tổng quan',
+        totalDurationMs: 30000,
+        warnings: ['DURATION_NORMALIZED'],
+        cut_ranges: [
+          { seq: 2, startMs: 60000, endMs: 70000, start_ms: 60000, end_ms: 70000, scriptExcerpt: 'Kết luận.', reasoningNote: 'Kết' },
+          { seq: 1, startMs: 0, endMs: 20000, start_ms: 0, end_ms: 20000, scriptExcerpt: 'Mở đầu.', reasoningNote: null },
+        ],
+      },
+    ])
+
+    const [proposal] = await listTransformationProposalsApi('w1', 'j1')
+
+    expect(proposal.planKind).toBe('NARRATIVE_PLAN')
+    expect(proposal.planBody?.global_reasoning_note).toBe('Tổng quan')
+    expect(proposal.planBody?.sections).toEqual([
+      { seq: 1, heading: null, source_refs: [{ start_ms: 0, end_ms: 20000 }], script_source_lang: 'Mở đầu.', beat_type: null, notes: null },
+      { seq: 2, heading: null, source_refs: [{ start_ms: 60000, end_ms: 70000 }], script_source_lang: 'Kết luận.', beat_type: null, notes: 'Kết' },
+    ])
+    expect(proposal.warnings).toEqual([{ code: 'DURATION_NORMALIZED' }])
+  })
+
+  it('keeps a server-provided plan body and leaves plain cut proposals untouched', async () => {
+    apiRequest.mockResolvedValue([
+      { id: 'cut', cut_ranges: [{ start_ms: 0, end_ms: 1000 }] },
+    ])
+
+    const [proposal] = await listTransformationProposalsApi('w1', 'j1')
+
+    expect(proposal.planBody).toBeUndefined()
+    expect(proposal.planKind).toBeUndefined()
   })
 })

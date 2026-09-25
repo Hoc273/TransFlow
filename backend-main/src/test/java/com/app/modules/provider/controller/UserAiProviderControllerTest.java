@@ -113,6 +113,9 @@ class UserAiProviderControllerTest {
 
         // 5. Test connection
         when(aiGatewayClient.testConnection(anyString(), anyString(), anyString())).thenReturn(true);
+        when(aiGatewayClient.probeCapability(anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenAnswer(invocation -> new AiGatewayClient.ProviderCapabilityProbe(
+                        true, invocation.getArgument(3), null, "Provider model probe passed"));
 
         mockMvc.perform(post("/api/users/me/providers/" + providerId + "/test")
                         .header("Authorization", "Bearer " + token))

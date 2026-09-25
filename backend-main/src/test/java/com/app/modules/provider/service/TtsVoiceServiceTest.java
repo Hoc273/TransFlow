@@ -125,6 +125,30 @@ class TtsVoiceServiceTest {
 
         List<TtsVoiceResponse> enVoices = service.listUserVoices(userId, providerId, "en");
         assertEquals(2, enVoices.size()); // v2 also supports en via languages array
+        assertTrue(enVoices.stream().anyMatch(v -> v.voiceId().equals("voice-vi")));
+    }
+
+    @Test
+    void testListPlatformVoicesFiltersUsingPrimaryLanguageAndLanguagesArray() {
+        TtsVoice regional = new TtsVoice();
+        regional.setId(UUID.randomUUID());
+        regional.setProviderSource("PLATFORM");
+        regional.setVoiceId("regional-en");
+        regional.setLanguage("en-US");
+
+        TtsVoice multilingual = new TtsVoice();
+        multilingual.setId(UUID.randomUUID());
+        multilingual.setProviderSource("PLATFORM");
+        multilingual.setVoiceId("multilingual");
+        multilingual.setLanguage("vi");
+        multilingual.setLanguages(List.of("vi", "en"));
+
+        when(ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM"))
+                .thenReturn(List.of(regional, multilingual));
+
+        List<TtsVoiceResponse> voices = service.listPlatformVoices("en", "PLATFORM");
+
+        assertEquals(List.of("regional-en", "multilingual"), voices.stream().map(TtsVoiceResponse::voiceId).toList());
     }
 
     @Test

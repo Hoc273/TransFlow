@@ -122,16 +122,16 @@ export function useVoicePreview(_workspaceId?: string | undefined) {
   return useMutation({
     mutationFn: async ({
       providerId,
-      voiceId,
+      voiceRowId,
       language,
     }: {
       providerId: string
-      voiceId: string
+      voiceRowId: string
       language?: string | null
     }) => {
       void providerId
       const result = await previewTtsVoiceApi({
-        voiceId,
+        voiceId: voiceRowId,
         text: defaultVoicePreviewText(language),
       })
       activePreviewAudio?.pause()
@@ -167,7 +167,7 @@ export function useUpdateProvider(_workspaceId?: string | undefined) {
   })
 }
 
-/** @deprecated No backend endpoint — always fails. Kept for compilation. */
+/** Set the current user's default provider for a capability (via PUT defaultForCapabilities). */
 export function useSetDefaultProvider(_workspaceId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({
@@ -182,7 +182,7 @@ export function useSetDefaultProvider(_workspaceId: string | undefined) {
   })
 }
 
-/** @deprecated No backend endpoint — always fails. Kept for compilation. */
+/** Clear the current user's default provider for a capability. */
 export function useUnsetDefaultProvider(_workspaceId: string | undefined) {
   const qc = useQueryClient()
   return useMutation({

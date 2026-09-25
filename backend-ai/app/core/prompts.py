@@ -340,7 +340,7 @@ QA_OUTPUT_FORMAT = (
     '"source_span": "<concise excerpt ≤500 chars from source_text>", '
     '"target_span": "<concise excerpt ≤500 chars from translated_text>", '
     '"suggestion": "<fix>", '
-    '"blocking_actions": ["BLOCK_APPROVAL|BLOCK_EXPORT|BLOCK_RENDER"]'
+    '"blocking_actions": ["BLOCK_APPROVAL|BLOCK_PUBLISH|BLOCK_RENDER"]'
     '}], "score": <0..1>}</output_format>'
 )
 
@@ -382,6 +382,7 @@ def build_script_summarize_prompt(
     *,
     previous_script: str | None = None,
     feedback_text: str | None = None,
+    narration_cps: float | None = None,
 ) -> tuple[str, str]:
     """Build the compact script-first contract used by ``/media/summarize/script``."""
     lines = [
@@ -412,9 +413,21 @@ def build_script_summarize_prompt(
             '  "warnings": []',
             "}</output_format>",
             "Every script_excerpt MUST be an exact substring of script_content. "
-            "The sum of segment durations must be within 20 percent of the requested duration.",
+            f"Select footage whose summed segment durations total about {requested_duration_seconds * 1000} ms "
+            f"(allowed {requested_duration_seconds * 800}-{requested_duration_seconds * 1200} ms); "
+            "prefer whole transcript sentences and cite them in source_sentence_refs.",
         ]
     )
+    if narration_cps:
+        target_chars = round(requested_duration_seconds * narration_cps)
+        lines.append(
+            "The narration read aloud is exactly the script_excerpt values in order, so together the "
+            "excerpts must cover the whole script. Narration length: about "
+            f"{target_chars} characters in total (allowed {round(target_chars * 0.9)}-"
+            f"{round(target_chars * 1.1)}), because the voice reads about {narration_cps:g} characters "
+            "per second. Give each segment an excerpt of about (segment seconds x "
+            f"{narration_cps:g}) characters so its narration fills its footage."
+        )
     return SCRIPT_SUMMARIZE_SYSTEM, "\n".join(lines)
 
 

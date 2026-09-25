@@ -18,7 +18,6 @@ import {
   useBatchEditMediaSegments,
   useEditMediaSegment,
   useMediaJobQaIssues,
-  useMediaLinkedJob,
   useMediaSubtitles,
   useRerunTtsRender,
 } from '@/hooks/useMedia'
@@ -135,8 +134,7 @@ export function MediaSubtitleEditor({
 }: Props) {
   const { t } = useTranslation(['media', 'common'])
   const isManual = resolveWorkflowMode(job) === 'MANUAL'
-  const { data: linkedJob, isLoading } = useMediaLinkedJob(workspaceId, job.translationJobId)
-  const { data: realSubtitles = [] } = useMediaSubtitles(workspaceId, job.id)
+  const { data: realSubtitles = [], isLoading } = useMediaSubtitles(workspaceId, job.id)
   const { data: realQaIssues = [] } = useMediaJobQaIssues(workspaceId, job.id)
   const edit = useEditMediaSegment(workspaceId, job.id, job.translationJobId)
   const batch = useBatchEditMediaSegments(workspaceId, job.id, job.translationJobId)
@@ -173,12 +171,10 @@ export function MediaSubtitleEditor({
   const [query, setQuery] = useState('')
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
-  const segments: SegmentItem[] = useMemo(() => {
-    if (linkedJob?.segments && linkedJob.segments.length > 0) {
-      return linkedJob.segments
-    }
-    return realSubtitles.map((sub: MediaSubtitleCue) => subtitleToSegmentItem(sub, realQaIssues))
-  }, [linkedJob, realSubtitles, realQaIssues])
+  const segments: SegmentItem[] = useMemo(
+    () => realSubtitles.map((sub: MediaSubtitleCue) => subtitleToSegmentItem(sub, realQaIssues)),
+    [realSubtitles, realQaIssues],
+  )
 
   // QA cross-check marker (docs/19 §1.8.2): open issues per segment, tone from
   // the worst severity band. Same linked-job data as MediaQaPanel — no extra query.
@@ -259,17 +255,6 @@ export function MediaSubtitleEditor({
       return true
     })
   }, [segments, filter, query, segmentQa])
-
-  if (!job.translationJobId) {
-    return (
-      <EmptyState
-        icon={<IconSubtitles size={36} stroke={1.25} />}
-        title={t('media:subtitles.waitTitle')}
-        description={t('media:subtitles.waitDesc')}
-        className="py-10"
-      />
-    )
-  }
 
   if (isLoading) {
     return (

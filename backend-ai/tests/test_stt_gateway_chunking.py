@@ -431,6 +431,7 @@ async def test_exhausted_chunk_retry_fails_whole_attempt_without_partial_success
     with patch.object(stt_gateway, "_materialize_audio_chunks", new=AsyncMock(return_value=chunks)), \
             patch.object(stt_gateway, "_download_audio", new=AsyncMock(return_value=Path("original.audio"))), \
             patch.object(stt_gateway, "_sleep_backoff", new=no_backoff), \
+            patch.object(stt_gateway, "_run_ffmpeg_chunk", new=AsyncMock()), \
             patch.object(stt_gateway.settings, "max_retries", 1), \
             patch.object(stt_gateway.tempfile, "TemporaryDirectory", return_value=nullcontext("chunk-tests")):
         with pytest.raises(ProviderValidation) as exc_info:

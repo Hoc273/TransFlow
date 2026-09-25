@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -84,5 +85,16 @@ public class PresetResolverServiceImpl implements PresetResolverService {
 
         // Hierarchy level 5: Fallback to null (recipe default in MediaJob)
         return null;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<PresetJobConfig> findJobConfig(UUID presetId) {
+        if (presetId == null) {
+            return Optional.empty();
+        }
+        return mediaPresetRepository.findById(presetId)
+                .map(p -> new PresetJobConfig(p.getId(), p.getName(), p.getSubtitleStyle(),
+                        p.getVoiceConfig(), p.getRenderConfig()));
     }
 }

@@ -33,6 +33,22 @@ from typing import Optional, Sequence
 # S3 — a gap this large between consecutive segments is suspicious.
 SUSPICIOUS_GAP_THRESHOLD_MS = 60_000
 
+# S4 — compressed timeline. LLM-based ASR (observed: DashScope
+# ``qwen3-omni-flash``) sometimes squeezes a whole transcript into a fraction
+# of the audio (531 s video → every timestamp inside 0–63 s). Every segment
+# still fits the duration, so S1/S2 pass, but the implied speaking rate is
+# impossible: real transcripts measured ~10–11 non-space chars/s, the
+# compressed one ~83. Human speech stays well below 35 chars/s in alphabetic
+# scripts, and CJK scripts are denser per char, so the bound is conservative.
+MAX_PLAUSIBLE_CHARS_PER_SECOND = 35.0
+# Too little text makes the aggregate rate noisy; skip S4 below this size.
+MIN_CHARS_FOR_RATE_CHECK = 200
+# S5 — partially compressed timeline. The provider may squeeze only some
+# sentences (observed 2026-09-24: 531 s video → 0-153 s, individual sentences
+# given 300 ms) so the aggregate rate stays under S4. Measured share of text in
+# segments above the plausible rate: real transcripts 0 %, compressed 40-49 %.
+MAX_TEXT_SHARE_IN_IMPLAUSIBLE_SEGMENTS = 0.3
+
 
 class TranscriptSanityResult(str, Enum):
     VALID = "VALID"
@@ -71,6 +87,9 @@ class TranscriptSanityValidator:
       every timestamp still fits inside the duration; MALFORMED when the gap
       combines with timestamp evidence beyond the duration (S1/S2 already
       catch the latter — S3 only adds the diagnostic classification).
+    - S4: aggregate speaking rate (non-space chars / summed segment time)
+      above ``MAX_PLAUSIBLE_CHARS_PER_SECOND`` → MALFORMED (compressed
+      timeline); only evaluated with at least ``MIN_CHARS_FOR_RATE_CHECK``.
     - When ``asset_duration_ms`` is absent (legacy caller), duration rules
       (S1-duration / S2) cannot be evaluated → VALID (no-op); local rules
       (negative / zero-length) still apply.
@@ -163,6 +182,43 @@ class TranscriptSanityValidator:
                 ),
             )
 
+        # S4 — implausible aggregate speaking rate ⇒ timestamps were
+        # compressed by the provider. Reject so the provider is retried.
+        speech_ms = 0
+        chars = 0
+        chars_in_implausible_segments = 0
+        for item in segments:
+            segment_ms = int(item.end_ms) - int(item.start_ms)
+            segment_chars = len("".join(str(getattr(item, "text", "") or "").split()))
+            speech_ms += segment_ms
+            chars += segment_chars
+            if segment_chars * 1000.0 / segment_ms > MAX_PLAUSIBLE_CHARS_PER_SECOND:
+                chars_in_implausible_segments += segment_chars
+        if (
+            chars >= MIN_CHARS_FOR_RATE_CHECK
+            and speech_ms > 0
+            and chars * 1000.0 / speech_ms > MAX_PLAUSIBLE_CHARS_PER_SECOND
+        ):
+            return TranscriptSanityVerdict(
+                TranscriptSanityResult.MALFORMED,
+                TranscriptSanityViolation(
+                    reason="implausible speaking rate "
+                           f"({chars * 1000.0 / speech_ms:.1f} chars/s); timestamps look compressed",
+                    max_end_ms=max_end_ms,
+                ),
+            )
+        if (
+            chars >= MIN_CHARS_FOR_RATE_CHECK
+            and chars_in_implausible_segments > chars * MAX_TEXT_SHARE_IN_IMPLAUSIBLE_SEGMENTS
+        ):
+            return TranscriptSanityVerdict(
+                TranscriptSanityResult.MALFORMED,
+                TranscriptSanityViolation(
+                    reason=f"{chars_in_implausible_segments * 100 // chars}% of the text sits in segments "
+                           f"faster than {MAX_PLAUSIBLE_CHARS_PER_SECOND:.0f} chars/s; timestamps look compressed",
+                    max_end_ms=max_end_ms,
+                ),
+            )
         # S3 — a long gap alone is only suspicious, never a hard failure:
         # a legitimate video may contain a long silent stretch. When the gap
         # combined with out-of-duration evidence, S1/S2 already rejected it.
