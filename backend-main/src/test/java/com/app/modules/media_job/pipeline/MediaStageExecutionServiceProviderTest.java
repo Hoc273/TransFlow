@@ -10,6 +10,8 @@ import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.repository.MediaJobStageRepository;
+import com.app.modules.media_job.entity.SubtitleSegment;
+import com.app.modules.media_job.repository.SubtitleSegmentRepository;
 import com.app.modules.provider.service.ProviderResolverService;
 import com.app.modules.summarization.service.SummarizationService;
 import com.app.modules.summarization.service.SummaryAiClient;
@@ -183,5 +185,73 @@ class MediaStageExecutionServiceProviderTest {
                         && detail.path("model").asText().equals("qwen-plus")
                         && !detail.path("retryable").asBoolean(true)),
                 argThat(key -> key.startsWith("internal:")));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void localizationTranslatesEachTimedLineOneToOneEvenForUnspacedScripts() {
+        UUID jobId = UUID.randomUUID();
+        UUID stageId = UUID.randomUUID();
+        UUID correlationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        MediaJob job = new MediaJob();
+        job.setId(jobId);
+        job.setCreatedByUserId(userId);
+        job.setRecipeId("localization.full");
+        job.setSourceLanguage("zh");
+        job.setTargetLang("zh");
+
+        MediaJobStage stage = new MediaJobStage();
+        stage.setId(stageId);
+        stage.setMediaJobId(jobId);
+        stage.setStageName(MediaJobStage.StageName.TRANSLATE);
+        stage.setStatus(MediaJobStage.StageStatus.PROCESSING);
+        stage.setWorkerId(correlationId.toString());
+        MediaJobStage stt = new MediaJobStage();
+        stt.setOutputRef("""
+                {"segments":[{"start_ms":0,"end_ms":4320,"text":"黑市有动静。"},
+                             {"start_ms":5840,"end_ms":8800,"text":"哇，副官呢？"},
+                             {"start_ms":9520,"end_ms":13920,"text":"真的假的？"}]}
+                """);
+        SubtitleSegmentRepository subtitles = mock(SubtitleSegmentRepository.class);
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(stageRepository.findById(stageId)).thenReturn(Optional.of(stage));
+        when(stageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.SUMMARIZE))
+                .thenReturn(Optional.empty());
+        when(stageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.STT))
+                .thenReturn(Optional.of(stt));
+        when(providerResolver.resolveForCapability(userId, "TRANSLATE")).thenReturn(
+                new ProviderResolverService.ProviderResolution(UUID.randomUUID(), "openai_compatible",
+                        "https://llm.example/v1", "secret", "any-model", true));
+
+        RestClient.Builder aiBuilder = RestClient.builder().baseUrl("http://ai.test");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(aiBuilder).build();
+        server.expect(requestTo("http://ai.test/ai/translate"))
+                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath("$.segments[1].id")
+                        .value("1"))
+                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath("$.segments[1].text")
+                        .value("哇，副官呢？"))
+                .andRespond(withSuccess("""
+                        {"status":"COMPLETED","translation":"黑市有动静。 哇，副官呢？ 真的假的？",
+                         "segments":[{"id":"0","translation":"黑市有动静。"},
+                                     {"id":"1","translation":"哇，副官呢？"},
+                                     {"id":"2","translation":"真的假的？"}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        MediaStageExecutionService pipeline = new MediaStageExecutionService(jobRepository, stageRepository,
+                assetRepository, storage, providerResolver, summaryAiClient, summarizationService,
+                callbackService, objectMapper, new AppProperties(null, null, null, null, null, null),
+                aiBuilder.build(), RestClient.builder().baseUrl("http://worker.test").build(),
+                subtitles, null, null, null, null);
+
+        pipeline.execute(new MediaStageMessage(jobId, stageId, "TRANSLATE", correlationId, (short) 1));
+
+        server.verify();
+        org.mockito.ArgumentCaptor<List<SubtitleSegment>> saved = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(subtitles).saveAll(saved.capture());
+        assertEquals(List.of("黑市有动静。", "哇，副官呢？", "真的假的？"),
+                saved.getValue().stream().map(SubtitleSegment::getTargetText).toList());
+        assertEquals(List.of(5840L, 8800L), List.of(saved.getValue().get(1).getStartMs(),
+                saved.getValue().get(1).getEndMs()));
     }
 }

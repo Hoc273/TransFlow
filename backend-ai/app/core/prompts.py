@@ -49,6 +49,10 @@ def _language_label(language_code: str | None) -> str:
     return f"{name} (code: {code})"
 
 
+def _xml_escape(text: str) -> str:
+    return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _glossary_block(glossary: list[GlossaryTerm]) -> str:
     if not glossary:
         return ""
@@ -78,6 +82,50 @@ TRANSLATE_SYSTEM = (
     "translation that fixes every listed issue while remaining entirely in {target_lang}. "
     "Return ONLY a JSON object described in <output_format>; no prose, no code fences."
 )
+
+
+SEGMENT_TRANSLATE_SYSTEM = (
+    "You are a professional subtitle translator. Translate each <line> inside <lines> "
+    "from {source_lang} to {target_lang}. Lines are consecutive subtitles of one video: "
+    "use the surrounding lines for meaning, but translate every line on its own — never "
+    "move words between lines, merge lines, split lines, or skip a line. Strictly obey "
+    "terms in <glossary>. Each translation must be entirely in {target_lang}, except "
+    "proper nouns, placeholders, or glossary terms that genuinely must remain; slang, "
+    "interjections and sound effects are translated or naturally adapted too. Preserve "
+    "numbers and placeholders exactly. <previous_lines> are context only; do not translate "
+    "them. Return ONLY a JSON object described in <output_format>; no prose, no code fences."
+)
+
+
+def build_segment_translate_prompt(
+    source_lang: str,
+    target_lang: str,
+    lines: list[tuple[str, str]],
+    glossary: list[GlossaryTerm],
+    previous_lines: list[str] | None = None,
+) -> tuple[str, str]:
+    """Prompt for translating numbered subtitle lines one-to-one."""
+    system = SEGMENT_TRANSLATE_SYSTEM.format(
+        source_lang=_language_label(source_lang),
+        target_lang=_language_label(target_lang),
+    )
+    parts: list[str] = []
+    gb = _glossary_block(glossary)
+    if gb:
+        parts.append(gb)
+    if previous_lines:
+        parts.append("<previous_lines>\n" + "\n".join(
+            f"<line>{_xml_escape(text)}</line>" for text in previous_lines
+        ) + "\n</previous_lines>")
+    parts.append("<lines>\n" + "\n".join(
+        f'<line id="{key}">{_xml_escape(text)}</line>' for key, text in lines
+    ) + "\n</lines>")
+    ids = ", ".join(f'"{key}"' for key, _ in lines)
+    parts.append(
+        "<output_format>{\"translations\": [{\"id\": \"<line id>\", \"translation\": \"<text>\"}]} "
+        f"with exactly one entry for each id: {ids}.</output_format>"
+    )
+    return system, "\n".join(parts)
 
 
 def _qa_feedback_block(feedback: list) -> str:
@@ -429,6 +477,55 @@ def build_script_summarize_prompt(
             f"{narration_cps:g}) characters so its narration fills its footage."
         )
     return SCRIPT_SUMMARIZE_SYSTEM, "\n".join(lines)
+
+
+SCRIPT_NARRATION_SYSTEM = (
+    "You are a narrator writing the voice-over of a video summary, one footage segment at a "
+    "time. For every <segment> write the narration read aloud while that footage plays, in "
+    "the requested target language, grounded only in its <source> transcript lines (and the "
+    "visual context when given). Each narration MUST have a length inside its "
+    "min_chars-max_chars range, counted in characters including spaces and punctuation — "
+    "this is a hard timing requirement because the voice reads a fixed number of characters "
+    "per second. Add concrete detail from the source (who, what, why, consequence) to reach "
+    "the length; never pad with filler, never repeat earlier narration, never copy the source "
+    "lines verbatim. Continue naturally from <previous_narration>. Return ONLY the JSON object "
+    "described in <output_format>; no prose, no code fences."
+)
+
+
+def build_script_narration_prompt(
+    target_lang: str,
+    segments: list[dict],
+    *,
+    previous_narration: str | None = None,
+    visual_context: object = None,
+) -> tuple[str, str]:
+    """Per-segment narration batch for the script-first summary (length-budgeted)."""
+    lines = [f"<target_lang>{target_lang}</target_lang>"]
+    if visual_context is not None:
+        lines.append(f"<visual_context>{visual_context}</visual_context>")
+    if previous_narration:
+        lines.append(f"<previous_narration>{_xml_escape(previous_narration)}</previous_narration>")
+    lines.append("<segments>")
+    for item in segments:
+        lines.append(
+            f'<segment id="{item["id"]}" footage_seconds="{item["seconds"]:.1f}" '
+            f'target_chars="{item["target_chars"]}" min_chars="{item["min_chars"]}" '
+            f'max_chars="{item["max_chars"]}">'
+        )
+        lines.append("<source>" + " ".join(_xml_escape(text) for text in item["source"]) + "</source>")
+        if item.get("draft"):
+            lines.append(
+                f'<current_draft chars="{len(item["draft"])}">{_xml_escape(item["draft"])}</current_draft>'
+            )
+        lines.append("</segment>")
+    lines.append("</segments>")
+    ids = ", ".join(f'"{item["id"]}"' for item in segments)
+    lines.append(
+        '<output_format>{"segments": [{"id": "<segment id>", "narration": "<text>"}]} '
+        f"with exactly one entry for each id: {ids}.</output_format>"
+    )
+    return SCRIPT_NARRATION_SYSTEM, "\n".join(lines)
 
 
 SUMMARIZE_SYSTEM = (

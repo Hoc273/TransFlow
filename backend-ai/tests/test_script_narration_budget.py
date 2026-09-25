@@ -4,12 +4,15 @@ TTS reads the segment excerpts, and a narrated summary render is timed by the
 measured narration — so the excerpts, not the footage, decide the output
 length. Observed 2026-09-24: 297 s of footage but 3 144 characters of narration
 read in 181 s (-40 %). The writer gets a character budget (requested seconds ×
-voice chars/s, as the original narrative writer did) and is asked to repair a
-draft outside ±10 %.
+voice chars/s, as the original narrative writer did). Whole-script "expand"
+repairs kept shrinking the text (observed 2026-09-24: 5 558 -> 3 621 -> 2 531
+chars for a 12 400 budget), so each fitted footage segment now gets its own
+budget and only segments outside tolerance are rewritten, in batches.
 """
 from __future__ import annotations
 
 import json
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -45,52 +48,85 @@ def _output(chars_per_excerpt: int) -> str:
     })
 
 
-def _post(body: dict, *outputs: str):
+def _narration(user_prompt: str, chars: int) -> SimpleNamespace:
+    """Answer a narration batch with ``chars`` characters per requested segment."""
+    ids = re.findall(r'<segment id="(\d+)"', user_prompt)
+    return SimpleNamespace(text=json.dumps({"segments": [
+        {"id": key, "narration": "n" * chars} for key in ids]}), usage=None)
+
+
+def _post(body: dict, *outputs, narration=None):
     chat = AsyncMock(side_effect=[SimpleNamespace(text=o, usage=None) for o in outputs])
+    fill = AsyncMock(side_effect=narration or [])
     with (
         patch.object(script_gateway.settings, "mock_mode", False),
         patch.object(script_gateway.settings, "script_output_repair_attempts", 2),
         patch("app.services.script_gateway.chat", chat),
+        patch("app.services.summary.narration_fill.chat", fill),
         TestClient(app) as client,
     ):
         response = client.post("/media/summarize/script", json=body)
     assert response.status_code == 200
-    return response.json(), chat
+    return response.json(), chat, fill
 
 
 def test_prompt_carries_the_narration_budget_from_the_voice_rate() -> None:
-    payload, chat = _post(_body(17.5), _output(525))  # 60 s × 17.5 = 1050 chars
+    payload, chat, fill = _post(_body(17.5), _output(525))  # 60 s × 17.5 = 1050 chars
 
     assert payload["status"] == "COMPLETED"
     prompt = chat.await_args_list[0].args[2]
     assert "about 1050 characters" in prompt
     assert chat.await_count == 1
+    assert fill.await_count == 0  # already inside every segment budget
 
 
 def test_default_rate_matches_the_original_writer_when_no_calibration_exists() -> None:
-    payload, chat = _post(_body(None), _output(420))  # 60 s × 14 = 840 chars
+    payload, chat, _ = _post(_body(None), _output(420))  # 60 s × 14 = 840 chars
 
     assert payload["status"] == "COMPLETED"
     assert "about 840 characters" in chat.await_args_list[0].args[2]
 
 
-def test_short_narration_is_repaired_with_the_measured_gap() -> None:
-    payload, chat = _post(_body(17.5), _output(200), _output(520))
+def test_short_narration_is_rewritten_per_segment_to_its_budget() -> None:
+    async def narrate(provider, system, user, **kwargs):
+        assert 'target_chars="525"' in user and "<source>" in user
+        return _narration(user, 520)
+
+    payload, chat, fill = _post(_body(17.5), _output(200), narration=narrate)
 
     assert payload["status"] == "COMPLETED"
-    assert chat.await_count == 2
-    repair = chat.await_args_list[1].args[2]
-    assert "400 characters" in repair and "about 1050 characters" in repair  # measured vs target
+    assert chat.await_count == 1  # no whole-script repair round-trips
+    assert fill.await_count == 1  # both short segments in one batch
+    assert [len(s["script_excerpt"]) for s in payload["segments"]] == [520, 520]
     assert "NARRATION_LENGTH_RESIDUAL" not in payload["warnings"]
-    assert len(payload["segments"][0]["script_excerpt"]) == 520
+    for segment in payload["segments"]:
+        assert segment["script_excerpt"] in payload["script_content"]
 
 
-def test_residual_length_miss_keeps_the_closest_draft_instead_of_failing() -> None:
-    # Measured TTS stays authoritative and render tempo absorbs a small residual,
-    # so a writer that cannot hit ±10 % must not fail the job.
-    payload, chat = _post(_body(17.5), _output(200), _output(400), _output(300))
+def test_rewrites_that_move_away_from_the_budget_are_discarded() -> None:
+    async def narrate(provider, system, user, **kwargs):
+        return _narration(user, 50)  # worse than the 200-char draft
+
+    payload, _, fill = _post(_body(17.5), _output(200), narration=narrate)
 
     assert payload["status"] == "COMPLETED"
-    assert chat.await_count == 3
+    assert fill.await_count == 3  # bounded rounds, then keep the best draft
+    assert [len(s["script_excerpt"]) for s in payload["segments"]] == [200, 200]
     assert "NARRATION_LENGTH_RESIDUAL" in payload["warnings"]
-    assert len(payload["segments"][0]["script_excerpt"]) == 400
+
+
+def test_segments_the_model_skips_are_retried_next_round() -> None:
+    calls = []
+
+    async def narrate(provider, system, user, **kwargs):
+        calls.append(user)
+        ids = re.findall(r'<segment id="(\d+)"', user)
+        keep = ids[:1] if len(calls) == 1 else ids
+        return SimpleNamespace(text=json.dumps({"segments": [
+            {"id": key, "narration": "n" * 525} for key in keep]}), usage=None)
+
+    payload, _, fill = _post(_body(17.5), _output(200), narration=narrate)
+
+    assert fill.await_count == 2
+    assert 'id="2"' in calls[1] and 'id="1"' not in calls[1]
+    assert [len(s["script_excerpt"]) for s in payload["segments"]] == [525, 525]

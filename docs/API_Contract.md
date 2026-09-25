@@ -645,6 +645,22 @@ cùng `dedupeKey` không xử lý 2 lần.
 > `SUMMARIZE`/`TTS`/`VISION` là lời gọi đồng bộ Spring→FastAPI; pipeline hiện tại không dùng callback cho
 > các stage này. Controller vẫn nhận diện callback path `source-separation` để tương thích.
 
+**FastAPI `POST /ai/translate` — dịch theo từng dòng phụ đề (stage `TRANSLATE`).** Ngoài `source_text`,
+Spring gửi `segments: [{id, text}]` (id = chỉ số dòng dạng chuỗi, theo thứ tự thời gian). FastAPI dịch theo lô
+có đánh số và trả `segments: [{id, translation}]` đúng **1–1** với đầu vào (kèm `translation` = các dòng nối
+bằng `\n`). Dòng model bỏ sót được hỏi lại theo lô nhỏ rồi từng dòng; không có bản dịch cho một dòng →
+`status=FAILED` (`PROVIDER_EMPTY_RESPONSE`). Spring gán `target_text` theo `id`, giữ nguyên mốc thời gian
+của dòng nguồn — không cắt lại bản dịch gộp (chữ không có khoảng trắng như tiếng Trung/Nhật trước đây bị dồn
+vào một dòng). Request không có `segments` giữ hành vi cũ (chỉ `translation`).
+
+**FastAPI `POST /media/summarize/script` — độ dài lời dẫn.** Sau khi footage được khớp vào cửa sổ
+`requested_duration ±20%`, mỗi đoạn có ngân sách ký tự `giây × narration_cps` (±7.5%); gateway viết lại lời
+dẫn theo lô 8 đoạn, chỉ các đoạn lệch quá ±15%, tối đa 3 vòng, và chỉ giữ bản mới khi gần ngân sách hơn.
+`script_content` = các `script_excerpt` nối theo thứ tự. Còn lệch tổng > 10% → cảnh báo
+`NARRATION_LENGTH_RESIDUAL` (không FAILED). Khi RENDER, Spring bù phần thiếu còn lại bằng tempo 0.9–1.1× rồi
+khoảng nghỉ cuối mỗi beat (≤ 35% giọng của beat và ≤ 2.5 s); worker đệm im lặng cho audio beat tới
+`tts_duration_ms`.
+
 ---
 
 ## 15. Mã lỗi (`ErrorCode` — theo `api-response-convention.md`)

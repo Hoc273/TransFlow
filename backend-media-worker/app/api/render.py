@@ -159,6 +159,17 @@ class SubtitleTrackRequest(BaseModel):
         return self
 
 
+def _pad_audio_to(path: str, duration_ms: int, temp_dir: str) -> str:
+    """Append trailing silence so the clip lasts ``duration_ms``; longer clips are left intact."""
+    output_path = os.path.join(temp_dir, f"padded_{uuid.uuid4()}.wav")
+    _run([
+        "ffmpeg", "-y", "-i", path,
+        "-af", f"apad=whole_dur={duration_ms / 1000:.3f}",
+        "-c:a", "pcm_s16le", output_path,
+    ])
+    return output_path
+
+
 class GenerativeBeatRequest(BaseModel):
     id: str
     source_start_ms: int
@@ -169,7 +180,8 @@ class GenerativeBeatRequest(BaseModel):
     visual_description: Optional[str] = None
     narration_segment: Optional[str] = None
     # Uniform narration tempo chosen by Spring to fit the requested duration
-    # (bounded 0.9-1.1 there); tts_duration_ms is already the retimed length.
+    # (bounded 0.9-1.1 there); tts_duration_ms is the retimed voice plus any
+    # trailing pause, and the voice is padded with silence to that length.
     tempo: Optional[float] = None
 
 
@@ -342,8 +354,14 @@ async def _process_render(req: RenderRequest) -> None:
                         raw_audio_path = await _blocking(
                             _apply_tempo, raw_audio_path, beat.tempo, temp_dir
                         )
-                    # The measured TTS file is already the beat's timeline
-                    # authority. Do not pad it to the source visual duration.
+                    # The beat length (tts_duration_ms) is the timeline authority:
+                    # the voice gets trailing silence up to it (a pause Spring adds
+                    # when narration is short), keeping audio and footage in sync.
+                    # It is never padded to the source visual duration.
+                    if beat.tts_duration_ms:
+                        raw_audio_path = await _blocking(
+                            _pad_audio_to, raw_audio_path, beat.tts_duration_ms, temp_dir
+                        )
                     tts_audio_paths.append(raw_audio_path)
 
             await send_progress(req.media_job_id, req.correlation_id, 50, req.stage_id)

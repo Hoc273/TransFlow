@@ -16,6 +16,7 @@ from app.schemas.script import (
 )
 from app.services.llm_gateway import chat, text_reasoning_extra
 from app.services.provider_errors import ProviderErrorCode, ProviderException
+from app.services.summary.narration_fill import NarrationSlot, fill_narration, join_narration
 from app.services.summary.script_timeline import (
     DurationUnreachable,
     TimelineSegment,
@@ -281,21 +282,54 @@ def _narration_chars(response: ScriptSummarizeResponse) -> int:
     return sum(len(segment.script_excerpt.strip()) for segment in response.segments)
 
 
-def _narration_miss(req: ScriptSummarizeRequest | ScriptRefineRequest,
-                    response: ScriptSummarizeResponse) -> tuple[float, str | None]:
-    """Relative miss of the narration budget and, when outside tolerance, the repair feedback."""
-    target = round(_requested_duration(req) * _narration_cps(req))
-    actual = _narration_chars(response)
-    miss = abs(actual - target) / target if target else 0.0
-    if miss <= NARRATION_TOLERANCE:
-        return miss, None
-    direction = "Expand" if actual < target else "Condense"
-    return miss, (
-        f"The narration (all script_excerpt values) has {actual} characters but must be about "
-        f"{target} characters (allowed {round(target * (1 - NARRATION_TOLERANCE))}-"
-        f"{round(target * (1 + NARRATION_TOLERANCE))}). {direction} the script and its excerpts "
-        "accordingly while keeping every excerpt a verbatim substring of script_content."
+def _slot_source(req: ScriptSummarizeRequest | ScriptRefineRequest, start_ms: int, end_ms: int) -> list[str]:
+    return [
+        segment.text.strip() for segment in req.transcript
+        if segment.text and segment.start_ms < end_ms and segment.end_ms > start_ms
+    ]
+
+
+async def _fit_narration(req: ScriptSummarizeRequest | ScriptRefineRequest,
+                         parsed: ScriptSummarizeResponse,
+                         usage: Usage | None) -> ScriptSummarizeResponse:
+    """Budget each fitted footage segment's narration so the voice fills the requested duration."""
+    cps = _narration_cps(req)
+    slots = [
+        NarrationSlot(s.start_ms, s.end_ms, s.script_excerpt.strip(), _slot_source(req, s.start_ms, s.end_ms))
+        for s in parsed.segments
+    ]
+    before = sum(len(slot.text) for slot in slots)
+    warnings = list(parsed.warnings)
+    try:
+        extra = await fill_narration(
+            slots, provider=req.provider, target_lang=req.target_lang, cps=cps,
+            visual_context=req.visual_context, correlation_id=req.correlation_id,
+        )
+        usage = _merge_usage(usage, extra)
+    except ProviderException as exc:
+        # The draft is still a valid proposal; measured TTS and render pacing absorb the gap.
+        _log.warning("Narration fill degraded correlation_id=%s errorCode=%s", req.correlation_id, exc.code.value)
+        warnings.append("NARRATION_FILL_DEGRADED")
+    target = round(_requested_duration(req) * cps)
+    after = sum(len(slot.text) for slot in slots)
+    miss = abs(after - target) / target if target else 0.0
+    _log.info(
+        "Script narration fitted correlation_id=%s model=%s narration_cps=%.2f target_chars=%d "
+        "draft_chars=%d final_chars=%d miss=%.0f%%",
+        req.correlation_id, req.provider.model, cps, target, before, after, miss * 100,
     )
+    if miss > NARRATION_TOLERANCE:
+        warnings.append("NARRATION_LENGTH_RESIDUAL")
+    segments = [
+        segment.model_copy(update={"script_excerpt": slot.text})
+        for segment, slot in zip(parsed.segments, slots)
+    ]
+    return parsed.model_copy(update={
+        "script_content": join_narration([slot.text for slot in slots], req.target_lang),
+        "segments": segments,
+        "warnings": list(dict.fromkeys(warnings)),
+        "usage": usage,
+    })
 
 
 def _repair_prompt(user: str, violation: str) -> str:
@@ -338,10 +372,6 @@ async def _run(req: ScriptSummarizeRequest | ScriptRefineRequest, *, previous_sc
     usage: Usage | None = None
     violation: str | None = None
     response: ScriptSummarizeResponse | None = None
-    # Closest draft to the narration budget; measured TTS stays the duration
-    # authority and render tempo absorbs a small residual, so a writer that
-    # cannot converge still yields a usable proposal.
-    best: tuple[float, ScriptSummarizeResponse] | None = None
     for attempt in range(attempts):
         prompt = user if violation is None else _repair_prompt(user, violation)
         try:
@@ -376,24 +406,9 @@ async def _run(req: ScriptSummarizeRequest | ScriptRefineRequest, *, previous_sc
                 return response
             violation = exc.message
             continue
-        miss, feedback = _narration_miss(req, parsed)
-        if best is None or miss < best[0]:
-            best = (miss, parsed)
-        if feedback is None:
-            return parsed.model_copy(update={"usage": usage})
-        _log.info(
-            "Script narration outside budget correlation_id=%s model=%s attempt=%d/%d narration_chars=%d "
-            "narration_cps=%.2f miss=%.0f%%",
-            req.correlation_id, req.provider.model, attempt + 1, attempts,
-            _narration_chars(parsed), _narration_cps(req), miss * 100,
-        )
-        violation = feedback
-    if best is not None:
-        closest = best[1]
-        return closest.model_copy(update={
-            "usage": usage,
-            "warnings": [*closest.warnings, "NARRATION_LENGTH_RESIDUAL"],
-        })
+        # The footage is fitted; narration length is budgeted per segment, which
+        # converges where whole-script "expand" repairs keep shrinking the text.
+        return await _fit_narration(req, parsed, usage)
     assert response is not None
     return response
 

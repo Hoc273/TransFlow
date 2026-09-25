@@ -33,6 +33,7 @@ from app.schemas.contract import (
     ValidateProviderResponse,
 )
 from app.services import llm_gateway
+from app.services.segment_translation import translate_segments
 from app.services.provider_errors import ProviderErrorCode, ProviderException
 
 _int_log = get_internal_logger("routes")
@@ -70,6 +71,11 @@ def _classify_text_failure(raw_text: str, finish_reason: str) -> tuple[str, str]
 
 @router.post("/ai/translate", response_model=None)
 async def translate(req: TranslateRequest) -> TranslateResponse | StreamingResponse:
+    if req.segments:
+        try:
+            return await translate_segments(req)
+        except ProviderException as exc:
+            return _translate_failed(req, exc)
     system, user = build_translate_prompt(
         req.source_lang,
         req.target_lang,

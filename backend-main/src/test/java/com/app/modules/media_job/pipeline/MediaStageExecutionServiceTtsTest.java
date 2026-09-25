@@ -320,7 +320,7 @@ class MediaStageExecutionServiceTtsTest {
     }
 
     @Test
-    void narrationFarFromTheTargetIsOnlyRetimedUpToTheBound() {
+    void narrationFarFromTheTargetIsRetimedToTheBoundThenGetsBoundedPauses() {
         stage(MediaJobStage.StageName.RENDER);
         job.setRecipeId(MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH);
         job.setOutputAudioMode(MediaJob.OutputAudioMode.DUB_REPLACE);
@@ -334,7 +334,10 @@ class MediaStageExecutionServiceTtsTest {
         MockRestServiceServer worker = MockRestServiceServer.bindTo(workerBuilder).build();
         worker.expect(requestTo("http://worker.test/internal/media/render"))
                 .andExpect(jsonPath("$.generative_beats[0].tempo").value(0.9))
-                .andExpect(jsonPath("$.generative_beats[0].tts_duration_ms").value(2_667))
+                // 2 667 ms of voice + a pause capped at 35 % of it; the worker pads the voice.
+                .andExpect(jsonPath("$.generative_beats[0].tts_duration_ms").value(3_600))
+                .andExpect(jsonPath("$.generative_beats[1].tts_duration_ms").value(7_501))
+                .andExpect(jsonPath("$.cut_ranges[1].end_ms").value(11_101))
                 .andRespond(withSuccess());
 
         renderPipeline(workerBuilder.build()).execute(message("RENDER"));

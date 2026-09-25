@@ -64,6 +64,16 @@ class Usage(BaseModel):
 
 
 # ── /ai/translate ────────────────────────────────────────────────────────────
+class TranslateSegmentIn(BaseModel):
+    id: str = Field(min_length=1)
+    text: str
+
+
+class TranslateSegmentOut(BaseModel):
+    id: str
+    translation: str
+
+
 class TranslateRequest(BaseModel):
     request_id: str
     workspace_id: Optional[str] = None
@@ -74,12 +84,16 @@ class TranslateRequest(BaseModel):
     glossary: list[GlossaryTerm] = Field(default_factory=list)
     context: Optional[dict[str, Any]] = None
     options: Optional[dict[str, Any]] = None
+    # Timed subtitle lines: when present each line is translated on its own
+    # (batched), so callers never re-split a joined translation by guesswork.
+    segments: Optional[list[TranslateSegmentIn]] = None
 
 
 class TranslateResponse(BaseModel):
     request_id: str
     status: Status
     translation: Optional[str] = None
+    segments: list[TranslateSegmentOut] = Field(default_factory=list)
     applied_glossary: list[str] = Field(default_factory=list)
     usage: Optional[Usage] = None
     error: Optional[str] = None

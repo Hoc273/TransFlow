@@ -68,6 +68,8 @@ public class MediaStageExecutionService {
     private static final double MIN_NARRATION_TEMPO = 0.9d;
     private static final double MAX_NARRATION_TEMPO = 1.1d;
     private static final double NARRATION_TEMPO_DEADBAND = 0.03d;
+    private static final double MAX_NARRATION_PAUSE_RATIO = 0.35d;
+    private static final long MAX_NARRATION_PAUSE_MS = 2_500L;
 
     private final MediaJobRepository jobRepository;
     private final MediaJobStageRepository stageRepository;
@@ -272,14 +274,18 @@ public class MediaStageExecutionService {
                     List<Map<String, Object>> beats = new ArrayList<>();
                     List<Map<String, Object>> outputRanges = new ArrayList<>();
                     double tempo = narrationTempo(job, narration, duration);
+                    long[] pauses = narrationPauses(job, narration, duration, tempo);
                     long cursor = 0L;
-                    for (NarrationBeat beat : narration) {
+                    for (int index = 0; index < narration.size(); index++) {
+                        NarrationBeat beat = narration.get(index);
                         SubtitleSegment segment = beat.segment();
-                        long beatMs = tempo == 1.0 ? beat.durationMs() : Math.round(beat.durationMs() / tempo);
+                        long voiceMs = tempo == 1.0 ? beat.durationMs() : Math.round(beat.durationMs() / tempo);
+                        long beatMs = voiceMs + pauses[index];
                         Map<String, Object> wire = new LinkedHashMap<>();
                         wire.put("id", segment.getId().toString());
                         wire.put("source_start_ms", segment.getStartMs());
                         wire.put("source_end_ms", segment.getEndMs());
+                        // Beat length; the worker pads the voice with trailing silence up to it.
                         wire.put("tts_duration_ms", beatMs);
                         wire.put("audio_ref", beat.audioRef());
                         wire.put("narration_segment", segment.getTargetText());
@@ -288,7 +294,7 @@ public class MediaStageExecutionService {
                         }
                         beats.add(wire);
                         outputRanges.add(Map.of("start_ms", cursor, "end_ms", cursor + beatMs));
-                        cues.add(new RenderSubtitleCues.Cue(cursor, cursor + beatMs, segment.getTargetText()));
+                        cues.add(new RenderSubtitleCues.Cue(cursor, cursor + voiceMs, segment.getTargetText()));
                         cursor += beatMs;
                     }
                     body.put("generative_beats", beats);
@@ -647,6 +653,38 @@ public class MediaStageExecutionService {
         return Math.round(tempo * 1000d) / 1000d;
     }
 
+    /**
+     * Trailing pause per beat when the narration is still short after the tempo floor.
+     * The footage keeps playing under a short breath between beats, bounded so the
+     * voice never feels abandoned: at most 35 % of the beat's voice and 2.5 s.
+     */
+    private long[] narrationPauses(MediaJob job, List<NarrationBeat> narration, long sourceDurationMs, double tempo) {
+        long[] pauses = new long[narration.size()];
+        if (job.getRequestedDurationSeconds() == null || job.getRequestedDurationSeconds() <= 0) {
+            return pauses;
+        }
+        long targetMs = Math.min(job.getRequestedDurationSeconds() * 1000L, sourceDurationMs);
+        long[] voice = new long[narration.size()];
+        long voiceTotal = 0L;
+        for (int i = 0; i < narration.size(); i++) {
+            voice[i] = Math.round(narration.get(i).durationMs() / tempo);
+            voiceTotal += voice[i];
+        }
+        long deficit = targetMs - voiceTotal;
+        if (voiceTotal <= 0L || deficit <= Math.round(targetMs * NARRATION_TEMPO_DEADBAND)) {
+            return pauses;
+        }
+        long added = 0L;
+        for (int i = 0; i < voice.length; i++) {
+            long cap = Math.min(Math.round(voice[i] * MAX_NARRATION_PAUSE_RATIO), MAX_NARRATION_PAUSE_MS);
+            pauses[i] = Math.min(cap, Math.round((double) deficit * voice[i] / voiceTotal));
+            added += pauses[i];
+        }
+        log.info("Narration pauses job={} voiceMs={} targetMs={} addedPauseMs={}", job.getId(), voiceTotal,
+                targetMs, added);
+        return pauses;
+    }
+
     private Map<String, Object> defaultSubtitleTrack(MediaJob job, long duration, List<RenderSubtitleCues.Cue> raw) {
         Map<String, Object> renderConfig = jsonObject(job.getRenderConfig());
         Map<String, Object> style = jsonObject(job.getSubtitleStyle());
@@ -999,6 +1037,16 @@ public class MediaStageExecutionService {
         body.put("source_lang", job.getSourceLanguage() == null ? "auto" : job.getSourceLanguage());
         body.put("target_lang", job.getTargetLang());
         body.put("source_text", sourceText);
+        // Timed lines are translated one-to-one; re-splitting a joined translation
+        // cannot keep CJK (no spaces) or reflowed sentences on their own cues.
+        List<Map<String, Object>> lines = new ArrayList<>();
+        for (int i = 0; i < sourceSegments.size(); i++) {
+            String text = sourceSegments.get(i).sourceText();
+            lines.add(Map.of("id", String.valueOf(i), "text", text == null ? "" : text));
+        }
+        if (!lines.isEmpty()) {
+            body.put("segments", lines);
+        }
         body.put("glossary", glossary(job));
         ProviderContext provider = provider(job, "TRANSLATE");
         body.put("provider", provider.payload());
@@ -1558,9 +1606,12 @@ public class MediaStageExecutionService {
         }
 
         List<TargetSubtitle> responseSegments = translatedSegments(translation);
+        List<String> lineTranslations = lineTranslations(translation, sources.size());
         List<String> targetTexts;
         if (source == SubtitleSegment.ContentSource.AUTHORED_SCRIPT) {
             targetTexts = sources.stream().map(SourceSubtitle::sourceText).toList();
+        } else if (lineTranslations != null) {
+            targetTexts = lineTranslations;
         } else if (responseSegments.size() == sources.size()) {
             targetTexts = responseSegments.stream().map(TargetSubtitle::text).toList();
         } else {
@@ -1596,6 +1647,34 @@ public class MediaStageExecutionService {
             persisted.add(segment);
         }
         subtitleSegmentRepository.saveAll(persisted);
+    }
+
+    /**
+     * Per-line translations keyed by the source index sent as {@code segments[].id};
+     * {@code null} when the gateway answered with a joined translation only.
+     */
+    private List<String> lineTranslations(JsonNode result, int expected) {
+        JsonNode raw = result == null ? null : result.get("segments");
+        if (raw == null || !raw.isArray() || raw.isEmpty() || !raw.get(0).has("id")) {
+            return null;
+        }
+        String[] texts = new String[expected];
+        for (JsonNode item : raw) {
+            int index;
+            try {
+                index = Integer.parseInt(item.path("id").asText(""));
+            } catch (NumberFormatException ex) {
+                return null;
+            }
+            if (index >= 0 && index < expected) {
+                texts[index] = item.path("translation").asText("");
+            }
+        }
+        List<String> lines = new ArrayList<>(expected);
+        for (String text : texts) {
+            lines.add(text == null ? "" : text);
+        }
+        return lines;
     }
 
     private List<TargetSubtitle> translatedSegments(JsonNode result) {
@@ -1649,9 +1728,16 @@ public class MediaStageExecutionService {
             long weight = Math.max(1L, sources.get(i).sourceText() == null ? 1 : sources.get(i).sourceText().length());
             int desired = cursor + Math.max(1, (int) Math.round((double) normalized.length() * weight / totalWeight));
             desired = Math.min(normalized.length(), desired);
+            // Snap to a nearby space or sentence mark; unspaced scripts (CJK) have
+            // no spaces, and scanning to the end would pour everything into one cue.
+            int limit = Math.min(normalized.length(), desired + 24);
             int boundary = desired;
-            while (boundary < normalized.length() && !Character.isWhitespace(normalized.charAt(boundary))) {
+            while (boundary < limit && !Character.isWhitespace(normalized.charAt(boundary))
+                    && "。！？，、；.!?,;".indexOf(normalized.charAt(boundary - 1)) < 0) {
                 boundary++;
+            }
+            if (boundary == limit && limit < normalized.length()) {
+                boundary = desired;
             }
             if (boundary <= cursor && cursor < normalized.length()) {
                 boundary = Math.min(normalized.length(), cursor + 1);

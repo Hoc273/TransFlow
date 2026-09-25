@@ -676,6 +676,36 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([(2506, 9314), (10075, 13425)],
                          [(s.start_ms, s.end_ms) for s in segments])
 
+    async def test_decode_normalizes_mid_transcript_seconds_drift(self):
+        """Omni drifts from ms to seconds mid-transcript; segments must not be dropped."""
+        adapter = DashScopeNativeAdapter()
+        provider = _provider("dashscope_native", "qwen3-omni-flash")
+        text = json.dumps({"detected_lang": "zh", "segments": [
+            {"text": "a", "start_ms": 22560, "end_ms": 23520},
+            {"text": "b", "start_ms": 27200, "end_ms": 28960},
+            {"text": "c", "start_ms": 36.4, "end_ms": 41.04},
+            {"text": "d", "start_ms": 44, "end_ms": 47},
+        ]})
+        segments, _ = adapter._decode_timed_transcript(text, source_lang="zh", provider=provider)
+        self.assertEqual([(22560, 23520), (27200, 28960), (36400, 41040), (44000, 47000)],
+                         [(s.start_ms, s.end_ms) for s in segments])
+
+    async def test_decode_accepts_float_seconds_transcript(self):
+        adapter = DashScopeNativeAdapter()
+        provider = _provider("dashscope_native", "qwen3-omni-flash")
+        text = json.dumps([{"text": "a", "start_ms": 0.0, "end_ms": 4.32},
+                           {"text": "b", "start_ms": 5.84, "end_ms": 8.8}])
+        segments, _ = adapter._decode_timed_transcript(text, source_lang="zh", provider=provider)
+        self.assertEqual([(0, 4320), (5840, 8800)], [(s.start_ms, s.end_ms) for s in segments])
+
+    async def test_decode_keeps_integer_milliseconds(self):
+        adapter = DashScopeNativeAdapter()
+        provider = _provider("dashscope_native", "qwen3-omni-flash")
+        text = json.dumps([{"text": "a", "start_ms": 0, "end_ms": 900},
+                           {"text": "b", "start_ms": 1000, "end_ms": 1800}])
+        segments, _ = adapter._decode_timed_transcript(text, source_lang="vi", provider=provider)
+        self.assertEqual([(0, 900), (1000, 1800)], [(s.start_ms, s.end_ms) for s in segments])
+
     async def test_decode_truncated_array_rejects_recoverable_prefix(self):
         """Complete objects inside truncated JSON are diagnostic-only."""
         adapter = DashScopeNativeAdapter()
@@ -767,6 +797,66 @@ class DashScopeNativeAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
         self.assertIn("no usable timed segments", str(ctx.exception))
+
+    async def test_synthesize_falls_back_when_model_rejects_voice(self):
+        """A voice saved for another Omni snapshot must not fail the TTS stage."""
+        from app.services.protocol import dashscope_native as module
+
+        audio = base64.b64encode(b"AAA").decode()
+        ok_lines = [
+            f'data: {json.dumps({"choices": [{"delta": {"audio": {"data": audio, "transcript": "Xin chao"}}}]})}',
+            "data: [DONE]",
+        ]
+        rejected = json.dumps({"error": {
+            "message": "<400> InternalError.Algo.InvalidParameter: Voice 'Serena' is not supported.",
+            "code": "invalid_parameter_error"}}).encode()
+        voices: list[str] = []
+
+        class _StreamResponse:
+            request = httpx.Request("POST", "https://provider.test/v1/chat/completions")
+
+            def __init__(self, voice):
+                self.status_code = 400 if voice == "Serena" else 200
+
+            async def aiter_lines(self):
+                for line in ok_lines:
+                    yield line
+
+            async def aread(self):
+                return rejected
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            def stream(self, *a, **k):
+                voice = k["json"]["audio"]["voice"]
+                voices.append(voice)
+                return _StreamResponse(voice)
+
+        module._VOICE_SUBSTITUTES.clear()
+        provider = _provider("dashscope_native", "qwen3-omni-flash-2025-09-15")
+        with patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()):
+            first = await DashScopeNativeAdapter().synthesize(provider, "Xin chao", "Serena")
+            second = await DashScopeNativeAdapter().synthesize(provider, "Xin chao", "Serena")
+
+        self.assertEqual("Serena", voices[0])
+        substitute = voices[1]
+        self.assertNotEqual("Serena", substitute)
+        self.assertEqual(substitute, first.metadata["voice"])
+        # The working substitute is remembered: no second rejected round-trip.
+        self.assertEqual([substitute], voices[2:])
+        self.assertEqual(substitute, second.metadata["voice"])
+        module._VOICE_SUBSTITUTES.clear()
 
     async def test_synthesize_rejects_text_only_model_before_request(self):
         with patch("app.services.protocol.dashscope_native.httpx.AsyncClient") as client_cls:

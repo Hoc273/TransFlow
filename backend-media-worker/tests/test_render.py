@@ -520,6 +520,16 @@ class RenderContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1.08, apply_tempo.call_args.args[1])
         self.assertEqual("COMPLETED", complete.await_args.args[2])
 
+    def test_beat_voice_is_padded_with_silence_to_the_beat_length(self):
+        # Spring adds a bounded pause after a short narration beat; the voice
+        # must last the whole beat or audio drifts ahead of the footage.
+        from app.api.render import _pad_audio_to
+        with patch("app.api.render._run") as run:
+            out = _pad_audio_to("voice.wav", 3250, "tmp")
+        cmd = run.call_args.args[0]
+        self.assertIn("apad=whole_dur=3.250", cmd)
+        self.assertEqual(out, cmd[-1])
+
     async def test_generative_ffmpeg_retryable_flag_reaches_callback(self):
         storage = Mock()
         failure = FFmpegError(
