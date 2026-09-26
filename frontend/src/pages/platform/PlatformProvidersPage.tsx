@@ -8,8 +8,10 @@ import {
   IconPower,
   IconTrash,
 } from '@tabler/icons-react'
+import { VoiceCatalogModal } from '@/components/settings/VoiceCatalogModal'
 import { Modal } from '@/components/shared/Modal'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+import { useTtsVoices } from '@/hooks/useProviders'
 import {
   useCreatePlatformProvider,
   useDeletePlatformProvider,
@@ -107,6 +109,8 @@ export function PlatformProvidersPage() {
   const [confirmDelete, setConfirmDelete] = useState<PlatformProvider | null>(null)
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [voiceProvider, setVoiceProvider] = useState<PlatformProvider | null>(null)
+  const platformVoices = useTtsVoices(undefined, voiceProvider?.id, 'PLATFORM')
 
   useDocumentTitle(t('providers.title'))
 
@@ -186,13 +190,13 @@ export function PlatformProvidersPage() {
     }
   }
 
-  const runSync = async (p: PlatformProvider) => {
+  // Errors propagate so the voice catalog modal can show them inline.
+  const syncVoices = async (p: PlatformProvider) => {
     setBusyId(p.id)
     try {
       const res = await syncMutation.mutateAsync(p.id)
       setNotice({ tone: 'ok', text: t('providers.syncDone', { name: p.name, count: res.activeVoices }) })
-    } catch (error) {
-      setNotice({ tone: 'error', text: errorText(error, t('providers.syncError')) })
+      await platformVoices.refetch()
     } finally {
       setBusyId(null)
     }
@@ -374,9 +378,8 @@ export function PlatformProvidersPage() {
                         </IconButton>
                         {p.capabilities.includes('TTS') && (
                           <IconButton
-                            label={t('providers.syncVoices')}
-                            disabled={busyId === p.id}
-                            onClick={() => void runSync(p)}
+                            label={t('providers.voices')}
+                            onClick={() => setVoiceProvider(p)}
                           >
                             <IconMicrophone size={15} />
                           </IconButton>
@@ -562,6 +565,17 @@ export function PlatformProvidersPage() {
           </div>
         </form>
       </Modal>
+
+      <VoiceCatalogModal
+        open={voiceProvider !== null}
+        onClose={() => setVoiceProvider(null)}
+        title={t('providers.voicesTitle', { name: voiceProvider?.name ?? '' })}
+        description={t('providers.voicesHint')}
+        voices={platformVoices.data}
+        loading={platformVoices.isLoading}
+        refreshing={syncMutation.isPending}
+        onRefresh={voiceProvider ? () => syncVoices(voiceProvider) : undefined}
+      />
 
       <Modal
         open={!!testResult}

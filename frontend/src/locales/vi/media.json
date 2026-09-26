@@ -598,6 +598,7 @@
     "genderFilterLabel": "Lọc theo giới tính",
     "genderAll": "Tất cả",
     "multilingualGroup": "Giọng đa ngôn ngữ",
+    "showMultilingual": "Hiện thêm {{count}} giọng đa ngôn ngữ (locale khác) đọc được {{language}}",
     "previewTag": "Preview",
     "filterCount": "{{shown}} / {{total}} giọng",
     "noFilterMatch": "Không có giọng nào khớp bộ lọc."

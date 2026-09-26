@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatVoiceLanguage,
+  listVoiceLanguages,
+  splitVoicesByLanguage,
   defaultTtsProvider,
   filterCompatibleActiveVoices,
   groupVoicesForPicker,
@@ -170,25 +173,42 @@ describe('groupVoicesForPicker', () => {
     voice({ id: 'andrew', voiceId: 'en-US-AndrewMultilingualNeural', language: 'en-us', languages: ['en', 'vi'], displayName: 'Andrew Multilingual', gender: 'MALE' }),
   ]
 
-  it('groups native voices by locale, then one multilingual group, keeping API order', () => {
+  it('groups native voices by locale, then one multilingual group, A→Z', () => {
     const groups = groupVoicesForPicker(catalog, 'vi')
     expect(groups.map((g) => [g.kind, g.locale, g.voices.map((v) => v.id)])).toEqual([
       ['native', 'vi-vn', ['hoaimy', 'namminh']],
-      ['multilingual', null, ['ava', 'andrew']],
+      ['multilingual', null, ['andrew', 'ava']],
     ])
+  })
+
+  it('hides multilingual voices of other locales unless opted in, keeping the selected one', () => {
+    const ids = (opts: Parameters<typeof groupVoicesForPicker>[2]) =>
+      groupVoicesForPicker(catalog, 'vi', opts).flatMap((g) => g.voices.map((v) => v.id))
+    expect(ids({ includeMultilingual: false })).toEqual(['hoaimy', 'namminh'])
+    expect(ids({ includeMultilingual: false, keepVoiceId: 'ava' })).toEqual(['hoaimy', 'namminh', 'ava'])
+  })
+
+  it('orders locale groups by their name in the UI language', () => {
+    const en = [
+      voice({ id: 'us', voiceId: 'en-US-Jenny', language: 'en-us', languages: ['en'], displayName: 'Jenny' }),
+      voice({ id: 'au', voiceId: 'en-AU-Annette', language: 'en-au', languages: ['en'], displayName: 'Annette' }),
+      voice({ id: 'gb', voiceId: 'en-GB-Sonia', language: 'en-gb', languages: ['en'], displayName: 'Sonia' }),
+    ]
+    // English (Australia) < English (United Kingdom) < English (United States)
+    expect(groupVoicesForPicker(en, 'en', { uiLang: 'en' }).map((g) => g.locale)).toEqual(['en-au', 'en-gb', 'en-us'])
   })
 
   it('searches name, id and locale ignoring case and accents', () => {
     const ids = (q: string) => groupVoicesForPicker(catalog, 'vi', { query: q }).flatMap((g) => g.voices.map((v) => v.id))
     expect(ids('hoai my')).toEqual(['hoaimy'])
     expect(ids('ANDREW')).toEqual(['andrew'])
-    expect(ids('en-us')).toEqual(['ava', 'andrew'])
+    expect(ids('en-us')).toEqual(['andrew', 'ava'])
     expect(ids('zzz')).toEqual([])
   })
 
   it('filters by gender and always keeps the selected voice visible', () => {
     const groups = groupVoicesForPicker(catalog, 'vi', { gender: 'MALE', keepVoiceId: 'ava' })
-    expect(groups.flatMap((g) => g.voices.map((v) => v.id))).toEqual(['namminh', 'ava', 'andrew'])
+    expect(groups.flatMap((g) => g.voices.map((v) => v.id))).toEqual(['namminh', 'andrew', 'ava'])
   })
 
   it('drops inactive and incompatible voices', () => {
@@ -282,5 +302,42 @@ describe('selection predicates (BA re-review v3)', () => {
     expect(isDeselectSelection(providerSwitchReset())).toBe(true)
     // But callers distinguish it by routing: pending vs committed.
     expect(isCompleteVoicePair(providerSwitchReset())).toBe(false)
+  })
+})
+
+describe('splitVoicesByLanguage', () => {
+  const v = (id: string, language: string, languages: string[]) =>
+    ({ id, voiceId: id, language, languages, gender: 'FEMALE', displayName: id, isActive: true, cachedAt: null })
+
+  it('keeps multilingual voices of other locales out of the native list', () => {
+    const voices = [
+      v('ko-KR-SunHiNeural', 'ko-kr', ['ko']),
+      v('en-US-AvaMultilingualNeural', 'en-us', ['en', 'ko', 'zh']),
+      v('zh-CN-XiaoxiaoMultilingualNeural', 'zh-cn', ['zh', 'ko']),
+      v('ko-KR-InJoonNeural', 'ko-kr', ['ko']),
+      v('ja-JP-NanamiNeural', 'ja-jp', ['ja']),
+    ]
+    const { native, multilingual } = splitVoicesByLanguage(voices, 'ko')
+    expect(native.map((x) => x.id)).toEqual(['ko-KR-SunHiNeural', 'ko-KR-InJoonNeural'])
+    expect(multilingual.map((x) => x.id)).toEqual(['en-US-AvaMultilingualNeural', 'zh-CN-XiaoxiaoMultilingualNeural'])
+  })
+})
+
+describe('language names follow the web language', () => {
+  it('formats in the UI language, not the browser one', () => {
+    expect(formatVoiceLanguage('ko', 'en')).toBe('Korean')
+    expect(formatVoiceLanguage('ko', 'vi')).toBe('Tiếng Hàn')
+  })
+
+  it('lists catalog languages A→Z in the UI language with native / multilingual counts', () => {
+    const voices = [
+      voice({ id: 'k', language: 'ko-kr', languages: ['ko'] }),
+      voice({ id: 'a', language: 'en-us', languages: ['en', 'ko', 'vi'] }),
+      voice({ id: 'v', language: 'vi-vn', languages: ['vi'] }),
+    ]
+    const en = listVoiceLanguages(voices, 'en')
+    expect(en.map((l) => l.label)).toEqual(['English', 'Korean', 'Vietnamese'])
+    expect(en.find((l) => l.code === 'ko')).toMatchObject({ nativeCount: 1, multilingualCount: 1 })
+    expect(listVoiceLanguages(voices, 'vi').map((l) => l.code)).toEqual(['en', 'ko', 'vi'])
   })
 })

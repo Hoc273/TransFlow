@@ -13,6 +13,7 @@ import {
   filterCompatibleActiveVoices,
   formatVoiceLanguage,
   groupVoicesForPicker,
+  isNativeVoice,
   isTtsProvider,
   providerDisplayName,
   providerSwitchReset,
@@ -108,7 +109,8 @@ export function VoiceSelector({
   onOriginalChange,
   onPendingChange,
 }: Props) {
-  const { t } = useTranslation(['media', 'common'])
+  const { t, i18n } = useTranslation(['media', 'common'])
+  const uiLang = i18n?.language
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
   const onPendingRef = useRef(onPendingChange)
@@ -122,6 +124,7 @@ export function VoiceSelector({
   // Search + gender filter for catalogs with many voices per language (Azure: up to 348).
   const [voiceQuery, setVoiceQuery] = useState('')
   const [voiceGender, setVoiceGender] = useState<VoiceGenderFilter>('ALL')
+  const [showMultilingual, setShowMultilingual] = useState(false)
 
   const selectableProviders = useMemo(
     () => providers.filter((p) => p.enabled && isTtsProvider(p)),
@@ -202,6 +205,7 @@ export function VoiceSelector({
     setKeepOriginal(false)
     setVoiceQuery('')
     setVoiceGender('ALL')
+    setShowMultilingual(false)
     setPendingProviderId(next)
     setProviderId(null)
     setVoiceId(null)
@@ -281,26 +285,40 @@ export function VoiceSelector({
     [compatibleVoices, voiceId],
   )
 
-  const showVoiceFilters = compatibleVoices.length > VOICE_FILTER_THRESHOLD
+  // Multilingual voices of other locales (Azure en-US-…Multilingual reads Korean
+  // too) are opt-in; a language without native voices shows them directly.
+  const nativeVoiceCount = useMemo(
+    () => compatibleVoices.filter((v) => isNativeVoice(v, targetLang)).length,
+    [compatibleVoices, targetLang],
+  )
+  const multilingualVoiceCount = compatibleVoices.length - nativeVoiceCount
+  const includeMultilingual = showMultilingual || nativeVoiceCount === 0
+  const listedVoiceCount = includeMultilingual ? compatibleVoices.length : nativeVoiceCount
+
+  const showVoiceFilters = listedVoiceCount > VOICE_FILTER_THRESHOLD
   const voiceGroups = useMemo(
-    () => groupVoicesForPicker(voicesQuery.data, targetLang, showVoiceFilters
-      ? { query: voiceQuery, gender: voiceGender, keepVoiceId: voiceId }
-      : {}),
-    [voicesQuery.data, targetLang, showVoiceFilters, voiceQuery, voiceGender, voiceId],
+    () => groupVoicesForPicker(voicesQuery.data, targetLang, {
+      ...(showVoiceFilters ? { query: voiceQuery, gender: voiceGender } : {}),
+      keepVoiceId: voiceId,
+      includeMultilingual,
+      uiLang,
+    }),
+    [voicesQuery.data, targetLang, showVoiceFilters, voiceQuery, voiceGender, voiceId, includeMultilingual, uiLang],
   )
   // Matches only — the kept selected voice is not a filter hit.
   const matchedVoiceCount = useMemo(
     () => showVoiceFilters
-      ? groupVoicesForPicker(voicesQuery.data, targetLang, { query: voiceQuery, gender: voiceGender })
-        .reduce((sum, group) => sum + group.voices.length, 0)
-      : compatibleVoices.length,
-    [showVoiceFilters, voicesQuery.data, targetLang, voiceQuery, voiceGender, compatibleVoices.length],
+      ? groupVoicesForPicker(voicesQuery.data, targetLang, {
+        query: voiceQuery, gender: voiceGender, includeMultilingual,
+      }).reduce((sum, group) => sum + group.voices.length, 0)
+      : listedVoiceCount,
+    [showVoiceFilters, voicesQuery.data, targetLang, voiceQuery, voiceGender, includeMultilingual, listedVoiceCount],
   )
 
   const voiceOptionLabel = (voice: TtsVoice, multilingual: boolean) => {
     const parts = [
       multilingual
-        ? `${voice.displayName || voice.voiceId} (${formatVoiceLanguage(voice.language)})`
+        ? `${voice.displayName || voice.voiceId} (${formatVoiceLanguage(voice.language, uiLang)})`
         : voice.displayName || voice.voiceId,
     ]
     if (voice.gender && voice.gender !== 'UNKNOWN') {
@@ -435,7 +453,7 @@ export function VoiceSelector({
                       key={group.key}
                       label={group.kind === 'multilingual'
                         ? t('media:voice.multilingualGroup')
-                        : formatVoiceLanguage(group.locale ?? '')}
+                        : formatVoiceLanguage(group.locale ?? '', uiLang)}
                     >
                       {renderVoiceOptions(group)}
                     </optgroup>
@@ -502,9 +520,24 @@ export function VoiceSelector({
           <span className="voice-filter__count" data-testid="voice-filter-count" aria-live="polite">
             {matchedVoiceCount === 0
               ? t('media:voice.noFilterMatch')
-              : t('media:voice.filterCount', { shown: matchedVoiceCount, total: compatibleVoices.length })}
+              : t('media:voice.filterCount', { shown: matchedVoiceCount, total: listedVoiceCount })}
           </span>
         </div>
+      )}
+
+      {showTtsControls && providerId && !loading && nativeVoiceCount > 0 && multilingualVoiceCount > 0 && (
+        <label className="voice-multilingual-toggle" data-testid="voice-show-multilingual">
+          <input
+            type="checkbox"
+            checked={showMultilingual}
+            disabled={disabled}
+            onChange={(e) => setShowMultilingual(e.target.checked)}
+          />
+          {t('media:voice.showMultilingual', {
+            count: multilingualVoiceCount,
+            language: formatVoiceLanguage(targetLang ?? '', uiLang),
+          })}
+        </label>
       )}
 
       {boundProviderMissing && (

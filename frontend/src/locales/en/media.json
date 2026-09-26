@@ -598,6 +598,7 @@
     "genderFilterLabel": "Filter by gender",
     "genderAll": "All",
     "multilingualGroup": "Multilingual voices",
+    "showMultilingual": "Also show {{count}} multilingual voices from other locales that can read {{language}}",
     "previewTag": "Preview",
     "filterCount": "{{shown}} / {{total}} voices",
     "noFilterMatch": "No voice matches these filters."

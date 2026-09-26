@@ -7,6 +7,7 @@
  * "vi" matches "vi-VN" and "en-US" matches "en". Do not invent an
  * exact-language-only rule — the backend supports compatible variants.
  */
+import i18next from 'i18next'
 import type { ProviderConfig, TtsVoice } from '@/types/provider'
 
 /**
@@ -95,7 +96,7 @@ export type VoiceGroup = {
   voices: TtsVoice[]
 }
 
-function foldForSearch(value: string): string {
+export function foldForSearch(value: string): string {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -105,20 +106,31 @@ function foldForSearch(value: string): string {
 
 /**
  * Picker groups for catalogs with N voices per language (Azure: up to 348 for
- * "en"). Native voices are grouped per locale (vi-VN, en-US, en-GB …), then a
- * single multilingual group; API order is kept inside each group. `query`
- * matches name, vendor id or locale ignoring case and accents; `keepVoiceId`
- * stays visible whatever the filters so the select never loses its value.
+ * "en"). Native voices are grouped per locale (vi-VN, en-US, en-GB …) and a
+ * single multilingual group follows; groups and voices are A→Z in the UI
+ * language (the default pick is made separately by `selectDefaultVoice`).
+ * `query` matches name, vendor id or locale ignoring case and accents;
+ * `includeMultilingual: false` hides voices of other locales that merely
+ * list the target in `languages[]`; `keepVoiceId` stays visible whatever the
+ * filters so the select never loses its value.
  */
 export function groupVoicesForPicker(
   voices: TtsVoice[] | undefined,
   targetLang?: string | null,
-  options: { query?: string; gender?: VoiceGenderFilter; keepVoiceId?: string | null } = {},
+  options: {
+    query?: string
+    gender?: VoiceGenderFilter
+    keepVoiceId?: string | null
+    includeMultilingual?: boolean
+    uiLang?: string
+  } = {},
 ): VoiceGroup[] {
   const query = foldForSearch(options.query?.trim() ?? '')
   const gender = options.gender ?? 'ALL'
+  const includeMultilingual = options.includeMultilingual ?? true
   const visible = filterCompatibleActiveVoices(voices, targetLang).filter((voice) => {
     if (voice.id === options.keepVoiceId) return true
+    if (!includeMultilingual && !isNativeVoice(voice, targetLang)) return false
     if (gender !== 'ALL' && voice.gender !== gender) return false
     if (!query) return true
     return [voice.displayName, voice.voiceId, voice.language]
@@ -140,11 +152,64 @@ export function groupVoicesForPicker(
     }
     group.voices.push(voice)
   }
+  const collator = voiceCollator(options.uiLang)
   const groups = [...nativeGroups.values()]
+    .sort((a, b) => collator.compare(formatVoiceLanguage(a.locale ?? '', options.uiLang),
+      formatVoiceLanguage(b.locale ?? '', options.uiLang)))
+  for (const group of groups) group.voices = sortVoicesByName(group.voices, options.uiLang)
   if (multilingual.length > 0) {
-    groups.push({ key: 'multilingual', kind: 'multilingual', locale: null, voices: multilingual })
+    groups.push({
+      key: 'multilingual',
+      kind: 'multilingual',
+      locale: null,
+      voices: sortVoicesByName(multilingual, options.uiLang),
+    })
   }
   return groups
+}
+
+/** Number of compatible voices of other locales (hidden unless opted in). */
+export function countMultilingualVoices(voices: TtsVoice[] | undefined, targetLang?: string | null): number {
+  return filterCompatibleActiveVoices(voices, targetLang).filter((v) => !isNativeVoice(v, targetLang)).length
+}
+
+const voiceLabel = (voice: TtsVoice) => voice.displayName || voice.voiceId
+
+/** Voices A→Z by readable name in the UI language ("Ánh" next to "Anh"). */
+export function sortVoicesByName<T extends TtsVoice>(voices: readonly T[], uiLang?: string): T[] {
+  const collator = voiceCollator(uiLang)
+  return [...voices].sort((a, b) => collator.compare(voiceLabel(a), voiceLabel(b)))
+}
+
+export type VoiceLanguageOption = {
+  /** Normalized primary code ("ko"). */
+  code: string
+  label: string
+  /** Voices whose own locale is this language. */
+  nativeCount: number
+  /** Voices of other locales that can also read it. */
+  multilingualCount: number
+}
+
+/** Every language a catalog can read, A→Z by its name in the UI language. */
+export function listVoiceLanguages(voices: readonly TtsVoice[] | undefined, uiLang?: string): VoiceLanguageOption[] {
+  const byCode = new Map<string, VoiceLanguageOption>()
+  const entry = (code: string) => {
+    let option = byCode.get(code)
+    if (!option) {
+      option = { code, label: formatVoiceLanguage(code, uiLang), nativeCount: 0, multilingualCount: 0 }
+      byCode.set(code, option)
+    }
+    return option
+  }
+  for (const voice of voices ?? []) {
+    const own = primaryCode(voice.language)
+    if (own) entry(own).nativeCount += 1
+    const others = new Set((voice.languages ?? []).map((l) => primaryCode(l)).filter(Boolean) as string[])
+    for (const code of others) if (code !== own) entry(code).multilingualCount += 1
+  }
+  const collator = voiceCollator(uiLang)
+  return [...byCode.values()].sort((a, b) => collator.compare(a.label, b.label))
 }
 
 /** A provider usable for TTS (capability flag only — not enabled/disabled). */
@@ -152,26 +217,51 @@ export function isTtsProvider(provider: ProviderConfig): boolean {
   return provider.capabilities.includes('TTS')
 }
 
-// Lazy singleton — construction can throw on runtimes without ICU support.
-let languageDisplayNames: Intl.DisplayNames | null = null
-function voiceDisplayNames(): Intl.DisplayNames | null {
-  if (languageDisplayNames) return languageDisplayNames
-  try {
-    languageDisplayNames = new Intl.DisplayNames(undefined, { type: 'language' })
-    return languageDisplayNames
-  } catch {
-    return null
+/** The current UI language (en / vi) — voice lists follow the web language, not the browser's. */
+function currentUiLang(uiLang?: string): string | undefined {
+  return uiLang || i18next.language || undefined
+}
+
+// Per-locale caches — construction can throw on runtimes without ICU support.
+const displayNamesCache = new Map<string, Intl.DisplayNames | null>()
+function voiceDisplayNames(uiLang?: string): Intl.DisplayNames | null {
+  const key = currentUiLang(uiLang) ?? ''
+  if (!displayNamesCache.has(key)) {
+    let names: Intl.DisplayNames | null = null
+    try {
+      names = new Intl.DisplayNames(key ? [key] : undefined, { type: 'language', languageDisplay: 'standard' })
+    } catch {
+      names = null
+    }
+    displayNamesCache.set(key, names)
   }
+  return displayNamesCache.get(key) ?? null
+}
+
+const collatorCache = new Map<string, Intl.Collator>()
+function voiceCollator(uiLang?: string): Intl.Collator {
+  const key = currentUiLang(uiLang) ?? ''
+  let collator = collatorCache.get(key)
+  if (!collator) {
+    try {
+      collator = new Intl.Collator(key ? [key] : undefined, { sensitivity: 'base', numeric: true })
+    } catch {
+      collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
+    }
+    collatorCache.set(key, collator)
+  }
+  return collator
 }
 
 /**
- * Human-readable name for a normalized primary code ("vi" → "Vietnamese"),
- * falling back to the canonical code itself. Display-only — the canonical
- * value everywhere remains the normalized code.
+ * Human-readable name for a language or locale code in the UI language
+ * ("ko" → "Korean" / "Tiếng Hàn", "ko-kr" → "Korean (South Korea)"), falling
+ * back to the code itself. Display-only — the canonical value everywhere
+ * remains the normalized code.
  */
-export function formatVoiceLanguage(code: string): string {
-  const names = voiceDisplayNames()
-  if (!names) return code
+export function formatVoiceLanguage(code: string, uiLang?: string): string {
+  const names = voiceDisplayNames(uiLang)
+  if (!names || !code) return code
   try {
     return names.of(code) ?? code
   } catch {
@@ -256,4 +346,22 @@ export function isDeselectSelection(selection: VoiceSelection): boolean {
  */
 export function providerSwitchReset(): VoiceSelection {
   return { providerId: null, voiceId: null }
+}
+
+/**
+ * Voice catalog filtered by language: `native` voices speak it as their own
+ * locale (ko-KR for "ko"); `multilingual` ones only list it in `languages[]`
+ * (Azure en-US-AvaMultilingualNeural reads Korean too) and must not be mixed in.
+ */
+export function splitVoicesByLanguage<T extends TtsVoice>(
+  voices: readonly T[],
+  language: string,
+): { native: T[]; multilingual: T[] } {
+  const native: T[] = []
+  const multilingual: T[] = []
+  for (const voice of voices) {
+    if (isNativeVoice(voice, language)) native.push(voice)
+    else if (voiceMatchesTargetLang(voice, language)) multilingual.push(voice)
+  }
+  return { native, multilingual }
 }

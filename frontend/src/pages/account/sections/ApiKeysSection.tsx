@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import {
   IconAlertCircle,
   IconCircleCheck,
@@ -6,15 +6,14 @@ import {
   IconKey,
   IconLoader2,
   IconMicrophone2,
-  IconPlayerPlay,
   IconPlugConnected,
   IconPlus,
-  IconRefresh,
   IconRobot,
   IconStar,
   IconTrash,
 } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
+import { VoiceCatalogModal } from '@/components/settings/VoiceCatalogModal'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Modal } from '@/components/shared/Modal'
 import {
@@ -24,12 +23,9 @@ import {
   useRefreshTtsVoices,
   useSetDefaultProvider,
   useTestProvider,
-  useTtsVoiceLanguages,
   useTtsVoices,
   useUpdateProvider,
-  useVoicePreview,
 } from '@/hooks/useProviders'
-import { formatVoiceLanguage, voiceMatchesTargetLang } from '@/lib/media/voiceSelection'
 import { validateProviderBaseUrl } from '@/lib/providerBaseUrl'
 import {
   SELECTABLE_PROTOCOLS,
@@ -110,7 +106,7 @@ type TestState = {
 }
 
 export function ApiKeysSection() {
-  const { t } = useTranslation(['account', 'settings', 'common', 'media'])
+  const { t } = useTranslation(['account', 'settings', 'common'])
   const tp = (key: string, options?: Record<string, unknown>) =>
     t(`settings:providers.${key}`, options)
 
@@ -131,27 +127,7 @@ export function ApiKeysSection() {
   const [testState, setTestState] = useState<Record<string, TestState>>({})
 
   const [voiceProvider, setVoiceProvider] = useState<ProviderConfig | null>(null)
-  const [voiceError, setVoiceError] = useState<string | null>(null)
-  const [voiceLanguageFilter, setVoiceLanguageFilter] = useState('')
   const voiceQuery = useTtsVoices(voiceProvider?.id)
-  const voiceLanguagesQuery = useTtsVoiceLanguages(voiceProvider?.id)
-  const voicePreview = useVoicePreview()
-  const availableLanguages = voiceLanguagesQuery.data ?? []
-
-  useEffect(() => {
-    if (availableLanguages.length === 1 && voiceLanguageFilter === '') {
-      setVoiceLanguageFilter(availableLanguages[0].code)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [availableLanguages.length])
-
-  const filteredVoices = useMemo(
-    () =>
-      voiceLanguageFilter
-        ? (voiceQuery.data ?? []).filter((voice) => voiceMatchesTargetLang(voice, voiceLanguageFilter))
-        : voiceQuery.data,
-    [voiceQuery.data, voiceLanguageFilter],
-  )
 
   const protocolLabel = (protocol: ProviderProtocol) =>
     tp(`types.${protocol}`, { defaultValue: protocol })
@@ -296,11 +272,7 @@ export function ApiKeysSection() {
     }))
   }
 
-  const openVoiceCatalog = (provider: ProviderConfig) => {
-    setVoiceProvider(provider)
-    setVoiceError(null)
-    setVoiceLanguageFilter('')
-  }
+  const openVoiceCatalog = (provider: ProviderConfig) => setVoiceProvider(provider)
 
   const saving = createProvider.isPending || updateProvider.isPending
 
@@ -732,141 +704,16 @@ export function ApiKeysSection() {
         </form>
       </Modal>
 
-      <Modal
+      <VoiceCatalogModal
         open={voiceProvider !== null}
-        onClose={() => {
-          if (!refreshTtsVoices.isPending) setVoiceProvider(null)
-        }}
-        title={tp('voices.title', {
-          name: voiceProvider ? protocolLabel(voiceProvider.protocol) : '',
-        })}
+        onClose={() => setVoiceProvider(null)}
+        title={tp('voices.title', { name: voiceProvider ? protocolLabel(voiceProvider.protocol) : '' })}
         description={tp('voices.description')}
-        size="lg"
-        className="voice-catalog-modal"
-      >
-        <div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="m-0 text-sm text-[var(--color-text-secondary)]">
-              {tp('voices.activeCount', { count: voiceQuery.data?.length ?? 0 })}
-            </p>
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              disabled={!voiceProvider || refreshTtsVoices.isPending}
-              onClick={() => {
-                if (!voiceProvider) return
-                setVoiceError(null)
-                void refreshTtsVoices.mutateAsync(voiceProvider.id).catch((err: unknown) => {
-                  setVoiceError(err instanceof ApiError ? err.message : t('common:error.generic'))
-                })
-              }}
-            >
-              <IconRefresh size={14} />
-              {refreshTtsVoices.isPending ? tp('voices.refreshing') : tp('voices.refresh')}
-            </button>
-          </div>
-
-          {availableLanguages.length > 0 && (
-            <label className="field-label">
-              <span>{tp('voices.language')}</span>
-              <select
-                className="field-input"
-                value={voiceLanguageFilter}
-                onChange={(e) => setVoiceLanguageFilter(e.target.value)}
-              >
-                <option value="">{tp('voices.allLanguages')}</option>
-                {availableLanguages.map((language) => (
-                  <option key={language.code} value={language.code}>
-                    {formatVoiceLanguage(language.code)}
-                    {' · '}
-                    {tp('voices.languageCount', { count: language.voiceCount })}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <div className="voice-catalog-table-wrap">
-            {voiceQuery.isLoading ? (
-              <p className="m-0 p-4 text-sm text-[var(--color-text-tertiary)]">{t('common:loading')}</p>
-            ) : (voiceQuery.data?.length ?? 0) === 0 ? (
-              <p className="m-0 p-4 text-sm text-[var(--color-text-tertiary)]">{tp('voices.empty')}</p>
-            ) : (filteredVoices?.length ?? 0) === 0 ? (
-              <p className="m-0 p-4 text-sm text-[var(--color-text-tertiary)]">
-                {tp('voices.noneForLanguage', { language: formatVoiceLanguage(voiceLanguageFilter) })}
-              </p>
-            ) : (
-              <table className="dd-table voice-catalog-table">
-                <thead>
-                  <tr>
-                    <th>{tp('voices.displayName')}</th>
-                    <th>{tp('voices.language')}</th>
-                    <th>{tp('voices.gender')}</th>
-                    <th className="voice-catalog-preview-col">{tp('voices.preview')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredVoices?.map((voice) => (
-                    <tr key={voice.id}>
-                      <td>
-                        <div className="font-medium text-[var(--color-text-primary)]">
-                          {voice.displayName || voice.voiceId}
-                          {voice.status === 'PREVIEW' && (
-                            <span className="role-pill ml-1.5 text-[10px]">{t('media:voice.previewTag')}</span>
-                          )}
-                        </div>
-                        <div className="voice-catalog-id" title={voice.voiceId}>
-                          {voice.voiceId}
-                        </div>
-                      </td>
-                      <td className="whitespace-nowrap">{voice.language}</td>
-                      <td className="whitespace-nowrap">{voice.gender}</td>
-                      <td className="voice-catalog-preview-col">
-                        <button
-                          type="button"
-                          className="btn-secondary btn-sm whitespace-nowrap"
-                          disabled={!voiceProvider || voicePreview.isPending}
-                          onClick={() => {
-                            if (!voiceProvider) return
-                            setVoiceError(null)
-                            void voicePreview
-                              .mutateAsync({
-                                providerId: voiceProvider.id,
-                                // PreviewTtsVoiceRequest.voiceId is the tts_voices row UUID.
-                                voiceRowId: voice.id,
-                                language: voice.language,
-                              })
-                              .catch((err: unknown) => {
-                                setVoiceError(
-                                  `${tp('voices.previewError')}: ${
-                                    err instanceof ApiError ? err.message : t('common:error.generic')
-                                  }`,
-                                )
-                              })
-                          }}
-                        >
-                          {voicePreview.isPending && voicePreview.variables?.voiceRowId === voice.id ? (
-                            <IconLoader2 size={14} className="animate-spin" />
-                          ) : (
-                            <IconPlayerPlay size={14} />
-                          )}
-                          {tp('voices.preview')}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {voiceError && (
-            <p role="alert" className="field-error">
-              {voiceError}
-            </p>
-          )}
-        </div>
-      </Modal>
+        voices={voiceQuery.data}
+        loading={voiceQuery.isLoading}
+        refreshing={refreshTtsVoices.isPending}
+        onRefresh={voiceProvider ? () => refreshTtsVoices.mutateAsync(voiceProvider.id) : undefined}
+      />
     </div>
   )
 }

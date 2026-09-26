@@ -4015,6 +4015,13 @@
   margin-top: 8px;
 }
 
+.voice-multilingual-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
 .voice-filter {
   display: flex;
   flex-wrap: wrap;

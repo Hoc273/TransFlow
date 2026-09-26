@@ -6,8 +6,20 @@ describe('defaultVoicePreviewText', () => {
     expect(defaultVoicePreviewText('vi-VN')).toBe('Xin chào, đây là giọng đọc mẫu.')
   })
 
-  it('falls back to English for other languages', () => {
-    expect(defaultVoicePreviewText('ja-JP')).toBe('Hello, this is a sample voice preview.')
+  it("speaks the voice's own language (a Korean voice reading English sounded wrong)", () => {
+    expect(defaultVoicePreviewText('ko-KR')).toBe('안녕하세요, 샘플 음성입니다.')
+    expect(defaultVoicePreviewText('ja-jp')).toBe('こんにちは、これはサンプル音声です。')
+  })
+
+  it('falls back to English for languages without a sample', () => {
+    expect(defaultVoicePreviewText('sw-KE')).toBe('Hello, this is a sample voice preview.')
+    expect(defaultVoicePreviewText(null)).toBe('Hello, this is a sample voice preview.')
+  })
+
+  it('keeps every sample within the 50-char preview limit', () => {
+    for (const lang of ['vi', 'en', 'ko', 'ja', 'zh', 'fr', 'de', 'es', 'pt', 'it', 'ru', 'th', 'id', 'hi', 'ar']) {
+      expect(defaultVoicePreviewText(lang).length).toBeLessThanOrEqual(50)
+    }
   })
 })
 describe('resolveVoiceProviderArg (useTtsVoices / useTtsVoiceLanguages)', () => {

@@ -167,10 +167,28 @@ export function useUpsertTtsVoice(_workspaceId: string | undefined) {
 
 let activePreviewAudio: HTMLAudioElement | null = null
 
+/** Preview sentence in the voice's own language (≤ 50 chars — backend limit). */
+const PREVIEW_TEXT: Record<string, string> = {
+  vi: 'Xin chào, đây là giọng đọc mẫu.',
+  en: 'Hello, this is a sample voice preview.',
+  ko: '안녕하세요, 샘플 음성입니다.',
+  ja: 'こんにちは、これはサンプル音声です。',
+  zh: '你好，这是示例语音。',
+  fr: 'Bonjour, ceci est un exemple de voix.',
+  de: 'Hallo, das ist eine Beispielstimme.',
+  es: 'Hola, esta es una voz de muestra.',
+  pt: 'Olá, esta é uma voz de exemplo.',
+  it: 'Ciao, questa è una voce di esempio.',
+  ru: 'Здравствуйте, это пример голоса.',
+  th: 'สวัสดี นี่คือเสียงตัวอย่าง',
+  id: 'Halo, ini adalah contoh suara.',
+  hi: 'नमस्ते, यह एक नमूना आवाज़ है।',
+  ar: 'مرحبا، هذا صوت تجريبي.',
+}
+
 export function defaultVoicePreviewText(language?: string | null) {
-  return language?.toLowerCase().startsWith('vi')
-    ? 'Xin chào, đây là giọng đọc mẫu.'
-    : 'Hello, this is a sample voice preview.'
+  const code = (language ?? '').trim().toLowerCase().split(/[-_]/, 1)[0]
+  return PREVIEW_TEXT[code] ?? PREVIEW_TEXT.en
 }
 
 export function useVoicePreview(_workspaceId?: string | undefined) {

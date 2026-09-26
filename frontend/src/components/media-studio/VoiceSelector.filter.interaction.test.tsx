@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // Catalogs with N voices per language (Azure: up to 348 for "en"): the picker
-// groups native voices per locale before multilingual ones, and offers search +
-// gender filters above VOICE_FILTER_THRESHOLD voices without ever dropping the
-// selected voice from the <select>.
+// lists native voices per locale A→Z; multilingual voices of other locales are
+// opt-in (they used to mix English/Chinese voices into a Korean list). Search +
+// gender filters appear above VOICE_FILTER_THRESHOLD voices without ever
+// dropping the selected voice from the <select>.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ProviderConfig, TtsVoice } from '@/types/provider'
@@ -80,14 +81,26 @@ function renderSelector(selectedVoiceId?: string) {
   return screen.getByTestId('voice-voice-select') as HTMLSelectElement
 }
 
+const showMultilingual = () =>
+  fireEvent.click(screen.getByTestId('voice-show-multilingual').querySelector('input')!)
+
 const optionValues = (select: HTMLSelectElement) =>
   Array.from(select.querySelectorAll('option')).map((o) => o.value).filter(Boolean)
 
 describe('VoiceSelector — N voices per language', () => {
   afterEach(() => cleanup())
 
+  it('lists only native voices until multilingual ones are opted in', () => {
+    const select = renderSelector()
+    expect(optionValues(select)).toEqual(['hoaimy', 'namminh'])
+    expect(select.querySelectorAll('optgroup')).toHaveLength(0)
+    expect(screen.queryByTestId('voice-filter')).toBeNull()
+    expect(screen.getByTestId('voice-show-multilingual')).toBeTruthy()
+  })
+
   it('groups native voices first, then multilingual, and tags preview voices', () => {
     const select = renderSelector()
+    showMultilingual()
     const groups = Array.from(select.querySelectorAll('optgroup'))
     expect(groups.map((g) => g.label)).toHaveLength(2)
     expect(groups[1].label).toBe('media:voice.multilingualGroup')
@@ -98,6 +111,7 @@ describe('VoiceSelector — N voices per language', () => {
 
   it('narrows the list by accent-insensitive search and by gender', () => {
     const select = renderSelector()
+    showMultilingual()
     fireEvent.change(screen.getByTestId('voice-filter-search'), { target: { value: 'hoai' } })
     expect(optionValues(select)).toEqual(['hoaimy'])
 
@@ -108,6 +122,7 @@ describe('VoiceSelector — N voices per language', () => {
 
   it('keeps the selected voice in the select while filters hide the rest', () => {
     const select = renderSelector('hoaimy')
+    showMultilingual()
     fireEvent.change(screen.getByTestId('voice-filter-search'), { target: { value: 'no-such-voice' } })
     expect(optionValues(select)).toEqual(['hoaimy'])
     expect(select.value).toBe('hoaimy')
