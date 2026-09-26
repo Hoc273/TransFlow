@@ -28,33 +28,47 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const mockMarkAllAsRead = vi.fn()
-let mockHookReturn: any = {
-  notifications: [
-    {
-      id: 'n-1',
-      title: 'Dịch video hoàn tất',
-      message: 'Video presentation.mp4 đã được dịch sang tiếng Anh',
-      time: '5 phút trước',
-      type: 'BATCH_COMPLETED',
-      read: false,
-    },
-    {
-      id: 'n-2',
-      title: 'Cảnh báo hạn ngạch',
-      message: 'Bạn đã sử dụng 85% hạn ngạch token trong tháng này',
-      time: '1 giờ trước',
-      type: 'BATCH_PARTIALLY_FAILED',
-      read: true,
-    },
-  ],
-  isLoading: false,
-  markAllAsRead: mockMarkAllAsRead,
+const mockMarkAll = vi.fn()
+const mockMarkRead = vi.fn()
+const mockNavigate = vi.fn()
+
+function item(overrides: Record<string, unknown>) {
+  return {
+    id: 'n-1',
+    type: 'JOB_COMPLETED',
+    title: 'JOB_COMPLETED',
+    message: '',
+    relatedEntityType: 'MEDIA_JOB',
+    relatedEntityId: 'job-1',
+    payload: null,
+    readAt: null,
+    isRead: false,
+    createdAt: new Date(Date.now() - 60000).toISOString(),
+    ...overrides,
+  }
 }
 
+let mockPages: any[][] = []
+let mockLoading = false
+let mockUnread = 0
+
 vi.mock('@/hooks/useNotifications', () => ({
-  useNotifications: () => mockHookReturn,
+  useNotificationsInfinite: () => ({
+    data: { pages: mockPages },
+    isLoading: mockLoading,
+    hasNextPage: false,
+    fetchNextPage: vi.fn(),
+    isFetchingNextPage: false,
+  }),
+  useUnreadNotificationCount: () => ({ data: mockUnread }),
+  useMarkNotificationRead: () => ({ mutate: mockMarkRead, isPending: false }),
+  useMarkAllNotificationsRead: () => ({ mutate: mockMarkAll, isPending: false }),
 }))
+
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>()
+  return { ...actual, useNavigate: () => mockNavigate }
+})
 
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (selector: any) =>
@@ -70,105 +84,61 @@ vi.mock('@/store/uiStore', () => ({
     }),
 }))
 
+const renderPage = () =>
+  render(
+    <MemoryRouter>
+      <MobileNotificationPage />
+    </MemoryRouter>,
+  )
+
 describe('MobileNotificationPage', () => {
-  it('renders page header and action button', () => {
-    render(
-      <MemoryRouter>
-        <MobileNotificationPage />
-      </MemoryRouter>
-    )
+  it('renders header and mark-all button', () => {
+    mockPages = [[]]
+    renderPage()
     expect(screen.getByText('Thông báo')).toBeInTheDocument()
     expect(screen.getByText('Đọc tất cả')).toBeInTheDocument()
   })
 
-  it('renders list of notifications with title, message, and time', () => {
-    render(
-      <MemoryRouter>
-        <MobileNotificationPage />
-      </MemoryRouter>
-    )
+  it('renders notifications with message and marks unread ones', () => {
+    mockPages = [[
+      item({ id: 'n-1', title: 'Dịch video hoàn tất', message: 'Video đã xong', type: 'CUSTOM_A' }),
+      item({ id: 'n-2', title: 'Đã đọc', message: 'Cũ', type: 'CUSTOM_B', isRead: true, readAt: '2026-01-01T00:00:00Z' }),
+    ]]
+    mockUnread = 1
+    renderPage()
     expect(screen.getByText('Dịch video hoàn tất')).toBeInTheDocument()
-    expect(
-      screen.getByText('Video presentation.mp4 đã được dịch sang tiếng Anh')
-    ).toBeInTheDocument()
-    expect(screen.getByText('5 phút trước')).toBeInTheDocument()
-
-    expect(screen.getByText('Cảnh báo hạn ngạch')).toBeInTheDocument()
-    expect(screen.getByText('1 giờ trước')).toBeInTheDocument()
+    expect(screen.getByText('Video đã xong')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('Chưa đọc')).toHaveLength(1)
   })
 
-  it('renders loading state when isLoading is true', () => {
-    mockHookReturn = {
-      notifications: [],
-      isLoading: true,
-    }
-    render(
-      <MemoryRouter>
-        <MobileNotificationPage />
-      </MemoryRouter>
-    )
+  it('renders loading state', () => {
+    mockPages = []
+    mockLoading = true
+    renderPage()
     expect(screen.getByText('Đang tải thông báo...')).toBeInTheDocument()
+    mockLoading = false
   })
 
   it('renders empty state when there are no notifications', () => {
-    mockHookReturn = {
-      notifications: [],
-      isLoading: false,
-    }
-    render(
-      <MemoryRouter>
-        <MobileNotificationPage />
-      </MemoryRouter>
-    )
+    mockPages = [[]]
+    renderPage()
     expect(screen.getByText('Không có thông báo mới')).toBeInTheDocument()
   })
 
-  it('handles markAllAsRead when clicking "Đọc tất cả"', () => {
-    mockHookReturn = {
-      notifications: [
-        {
-          id: 'n-1',
-          title: 'Dịch hoàn tất',
-          message: 'Tài liệu đã xong',
-          time: 'Vừa xong',
-          read: false,
-        },
-      ],
-      isLoading: false,
-      markAllAsRead: mockMarkAllAsRead,
-    }
-    render(
-      <MemoryRouter>
-        <MobileNotificationPage />
-      </MemoryRouter>
-    )
-    const markAllBtn = screen.getByRole('button', { name: /đọc tất cả/i })
-    fireEvent.click(markAllBtn)
-    expect(mockMarkAllAsRead).toHaveBeenCalled()
+  it('marks all as read through the API mutation', () => {
+    mockPages = [[item({})]]
+    mockUnread = 1
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /đọc tất cả/i }))
+    expect(mockMarkAll).toHaveBeenCalled()
   })
 
-  it('defensively handles real TanStack query shape { data: [...] } with createdAt', () => {
-    mockHookReturn = {
-      data: [
-        {
-          id: 'n-real-1',
-          type: 'BATCH_COMPLETED',
-          title: 'Batch completed successfully',
-          message: 'All 10 segments translated',
-          relatedEntityType: 'BATCH',
-          relatedEntityId: 'b-123',
-          payload: {},
-          createdAt: new Date(Date.now() - 60000).toISOString(),
-        },
-      ],
-      isLoading: false,
-    }
-    render(
-      <MemoryRouter>
-        <MobileNotificationPage />
-      </MemoryRouter>
-    )
-    expect(screen.getByText('Batch completed successfully')).toBeInTheDocument()
-    expect(screen.getByText('All 10 segments translated')).toBeInTheDocument()
+  it('clicking an unread job notification marks it read and opens the job', () => {
+    mockPages = [[item({ id: 'n-9', relatedEntityId: 'job-42', message: 'Media job completed' })]]
+    mockUnread = 1
+    renderPage()
+    fireEvent.click(screen.getByText('Media job completed'))
+    expect(mockMarkRead).toHaveBeenCalledWith('n-9')
+    expect(mockNavigate).toHaveBeenCalledWith('/w/ws-123/media/jobs/job-42')
   })
 })

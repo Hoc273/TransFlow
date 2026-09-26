@@ -26,7 +26,9 @@ replay_pid*
 # ── Secrets ──
 .env
 *.env
+.env.*
 !.env.example
+!.env.prod.example
 
 # Google OAuth client secrets (JSON from Cloud Console)
 *client_secret*.json
@@ -100,3 +102,4 @@ stt_segments.json
 /open-6-terminals.bat
 /transflow.pem
 /.gitleaks.toml
+/transflow-prod.pem

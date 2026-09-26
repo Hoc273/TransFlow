@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useMemo } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   IconAlertTriangle,
   IconBell,
@@ -11,8 +12,15 @@ import {
 import clsx from 'clsx'
 import { MobileCard } from '../../components/MobileCard'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
-import { useNotifications } from '@/hooks/useNotifications'
+import {
+  useMarkAllNotificationsRead,
+  useMarkNotificationRead,
+  useNotificationsInfinite,
+  useUnreadNotificationCount,
+} from '@/hooks/useNotifications'
 import { formatRelativeTime } from '@/lib/format'
+import { notificationHref, notificationTitle } from '@/lib/notifications'
+import type { NotificationItem } from '@/types/notification'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 
@@ -36,27 +44,18 @@ export function MobileNotificationPage() {
   const wsId = workspaceId ?? currentWorkspaceId
   const language = useUiStore((s) => s.language) ?? 'vi'
 
-  const query = (useNotifications as any)(wsId)
-  const [readIds, setReadIds] = useState<Set<string>>(new Set())
-  const [allMarkedAsRead, setAllMarkedAsRead] = useState(false)
+  const { t } = useTranslation('notification')
+  const navigate = useNavigate()
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useNotificationsInfinite(wsId)
+  const { data: unreadCount = 0 } = useUnreadNotificationCount(wsId)
+  const markRead = useMarkNotificationRead(wsId)
+  const markAllRead = useMarkAllNotificationsRead(wsId)
+  const notifications = useMemo(() => data?.pages.flatMap((p) => p) ?? [], [data])
 
-  // Defensively extract notifications list supporting both { data } and { notifications }
-  const notifications: any[] =
-    query?.notifications ??
-    query?.data?.pages?.flatMap?.((p: any) => p) ??
-    query?.data ??
-    (Array.isArray(query) ? query : [])
-  const isLoading = Boolean(query?.isLoading)
-
-  const handleMarkAllAsRead = () => {
-    if (typeof query?.markAllAsRead === 'function') {
-      query.markAllAsRead()
-    }
-    setAllMarkedAsRead(true)
-  }
-
-  const markItemAsRead = (id: string) => {
-    setReadIds((prev) => new Set(prev).add(id))
+  const openNotification = (n: NotificationItem) => {
+    if (!n.isRead) markRead.mutate(n.id)
+    const href = notificationHref(wsId ?? '', n)
+    if (href) navigate(href)
   }
 
   return (
@@ -65,8 +64,9 @@ export function MobileNotificationPage() {
         <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">Thông báo</h1>
         <button
           type="button"
-          onClick={handleMarkAllAsRead}
-          className="flex h-9 shrink-0 items-center gap-1 whitespace-nowrap text-xs font-semibold text-primary active:opacity-75 transition-opacity cursor-pointer"
+          onClick={() => markAllRead.mutate()}
+          disabled={unreadCount === 0 || markAllRead.isPending}
+          className="flex h-9 shrink-0 items-center gap-1 whitespace-nowrap text-xs font-semibold text-primary active:opacity-75 transition-opacity cursor-pointer disabled:opacity-40 disabled:cursor-default"
         >
           <IconCheck size={14} />
           <span>Đọc tất cả</span>
@@ -84,15 +84,14 @@ export function MobileNotificationPage() {
       ) : (
         <div className="min-w-0 space-y-2">
           {notifications.map((n) => {
-            const isRead = allMarkedAsRead || Boolean(n.read || n.isRead || readIds.has(n.id))
-            const timeDisplay =
-              n.time ??
-              (n.createdAt ? formatRelativeTime(n.createdAt, language) : '')
+            const isRead = n.isRead
+            const timeDisplay = n.createdAt ? formatRelativeTime(n.createdAt, language) : ''
+            const title = notificationTitle(t, n)
 
             return (
               <MobileCard
                 key={n.id}
-                onClick={() => markItemAsRead(n.id)}
+                onClick={() => openNotification(n)}
                 className={clsx(
                   'min-w-0 space-y-1.5 p-3.5 transition-colors cursor-pointer',
                   isRead
@@ -110,9 +109,9 @@ export function MobileNotificationPage() {
                           ? 'font-medium text-neutral-800 dark:text-neutral-200'
                           : 'font-semibold text-neutral-900 dark:text-white'
                       )}
-                      title={n.title}
+                      title={title}
                     >
-                      {n.title}
+                      {title}
                     </span>
                   </div>
 
@@ -140,6 +139,16 @@ export function MobileNotificationPage() {
               </MobileCard>
             )
           })}
+          {hasNextPage && (
+            <button
+              type="button"
+              onClick={() => void fetchNextPage()}
+              disabled={isFetchingNextPage}
+              className="h-10 w-full text-xs font-semibold text-primary active:opacity-75 cursor-pointer"
+            >
+              {isFetchingNextPage ? 'Đang tải…' : 'Tải thêm'}
+            </button>
+          )}
         </div>
       )}
     </div>

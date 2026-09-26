@@ -5,19 +5,29 @@ reported for any provider audio format (WAV, MP3, OGG), not only WAV.
 """
 from __future__ import annotations
 
-import io
+import subprocess
 
 import pytest
-from pydub import AudioSegment
-from pydub.generators import Sine
 
 from app.services.tts_gateway import audio_duration_ms
 
+# Fixtures are encoded with ffmpeg (already required by the gateway) rather than pydub,
+# which is not a declared dependency.
+_FFMPEG_FORMAT_ARGS = {
+    "wav": ["-f", "wav"],
+    "mp3": ["-c:a", "libmp3lame", "-f", "mp3"],
+    "ogg": ["-c:a", "libvorbis", "-f", "ogg"],
+}
+
 
 def _encoded(fmt: str, duration_ms: int) -> bytes:
-    buffer = io.BytesIO()
-    Sine(440).to_audio_segment(duration=duration_ms).export(buffer, format=fmt)
-    return buffer.getvalue()
+    return subprocess.run(
+        ["ffmpeg", "-v", "error", "-hide_banner", "-f", "lavfi",
+         "-i", f"sine=frequency=440:duration={duration_ms / 1000}",
+         *_FFMPEG_FORMAT_ARGS[fmt], "pipe:1"],
+        capture_output=True,
+        check=True,
+    ).stdout
 
 
 @pytest.mark.parametrize("fmt", ["wav", "mp3", "ogg"])

@@ -11,6 +11,7 @@ import com.app.modules.media_job.dto.CreateMediaJobRequest;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.service.MediaJobService;
+import com.app.modules.notification.service.NotificationService;
 import com.app.modules.workspace.service.WorkspaceAccessService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,7 @@ import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -37,6 +39,7 @@ class BatchServiceImplTest {
     @Mock private WorkspaceAccessService access;
     @Mock private MediaJobService mediaJobService;
     @Mock private BatchCreateRateLimiter rateLimiter;
+    @Mock private NotificationService notificationService;
 
     private BatchServiceImpl service;
 
@@ -46,7 +49,7 @@ class BatchServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new BatchServiceImpl(localizationBatchRepository, access, mediaJobService, rateLimiter, new ObjectMapper());
+        service = new BatchServiceImpl(localizationBatchRepository, access, mediaJobService, rateLimiter, new ObjectMapper(), notificationService);
     }
 
     private CreateBatchRequest request(List<UUID> assetIds) {
@@ -234,5 +237,69 @@ class BatchServiceImplTest {
         assertEquals(LocalizationBatch.BatchStatus.CANCELLED, batch.getStatus());
         verify(localizationBatchRepository, never()).save(any());
         verify(mediaJobService, never()).getJobsByBatch(batchId);
+    }
+
+    // ---- recomputeStatus notifications ----
+
+    private LocalizationBatch settlingBatch(UUID batchId) {
+        LocalizationBatch batch = existingBatch(batchId, LocalizationBatch.BatchStatus.PROCESSING);
+        batch.setCreatedBy(userId);
+        batch.setName("Spring launch");
+        when(localizationBatchRepository.findWithLockById(batchId)).thenReturn(Optional.of(batch));
+        when(localizationBatchRepository.save(any(LocalizationBatch.class))).thenAnswer(inv -> inv.getArgument(0));
+        return batch;
+    }
+
+    @Test
+    void recomputeStatus_allChildrenCompleted_notifiesCreatorOnce() {
+        UUID batchId = UUID.randomUUID();
+        LocalizationBatch batch = settlingBatch(batchId);
+        when(mediaJobService.getJobsByBatch(batchId)).thenReturn(List.of(
+                childJob(batchId, MediaJob.JobStatus.COMPLETED), childJob(batchId, MediaJob.JobStatus.COMPLETED)));
+
+        service.recomputeStatus(batchId);
+        service.recomputeStatus(batchId); // status unchanged → no second notification
+
+        assertEquals(LocalizationBatch.BatchStatus.COMPLETED, batch.getStatus());
+        verify(notificationService, times(1)).notify(eq(workspaceId), eq(userId), eq("BATCH_COMPLETED"),
+                eq(batchId), contains("2 videos"));
+    }
+
+    @Test
+    void recomputeStatus_mixedResults_notifiesPartiallyFailed() {
+        UUID batchId = UUID.randomUUID();
+        settlingBatch(batchId);
+        when(mediaJobService.getJobsByBatch(batchId)).thenReturn(List.of(
+                childJob(batchId, MediaJob.JobStatus.COMPLETED), childJob(batchId, MediaJob.JobStatus.FAILED)));
+
+        service.recomputeStatus(batchId);
+
+        verify(notificationService).notify(eq(workspaceId), eq(userId), eq("BATCH_PARTIALLY_FAILED"),
+                eq(batchId), contains("1/2"));
+    }
+
+    @Test
+    void recomputeStatus_allFailed_notifiesBatchFailed() {
+        UUID batchId = UUID.randomUUID();
+        settlingBatch(batchId);
+        when(mediaJobService.getJobsByBatch(batchId)).thenReturn(List.of(childJob(batchId, MediaJob.JobStatus.FAILED)));
+
+        service.recomputeStatus(batchId);
+
+        verify(notificationService).notify(eq(workspaceId), eq(userId), eq("BATCH_FAILED"), eq(batchId), any());
+    }
+
+    @Test
+    void recomputeStatus_stillInFlight_doesNotNotify() {
+        UUID batchId = UUID.randomUUID();
+        LocalizationBatch batch = settlingBatch(batchId);
+        batch.setStatus(LocalizationBatch.BatchStatus.PENDING);
+        when(mediaJobService.getJobsByBatch(batchId)).thenReturn(List.of(
+                childJob(batchId, MediaJob.JobStatus.COMPLETED), childJob(batchId, MediaJob.JobStatus.PROCESSING)));
+
+        service.recomputeStatus(batchId);
+
+        assertEquals(LocalizationBatch.BatchStatus.PROCESSING, batch.getStatus());
+        verifyNoInteractions(notificationService);
     }
 }

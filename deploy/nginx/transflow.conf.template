@@ -1,0 +1,109 @@
+# TransFlow — nginx trên host: terminate TLS, proxy vào container chỉ bind 127.0.0.1.
+# deploy/server-deploy.sh thay __DOMAIN__ / __WWW_DOMAIN__ / __STORAGE_DOMAIN__ / __FRONTEND_PORT__ / __MINIO_PORT__
+# rồi ghi vào /etc/nginx/conf.d/transflow.conf. Chứng chỉ Let's Encrypt (1 cert cho cả 3 domain)
+# nằm ở /etc/letsencrypt/live/transflow/, gia hạn bằng certbot timer qua webroot bên dưới.
+
+# HTTP: chỉ phục vụ ACME challenge (gia hạn cert), còn lại redirect HTTPS.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __DOMAIN__ __WWW_DOMAIN__ __STORAGE_DOMAIN__;
+    server_tokens off;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── www -> apex ──
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name __WWW_DOMAIN__;
+    server_tokens off;
+
+    ssl_certificate     /etc/letsencrypt/live/transflow/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/transflow/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:TransflowSSL:10m;
+    ssl_session_timeout 1d;
+
+    return 301 https://__DOMAIN__$request_uri;
+}
+
+# ── App: SPA + /api (frontend container proxy /api sang backend-main) ──
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name __DOMAIN__;
+    server_tokens off;
+
+    ssl_certificate     /etc/letsencrypt/live/transflow/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/transflow/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:TransflowSSL:10m;
+    ssl_session_timeout 1d;
+
+    # Upload video ≤500MB (SRS §5.2) — khớp frontend nginx + spring multipart (520MB).
+    client_max_body_size 520m;
+    # Stream thẳng upload lớn sang upstream thay vì đệm ra đĩa.
+    proxy_request_buffering off;
+    proxy_connect_timeout 30s;
+    proxy_send_timeout 600s;
+    proxy_read_timeout 600s;
+
+    # Callback worker chỉ đi trong docker network, không bao giờ qua cổng public.
+    location /internal/ {
+        return 404;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:__FRONTEND_PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+}
+
+# ── Object storage: MinIO API cho presigned URL (MEDIA_STORAGE_PUBLIC_ENDPOINT) ──
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name __STORAGE_DOMAIN__;
+    server_tokens off;
+
+    ssl_certificate     /etc/letsencrypt/live/transflow/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/transflow/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:TransflowSSL:10m;
+    ssl_session_timeout 1d;
+
+    client_max_body_size 520m;
+    proxy_buffering off;
+    proxy_request_buffering off;
+    proxy_connect_timeout 30s;
+    proxy_send_timeout 600s;
+    proxy_read_timeout 600s;
+
+    location / {
+        proxy_pass http://127.0.0.1:__MINIO_PORT__;
+        proxy_http_version 1.1;
+        # Chữ ký presigned URL gồm Host — phải giữ nguyên host trình duyệt gửi.
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Connection "";
+        chunked_transfer_encoding off;
+    }
+}

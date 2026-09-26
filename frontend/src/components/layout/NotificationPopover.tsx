@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { IconBell, IconChevronRight } from '@tabler/icons-react'
-import { useNotifications } from '@/hooks/useNotifications'
+import { IconBell, IconChecks, IconChevronRight } from '@tabler/icons-react'
+import {
+  useMarkAllNotificationsRead,
+  useMarkNotificationRead,
+  useNotifications,
+  useUnreadNotificationCount,
+} from '@/hooks/useNotifications'
 import { useUiStore } from '@/store/uiStore'
 import { formatRelativeTime } from '@/lib/format'
+import { notificationHref, notificationTitle } from '@/lib/notifications'
+import type { NotificationItem } from '@/types/notification'
 
 export function NotificationPopover() {
   const { t } = useTranslation(['dashboard', 'common', 'notification'])
@@ -13,9 +20,21 @@ export function NotificationPopover() {
   const popoverRef = useRef<HTMLDivElement>(null)
   const language = useUiStore((s) => s.language)
 
+  const navigate = useNavigate()
   const { data, isLoading } = useNotifications(workspaceId, { limit: 6, offset: 0 })
+  const { data: unreadCount = 0 } = useUnreadNotificationCount(workspaceId)
+  const markRead = useMarkNotificationRead(workspaceId)
+  const markAllRead = useMarkAllNotificationsRead(workspaceId)
   const notifications = data ?? []
-  const hasItems = notifications.length > 0
+
+  const openNotification = (item: NotificationItem) => {
+    if (!item.isRead) markRead.mutate(item.id)
+    const href = notificationHref(workspaceId, item)
+    if (href) {
+      setOpen(false)
+      navigate(href)
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -46,8 +65,13 @@ export function NotificationPopover() {
         onClick={() => setOpen((v) => !v)}
       >
         <IconBell size={18} />
-        {hasItems && (
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[var(--color-accent)] ring-2 ring-[var(--color-bg-surface)]" />
+        {unreadCount > 0 && (
+          <span
+            className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-accent)] px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-[var(--color-bg-surface)]"
+            aria-label={t('notification:unreadCount', { count: unreadCount })}
+          >
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
         )}
       </button>
 
@@ -62,12 +86,23 @@ export function NotificationPopover() {
               <span className="text-sm font-semibold text-[var(--color-text-primary)]">
                 {t('common:nav.notifications')}
               </span>
-              {hasItems && (
+              {unreadCount > 0 && (
                 <span className="rounded-full bg-[var(--color-accent-soft)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-accent)]">
-                  {notifications.length}
+                  {t('notification:unreadCount', { count: unreadCount })}
                 </span>
               )}
             </div>
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-[var(--color-accent)] transition hover:bg-[var(--color-accent-soft)] disabled:opacity-50"
+                disabled={markAllRead.isPending}
+                onClick={() => markAllRead.mutate()}
+              >
+                <IconChecks size={14} />
+                {t('notification:markAllRead')}
+              </button>
+            )}
           </div>
 
           <div className="max-h-[360px] overflow-y-auto divide-y divide-[var(--color-border)]">
@@ -90,16 +125,29 @@ export function NotificationPopover() {
 
             {!isLoading &&
               notifications.map((item) => (
-                <div
+                <button
+                  type="button"
                   key={item.id}
-                  className="px-4 py-3 transition hover:bg-[var(--color-bg-hover)]"
+                  onClick={() => openNotification(item)}
+                  className={`block w-full cursor-pointer px-4 py-3 text-left transition hover:bg-[var(--color-bg-hover)] ${
+                    item.isRead ? '' : 'bg-[var(--color-accent-soft)]/40'
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="phase-badge text-[10px]">{item.type}</span>
-                        <span className="truncate text-xs font-semibold text-[var(--color-text-primary)]">
-                          {item.title}
+                        {!item.isRead && (
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full bg-[var(--color-accent)]"
+                            aria-label={t('notification:unread')}
+                          />
+                        )}
+                        <span
+                          className={`truncate text-xs text-[var(--color-text-primary)] ${
+                            item.isRead ? 'font-medium' : 'font-semibold'
+                          }`}
+                        >
+                          {notificationTitle(t, item)}
                         </span>
                       </div>
                       {item.message && (
@@ -112,7 +160,7 @@ export function NotificationPopover() {
                       {formatRelativeTime(item.createdAt, language)}
                     </time>
                   </div>
-                </div>
+                </button>
               ))}
           </div>
 
