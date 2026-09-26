@@ -418,6 +418,9 @@ class TtsVoice(BaseModel):
     # Unknown gender (e.g. Piper vi models, MODEL_CARD does not publish it) = None.
     gender: Optional[Literal["MALE", "FEMALE"]] = None
     display_name: str
+    # Vendor lifecycle when published (Azure: GA / Preview / Deprecated). None = unknown,
+    # treated as GA. Spring ranks PREVIEW after GA and keeps DEPRECATED inactive.
+    status: Optional[Literal["GA", "PREVIEW", "DEPRECATED"]] = None
 
 
 class TtsVoicesResponse(BaseModel):

@@ -48,6 +48,30 @@ MIN_CHARS_FOR_RATE_CHECK = 200
 # given 300 ms) so the aggregate rate stays under S4. Measured share of text in
 # segments above the plausible rate: real transcripts 0 %, compressed 40-49 %.
 MAX_TEXT_SHARE_IN_IMPLAUSIBLE_SEGMENTS = 0.3
+# S6 — wrong-language transcript. Provider pools (FreeLLMAPI ``auto``) may fall
+# back to an English-only model (observed 2026-09-26: ``whisper-tiny-en`` on
+# Chinese audio → "I'm very happy." × 60). For a source language written in a
+# non-Latin script, a transcript with almost none of that script is a
+# hallucination, not code-switching (real zh transcripts: > 80 % Han letters).
+MIN_LETTERS_FOR_SCRIPT_CHECK = 20
+MIN_EXPECTED_SCRIPT_SHARE = 0.3
+_HAN = ((0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF))
+_SCRIPT_RANGES_BY_LANG: dict[str, tuple[tuple[int, int], ...]] = {
+    "zh": _HAN,
+    "yue": _HAN,
+    "ja": _HAN + ((0x3040, 0x30FF),),
+    "ko": ((0x1100, 0x11FF), (0x3130, 0x318F), (0xAC00, 0xD7AF)),
+    "ru": ((0x0400, 0x04FF),),
+    "uk": ((0x0400, 0x04FF),),
+    "bg": ((0x0400, 0x04FF),),
+    "el": ((0x0370, 0x03FF),),
+    "he": ((0x0590, 0x05FF),),
+    "ar": ((0x0600, 0x06FF),),
+    "fa": ((0x0600, 0x06FF),),
+    "ur": ((0x0600, 0x06FF),),
+    "th": ((0x0E00, 0x0E7F),),
+    "hi": ((0x0900, 0x097F),),
+}
 
 
 class TranscriptSanityResult(str, Enum):
@@ -90,6 +114,9 @@ class TranscriptSanityValidator:
     - S4: aggregate speaking rate (non-space chars / summed segment time)
       above ``MAX_PLAUSIBLE_CHARS_PER_SECOND`` → MALFORMED (compressed
       timeline); only evaluated with at least ``MIN_CHARS_FOR_RATE_CHECK``.
+    - S6: ``source_lang`` written in a non-Latin script but under
+      ``MIN_EXPECTED_SCRIPT_SHARE`` of the transcript letters use that script
+      → MALFORMED (wrong-language / hallucinated transcript).
     - When ``asset_duration_ms`` is absent (legacy caller), duration rules
       (S1-duration / S2) cannot be evaluated → VALID (no-op); local rules
       (negative / zero-length) still apply.
@@ -99,6 +126,7 @@ class TranscriptSanityValidator:
     def validate(
         segments: Sequence,
         asset_duration_ms: Optional[int],
+        source_lang: Optional[str] = None,
     ) -> TranscriptSanityVerdict:
         if not segments:
             # Empty transcript = legitimate "no speech" (Q-M-D3) — the caller
@@ -219,6 +247,9 @@ class TranscriptSanityValidator:
                     max_end_ms=max_end_ms,
                 ),
             )
+        script_violation = _script_mismatch(segments, source_lang, max_end_ms)
+        if script_violation is not None:
+            return TranscriptSanityVerdict(TranscriptSanityResult.MALFORMED, script_violation)
         # S3 — a long gap alone is only suspicious, never a hard failure:
         # a legitimate video may contain a long silent stretch. When the gap
         # combined with out-of-duration evidence, S1/S2 already rejected it.
@@ -234,3 +265,34 @@ class TranscriptSanityValidator:
             )
 
         return TranscriptSanityVerdict(TranscriptSanityResult.VALID)
+
+
+def _script_mismatch(
+    segments: Sequence,
+    source_lang: Optional[str],
+    max_end_ms: int,
+) -> Optional[TranscriptSanityViolation]:
+    """S6 — the transcript is not written in the source language's script."""
+    base_lang = (source_lang or "").strip().lower().replace("_", "-").split("-")[0]
+    ranges = _SCRIPT_RANGES_BY_LANG.get(base_lang)
+    if ranges is None:
+        return None
+    letters = [
+        char
+        for item in segments
+        for char in str(getattr(item, "text", "") or "")
+        if char.isalpha()
+    ]
+    if len(letters) < MIN_LETTERS_FOR_SCRIPT_CHECK:
+        return None
+    in_script = sum(
+        1 for char in letters if any(low <= ord(char) <= high for low, high in ranges)
+    )
+    share = in_script / len(letters)
+    if share >= MIN_EXPECTED_SCRIPT_SHARE:
+        return None
+    return TranscriptSanityViolation(
+        reason=f"only {share:.0%} of the transcript letters are in the script of "
+               f"source language '{base_lang}'; wrong-language or hallucinated transcript",
+        max_end_ms=max_end_ms,
+    )

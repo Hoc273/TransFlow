@@ -286,6 +286,8 @@ def _merge_usage(total: Usage | None, usage) -> Usage | None:
 # Global default used by the original narrative writer when no voice calibration exists.
 DEFAULT_NARRATION_CPS = 14.0
 NARRATION_TOLERANCE = 0.10
+# Beyond this shortfall after a failed fill, tempo (>=0.9x) and pauses cannot reach the duration.
+MAX_DEGRADED_NARRATION_SHORTFALL = 0.35
 
 
 def _narration_cps(req: ScriptSummarizeRequest | ScriptRefineRequest) -> float:
@@ -316,6 +318,7 @@ async def _fit_narration(req: ScriptSummarizeRequest | ScriptRefineRequest,
     ]
     before = sum(len(slot.text) for slot in slots)
     warnings = list(parsed.warnings)
+    fill_error: ProviderException | None = None
     try:
         extra = await fill_narration(
             slots, provider=req.provider, target_lang=req.target_lang, cps=cps,
@@ -323,9 +326,9 @@ async def _fit_narration(req: ScriptSummarizeRequest | ScriptRefineRequest,
         )
         usage = _merge_usage(usage, extra)
     except ProviderException as exc:
-        # The draft is still a valid proposal; measured TTS and render pacing absorb the gap.
         _log.warning("Narration fill degraded correlation_id=%s errorCode=%s", req.correlation_id, exc.code.value)
         warnings.append("NARRATION_FILL_DEGRADED")
+        fill_error = exc
     target = round(_requested_duration(req) * cps)
     after = sum(len(slot.text) for slot in slots)
     miss = abs(after - target) / target if target else 0.0
@@ -334,6 +337,12 @@ async def _fit_narration(req: ScriptSummarizeRequest | ScriptRefineRequest,
         "draft_chars=%d final_chars=%d miss=%.0f%%",
         req.correlation_id, req.provider.model, cps, target, before, after, miss * 100,
     )
+    if fill_error is not None and after < target * (1 - MAX_DEGRADED_NARRATION_SHORTFALL):
+        # The render lasts as long as the narration: a small gap is absorbed by TTS tempo and
+        # pauses, but a proposal this short would render a fraction of the requested duration
+        # (observed 2026-09-26: 760 of 4 863 chars -> 1 min for 5 min). Fail with the provider
+        # error so Spring's retry policy re-runs SUMMARIZE instead.
+        raise fill_error
     if miss > NARRATION_TOLERANCE:
         warnings.append("NARRATION_LENGTH_RESIDUAL")
     # A coverage beat with no draft stays empty only if every writer call failed;

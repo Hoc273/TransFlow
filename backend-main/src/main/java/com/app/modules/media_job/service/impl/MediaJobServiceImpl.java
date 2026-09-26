@@ -202,7 +202,7 @@ public class MediaJobServiceImpl implements MediaJobService {
             requireVoiceLanguageMatches(userId, req.ttsProviderId(), req.ttsVoiceId(), req.targetLang());
         }
 
-        if (!credit.hasSufficientBalance(userId)) {
+        if (!credit.hasSufficientBalance(workspaceId, userId)) {
             throw new AppException(ErrorCode.INSUFFICIENT_CREDIT);
         }
 
@@ -505,6 +505,8 @@ public class MediaJobServiceImpl implements MediaJobService {
             if (stage.getStageOrder() >= target.getStageOrder() && stage.getStatus() != MediaJobStage.StageStatus.SKIPPED) {
                 stage.setStatus(MediaJobStage.StageStatus.PENDING);
                 stage.setProgressPercent((short) 0);
+                // A user rerun is a fresh run: timeout/failover/deferral budgets start over.
+                stage.setAttemptCount((short) 0);
                 stage.setErrorMessage(null);
                 stage.setErrorCode(null);
                 stage.setErrorDetail(null);
@@ -780,7 +782,7 @@ public class MediaJobServiceImpl implements MediaJobService {
         if (ttsVoiceId != null) {
             requireVoiceLanguageMatches(userId, ttsProviderId, ttsVoiceId, targetLang);
         }
-        if (!credit.hasSufficientBalance(userId)) {
+        if (!credit.hasSufficientBalance(workspaceId, userId)) {
             throw new AppException(ErrorCode.INSUFFICIENT_CREDIT);
         }
 

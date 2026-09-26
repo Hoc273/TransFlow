@@ -2,12 +2,15 @@ package com.app.modules.media_job.pipeline;
 
 import com.app.common.exception.AiStageException;
 import com.app.modules.media_job.callback.service.MediaCallbackService;
+import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.repository.MediaJobRepository;
 import com.app.modules.media_job.repository.MediaJobStageRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,12 +51,15 @@ public class MediaStageRecoveryService {
     private static final int MAX_RENDER_ATTEMPTS = 2;
     /** Attempts a stage may consume while failing over across keys of the platform pool. */
     public static final int MAX_FAILOVER_ATTEMPTS = 4;
+    /** Attempts a stage may consume while waiting out rate limits / provider outages. */
+    public static final int MAX_DEFERRED_ATTEMPTS = 5;
 
     private final MediaJobRepository jobRepository;
     private final MediaJobStageRepository stageRepository;
     private final MediaCallbackService callbackService;
     private final MediaPipelineDispatcher dispatcher;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private TaskScheduler taskScheduler;
 
     public MediaStageRecoveryService(MediaJobRepository jobRepository,
                                      MediaJobStageRepository stageRepository,
@@ -63,6 +69,11 @@ public class MediaStageRecoveryService {
         this.stageRepository = stageRepository;
         this.callbackService = callbackService;
         this.dispatcher = dispatcher;
+    }
+
+    @Autowired(required = false)
+    void setTaskScheduler(TaskScheduler taskScheduler) {
+        this.taskScheduler = taskScheduler;
     }
 
     /** A worker-side cancel to send once the recovery transaction has committed. */
@@ -138,9 +149,60 @@ public class MediaStageRecoveryService {
         stage.setStartedAt(null);
         stage.setErrorMessage("Attempt " + stage.getAttemptCount() + " failed (" + errorCode
                 + "); retrying with another AI provider");
+        stage.setErrorCode(errorCode);
+        stage.setErrorDetail(retryDetail("FAILOVER", errorCode, null));
         stageRepository.save(stage);
         dispatcher.dispatchNext(jobId);
         return true;
+    }
+
+    /**
+     * Puts a stage whose provider is rate limited / temporarily down back to PENDING and dispatches
+     * it again after {@code delay}. If the backend restarts meanwhile, the job reconciler picks the
+     * idle job up. Same lock and correlation rules as {@link #retryOnAnotherProvider}.
+     */
+    @Transactional
+    public boolean deferRetry(UUID jobId, UUID stageId, String correlationId, String errorCode, Duration delay) {
+        MediaJob job = taskScheduler == null ? null : jobRepository.findWithLockById(jobId).orElse(null);
+        if (job == null) {
+            return false;
+        }
+        MediaJobStage stage = stageRepository.findById(stageId).orElse(null);
+        if (stage == null || stage.getStatus() != MediaJobStage.StageStatus.PROCESSING
+                || correlationId == null || !correlationId.equals(stage.getWorkerId())) {
+            return false;
+        }
+        stage.setStatus(MediaJobStage.StageStatus.PENDING);
+        stage.setWorkerId(null);
+        stage.setStartedAt(null);
+        Instant retryAt = Instant.now().plus(delay);
+        stage.setErrorMessage("Attempt " + stage.getAttemptCount() + " failed (" + errorCode
+                + "); retrying automatically in " + delay.toSeconds() + "s");
+        stage.setErrorCode(errorCode);
+        stage.setErrorDetail(retryDetail("DEFERRED", errorCode, retryAt));
+        stageRepository.save(stage);
+        // Fresh activity keeps the idle-job reconciler from dispatching before the delay elapses.
+        job.setUpdatedAt(Instant.now());
+        jobRepository.save(job);
+        taskScheduler.schedule(() -> {
+            try {
+                dispatcher.dispatchNext(jobId);
+            } catch (RuntimeException ex) {
+                log.warn("Deferred dispatch of job={} failed; the reconciler will retry: {}", jobId, ex.toString());
+            }
+        }, retryAt);
+        return true;
+    }
+
+    /** Structured PENDING reason for the UI; the dispatcher clears it when the retry is claimed. */
+    private com.fasterxml.jackson.databind.JsonNode retryDetail(String mode, String errorCode, Instant retryAt) {
+        var detail = objectMapper.createObjectNode();
+        detail.put("retry", mode);
+        detail.put("errorCode", errorCode);
+        if (retryAt != null) {
+            detail.put("retryAt", retryAt.toString());
+        }
+        return detail;
     }
 
     private boolean overdue(MediaJobStage stage, Instant now) {

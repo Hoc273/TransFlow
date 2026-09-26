@@ -8,8 +8,9 @@ from __future__ import annotations
 import asyncio
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Sequence
+from urllib.parse import urlparse
 
 import httpx
 
@@ -607,7 +608,7 @@ async def _transcribe_long_audio(adapter, req, *, chunk_ms: int = _STT_CHUNK_DUR
             )
 
         verdict = TranscriptSanityValidator.validate(
-            merged_segments, req.asset_duration_ms
+            merged_segments, req.asset_duration_ms, req.source_lang
         )
         _log_sanity_verdict(verdict, req, 0, merged_segments)
         if verdict.result is TranscriptSanityResult.MALFORMED:
@@ -815,11 +816,18 @@ async def _prepare_audio_input(adapter, audio_url: str) -> AudioInput:
     if adapter.prefers_audio_url():
         return AudioInput.from_url(audio_url)
 
-    # Multipart / binary adapters: download first.
+    # Multipart / binary adapters: download first. Whisper vendors (Groq…)
+    # validate the upload by FILENAME extension, so the name must carry a
+    # real audio extension — never the temp file's name.
     tmp_path = await _download_audio(audio_url)
     try:
         data = tmp_path.read_bytes()
-        return AudioInput.from_bytes(data, filename=tmp_path.name or "audio.wav")
+        suffix = _audio_suffix(audio_url)
+        return AudioInput.from_bytes(
+            data,
+            filename=f"audio{suffix}",
+            mime_type=_AUDIO_MIME_BY_SUFFIX[suffix],
+        )
     finally:
         try:
             tmp_path.unlink()
@@ -860,7 +868,7 @@ async def _transcribe_with_retry(
                     validation_duration_ms,
                 )
             verdict = TranscriptSanityValidator.validate(
-                result.segments, duration_ms
+                result.segments, duration_ms, req.source_lang
             )
             _log_sanity_verdict(
                 verdict,
@@ -910,6 +918,24 @@ async def _transcribe_with_retry(
             raise
 
 
+_AUDIO_MIME_BY_SUFFIX = {
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".mp4": "audio/mp4",
+    ".flac": "audio/flac",
+    ".ogg": "audio/ogg",
+    ".opus": "audio/ogg",
+    ".webm": "audio/webm",
+}
+
+
+def _audio_suffix(audio_url: str) -> str:
+    """Audio extension of the (presigned) URL path; EXTRACT_AUDIO emits WAV."""
+    suffix = PurePosixPath(urlparse(audio_url).path).suffix.lower()
+    return suffix if suffix in _AUDIO_MIME_BY_SUFFIX else ".wav"
+
+
 async def _download_audio(audio_url: str) -> Path:
     """Stream the audio file to a temporary file."""
     try:
@@ -943,7 +969,7 @@ async def _download_audio(audio_url: str) -> Path:
             provider=audio_url,
         ) from exc
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".audio") as tmp:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=_audio_suffix(audio_url)) as tmp:
         tmp.write(response.content)
         return Path(tmp.name)
 

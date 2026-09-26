@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   defaultTtsProvider,
   filterCompatibleActiveVoices,
+  groupVoicesForPicker,
+  isNativeVoice,
   isCompleteVoicePair,
   isDeselectSelection,
   isTtsProvider,
@@ -128,6 +130,75 @@ describe('selectDefaultVoice', () => {
 
   it('returns null when nothing matches', () => {
     expect(selectDefaultVoice([voice({ id: 'en1', language: 'en' })], 'vi')).toBeNull()
+  })
+
+  it('prefers a native GA voice over multilingual and preview voices', () => {
+    // Azure: a PREVIEW Arabic multilingual voice used to be picked for Vietnamese.
+    const result = selectDefaultVoice(
+      [
+        voice({ id: 'ar', language: 'ar-ae', languages: ['ar', 'vi'], status: 'PREVIEW' }),
+        voice({ id: 'viHd', language: 'vi-vn', languages: ['vi'], status: 'PREVIEW' }),
+        voice({ id: 'viGa', language: 'vi-vn', languages: ['vi'], status: 'GA' }),
+      ],
+      'vi',
+    )
+    expect(result?.id).toBe('viGa')
+  })
+
+  it('falls back to a multilingual voice when no native one exists', () => {
+    const result = selectDefaultVoice(
+      [voice({ id: 'multi', language: 'en-us', languages: ['en', 'lo'] })],
+      'lo',
+    )
+    expect(result?.id).toBe('multi')
+  })
+})
+
+describe('isNativeVoice', () => {
+  it('compares the voice primary language only, not multilingual support', () => {
+    expect(isNativeVoice(voice({ language: 'en-gb', languages: ['en'] }), 'en-US')).toBe(true)
+    expect(isNativeVoice(voice({ language: 'de-de', languages: ['de', 'en'] }), 'en')).toBe(false)
+    expect(isNativeVoice(voice({ language: 'vi' }), null)).toBe(false)
+  })
+})
+
+describe('groupVoicesForPicker', () => {
+  const catalog = [
+    voice({ id: 'hoaimy', voiceId: 'vi-VN-HoaiMyNeural', language: 'vi-vn', languages: ['vi'], displayName: 'Hoài My', gender: 'FEMALE' }),
+    voice({ id: 'namminh', voiceId: 'vi-VN-NamMinhNeural', language: 'vi-vn', languages: ['vi'], displayName: 'Nam Minh', gender: 'MALE' }),
+    voice({ id: 'ava', voiceId: 'en-US-AvaMultilingualNeural', language: 'en-us', languages: ['en', 'vi'], displayName: 'Ava Multilingual', gender: 'FEMALE' }),
+    voice({ id: 'andrew', voiceId: 'en-US-AndrewMultilingualNeural', language: 'en-us', languages: ['en', 'vi'], displayName: 'Andrew Multilingual', gender: 'MALE' }),
+  ]
+
+  it('groups native voices by locale, then one multilingual group, keeping API order', () => {
+    const groups = groupVoicesForPicker(catalog, 'vi')
+    expect(groups.map((g) => [g.kind, g.locale, g.voices.map((v) => v.id)])).toEqual([
+      ['native', 'vi-vn', ['hoaimy', 'namminh']],
+      ['multilingual', null, ['ava', 'andrew']],
+    ])
+  })
+
+  it('searches name, id and locale ignoring case and accents', () => {
+    const ids = (q: string) => groupVoicesForPicker(catalog, 'vi', { query: q }).flatMap((g) => g.voices.map((v) => v.id))
+    expect(ids('hoai my')).toEqual(['hoaimy'])
+    expect(ids('ANDREW')).toEqual(['andrew'])
+    expect(ids('en-us')).toEqual(['ava', 'andrew'])
+    expect(ids('zzz')).toEqual([])
+  })
+
+  it('filters by gender and always keeps the selected voice visible', () => {
+    const groups = groupVoicesForPicker(catalog, 'vi', { gender: 'MALE', keepVoiceId: 'ava' })
+    expect(groups.flatMap((g) => g.voices.map((v) => v.id))).toEqual(['namminh', 'ava', 'andrew'])
+  })
+
+  it('drops inactive and incompatible voices', () => {
+    const groups = groupVoicesForPicker(
+      [...catalog, voice({ id: 'off', language: 'vi', isActive: false }), voice({ id: 'ja', language: 'ja-jp', languages: ['ja'] })],
+      'vi',
+    )
+    const ids = groups.flatMap((g) => g.voices.map((v) => v.id))
+    expect(ids).not.toContain('off')
+    expect(ids).not.toContain('ja')
   })
 })
 

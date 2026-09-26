@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import json
+import math
 import re
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 import httpx
 
@@ -46,6 +49,10 @@ def raise_for_http_status(
     details = {"vendorStatus": str(response.status_code)}
     if vendor_code:
         details["vendorCode"] = vendor_code[:160]
+    retry_after = retry_after_seconds(response.headers.get("retry-after"))
+    if retry_after is not None:
+        # Spring Boot defers the stage by this much instead of retrying immediately.
+        details["retryAfterSeconds"] = str(retry_after)
     if log is not None:
         log.warning(
             "Provider operation failed status=%s protocol=%s capability=%s model=%s",
@@ -72,6 +79,24 @@ def raise_for_http_status(
         model=provider.model,
         details=details,
     )
+
+
+def retry_after_seconds(value: str | None) -> int | None:
+    """Parse a ``Retry-After`` header (delta-seconds or HTTP-date) into whole seconds."""
+    if not value:
+        return None
+    value = value.strip()
+    if value.isdigit():
+        return int(value)
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError):
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0, math.ceil((when - datetime.now(timezone.utc)).total_seconds()))
 
 
 def _response_text(response: httpx.Response) -> str:
@@ -101,7 +126,12 @@ def _vendor_error(raw_body: str) -> tuple[str | None, str]:
 
 
 def _classify_provider_error(status: int, vendor_code: str | None, vendor_message: str) -> ProviderErrorCode:
-    signal = f"{vendor_code or ''} {vendor_message}".lower().replace("_", " ").replace(".", " ")
+    if status >= 500:
+        # A 5xx is the gateway's own failure. Routers (FreeLLMAPI, OpenRouter) aggregate
+        # upstream errors into the message, e.g. "... Ollama Cloud API error 401: Unauthorized"
+        # inside a 502; keyword-matching that would turn a transient failure non-retryable.
+        return map_http_status_to_code(status)
+    signal =f"{vendor_code or ''} {vendor_message}".lower().replace("_", " ").replace(".", " ")
     if any(token in signal for token in (
         "allocationquota", "insufficient quota", "insufficient_quota", "quota exceeded",
         "quota exhausted", "prepaid exhausted", "balance insufficient", "free tier only",

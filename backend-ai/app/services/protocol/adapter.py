@@ -200,6 +200,17 @@ class ProtocolAdapter(ABC):
         """Relative path used for Phase-2 authentication probe. Empty = unsupported."""
         return ""
 
+    def auth_probe_url(self, base_url: str) -> str:
+        """Absolute Phase-2 auth probe URL. Empty = unsupported.
+
+        Defaults to ``base_url + auth_probe_path``; adapters whose API lives on a
+        host derived from the configured endpoint override this.
+        """
+        from app.services.protocol.http_utils import normalize_base_url
+
+        path = self.auth_probe_path(base_url)
+        return normalize_base_url(base_url) + path if path else ""
+
     def auth_probe_method(self) -> str:
         return "GET"
 

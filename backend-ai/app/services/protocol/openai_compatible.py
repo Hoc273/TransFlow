@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.logging_config import get_provider_logger
 from app.schemas.contract import ProviderPayload, SttSegment, TtsVoice, Usage
 from app.services.protocol.adapter import ProtocolAdapter
+from app.services.protocol.audio_format import normalize_tts_audio
 from app.services.protocol.http_utils import (
     join_url,
     openai_models_path,
@@ -716,19 +717,23 @@ class OpenAICompatibleAdapter(ProtocolAdapter):
                 protocol=provider.protocol,
                 capability="TTS",
             )
-        content_type = (response.headers.get("content-type") or "").split(";", 1)[0].strip().casefold()
-        if content_type.startswith("audio/") and content_type not in {"audio/mpeg", "audio/mp3"}:
+        # Proxies (FreeLLMAPI…) may ignore response_format and answer WAV/OGG or raw PCM
+        # depending on the routed model; Spring sniffs containers, PCM is wrapped as WAV.
+        content_type = response.headers.get("content-type") or ""
+        audio = normalize_tts_audio(response.content, content_type)
+        if audio is None:
             raise ProviderValidation(
-                f"OpenAI-compatible TTS returned non-MP3 audio ({content_type})",
+                f"OpenAI-compatible TTS returned unsupported audio ({content_type.split(';', 1)[0].strip()})",
                 code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
                 provider=provider.base_url,
                 protocol=provider.protocol,
                 capability=Capability.TTS.value,
             )
         return SynthesizeResult(
-            audio_bytes=response.content,
-            mime_type="audio/mpeg",
-            metadata={"format": "mp3"},
+            audio_bytes=audio.audio_bytes,
+            mime_type=audio.mime_type,
+            sample_rate=audio.sample_rate,
+            metadata={"format": audio.format},
         )
 
     async def discover_voices(self, provider: ProviderPayload) -> VoiceDiscoveryResult:

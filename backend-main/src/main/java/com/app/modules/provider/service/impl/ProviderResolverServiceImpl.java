@@ -129,6 +129,13 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
     @Override
     @Transactional(readOnly = true)
     public ProviderResolution resolveBoundProvider(UUID userId, UUID providerId, String capability) {
+        return resolveBoundProvider(userId, providerId, capability, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ProviderResolution resolveBoundProvider(UUID userId, UUID providerId, String capability,
+                                                  String voiceIdentifier) {
         if (providerId == null) {
             return resolveForCapability(userId, capability);
         }
@@ -143,12 +150,45 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
                         cryptoService.decrypt(p.getApiKeyEnc()), p.getDefaultModel(), true));
             }
         }
-        PlatformAiProvider p = platformAiProviderRepository.findById(providerId)
+        PlatformAiProvider bound = platformAiProviderRepository.findById(providerId)
                 .filter(PlatformAiProvider::isActive)
                 .filter(candidate -> candidate.hasCapability(normCap))
                 .orElseThrow(() -> new AppException(ErrorCode.PROVIDER_NOT_FOUND));
+        PlatformAiProvider p = bound;
+        if (!isAvailable(bound)) {
+            p = selectPlatform(voiceSiblings(bound, normCap, voiceIdentifier).stream()
+                            .filter(this::isAvailable).toList(),
+                    candidate -> true, range -> ThreadLocalRandom.current().nextInt(range))
+                    .orElse(bound);
+        }
         return record(normCap, userResolution(p.getId(), p.getProtocol(), p.getBaseUrl(),
                 cryptoService.decrypt(p.getApiKeyEnc()), p.getDefaultModel(), false));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasVoiceSibling(UUID providerId, String voiceIdentifier) {
+        if (providerId == null) {
+            return false;
+        }
+        return platformAiProviderRepository.findById(providerId)
+                .map(bound -> voiceSiblings(bound, "TTS", voiceIdentifier).stream().anyMatch(this::isAvailable))
+                .orElse(false);
+    }
+
+    /** Other active platform keys of the same protocol that list the same vendor voice. */
+    private List<PlatformAiProvider> voiceSiblings(PlatformAiProvider bound, String capability, String voiceIdentifier) {
+        if (voiceIdentifier == null || voiceIdentifier.isBlank()) {
+            return List.of();
+        }
+        return platformAiProviderRepository.findByIsActiveTrue().stream()
+                .filter(candidate -> !candidate.getId().equals(bound.getId()))
+                .filter(candidate -> candidate.hasCapability(capability))
+                .filter(candidate -> candidate.getProtocol() != null
+                        && candidate.getProtocol().equalsIgnoreCase(bound.getProtocol()))
+                .filter(candidate -> ttsVoiceRepository.findByPlatformProviderId(candidate.getId()).stream()
+                        .anyMatch(voice -> voice.isActive() && voiceIdentifier.equals(voice.getVoiceId())))
+                .toList();
     }
 
     /**

@@ -38,7 +38,7 @@ import {
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { usePermission } from '@/hooks/usePermission'
 import { useRecordProjectVisit } from '@/hooks/useRecentProjects'
-import { useProviders, useTtsVoices } from '@/hooks/useProviders'
+import { useTtsProviderOptions, useTtsVoices } from '@/hooks/useProviders'
 import { useWorkflowPresets } from '@/hooks/useWorkflowPresets'
 import { presetScopeLabelKey } from '@/components/media-studio/WorkflowPresetPicker'
 import {
@@ -125,8 +125,8 @@ export function MediaJobPage() {
     assetTitle ?? (job ? `Media ${job.id.slice(0, 8)}` : t('media:pipeline.title')),
   )
 
-  const { data: providers = [] } = useProviders(workspaceId)
-  const ttsProviders = providers.filter(isTtsProvider)
+  // BYOK keys first, then the shared platform keys.
+  const { data: ttsProviders } = useTtsProviderOptions(workspaceId)
 
   // Opening a job counts as visiting its project (sidebar "Recent").
   useRecordProjectVisit(workspaceId, job?.projectId)
@@ -156,7 +156,7 @@ export function MediaJobPage() {
   // explicitly changes the selection.
   const voiceProviderId = resolveJobVoiceProviderId(job, ttsProviders)
   const voiceProvider = ttsProviders.find((p) => p.id === voiceProviderId)
-  const { data: voices = [] } = useTtsVoices(workspaceId, voiceProviderId ?? undefined)
+  const { data: voices = [] } = useTtsVoices(workspaceId, voiceProviderId ?? undefined, voiceProvider?.source)
   const availableVoices = filterCompatibleActiveVoices(voices, job?.targetLang)
 
   const stage = job ? currentStage(job) : null

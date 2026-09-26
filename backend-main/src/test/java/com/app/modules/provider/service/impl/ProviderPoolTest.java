@@ -174,6 +174,72 @@ class ProviderPoolTest {
         }
     }
 
+    private ProviderResolverServiceImpl voiceResolver(com.app.modules.provider.repository.TtsVoiceRepository voices,
+                                                     com.app.modules.provider.service.ProviderHealthService health) {
+        com.app.common.crypto.CryptoService crypto = mock(com.app.common.crypto.CryptoService.class);
+        when(crypto.decrypt(any())).thenReturn("secret");
+        return new ProviderResolverServiceImpl(
+                mock(com.app.modules.provider.repository.UserAiProviderRepository.class), platformRepository, voices,
+                mock(com.app.modules.provider.repository.UserAiProviderDefaultRepository.class), crypto, health);
+    }
+
+    private static PlatformAiProvider ttsKey(String name, String protocol) {
+        PlatformAiProvider p = key(name, 100, 1, PlatformAiProvider.HealthStatus.HEALTHY);
+        p.setProtocol(protocol);
+        p.setCapabilities(List.of("TTS"));
+        p.setActive(true);
+        p.setBaseUrl("https://tts.example");
+        p.setApiKeyEnc(new byte[] {1});
+        p.setDefaultModel("tts-model");
+        return p;
+    }
+
+    private static com.app.modules.provider.entity.TtsVoice voice(PlatformAiProvider owner, String voiceId) {
+        com.app.modules.provider.entity.TtsVoice v = new com.app.modules.provider.entity.TtsVoice();
+        v.setPlatformProviderId(owner.getId());
+        v.setVoiceId(voiceId);
+        v.setActive(true);
+        return v;
+    }
+
+    @Test
+    void unavailableTtsKeyIsSwappedForAKeyServingTheSameVoice() {
+        var voices = mock(com.app.modules.provider.repository.TtsVoiceRepository.class);
+        var health = mock(com.app.modules.provider.service.ProviderHealthService.class);
+        PlatformAiProvider bound = ttsKey("bound", "dashscope_native");
+        PlatformAiProvider sameVoice = ttsKey("same-voice", "dashscope_native");
+        PlatformAiProvider otherVoice = ttsKey("other-voice", "dashscope_native");
+        PlatformAiProvider otherProtocol = ttsKey("other-protocol", "azure_speech");
+        when(platformRepository.findById(bound.getId())).thenReturn(Optional.of(bound));
+        when(platformRepository.findByIsActiveTrue()).thenReturn(List.of(bound, sameVoice, otherVoice, otherProtocol));
+        when(voices.findByPlatformProviderId(sameVoice.getId())).thenReturn(List.of(voice(sameVoice, "Cherry")));
+        when(voices.findByPlatformProviderId(otherVoice.getId())).thenReturn(List.of(voice(otherVoice, "Ethan")));
+        lenient().when(voices.findByPlatformProviderId(otherProtocol.getId())).thenReturn(List.of(voice(otherProtocol, "Cherry")));
+        when(health.isCoolingDown(bound.getId())).thenReturn(true);
+        ProviderResolverServiceImpl resolver = voiceResolver(voices, health);
+
+        var resolved = resolver.resolveBoundProvider(null, bound.getId(), "TTS", "Cherry");
+
+        assertEquals(sameVoice.getId(), resolved.providerId());
+        assertTrue(resolver.hasVoiceSibling(bound.getId(), "Cherry"));
+        assertFalse(resolver.hasVoiceSibling(bound.getId(), "Nobody"));
+    }
+
+    @Test
+    void availableTtsKeyOrNoSameVoiceSiblingKeepsTheBoundKey() {
+        var voices = mock(com.app.modules.provider.repository.TtsVoiceRepository.class);
+        var health = mock(com.app.modules.provider.service.ProviderHealthService.class);
+        PlatformAiProvider bound = ttsKey("bound", "dashscope_native");
+        when(platformRepository.findById(bound.getId())).thenReturn(Optional.of(bound));
+        when(platformRepository.findByIsActiveTrue()).thenReturn(List.of(bound));
+        ProviderResolverServiceImpl resolver = voiceResolver(voices, health);
+
+        assertEquals(bound.getId(), resolver.resolveBoundProvider(null, bound.getId(), "TTS", "Cherry").providerId());
+        when(health.isCoolingDown(bound.getId())).thenReturn(true);
+        assertEquals(bound.getId(), resolver.resolveBoundProvider(null, bound.getId(), "TTS", "Cherry").providerId(),
+                "no sibling: the job's own key is still tried");
+    }
+
     @Test
     void failoverClassification() {
         for (String code : Set.of("PROVIDER_RATE_LIMITED", "PROVIDER_QUOTA_EXCEEDED", "PROVIDER_AUTH_FAILED",

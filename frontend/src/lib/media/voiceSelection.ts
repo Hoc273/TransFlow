@@ -42,15 +42,109 @@ export function filterCompatibleActiveVoices(
   )
 }
 
+function primaryCode(tag?: string | null): string {
+  return (tag ?? '').trim().toLowerCase().split(/[-_]/, 2)[0] ?? ''
+}
+
 /**
- * First compatible active voice in API order (language ASC, displayName ASC —
- * same ordering the backend voice catalog returns).
+ * True when the voice's OWN language is the target ("en-GB" for "en") — as
+ * opposed to a multilingual voice that merely supports it.
+ */
+export function isNativeVoice(
+  voice: { language?: string | null },
+  targetLang?: string | null,
+): boolean {
+  const target = primaryCode(targetLang)
+  return Boolean(target) && primaryCode(voice.language) === target
+}
+
+const isPreviewOrWorse = (voice: TtsVoice) =>
+  voice.status === 'PREVIEW' || voice.status === 'DEPRECATED'
+
+/**
+ * Default pick: the first native GA voice, else the first native voice, else
+ * the first compatible one. The backend already returns the catalog in this
+ * order (native → GA → locale → name); ranking here too keeps the default right
+ * with older backends that returned vendor order (Azure put a PREVIEW Arabic
+ * multilingual voice first for every language).
  */
 export function selectDefaultVoice(
   voices: TtsVoice[] | undefined,
   targetLang?: string | null,
 ): TtsVoice | null {
-  return filterCompatibleActiveVoices(voices, targetLang)[0] ?? null
+  const compatible = filterCompatibleActiveVoices(voices, targetLang)
+  return (
+    compatible.find((v) => isNativeVoice(v, targetLang) && !isPreviewOrWorse(v))
+    ?? compatible.find((v) => isNativeVoice(v, targetLang))
+    ?? compatible[0]
+    ?? null
+  )
+}
+
+/** Above this many compatible voices the picker offers search + gender filters. */
+export const VOICE_FILTER_THRESHOLD = 8
+
+export type VoiceGenderFilter = 'ALL' | 'FEMALE' | 'MALE'
+
+export type VoiceGroup = {
+  key: string
+  /** `native` = one locale of the target language; `multilingual` = every other compatible voice. */
+  kind: 'native' | 'multilingual'
+  /** Lowercase locale ("vi-vn") for native groups; null for the multilingual group. */
+  locale: string | null
+  voices: TtsVoice[]
+}
+
+function foldForSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u0111\u0110]/g, 'd') // đ/Đ do not decompose under NFD
+    .toLowerCase()
+}
+
+/**
+ * Picker groups for catalogs with N voices per language (Azure: up to 348 for
+ * "en"). Native voices are grouped per locale (vi-VN, en-US, en-GB …), then a
+ * single multilingual group; API order is kept inside each group. `query`
+ * matches name, vendor id or locale ignoring case and accents; `keepVoiceId`
+ * stays visible whatever the filters so the select never loses its value.
+ */
+export function groupVoicesForPicker(
+  voices: TtsVoice[] | undefined,
+  targetLang?: string | null,
+  options: { query?: string; gender?: VoiceGenderFilter; keepVoiceId?: string | null } = {},
+): VoiceGroup[] {
+  const query = foldForSearch(options.query?.trim() ?? '')
+  const gender = options.gender ?? 'ALL'
+  const visible = filterCompatibleActiveVoices(voices, targetLang).filter((voice) => {
+    if (voice.id === options.keepVoiceId) return true
+    if (gender !== 'ALL' && voice.gender !== gender) return false
+    if (!query) return true
+    return [voice.displayName, voice.voiceId, voice.language]
+      .some((field) => foldForSearch(field ?? '').includes(query))
+  })
+
+  const nativeGroups = new Map<string, VoiceGroup>()
+  const multilingual: TtsVoice[] = []
+  for (const voice of visible) {
+    if (!isNativeVoice(voice, targetLang)) {
+      multilingual.push(voice)
+      continue
+    }
+    const locale = (voice.language ?? '').trim().toLowerCase()
+    let group = nativeGroups.get(locale)
+    if (!group) {
+      group = { key: `native:${locale}`, kind: 'native', locale, voices: [] }
+      nativeGroups.set(locale, group)
+    }
+    group.voices.push(voice)
+  }
+  const groups = [...nativeGroups.values()]
+  if (multilingual.length > 0) {
+    groups.push({ key: 'multilingual', kind: 'multilingual', locale: null, voices: multilingual })
+  }
+  return groups
 }
 
 /** A provider usable for TTS (capability flag only — not enabled/disabled). */

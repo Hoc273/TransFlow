@@ -30,7 +30,7 @@ import {
   useUploadMedia,
 } from '@/hooks/useMedia'
 import { usePermission } from '@/hooks/usePermission'
-import { useProviders } from '@/hooks/useProviders'
+import { useTtsProviderOptions } from '@/hooks/useProviders'
 import { formatLanguageOption, LANG_OPTIONS } from '@/lib/languages'
 import {
   formatDurationMs,
@@ -51,7 +51,7 @@ import {
   WorkflowPresetPicker,
 } from '@/components/media-studio/WorkflowPresetPicker'
 import { useWorkflowPresets } from '@/hooks/useWorkflowPresets'
-import { defaultTtsProvider, isTtsProvider, type VoiceSelection } from '@/lib/media/voiceSelection'
+import { defaultTtsProvider, type VoiceSelection } from '@/lib/media/voiceSelection'
 import {
   buildLocalizationCreateJobInput,
   createJobApiBody,
@@ -180,8 +180,9 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
   const upload = useUploadMedia(workspaceId, projectId)
   const consent = useConsentMedia(workspaceId)
   const termsQuery = useMediaTermsVersion(workspaceId)
-  const providersQuery = useProviders(workspaceId)
-  const ttsProviders = (providersQuery.data ?? []).filter(isTtsProvider)
+  // BYOK keys first, then the shared platform keys (accounts without BYOK dub on those).
+  const providersQuery = useTtsProviderOptions(workspaceId)
+  const ttsProviders = providersQuery.data
   const defaultTts = defaultTtsProvider(providersQuery.data)
   const termsVersion = termsQuery.data?.termsVersion ?? '…'
   const qc = useQueryClient()

@@ -112,6 +112,8 @@ def test_script_business_violation_is_repaired_with_violation_feedback() -> None
         patch.object(script_gateway.settings, "mock_mode", False),
         patch.object(script_gateway.settings, "script_output_repair_attempts", 1),
         patch("app.services.script_gateway.chat", chat_mock),
+        patch("app.services.summary.narration_fill.chat",
+              AsyncMock(return_value=SimpleNamespace(text="{}", usage=None))),
         TestClient(app) as client,
     ):
         response = client.post("/media/summarize/script", json=_request_body())

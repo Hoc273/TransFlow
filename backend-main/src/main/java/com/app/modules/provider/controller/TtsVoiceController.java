@@ -2,6 +2,7 @@ package com.app.modules.provider.controller;
 
 import com.app.common.dto.ApiResponse;
 import com.app.common.security.CurrentUser;
+import com.app.modules.provider.dto.PlatformTtsProviderResponse;
 import com.app.modules.provider.dto.PreviewTtsVoiceRequest;
 import com.app.modules.provider.dto.PreviewTtsVoiceResponse;
 import com.app.modules.provider.dto.TtsVoiceResponse;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Controller for listing platform TTS voices (API_Contract.md §11).
@@ -29,12 +31,21 @@ public class TtsVoiceController {
         this.ttsVoiceService = ttsVoiceService;
     }
 
+    /** Platform voices only; {@code providerSource} is accepted for compatibility but BYOK voices are never listed here. */
     @GetMapping
     public ApiResponse<List<TtsVoiceResponse>> listVoices(
             @RequestParam(required = false) String language,
-            @RequestParam(defaultValue = "PLATFORM") String providerSource) {
+            @RequestParam(required = false) UUID platformProviderId) {
         return ApiResponse.<List<TtsVoiceResponse>>builder()
-                .data(ttsVoiceService.listPlatformVoices(language, providerSource))
+                .data(ttsVoiceService.listPlatformVoices(language, platformProviderId))
+                .build();
+    }
+
+    /** Shared platform TTS keys a user without BYOK can pick a voice from. */
+    @GetMapping("/providers")
+    public ApiResponse<List<PlatformTtsProviderResponse>> listProviders() {
+        return ApiResponse.<List<PlatformTtsProviderResponse>>builder()
+                .data(ttsVoiceService.listPlatformTtsProviders())
                 .build();
     }
 

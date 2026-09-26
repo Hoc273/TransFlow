@@ -48,6 +48,9 @@ def _post(body: dict, *outputs: str):
         # budget, so disable the narration repair round-trips here.
         patch.object(script_gateway.settings, "script_output_repair_attempts", 0),
         patch("app.services.script_gateway.chat", chat_mock),
+        # The narration writer is covered by test_script_narration_budget; keep drafts as-is.
+        patch("app.services.summary.narration_fill.chat",
+              AsyncMock(return_value=SimpleNamespace(text="{}", usage=None))),
         TestClient(app) as client,
     ):
         response = client.post("/media/summarize/script", json=body)

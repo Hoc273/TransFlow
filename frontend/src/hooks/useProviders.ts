@@ -1,7 +1,10 @@
+import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createProviderApi,
   deleteProviderApi,
+  listPlatformTtsProvidersApi,
+  listPlatformTtsVoicesApi,
   listProvidersApi,
   listTtsVoiceLanguagesApi,
   listTtsVoicesApi,
@@ -15,9 +18,11 @@ import {
   validateProviderApi,
 } from '@/api/providers'
 import { STALE, queryKeys } from '@/lib/queryClient'
+import { isTtsProvider } from '@/lib/media/voiceSelection'
 import type {
   CreateProviderRequest,
   ProviderCapability,
+  ProviderConfig,
   ProviderPreset,
   ProviderPresetCategory,
   ProviderTestResult,
@@ -58,15 +63,56 @@ export function resolveVoiceProviderArg(
   return args.length >= 2 ? args[1] : args[0]
 }
 
+/**
+ * Voices of one provider. Pass `source: 'PLATFORM'` (old-style call only) for a
+ * shared platform key — those voices are not under /users/me/providers.
+ */
 export function useTtsVoices(
-  ...args: [providerId: string | undefined] | [workspaceId: string | undefined, providerId: string | undefined]
+  ...args:
+    | [providerId: string | undefined]
+    | [workspaceId: string | undefined, providerId: string | undefined]
+    | [workspaceId: string | undefined, providerId: string | undefined, source: ProviderConfig['source']]
 ) {
-  const resolvedProviderId = resolveVoiceProviderArg(args)
+  const resolvedProviderId = args.length === 3 ? args[1] : resolveVoiceProviderArg(args)
+  const platform = args.length === 3 && args[2] === 'PLATFORM'
   return useQuery({
-    queryKey: queryKeys.ttsVoices('me', resolvedProviderId ?? ''),
-    queryFn: () => listTtsVoicesApi(resolvedProviderId!),
+    queryKey: [...queryKeys.ttsVoices('me', resolvedProviderId ?? ''), platform ? 'PLATFORM' : 'USER'],
+    queryFn: () =>
+      platform
+        ? listPlatformTtsVoicesApi({ platformProviderId: resolvedProviderId! })
+        : listTtsVoicesApi(resolvedProviderId!),
     enabled: !!resolvedProviderId,
   })
+}
+
+/** Shared platform TTS keys (GET /tts-voices/providers). */
+export function usePlatformTtsProviders() {
+  return useQuery({
+    queryKey: queryKeys.ttsProviders('platform'),
+    queryFn: () => listPlatformTtsProvidersApi(),
+    staleTime: STALE.static,
+  })
+}
+
+/**
+ * TTS providers a user can dub with: their own BYOK keys first, then the
+ * shared platform keys — so an account without BYOK can still pick a voice.
+ */
+export function useTtsProviderOptions(workspaceId?: string) {
+  const own = useProviders(workspaceId)
+  const platform = usePlatformTtsProviders()
+  const data = useMemo(
+    () => [
+      ...(own.data ?? []).filter(isTtsProvider),
+      ...(platform.data ?? []),
+    ],
+    [own.data, platform.data],
+  )
+  return {
+    data,
+    // A failed platform lookup must not hide the user's own keys.
+    isPending: own.isPending || (platform.isPending && platform.fetchStatus !== 'idle'),
+  }
 }
 
 /**

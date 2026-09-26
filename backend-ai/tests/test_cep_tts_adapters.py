@@ -419,6 +419,127 @@ class AzureSpeechAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ProviderErrorCode.PROVIDER_EMPTY_RESPONSE, ctx.exception.code)
 
 
+class AzureSpeechEndpointAndDiscoveryTest(unittest.IsolatedAsyncioTestCase):
+    """The Azure Portal shows ``{region}.api.cognitive.microsoft.com`` as the key's
+    endpoint, but TTS REST (synthesis + voices/list) only lives on
+    ``{region}.tts.speech.microsoft.com`` — the portal host answers 404."""
+
+    def _azure(self, base_url: str) -> ProviderPayload:
+        return ProviderPayload(
+            protocol="azure_speech",  # type: ignore[arg-type]
+            capabilities={"TTS"},
+            base_url=base_url,
+            api_key="sk-test",
+            model="en-US-JennyNeural",
+        )
+
+    def test_portal_endpoint_maps_to_speech_host(self):
+        from app.services.protocol.azure_tts import speech_base_url
+
+        self.assertEqual(
+            "https://southeastasia.tts.speech.microsoft.com",
+            speech_base_url("https://southeastasia.api.cognitive.microsoft.com/"),
+        )
+        self.assertEqual(
+            "https://eastus.tts.speech.microsoft.com",
+            speech_base_url("https://eastus.tts.speech.microsoft.com/cognitiveservices/v1"),
+        )
+        self.assertEqual("http://provider.test/v1", speech_base_url("http://provider.test/v1/"))
+
+    def test_auth_probe_url_uses_speech_host(self):
+        self.assertEqual(
+            "https://southeastasia.tts.speech.microsoft.com/cognitiveservices/voices/list",
+            AzureSpeechAdapter().auth_probe_url("https://southeastasia.api.cognitive.microsoft.com/"),
+        )
+
+    async def test_synthesize_any_locale_voice_on_speech_host(self):
+        client = _FakeClient(httpx.Response(200, content=b"mp3data"))
+        with patch("app.services.protocol.azure_tts.httpx.AsyncClient", return_value=client):
+            await AzureSpeechAdapter().synthesize(
+                self._azure("https://southeastasia.api.cognitive.microsoft.com/"),
+                "Hello", "en-US-JennyNeural",
+            )
+        _, url, kwargs = client.calls[0]
+        self.assertEqual("https://southeastasia.tts.speech.microsoft.com/cognitiveservices/v1", url)
+        self.assertIn("xml:lang='en-US'", kwargs["content"])
+
+    async def test_hd_and_mai_voice_ids_pass_gate(self):
+        # ~12% of the live catalog uses ``Name:Model`` ids (Dragon HD, MAI-Voice-2).
+        cases = {
+            "en-US-Ava:DragonHDLatestNeural": "en-US",
+            "de-DE-Klaus:MAI-Voice-2-Flash": "de-DE",
+            "en-Multitalker:DragonHDLatestNeural": "en",
+            "zh-CN-shaanxi-XiaoniNeural": "zh-CN",
+            "yue-CN-XiaoMinNeural": "yue-CN",
+            "en-us-ava:DragonHDOmniLatestNeural": "en-US",
+            "hu-HU-Réka:MAI-Voice-2": "hu-HU",
+        }
+        for voice_id, lang in cases.items():
+            client = _FakeClient(httpx.Response(200, content=b"mp3data"))
+            with patch("app.services.protocol.azure_tts.httpx.AsyncClient", return_value=client):
+                await AzureSpeechAdapter().synthesize(
+                    self._azure("https://southeastasia.tts.speech.microsoft.com"), "hi", voice_id
+                )
+            self.assertIn(f"xml:lang='{lang}'", client.calls[0][2]["content"], voice_id)
+
+    async def test_malformed_voice_rejected_before_call(self):
+        client = _FakeClient(httpx.Response(200, content=b"mp3data"))
+        with patch("app.services.protocol.azure_tts.httpx.AsyncClient", return_value=client):
+            with self.assertRaises(ProviderValidation) as ctx:
+                await AzureSpeechAdapter().synthesize(
+                    self._azure("https://southeastasia.api.cognitive.microsoft.com/"), "hi", "alloy"
+                )
+        self.assertEqual(ProviderErrorCode.PROVIDER_TTS_VOICE_NOT_FOUND, ctx.exception.code)
+        self.assertEqual([], client.calls)
+
+    async def test_discover_voices_lists_live_catalog(self):
+        payload = [
+            {"ShortName": "en-US-JennyNeural", "LocalName": "Jenny", "DisplayName": "Jenny",
+             "Gender": "Female", "Locale": "en-US"},
+            {"ShortName": "de-DE-SeraphinaMultilingualNeural", "LocalName": "Seraphina Mehrsprachig",
+             "DisplayName": "Seraphina Multilingual", "Gender": "Female", "Locale": "de-DE",
+             "SecondaryLocaleList": ["en-US", "vi-VN", "zh-CN"]},
+            {"ShortName": "vi-VN-NamMinhNeural", "LocalName": "Nam Minh", "Gender": "Male",
+             "Locale": "vi-VN", "Status": "Preview"},
+            {"ShortName": "zh-CN-XiaoxiaoNeural", "LocalName": "晓晓", "DisplayName": "Xiaoxiao",
+             "Gender": "Female", "Locale": "zh-CN", "Status": "Deprecated"},
+            {"ShortName": "", "Locale": "en-US"},
+        ]
+        client = _FakeClient(httpx.Response(200, json=payload))
+        with patch("app.services.protocol.azure_tts.httpx.AsyncClient", return_value=client):
+            result = await AzureSpeechAdapter().discover_voices(
+                self._azure("https://southeastasia.api.cognitive.microsoft.com")
+            )
+
+        method, url, kwargs = client.calls[0]
+        self.assertEqual("GET", method)
+        self.assertEqual("https://southeastasia.tts.speech.microsoft.com/cognitiveservices/voices/list", url)
+        self.assertEqual("sk-test", kwargs["headers"]["Ocp-Apim-Subscription-Key"])
+        self.assertEqual("AUTHORITATIVE", result.mode)
+        by_id = {v.voice_id: v for v in result.voices}
+        self.assertEqual(4, len(by_id))
+        self.assertEqual("en-US", by_id["en-US-JennyNeural"].language)
+        self.assertEqual("Jenny", by_id["en-US-JennyNeural"].display_name)
+        self.assertEqual("GA", by_id["en-US-JennyNeural"].status)
+        self.assertEqual("Nam Minh", by_id["vi-VN-NamMinhNeural"].display_name)
+        self.assertEqual("PREVIEW", by_id["vi-VN-NamMinhNeural"].status)
+        # Non-Latin LocalName falls back to the romanized DisplayName.
+        self.assertEqual("Xiaoxiao", by_id["zh-CN-XiaoxiaoNeural"].display_name)
+        self.assertEqual("DEPRECATED", by_id["zh-CN-XiaoxiaoNeural"].status)
+        self.assertEqual("FEMALE", by_id["en-US-JennyNeural"].gender)
+        self.assertEqual(["de", "en", "vi", "zh"], by_id["de-DE-SeraphinaMultilingualNeural"].languages)
+        self.assertEqual("MALE", by_id["vi-VN-NamMinhNeural"].gender)
+
+    async def test_discover_voices_auth_error(self):
+        client = _FakeClient(httpx.Response(401, text="denied"))
+        with patch("app.services.protocol.azure_tts.httpx.AsyncClient", return_value=client):
+            with self.assertRaises(ProviderException) as ctx:
+                await AzureSpeechAdapter().discover_voices(
+                    self._azure("https://southeastasia.api.cognitive.microsoft.com")
+                )
+        self.assertEqual(ProviderErrorCode.PROVIDER_AUTH_FAILED, ctx.exception.code)
+
+
 # ── Catalogs & registry ──────────────────────────────────────────────────────
 
 class CatalogRegistryTest(unittest.TestCase):
@@ -635,6 +756,70 @@ class GatewayPerSegmentErrorCodeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("FAILED", response.results[0].status)
         self.assertEqual("PROVIDER_TTS_VOICE_NOT_FOUND", response.results[0].errorCode)
         self.assertIsNotNone(response.results[0].error)
+
+    async def test_quota_mid_batch_stops_calling_and_reports_cause(self):
+        calls: list[str] = []
+
+        async def fake_synthesize(provider, text, voice_id):
+            calls.append(text)
+            if len(calls) == 1:
+                return SynthesizeResult(audio_bytes=b"audio", mime_type="audio/mpeg")
+            raise ProviderValidation("quota", code=ProviderErrorCode.PROVIDER_QUOTA_EXCEEDED)
+
+        request = self._request("s1", "s2", "s3")
+        with patch("app.services.tts_gateway.require_adapter", return_value=self._adapter(fake_synthesize)):
+            response = await gateway_synthesize(request)
+        self.assertEqual(2, len(calls))  # s3 is not sent once the key is out of quota
+        self.assertEqual("COMPLETED", response.status)
+        self.assertEqual(["SUCCESS", "FAILED", "FAILED"], [r.status for r in response.results])
+        self.assertEqual("PROVIDER_QUOTA_EXCEEDED", response.results[2].errorCode)
+        # Partial success still carries the cause so Spring can fail over / defer.
+        self.assertEqual("PROVIDER_QUOTA_EXCEEDED", response.error_detail.errorCode)
+
+    async def test_isolated_rate_limit_from_a_pool_does_not_stop_the_batch(self):
+        # FreeLLMAPI answers 429 when one pass over its chain failed; the next call may succeed.
+        outcomes = iter(["429", "ok", "429", "429", "ok"])
+        calls: list[str] = []
+
+        async def fake_synthesize(provider, text, voice_id):
+            calls.append(text)
+            if next(outcomes) == "429":
+                raise ProviderValidation("limited", code=ProviderErrorCode.PROVIDER_RATE_LIMITED)
+            return SynthesizeResult(audio_bytes=b"audio", mime_type="audio/mpeg")
+
+        request = self._request("s1", "s2", "s3", "s4", "s5")
+        with patch("app.services.tts_gateway.require_adapter", return_value=self._adapter(fake_synthesize)):
+            response = await gateway_synthesize(request)
+        self.assertEqual(5, len(calls))
+        self.assertEqual(["FAILED", "SUCCESS", "FAILED", "FAILED", "SUCCESS"], [r.status for r in response.results])
+
+    async def test_rate_limit_streak_stops_calling(self):
+        calls: list[str] = []
+
+        async def fake_synthesize(provider, text, voice_id):
+            calls.append(text)
+            raise ProviderValidation("limited", code=ProviderErrorCode.PROVIDER_RATE_LIMITED)
+
+        request = self._request("s1", "s2", "s3", "s4", "s5")
+        with patch("app.services.tts_gateway.require_adapter", return_value=self._adapter(fake_synthesize)):
+            response = await gateway_synthesize(request)
+        self.assertEqual(3, len(calls))  # s4/s5 are not sent once the key is clearly throttled
+        self.assertEqual("PROVIDER_RATE_LIMITED", response.results[4].errorCode)
+
+    async def test_segment_level_failure_does_not_stop_the_batch(self):
+        calls: list[str] = []
+
+        async def fake_synthesize(provider, text, voice_id):
+            calls.append(text)
+            if len(calls) == 1:
+                raise ProviderValidation("filtered", code=ProviderErrorCode.PROVIDER_CONTENT_FILTERED)
+            return SynthesizeResult(audio_bytes=b"audio", mime_type="audio/mpeg")
+
+        request = self._request("s1", "s2")
+        with patch("app.services.tts_gateway.require_adapter", return_value=self._adapter(fake_synthesize)):
+            response = await gateway_synthesize(request)
+        self.assertEqual(2, len(calls))
+        self.assertEqual(["FAILED", "SUCCESS"], [r.status for r in response.results])
 
     async def test_generic_exception_carries_provider_unknown(self):  # T2
         async def fake_synthesize(provider, text, voice_id):

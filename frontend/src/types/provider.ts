@@ -45,6 +45,8 @@ export type ProviderConfig = {
   temperature?: number | null
   /** Daily key check: DOWN = the provider rejected this key. */
   keyHealth?: 'UNKNOWN' | 'HEALTHY' | 'DOWN'
+  /** PLATFORM = shared key configured by the platform admin (voice picker only); absent = the user's BYOK. */
+  source?: 'USER' | 'PLATFORM'
 }
 
 export type CreateProviderRequest = {
@@ -135,7 +137,10 @@ export type TtsVoice = {
    */
   languages?: string[]
   gender: string
+  /** Vendor's readable name ("Hoài My"); falls back to `voiceId` server-side. */
   displayName: string
+  /** Vendor lifecycle; null/absent = not published (treated as GA). */
+  status?: 'GA' | 'PREVIEW' | 'DEPRECATED' | null
   isActive: boolean
   cachedAt: string | null
   /** Owning provider row id (Phase C; absent on responses from older backends). */

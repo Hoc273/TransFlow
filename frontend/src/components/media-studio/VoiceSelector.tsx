@@ -5,19 +5,24 @@ import {
   IconLoader2,
   IconMicrophone2,
   IconPlayerPlay,
+  IconSearch,
   IconVolume,
 } from '@tabler/icons-react'
 import { useTtsVoices, useVoicePreview } from '@/hooks/useProviders'
 import {
   filterCompatibleActiveVoices,
+  formatVoiceLanguage,
+  groupVoicesForPicker,
   isTtsProvider,
   providerDisplayName,
   providerSwitchReset,
   selectDefaultVoice,
+  VOICE_FILTER_THRESHOLD,
+  type VoiceGenderFilter,
   type VoiceSelection,
 } from '@/lib/media/voiceSelection'
 import { cn } from '@/lib/cn'
-import type { ProviderConfig } from '@/types/provider'
+import type { ProviderConfig, TtsVoice } from '@/types/provider'
 
 type Props = {
   workspaceId: string
@@ -114,6 +119,9 @@ export function VoiceSelector({
   const audioSourceName = useId()
   const providerSelectRef = useRef<HTMLSelectElement>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  // Search + gender filter for catalogs with many voices per language (Azure: up to 348).
+  const [voiceQuery, setVoiceQuery] = useState('')
+  const [voiceGender, setVoiceGender] = useState<VoiceGenderFilter>('ALL')
 
   const selectableProviders = useMemo(
     () => providers.filter((p) => p.enabled && isTtsProvider(p)),
@@ -174,7 +182,11 @@ export function VoiceSelector({
   }, [selectedVoiceId, keepOriginal])
 
   const activeProviderId = pendingProviderId ?? providerId
-  const voicesQuery = useTtsVoices(workspaceId, activeProviderId ?? undefined)
+  const voicesQuery = useTtsVoices(
+    workspaceId,
+    activeProviderId ?? undefined,
+    providers.find((p) => p.id === activeProviderId)?.source,
+  )
 
   const compatibleVoices = useMemo(
     () => filterCompatibleActiveVoices(voicesQuery.data, targetLang),
@@ -188,6 +200,8 @@ export function VoiceSelector({
   // load and a committed pair is emitted through onChange.
   const handleProviderChange = (next: string) => {
     setKeepOriginal(false)
+    setVoiceQuery('')
+    setVoiceGender('ALL')
     setPendingProviderId(next)
     setProviderId(null)
     setVoiceId(null)
@@ -266,6 +280,42 @@ export function VoiceSelector({
     () => compatibleVoices.find((v) => v.id === voiceId) ?? null,
     [compatibleVoices, voiceId],
   )
+
+  const showVoiceFilters = compatibleVoices.length > VOICE_FILTER_THRESHOLD
+  const voiceGroups = useMemo(
+    () => groupVoicesForPicker(voicesQuery.data, targetLang, showVoiceFilters
+      ? { query: voiceQuery, gender: voiceGender, keepVoiceId: voiceId }
+      : {}),
+    [voicesQuery.data, targetLang, showVoiceFilters, voiceQuery, voiceGender, voiceId],
+  )
+  // Matches only — the kept selected voice is not a filter hit.
+  const matchedVoiceCount = useMemo(
+    () => showVoiceFilters
+      ? groupVoicesForPicker(voicesQuery.data, targetLang, { query: voiceQuery, gender: voiceGender })
+        .reduce((sum, group) => sum + group.voices.length, 0)
+      : compatibleVoices.length,
+    [showVoiceFilters, voicesQuery.data, targetLang, voiceQuery, voiceGender, compatibleVoices.length],
+  )
+
+  const voiceOptionLabel = (voice: TtsVoice, multilingual: boolean) => {
+    const parts = [
+      multilingual
+        ? `${voice.displayName || voice.voiceId} (${formatVoiceLanguage(voice.language)})`
+        : voice.displayName || voice.voiceId,
+    ]
+    if (voice.gender && voice.gender !== 'UNKNOWN') {
+      parts.push(t(`media:voice.gender.${voice.gender}`, { defaultValue: voice.gender }))
+    }
+    if (voice.status === 'PREVIEW') parts.push(t('media:voice.previewTag'))
+    return parts.join(' · ')
+  }
+
+  const renderVoiceOptions = (group: (typeof voiceGroups)[number]) =>
+    group.voices.map((voice) => (
+      <option key={voice.id} value={voice.id}>
+        {voiceOptionLabel(voice, group.kind === 'multilingual')}
+      </option>
+    ))
 
   const handlePreview = () => {
     if (!providerId || !selectedVoice || disabled || preview.isPending) return
@@ -379,14 +429,18 @@ export function VoiceSelector({
                 onChange={(e) => handleVoiceChange(e.target.value)}
               >
                 {!voiceId && <option value="">{t('media:voice.voicePlaceholder')}</option>}
-                {compatibleVoices.map((voice) => (
-                  <option key={voice.id} value={voice.id}>
-                    {voice.displayName || voice.voiceId}
-                    {voice.gender
-                      ? ` · ${t(`media:voice.gender.${voice.gender}`, { defaultValue: voice.gender })}`
-                      : ''}
-                  </option>
-                ))}
+                {voiceGroups.length > 1
+                  ? voiceGroups.map((group) => (
+                    <optgroup
+                      key={group.key}
+                      label={group.kind === 'multilingual'
+                        ? t('media:voice.multilingualGroup')
+                        : formatVoiceLanguage(group.locale ?? '')}
+                    >
+                      {renderVoiceOptions(group)}
+                    </optgroup>
+                  ))
+                  : voiceGroups.flatMap(renderVoiceOptions)}
               </select>
             )}
           </label>
@@ -412,6 +466,45 @@ export function VoiceSelector({
           </div>
         )}
       </div>
+      )}
+
+      {showTtsControls && providerId && !loading && showVoiceFilters && (
+        <div className="voice-filter" data-testid="voice-filter">
+          <label className="voice-filter__search">
+            <IconSearch size={14} aria-hidden />
+            <input
+              type="search"
+              className="voice-filter__input"
+              data-testid="voice-filter-search"
+              aria-label={t('media:voice.searchLabel')}
+              placeholder={t('media:voice.searchPlaceholder')}
+              value={voiceQuery}
+              disabled={disabled}
+              onChange={(e) => setVoiceQuery(e.target.value)}
+            />
+          </label>
+          <div className="voice-filter__gender" role="radiogroup" aria-label={t('media:voice.genderFilterLabel')}>
+            {(['ALL', 'FEMALE', 'MALE'] as const).map((gender) => (
+              <button
+                key={gender}
+                type="button"
+                role="radio"
+                aria-checked={voiceGender === gender}
+                data-testid={`voice-filter-gender-${gender}`}
+                className={cn('voice-filter__chip', voiceGender === gender && 'active')}
+                disabled={disabled}
+                onClick={() => setVoiceGender(gender)}
+              >
+                {gender === 'ALL' ? t('media:voice.genderAll') : t(`media:voice.gender.${gender}`)}
+              </button>
+            ))}
+          </div>
+          <span className="voice-filter__count" data-testid="voice-filter-count" aria-live="polite">
+            {matchedVoiceCount === 0
+              ? t('media:voice.noFilterMatch')
+              : t('media:voice.filterCount', { shown: matchedVoiceCount, total: compatibleVoices.length })}
+          </span>
+        </div>
       )}
 
       {boundProviderMissing && (

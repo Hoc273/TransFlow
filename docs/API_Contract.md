@@ -168,6 +168,15 @@ render không còn; output-package trả `url=null` cho track đã mất.
 
 `stages[]` trong chi tiết job và response mutation chứa `errorCode` cùng `errorDetail` khi stage lỗi; `errorMessage` là safe message để hiển thị dự phòng cho lỗi cũ/không nhận diện.
 
+Trường bổ sung của `errorDetail` (V14):
+- Stage `PENDING` đang chờ hệ thống tự thử lại: `retry` = `DEFERRED` (rate limit/provider tạm lỗi, chạy lại lúc
+  `retryAt` ISO-8601) hoặc `FAILOVER` (đang chuyển sang key khác); `errorCode` là lỗi provider vừa gặp.
+- Stage TTS `FAILED` vì dừng giữa chừng: `missingSegments`, `totalSegments`. Clip đã tạo được giữ lại; rerun TTS
+  chỉ tạo và tính phí phần còn thiếu.
+- `errorCode = INSUFFICIENT_CREDIT` (2300) khi người trả theo cost mode không đủ credit cho chi phí ước tính của
+  stage — kiểm tra **trước** khi gọi provider. Nạp credit rồi rerun từ stage đó.
+- Lỗi provider có `details.retryAfterSeconds` khi provider trả header `Retry-After`.
+
 `stages[].outputRef` là storage ref bucket/key của artifact (RENDER/AUDIO_MIX/TTS/EXTRACT_AUDIO…), null với stage chỉ sinh dữ liệu (STT/TRANSLATE/SUMMARIZE) — không bao giờ trả JSON output gốc.
 
 **Body mẫu — tạo job Localization:**
@@ -354,14 +363,21 @@ chỉ kiểm tra thời gian.
 | PUT | `/api/users/me/providers/{id}` | JWT (owner) | Sửa cấu hình; `defaultForCapabilities` nếu có sẽ thay thế các capability đang default cho provider này. Response GET/POST/PUT trả `defaultForCapabilities`. |
 | DELETE | `/api/users/me/providers/{id}` | JWT (owner) | Xoá provider cá nhân. |
 | POST | `/api/users/me/providers/{id}/test?capability=TRANSLATE` | JWT (owner) | Tách auth probe và model/capability probe; capability probe gửi đúng `defaultModel` tới FastAPI. Trả `authSuccess` và `capabilityResults[]` có kết quả, code lỗi và model theo capability. Không truyền capability thì test các capability default; nếu chưa có default thì test các capability provider khai báo. |
-| GET | `/api/users/me/providers/{id}/voices?language=` | JWT (owner) | List `tts_voices(provider_source=USER)` đã cache; filter `language` dùng chung primary-subtag compatibility trên cả `language` và `languages[]`. |
-| POST | `/api/users/me/providers/{id}/voices/refresh` | JWT (owner) | Đồng bộ lại danh sách voice từ provider. |
+| GET | `/api/users/me/providers/{id}/voices?language=` | JWT (owner) | List `tts_voices(provider_source=USER)` đã cache; filter `language` dùng chung primary-subtag compatibility trên cả `language` và `languages[]`. Thứ tự: xem **Thứ tự voice** bên dưới. |
+| POST | `/api/users/me/providers/{id}/voices/refresh` | JWT (owner) | Đồng bộ lại danh sách voice từ provider: upsert theo `voiceId`, voice bị gỡ/`DEPRECATED` → inactive (không xoá — job có thể đang tham chiếu). Provider trả rỗng → `502 PROVIDER_VOICES_FETCH_FAILED`, catalog giữ nguyên. |
 
 `UserAiProviderResponse` có thêm `healthStatus` (`UNKNOWN`\|`HEALTHY`\|`DOWN`) và `lastCheckedAt` từ cronjob
 kiểm tra key BYOK hằng ngày (chỉ probe auth, không tốn phí). Khi key chuyển sang `DOWN`, user nhận 1 notification
 `PROVIDER_KEY_INVALID` ở workspace mặc định; key vẫn được dùng (không tự rơi sang pool nền tảng).
-| GET | `/api/tts-voices?language=&providerSource=PLATFORM` | JWT | Danh mục voice nền tảng (`platform_ai_providers`) dùng khi user không có BYOK phù hợp — phục vụ UI chọn giọng khi tạo job; filter `language` dùng chung primary-subtag compatibility trên cả `language` và `languages[]`. |
+| GET | `/api/tts-voices/providers` | JWT | Key TTS nền tảng đang bật (`PlatformTtsProviderResponse[]`: `id, name, protocol`, sắp theo `priority`) — UI chọn giọng gộp danh sách này **sau** các key BYOK TTS của user, để tài khoản chưa có BYOK vẫn chọn được giọng. Không trả baseUrl/model/key hint. |
+| GET | `/api/tts-voices?language=&platformProviderId=` | JWT | Danh mục voice nền tảng (`platform_ai_providers`) dùng khi user không có BYOK phù hợp — phục vụ UI chọn giọng khi tạo job; `platformProviderId` lọc theo một key; filter `language` dùng chung primary-subtag compatibility trên cả `language` và `languages[]`. **Chỉ trả voice `PLATFORM`** — voice BYOK chỉ xem qua `/api/users/me/providers/{id}/voices`. Thứ tự: xem **Thứ tự voice** bên dưới. |
 | POST | `/api/tts-voices/preview` | JWT | `{voiceId, text}` (`text` ≤ 50 ký tự, `@NotBlank`) → `{audioUrl, expiresInSeconds}` — nghe thử giọng: tổng hợp audio ngắn qua `POST /media/tts` của `backend-ai`, upload MinIO (`temp/voice-preview/<userId>/<uuid>.<ext>`), `audioUrl` là presigned GET (TTL `app.storage.presigned-ttl-seconds`, mặc định 3600s). `voiceId` là UUID `tts_voices.id`, không phải `tts_voices.voice_id`. Voice `providerSource=USER` chỉ owner của `user_ai_providers` đó gọi được (không khớp → `404`). **Không trừ Credit** — chỉ rate limit theo user. Lỗi: `404 TTS_VOICE_NOT_FOUND`, `400 PROVIDER_CAPABILITY_NOT_SUPPORTED`, `400 PLATFORM_PROVIDER_NOT_CONFIGURED`, `429 TTS_PREVIEW_RATE_LIMIT_EXCEEDED`, `502 TTS_PREVIEW_FAILED`. |
+
+**`TtsVoiceResponse`** (mọi endpoint voice): `{id, providerSource, userProviderId, platformProviderId, voiceId, language, languages[], gender, displayName, status, isActive, cachedAt}` — `displayName` là tên vendor đọc được (fallback `voiceId`); `status ∈ GA | PREVIEW | DEPRECATED | null` (null = vendor không công bố, coi như GA).
+
+**Thứ tự voice** (catalog có thể có hàng trăm giọng/ngôn ngữ — Azure: 780 giọng, 348 dùng được cho `en`): khi có `language`, voice **bản ngữ** (primary subtag của `language` trùng đích, vd `en-GB` cho `en`) đứng trước voice đa ngôn ngữ chỉ hỗ trợ qua `languages[]`; tiếp theo `GA/null` trước `PREVIEW`; rồi locale chính của ngôn ngữ — locale khớp chính xác nếu `language` có vùng (`en-GB`), ngược lại locale có nhiều voice nhất trong kết quả (`en-US` trước `en-AU`, `fr-FR` trước `fr-BE`); cuối cùng `language` và `displayName` A→Z, không phân biệt hoa thường. Phần tử đầu là giọng mặc định UI tự chọn.
+
+**Azure Speech (`azure_speech`):** `baseUrl` nhận cả endpoint Azure Portal (`https://{region}.api.cognitive.microsoft.com/`) — FastAPI tự chuyển sang `https://{region}.tts.speech.microsoft.com` vì host Portal trả 404 cho TTS REST. Voice lấy live từ `cognitiveservices/voices/list` (discovery `AUTO`), gồm cả ID dạng `Name:Model` (`en-US-Ava:DragonHDLatestNeural`, `de-DE-Klaus:MAI-Voice-2-Flash`).
 
 ---
 
@@ -409,7 +425,8 @@ Ngoài ra, quản trị nội dung trang Hướng dẫn nằm dưới `/api/plat
 nhóm `priority` nhỏ nhất còn key khả dụng (không `DOWN`, không cooldown Redis, chưa lỗi trong stage hiện tại),
 random theo `weight`. Khi key nền tảng lỗi `PROVIDER_RATE_LIMITED`/`QUOTA_EXCEEDED`/`AUTH_FAILED`/`TIMEOUT`/
 `UNAVAILABLE`/output hỏng…, stage được xếp lại (không FAILED) để chạy trên key kế tiếp, tối đa 4 attempt; TTS
-không failover vì voice gắn với 1 provider. Credit tính theo capability như cũ (key FREE vẫn tính giá bóng theo D3).
+chỉ failover sang key cùng protocol có đúng vendor voice của job. Credit tính theo capability như cũ (key FREE vẫn
+tính giá bóng theo D3).
 
 Nhóm API này read-only trong MVP, **trừ** điều chỉnh Credit của user (`POST .../credit/adjust`), quản lý pool key
 AI (`/api/platform/providers*`) và quản trị Hướng dẫn (§13.2); không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.

@@ -109,7 +109,9 @@ services:
   # tạo API key "freellmapi-..." rồi đặt vào FREELLMAPI_API_KEY cho backend-main.
   # Bật bằng profile: docker compose --profile freellmapi up -d  (hoặc COMPOSE_PROFILES=freellmapi trong .env)
   freellmapi:
-    image: ghcr.io/tashfeenahmed/freellmapi:latest
+    # Upstream + TransFlow speech patch (Cloudflare Deepgram TTS body, speech language routing,
+    # TTS key rotation/cooldown). Rebuild from infra/freellmapi/Dockerfile.
+    image: duckziec/freellmapi:speech-patch-1
     container_name: transflow-freellmapi
     profiles: ["freellmapi"]
     restart: unless-stopped

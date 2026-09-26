@@ -78,6 +78,10 @@ vi.mock('@/components/media-studio/VoiceSelector', () => ({
 
 vi.mock('@/hooks/useProviders', () => ({
   useProviders: () => providersQuery,
+  useTtsProviderOptions: () => ({
+    data: ((providersQuery.data ?? []) as ProviderConfig[]).filter((p) => p.capabilities.includes('TTS')),
+    isPending: providersQuery.isPending,
+  }),
   useTtsVoices: (_ws: string | undefined, providerId: string | undefined) => ({
     data: providerId ? voicesMap.get(providerId) : undefined,
     isPending: false,

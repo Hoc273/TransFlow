@@ -99,6 +99,43 @@ class MediaStageRecoveryServiceTest {
     }
 
     @Test
+    void deferredRetryWaitsThenDispatchesTheSameStage() {
+        org.springframework.scheduling.TaskScheduler scheduler = mock(org.springframework.scheduling.TaskScheduler.class);
+        recovery.setTaskScheduler(scheduler);
+        MediaJobStage stage = stage(MediaJobStage.StageName.TTS, MediaJobStage.StageStatus.PROCESSING,
+                Duration.ofMinutes(1), 1);
+        Instant before = Instant.now();
+
+        assertTrue(recovery.deferRetry(jobId, stageId, "old-correlation", "PROVIDER_RATE_LIMITED",
+                Duration.ofSeconds(42)));
+
+        assertEquals(MediaJobStage.StageStatus.PENDING, stage.getStatus());
+        assertNull(stage.getWorkerId());
+        assertTrue(stage.getErrorMessage().contains("42s"));
+        assertNotNull(job.getUpdatedAt(), "fresh activity keeps the idle reconciler away");
+        org.mockito.ArgumentCaptor<Runnable> task = org.mockito.ArgumentCaptor.forClass(Runnable.class);
+        org.mockito.ArgumentCaptor<Instant> at = org.mockito.ArgumentCaptor.forClass(Instant.class);
+        verify(scheduler).schedule(task.capture(), at.capture());
+        assertFalse(at.getValue().isBefore(before.plusSeconds(42)));
+        verify(dispatcher, never()).dispatchNext(any());
+        task.getValue().run();
+        verify(dispatcher).dispatchNext(jobId);
+    }
+
+    @Test
+    void deferredRetryIgnoresASupersededAttemptAndNeedsAScheduler() {
+        MediaJobStage stage = stage(MediaJobStage.StageName.TTS, MediaJobStage.StageStatus.PROCESSING,
+                Duration.ofMinutes(1), 1);
+        assertFalse(recovery.deferRetry(jobId, stageId, "old-correlation", "PROVIDER_RATE_LIMITED",
+                Duration.ofSeconds(30)), "no scheduler wired");
+
+        recovery.setTaskScheduler(mock(org.springframework.scheduling.TaskScheduler.class));
+        assertFalse(recovery.deferRetry(jobId, stageId, "stale-correlation", "PROVIDER_RATE_LIMITED",
+                Duration.ofSeconds(30)));
+        assertEquals(MediaJobStage.StageStatus.PROCESSING, stage.getStatus());
+    }
+
+    @Test
     void providerFailoverIgnoresASupersededAttempt() {
         MediaJobStage stage = stage(MediaJobStage.StageName.TRANSLATE, MediaJobStage.StageStatus.PROCESSING,
                 Duration.ofMinutes(1), 2);

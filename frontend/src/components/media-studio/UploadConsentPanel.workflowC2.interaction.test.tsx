@@ -6,6 +6,7 @@
 //    switching to MANUAL clears a selected preset;
 //  - an AUTO preset carrying its own voice pair hides the voice selector and
 //    shows the "voice from preset" note (the FE sends no explicit pair).
+import type { ProviderConfig } from '@/types/provider'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
@@ -66,6 +67,10 @@ vi.mock('@/hooks/usePermission', () => ({
 
 vi.mock('@/hooks/useProviders', () => ({
   useProviders: () => providersQuery,
+  useTtsProviderOptions: () => ({
+    data: ((providersQuery.data ?? []) as ProviderConfig[]).filter((p) => p.capabilities.includes('TTS')),
+    isPending: providersQuery.isPending,
+  }),
   useTtsVoices: (_ws: string | undefined, providerId: string | undefined) => ({
     data: providerId ? voicesMap.get(providerId) : undefined,
     isPending: false,

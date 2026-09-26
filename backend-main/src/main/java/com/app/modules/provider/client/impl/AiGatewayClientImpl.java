@@ -130,7 +130,8 @@ public class AiGatewayClientImpl implements AiGatewayClient {
                         v.language != null ? v.language : "en",
                         v.languages != null ? v.languages : List.of(v.language != null ? v.language : "en"),
                         v.gender != null ? v.gender : "UNKNOWN",
-                        v.displayName != null ? v.displayName : v.voiceId
+                        v.displayName != null ? v.displayName : v.voiceId,
+                        v.status
                 ));
             }
             return result;
@@ -242,5 +243,8 @@ public class AiGatewayClientImpl implements AiGatewayClient {
 
         @JsonProperty("display_name")
         public String displayName;
+
+        @JsonProperty("status")
+        public String status;
     }
 }

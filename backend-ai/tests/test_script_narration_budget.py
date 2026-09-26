@@ -168,3 +168,44 @@ def test_sections_cover_the_whole_source_even_when_the_model_clusters_at_the_sta
     assert segments[-1]["end_ms"] > 255_000
     # No gap between consecutive sections is wider than two coverage windows.
     assert all(b["start_ms"] - a["end_ms"] < 90_000 for a, b in zip(segments, segments[1:]))
+
+
+def _gateway_502():
+    from app.services.provider_errors import ProviderErrorCode, ProviderException
+
+    return ProviderException(ProviderErrorCode.PROVIDER_INTERNAL_ERROR, "Provider returned an internal error")
+
+
+def test_a_transient_batch_failure_does_not_drop_the_other_sections() -> None:
+    # Observed 2026-09-26: batch 2 of 7 hit a router 502, the whole fill aborted and every
+    # section without a draft was dropped -> 760 of 4 863 chars, a 1 min render for 5 min.
+    calls = []
+
+    async def narrate(provider, system, user, **kwargs):
+        calls.append(user)
+        if len(calls) == 2:
+            raise _gateway_502()
+        return _on_budget(user)
+
+    body = _body(17.5)
+    body["transcript"] = [{"text": f"Sentence {i}.", "start_ms": i * 5000, "end_ms": (i + 1) * 5000}
+                          for i in range(120)]
+    body["requested_duration_seconds"] = 300
+    payload, _, _ = _post(body, _output(200), narration=narrate)
+
+    assert payload["status"] == "COMPLETED"
+    assert "SECTIONS_WITHOUT_NARRATION_DROPPED" not in payload["warnings"]
+    assert "NARRATION_FILL_DEGRADED" not in payload["warnings"]
+    total = sum(len(s["script_excerpt"]) for s in payload["segments"])
+    assert abs(total - 300 * 17.5) <= 300 * 17.5 * 0.10
+
+
+def test_a_fill_that_keeps_failing_returns_a_retryable_failure_not_a_short_proposal() -> None:
+    async def narrate(provider, system, user, **kwargs):
+        raise _gateway_502()
+
+    payload, _, fill = _post(_body(17.5), _output(100), narration=narrate)
+
+    assert payload["status"] == "FAILED"
+    assert payload["error_detail"]["retryable"] is True
+    assert fill.await_count == 2  # stops after back-to-back failures instead of every batch x round

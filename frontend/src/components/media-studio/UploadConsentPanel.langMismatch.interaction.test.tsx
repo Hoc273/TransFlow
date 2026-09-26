@@ -2,6 +2,7 @@
 // BA review v1 P2 — direct interaction coverage of the WORKFLOW_PRESET_VOICE_LANG_MISMATCH
 // mapping: the create-job submit rejects with that code → the panel surfaces the
 // friendly Vietnamese message, never the raw backend exception.
+import type { ProviderConfig } from '@/types/provider'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
@@ -54,6 +55,10 @@ vi.mock('@/hooks/usePermission', () => ({
 
 vi.mock('@/hooks/useProviders', () => ({
   useProviders: () => providersQuery,
+  useTtsProviderOptions: () => ({
+    data: ((providersQuery.data ?? []) as ProviderConfig[]).filter((p) => p.capabilities.includes('TTS')),
+    isPending: providersQuery.isPending,
+  }),
   useTtsVoices: (_ws: string | undefined, providerId: string | undefined) => ({
     data: providerId ? voicesMap.get(providerId) : undefined,
     isPending: false,

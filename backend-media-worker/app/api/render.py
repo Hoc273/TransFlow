@@ -159,14 +159,26 @@ class SubtitleTrackRequest(BaseModel):
         return self
 
 
-def _pad_audio_to(path: str, duration_ms: int, temp_dir: str) -> str:
-    """Append trailing silence so the clip lasts ``duration_ms``; longer clips are left intact."""
+# Common format of every narration beat. The beats are joined with the concat demuxer,
+# which reads all files with the FIRST file's stream parameters: pooled TTS mixes
+# providers (Gemini 24 kHz, MeloTTS 44.1 kHz, Deepgram MP3 22.05 kHz), and a clip at
+# another rate was played slowed/sped up, drifting the voice away from the subtitles.
+BEAT_AUDIO_SAMPLE_RATE = 48_000
+BEAT_AUDIO_CHANNELS = 1
+
+
+def _pad_audio_to(path: str, duration_ms: Optional[int], temp_dir: str) -> str:
+    """Normalize the clip to the beat audio format and, when ``duration_ms`` is set,
+    append trailing silence so it lasts that long (longer clips are left intact)."""
     output_path = os.path.join(temp_dir, f"padded_{uuid.uuid4()}.wav")
-    _run([
-        "ffmpeg", "-y", "-i", path,
-        "-af", f"apad=whole_dur={duration_ms / 1000:.3f}",
+    cmd = ["ffmpeg", "-y", "-i", path]
+    if duration_ms:
+        cmd += ["-af", f"apad=whole_dur={duration_ms / 1000:.3f}"]
+    cmd += [
+        "-ar", str(BEAT_AUDIO_SAMPLE_RATE), "-ac", str(BEAT_AUDIO_CHANNELS),
         "-c:a", "pcm_s16le", output_path,
-    ])
+    ]
+    _run(cmd)
     return output_path
 
 
@@ -357,11 +369,11 @@ async def _process_render(req: RenderRequest) -> None:
                     # The beat length (tts_duration_ms) is the timeline authority:
                     # the voice gets trailing silence up to it (a pause Spring adds
                     # when narration is short), keeping audio and footage in sync.
-                    # It is never padded to the source visual duration.
-                    if beat.tts_duration_ms:
-                        raw_audio_path = await _blocking(
-                            _pad_audio_to, raw_audio_path, beat.tts_duration_ms, temp_dir
-                        )
+                    # It is never padded to the source visual duration. Every clip is
+                    # normalized to one format so the concat below keeps real time.
+                    raw_audio_path = await _blocking(
+                        _pad_audio_to, raw_audio_path, beat.tts_duration_ms or None, temp_dir
+                    )
                     tts_audio_paths.append(raw_audio_path)
 
             await send_progress(req.media_job_id, req.correlation_id, 50, req.stage_id)

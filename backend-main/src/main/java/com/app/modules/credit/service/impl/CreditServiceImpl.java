@@ -147,22 +147,65 @@ public class CreditServiceImpl implements CreditService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public boolean hasSufficientBalance(UUID workspaceId, UUID performedByUserId) {
+        return hasSufficientBalance(resolvePayer(workspaceId, performedByUserId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean canAffordUsage(UUID workspaceId, UUID performedByUserId, String capability,
+                                  long estimatedUnits, boolean hasPersonalApiKey) {
+        BigDecimal cost = usageCost(capability, estimatedUnits, hasPersonalApiKey);
+        return creditAccountRepository.findByUserId(resolvePayer(workspaceId, performedByUserId))
+                .map(acc -> acc.getBalance().compareTo(BigDecimal.ZERO) > 0 && acc.getBalance().compareTo(cost) >= 0)
+                .orElse(false);
+    }
+
+    @Override
     @Transactional
     public BigDecimal chargeUsage(UUID workspaceId, UUID performedByUserId, String capability, long tokensUsed, boolean hasPersonalApiKey) {
-        // 1. Resolve Workspace Cost Mode (SRS §5.6, Arch §10.3)
+        UUID chargedUserId = resolvePayer(workspaceId, performedByUserId);
+        BigDecimal cost = usageCost(capability, tokensUsed, hasPersonalApiKey);
+
+        // Invariant khoá ghi (Arch §12): SELECT ... FOR UPDATE trên credit_accounts
+        CreditAccount account = creditAccountRepository.findByUserIdForUpdate(chargedUserId)
+                .orElseThrow(() -> new AppException(ErrorCode.INSUFFICIENT_CREDIT));
+
+        if (account.getBalance().compareTo(cost) < 0) {
+            throw new AppException(ErrorCode.INSUFFICIENT_CREDIT);
+        }
+
+        BigDecimal newBalance = account.getBalance().subtract(cost);
+        account.setBalance(newBalance);
+        creditAccountRepository.save(account);
+
+        // Append-only transaction log
+        CreditTransaction tx = new CreditTransaction();
+        tx.setUserId(chargedUserId);
+        tx.setAmount(cost.negate());
+        tx.setBalanceAfter(newBalance);
+        tx.setType(CreditTransactionType.AI_USAGE);
+        tx.setPerformedByUserId(performedByUserId);
+        tx.setRefType(capability);
+        creditTransactionRepository.save(tx);
+
+        return cost;
+    }
+
+    /** Workspace cost mode decides who pays (SRS §5.6, Arch §10.3). */
+    private UUID resolvePayer(UUID workspaceId, UUID performedByUserId) {
         CostMode costMode = workspaceBillingConfigRepository.findById(workspaceId)
                 .map(WorkspaceBillingConfig::getCostMode)
                 .orElse(CostMode.PAY_PER_USER);
-
-        UUID chargedUserId;
         if (costMode == CostMode.LEAD_PAYS_ALL) {
-            chargedUserId = workspaceAccessService.findLeadUserId(workspaceId)
-                    .orElse(performedByUserId);
-        } else {
-            chargedUserId = performedByUserId;
+            return workspaceAccessService.findLeadUserId(workspaceId).orElse(performedByUserId);
         }
+        return performedByUserId;
+    }
 
-        // 2. Resolve Pricing Coefficients x and y (SRS §5.6, Arch §10.2)
+    /** Case 1 (personal key): x * tokens; case 2 (platform source): (x + y) * tokens (SRS §5.6, Arch §10.2). */
+    private BigDecimal usageCost(String capability, long tokensUsed, boolean hasPersonalApiKey) {
         BigDecimal infraX = DEFAULT_INFRA_X;
         BigDecimal tokenY = DEFAULT_TOKEN_Y;
         List<CreditPricingConfig> pricingConfigs = creditPricingConfigRepository.findActivePricing(capability, null);
@@ -177,42 +220,9 @@ public class CreditServiceImpl implements CreditService {
         } else {
             log.warn("No active CreditPricingConfig found for capability={}, using fallback x={}, y={}", capability, infraX, tokenY);
         }
-
-        // 3. Compute cost according to Case 1 or Case 2
         BigDecimal tokens = BigDecimal.valueOf(Math.max(0, tokensUsed));
-        BigDecimal cost;
-        if (hasPersonalApiKey) {
-            // Trường hợp 1: có API key cá nhân -> x * tokens
-            cost = infraX.multiply(tokens);
-        } else {
-            // Trường hợp 2: không có API key cá nhân (dùng nguồn nền tảng) -> (x + y) * tokens
-            cost = infraX.add(tokenY).multiply(tokens);
-        }
-        cost = cost.setScale(4, RoundingMode.HALF_UP);
-
-        // 4. Invariant khoá ghi (Arch §12): SELECT ... FOR UPDATE trên credit_accounts
-        CreditAccount account = creditAccountRepository.findByUserIdForUpdate(chargedUserId)
-                .orElseThrow(() -> new AppException(ErrorCode.INSUFFICIENT_CREDIT));
-
-        if (account.getBalance().compareTo(cost) < 0) {
-            throw new AppException(ErrorCode.INSUFFICIENT_CREDIT);
-        }
-
-        BigDecimal newBalance = account.getBalance().subtract(cost);
-        account.setBalance(newBalance);
-        creditAccountRepository.save(account);
-
-        // 5. Append-only transaction log
-        CreditTransaction tx = new CreditTransaction();
-        tx.setUserId(chargedUserId);
-        tx.setAmount(cost.negate());
-        tx.setBalanceAfter(newBalance);
-        tx.setType(CreditTransactionType.AI_USAGE);
-        tx.setPerformedByUserId(performedByUserId);
-        tx.setRefType(capability);
-        creditTransactionRepository.save(tx);
-
-        return cost;
+        BigDecimal rate = hasPersonalApiKey ? infraX : infraX.add(tokenY);
+        return rate.multiply(tokens).setScale(4, RoundingMode.HALF_UP);
     }
 
     @Override

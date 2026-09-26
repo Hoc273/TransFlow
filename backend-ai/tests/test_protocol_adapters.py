@@ -1641,6 +1641,51 @@ class OpenAITtsCompatibilityTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("hello", calls[0]["json"]["input"])
         self.assertEqual("nova", calls[0]["json"]["voice"])
 
+    async def _synthesize_with(self, content: bytes, content_type: str):
+        response = httpx.Response(200, content=content, headers={"content-type": content_type})
+        client, _ = self._client_for_responses([response])
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            return await OpenAICompatibleAdapter().synthesize(self._provider(), "hello", "nova")
+
+    _WAV = b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x00" * 28
+
+    async def test_proxy_wav_is_passed_through_as_wav(self):
+        result = await self._synthesize_with(self._WAV, "audio/wav")
+        self.assertEqual(self._WAV, result.audio_bytes)
+        self.assertEqual("audio/wav", result.mime_type)
+        self.assertEqual("wav", result.metadata["format"])
+
+    async def test_wav_body_mislabeled_as_mpeg_is_sniffed_as_wav(self):
+        result = await self._synthesize_with(self._WAV, "audio/mpeg")
+        self.assertEqual("audio/wav", result.mime_type)
+
+    async def test_raw_pcm_is_wrapped_as_wav_with_declared_rate(self):
+        pcm = b"\x01\x00\x02\x00\x03\x00"
+        result = await self._synthesize_with(pcm, "audio/L16; rate=16000; channels=1")
+        self.assertEqual("audio/wav", result.mime_type)
+        self.assertEqual(16000, result.sample_rate)
+        self.assertEqual(b"RIFF", result.audio_bytes[:4])
+        self.assertEqual(b"WAVE", result.audio_bytes[8:12])
+        self.assertEqual(16000, int.from_bytes(result.audio_bytes[24:28], "little"))
+        self.assertEqual(pcm, result.audio_bytes[44:])
+
+    async def test_raw_pcm_without_rate_defaults_to_24k(self):
+        result = await self._synthesize_with(b"\x00\x00" * 4, "audio/pcm")
+        self.assertEqual(24000, int.from_bytes(result.audio_bytes[24:28], "little"))
+
+    async def test_ogg_is_passed_through(self):
+        result = await self._synthesize_with(b"OggS" + b"\x00" * 20, "audio/ogg")
+        self.assertEqual("audio/ogg", result.mime_type)
+
+    async def test_unknown_bytes_with_generic_header_keep_mp3(self):
+        result = await self._synthesize_with(b"mp3", "application/octet-stream")
+        self.assertEqual("audio/mpeg", result.mime_type)
+
+    async def test_undecodable_audio_type_fails_closed(self):
+        with self.assertRaises(ProviderException) as ctx:
+            await self._synthesize_with(b"\x00\x01", "audio/basic")
+        self.assertEqual(ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
+
     async def test_unsupported_speech_response_format_retries_once_without_only_that_field(self):
         client, calls = self._client_for_responses([
             httpx.Response(400, text="response_format is not supported"),
@@ -1667,17 +1712,14 @@ class OpenAITtsCompatibilityTest(unittest.IsolatedAsyncioTestCase):
             await OpenAICompatibleAdapter().synthesize(self._provider(), "hello", "nova")
         self.assertEqual(1, len(calls))
 
-    async def test_non_mp3_fallback_response_is_rejected(self):
+    async def test_non_mp3_fallback_response_keeps_its_container(self):
         client, _ = self._client_for_responses([
             httpx.Response(400, text="response_format unsupported"),
-            httpx.Response(200, content=b"wav", headers={"content-type": "audio/wav"}),
+            httpx.Response(200, content=self._WAV, headers={"content-type": "audio/wav"}),
         ])
-        with (
-            patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client),
-            self.assertRaises(ProviderException) as ctx,
-        ):
-            await OpenAICompatibleAdapter().synthesize(self._provider(), "hello", "nova")
-        self.assertEqual(ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED, ctx.exception.code)
+        with patch("app.services.protocol.openai_compatible.httpx.AsyncClient", return_value=client):
+            result = await OpenAICompatibleAdapter().synthesize(self._provider(), "hello", "nova")
+        self.assertEqual("audio/wav", result.mime_type)
 
 
 if __name__ == "__main__":

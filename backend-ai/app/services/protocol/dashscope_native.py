@@ -17,7 +17,6 @@ import io
 import json
 import math
 import re
-import struct
 import unicodedata
 import wave
 from typing import Any, Optional
@@ -29,6 +28,7 @@ from app.core.logging_config import get_provider_logger
 from app.api.structured import parse_json_object
 from app.schemas.contract import ProviderPayload, SttSegment, Usage
 from app.services.protocol.adapter import ProtocolAdapter
+from app.services.protocol.audio_format import pcm_s16le_to_wav
 from app.services.protocol.http_utils import join_url, openai_models_path, raise_for_http_status
 from app.services.protocol.static_voices import (
     DASHSCOPE_FLASH_VOICES,
@@ -136,31 +136,7 @@ def _pcm_s16le_to_wav(
     bits_per_sample: int = _OMNI_PCM_BITS,
 ) -> bytes:
     """Build a minimal PCM WAV container around raw s16le samples."""
-    data = pcm
-    frame_bytes = max(1, channels * (bits_per_sample // 8))
-    # Pad odd trailing byte so s16 frames stay aligned.
-    if len(data) % frame_bytes:
-        data = data + (b"\x00" * (frame_bytes - (len(data) % frame_bytes)))
-    data_size = len(data)
-    byte_rate = sample_rate * channels * (bits_per_sample // 8)
-    block_align = channels * (bits_per_sample // 8)
-    header = struct.pack(
-        "<4sI4s4sIHHIIHH4sI",
-        b"RIFF",
-        36 + data_size,
-        b"WAVE",
-        b"fmt ",
-        16,
-        1,  # PCM
-        channels,
-        sample_rate,
-        byte_rate,
-        block_align,
-        bits_per_sample,
-        b"data",
-        data_size,
-    )
-    return header + data
+    return pcm_s16le_to_wav(pcm, sample_rate=sample_rate, channels=channels, bits_per_sample=bits_per_sample)
 
 
 class DashScopeNativeAdapter(ProtocolAdapter):

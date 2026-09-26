@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.prompts import build_script_narration_prompt
 from app.schemas.contract import Usage
 from app.services.llm_gateway import chat, text_reasoning_extra
+from app.services.provider_errors import ProviderException
 
 _log = logging.getLogger("transflow.ai.script.narration")
 
@@ -27,6 +28,7 @@ BATCH_SIZE = 8
 MAX_ROUNDS = 3  # initial rewrite of short segments + 2 repair rounds, as in the origin writer
 SEGMENT_TOLERANCE = 0.15
 MIN_SEGMENT_CHARS = 12
+MAX_CONSECUTIVE_FAILURES = 2  # back-to-back failed batches mean the provider is down, not flaky
 _UNSPACED_LANGS = ("zh", "ja", "ko", "th", "lo", "my", "km")
 
 
@@ -99,6 +101,8 @@ async def fill_narration(
 ) -> Usage | None:
     """Rewrite ``slots[i].text`` in place until each is near its budget; returns the extra usage."""
     usage: Usage | None = None
+    last_error: ProviderException | None = None
+    consecutive_failures = 0
     for round_index in range(MAX_ROUNDS):
         pending = [i for i, slot in enumerate(slots) if slot.miss(cps) > SEGMENT_TOLERANCE]
         if not pending:
@@ -126,17 +130,34 @@ async def fill_narration(
             system, user = build_script_narration_prompt(
                 target_lang, items, previous_narration=previous, visual_context=visual_context,
             )
-            result = await chat(
-                provider,
-                system,
-                user,
-                max_tokens=settings.summarize_max_tokens,
-                response_format={"type": "json_object"},
-                extra_body=text_reasoning_extra(provider, disabled=settings.disable_thinking_for_summarize),
-            )
+            try:
+                result = await chat(
+                    provider,
+                    system,
+                    user,
+                    max_tokens=settings.summarize_max_tokens,
+                    response_format={"type": "json_object"},
+                    extra_body=text_reasoning_extra(provider, disabled=settings.disable_thinking_for_summarize),
+                )
+            except ProviderException as exc:
+                # One transient batch failure must not abort the other batches: its slots stay
+                # pending and are retried next round. A dead provider still stops early.
+                last_error = exc
+                consecutive_failures += 1
+                _log.warning(
+                    "Narration batch failed correlation_id=%s round=%d segments=%s errorCode=%s retryable=%s",
+                    correlation_id, round_index + 1, [i + 1 for i in batch], exc.code.value, exc.retryable,
+                )
+                if not exc.retryable or consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                    raise
+                continue
+            consecutive_failures = 0
             usage = _add_usage(usage, result.usage)
             for key, text in _parse(result.text or "", {item["id"] for item in items}).items():
                 slot = slots[int(key) - 1]
                 if slot.miss(cps, text) < slot.miss(cps):
                     slot.text = text
+    if last_error is not None and any(not slot.text.strip() for slot in slots):
+        # Slots are updated in place, so the caller keeps every batch that succeeded.
+        raise last_error
     return usage

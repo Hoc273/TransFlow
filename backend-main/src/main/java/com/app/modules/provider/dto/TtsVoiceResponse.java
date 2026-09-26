@@ -15,6 +15,8 @@ public record TtsVoiceResponse(
         String language,
         List<String> languages,
         String gender,
+        String displayName,
+        String status,
         boolean isActive,
         Instant cachedAt
 ) {
@@ -28,6 +30,9 @@ public record TtsVoiceResponse(
                 entity.getLanguage(),
                 entity.getLanguages(),
                 entity.getGender(),
+                entity.getDisplayName() != null && !entity.getDisplayName().isBlank()
+                        ? entity.getDisplayName() : entity.getVoiceId(),
+                entity.getStatus(),
                 entity.isActive(),
                 entity.getCachedAt()
         );

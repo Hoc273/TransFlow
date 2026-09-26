@@ -2,13 +2,13 @@
 
 * extends ``BaseTtsAdapter`` and declares a non-empty wire protocol
 * supports TTS (and only TTS)
-* STATIC voice discovery with a non-empty, unique-id catalog
+* a non-empty, unique-id fallback catalog (STATIC discovery except Azure, which is AUTO)
 * ``default_probe_voice`` is a member of its own catalog
 * unknown voice_id fails fast with ``PROVIDER_TTS_VOICE_NOT_FOUND``
   before the vendor engine runs
 * synthesized results carry ``execution_info`` metadata with provider/model/
   voice and never leak the API key (TC-SEC-01)
-* ``discover_voices`` returns mode STATIC with the full catalog
+* static adapters' ``discover_voices`` returns mode STATIC with the full catalog
 """
 from __future__ import annotations
 
@@ -29,6 +29,8 @@ from app.services.protocol.types import (
 from app.services.provider_errors import ProviderErrorCode, ProviderValidation
 
 ADAPTER_CLASSES = (PiperAdapter, GoogleSpeechAdapter, AzureSpeechAdapter)
+# Azure discovers its catalog live (voices/list); only these keep a STATIC one.
+STATIC_ADAPTER_CLASSES = (PiperAdapter, GoogleSpeechAdapter)
 
 
 def _provider(protocol: str) -> ProviderPayload:
@@ -56,7 +58,8 @@ class TtsAdapterContractTest(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(adapter.supports(Capability.STT))
                 self.assertFalse(adapter.supports(Capability.TEXT))
                 self.assertEqual(
-                    VoiceDiscoveryStrategy.STATIC,
+                    VoiceDiscoveryStrategy.STATIC if cls in STATIC_ADAPTER_CLASSES
+                    else VoiceDiscoveryStrategy.AUTO,
                     adapter.voice_discovery_strategy,
                 )
                 catalog = adapter.catalog()
@@ -126,7 +129,7 @@ class TtsAdapterContractTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual("mp3", result.metadata["format"])
 
     async def test_discover_voices_returns_static_mode(self):
-        for cls in ADAPTER_CLASSES:
+        for cls in STATIC_ADAPTER_CLASSES:
             with self.subTest(protocol=cls.protocol):
                 adapter = cls()
                 if cls.protocol == "local_piper":

@@ -193,7 +193,7 @@ async def probe_auth(req: AuthProbeRequest) -> AuthProbeResponse:
         )
 
     headers = adapter.auth_headers(req.api_key)
-    url = normalize_base_url(req.base_url) + path
+    url = adapter.auth_probe_url(req.base_url)
     method = adapter.auth_probe_method()
     body = adapter.auth_probe_body()
 

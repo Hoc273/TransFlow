@@ -5,7 +5,7 @@ Dispatches through the protocol adapter registry — no protocol-name branches.
 from __future__ import annotations
 
 import base64
-import io
+import subprocess
 import time
 import uuid
 
@@ -63,6 +63,9 @@ async def list_voices(provider) -> TtsVoicesResponse:
     )
 
 
+_DURATION_PROBE_TIMEOUT_SECONDS = 15
+
+
 def audio_duration_ms(audio: bytes) -> int | None:
     """Decode the clip (any ffmpeg-readable provider format) and return its length.
 
@@ -71,12 +74,51 @@ def audio_duration_ms(audio: bytes) -> int | None:
     """
     if not audio:
         return None
+    # ffmpeg ships with the image; pydub is not an image dependency (its missing import
+    # silently left every clip unmeasured, and MP3 clips then blocked RENDER). The clip is
+    # fully decoded because piped input has no seekable header duration (ffprobe → N/A).
     try:
-        from pydub import AudioSegment
-
-        return len(AudioSegment.from_file(io.BytesIO(audio)))
-    except Exception:  # noqa: BLE001 - measurement is best-effort metadata
+        decoded = subprocess.run(
+            ["ffmpeg", "-v", "error", "-hide_banner", "-i", "pipe:0",
+             "-f", "null", "-", "-progress", "pipe:1", "-nostats"],
+            input=audio,
+            capture_output=True,
+            timeout=_DURATION_PROBE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
         return None
+    if decoded.returncode != 0:
+        return None
+    out_times = [
+        line.split("=", 1)[1]
+        for line in decoded.stdout.decode("ascii", "ignore").splitlines()
+        if line.startswith("out_time_us=")
+    ]
+    try:
+        duration_ms = round(int(out_times[-1]) / 1000)
+    except (IndexError, ValueError):
+        return None
+    return duration_ms if duration_ms > 0 else None
+
+
+# Failures of the key/endpoint itself (not of one segment's text): later segments would fail alike.
+_KEY_LEVEL_ERRORS = frozenset({
+    ProviderErrorCode.PROVIDER_AUTH_FAILED,
+    ProviderErrorCode.PROVIDER_PERMISSION_DENIED,
+    ProviderErrorCode.PROVIDER_ACCOUNT_SUSPENDED,
+    ProviderErrorCode.PROVIDER_QUOTA_EXCEEDED,
+    ProviderErrorCode.PROVIDER_MODEL_NOT_FOUND,
+    ProviderErrorCode.PROVIDER_UNSUPPORTED_MODEL,
+    ProviderErrorCode.PROVIDER_ENDPOINT_NOT_FOUND,
+    ProviderErrorCode.PROVIDER_INVALID_BASE_URL,
+    ProviderErrorCode.PROVIDER_TTS_VOICE_NOT_FOUND,
+})
+# A pooled endpoint (FreeLLMAPI ``auto``…) answers 429 when ONE pass over its chain
+# failed, while the next call may land on a healthy model/key (observed 2026-09-26:
+# MeloTTS 500s ~50 % at random, then Gemini TTS 429 was reported). Only a streak of
+# rate limits is treated as the key itself being throttled.
+_RATE_LIMIT_STREAK_TO_STOP = 3
 
 
 async def synthesize(request: TtsRequest) -> TtsResponse:
@@ -95,8 +137,22 @@ async def synthesize(request: TtsRequest) -> TtsResponse:
     results: list[TtsResult] = []
     total_characters = 0
     first_provider_error: dict | None = None
+    # Set once the key is out of quota / rejected / rate limited: every later call in this
+    # batch would fail the same way, so the rest is reported without calling the provider.
+    stop_error: ProviderException | None = None
+    rate_limit_streak = 0
 
     for segment in request.segments:
+        if stop_error is not None:
+            results.append(
+                TtsResult(
+                    segment_id=segment.segment_id,
+                    status="FAILED",
+                    error=stop_error.message,
+                    errorCode=stop_error.code.value,
+                )
+            )
+            continue
         started = time.monotonic()
         try:
             audio, cache_hit, source = await _synthesize_one(
@@ -123,6 +179,7 @@ async def synthesize(request: TtsRequest) -> TtsResponse:
                 )
             )
             total_characters += len(segment.target_text)
+            rate_limit_streak = 0
         except ProviderException as exc:
             if first_provider_error is None:
                 first_provider_error = exc.to_error_detail()
@@ -148,6 +205,12 @@ async def synthesize(request: TtsRequest) -> TtsResponse:
                     errorCode=exc.code.value,
                 )
             )
+            if exc.code == ProviderErrorCode.PROVIDER_RATE_LIMITED:
+                rate_limit_streak += 1
+                if rate_limit_streak >= _RATE_LIMIT_STREAK_TO_STOP:
+                    stop_error = exc
+            elif exc.code in _KEY_LEVEL_ERRORS:
+                stop_error = exc
         except Exception as exc:
             _int_log.exception("TTS failed for segment %s", segment.segment_id)
             if first_provider_error is None:
@@ -180,7 +243,8 @@ async def synthesize(request: TtsRequest) -> TtsResponse:
             provider=request.provider.protocol,
         ),
         error=None if success else "All segments failed TTS synthesis",
-        error_detail=first_provider_error if not success else None,
+        # Also on partial success: Spring needs the cause (quota, rate limit…) of the missing segments.
+        error_detail=first_provider_error,
     )
 
 

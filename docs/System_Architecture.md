@@ -362,7 +362,22 @@ mở §14). Số dư không đủ → mặc định thiết kế `BLOCK_UPFRONT`
 - **Failover:** mỗi attempt stage mở một `ProviderUsageScope` (thread-bound). Key nền tảng lỗi phía provider
   (rate limit, quota, auth, timeout, output hỏng…) bị loại khỏi scope + cooldown; nếu pool còn key khác, stage
   được xếp lại `PENDING` dưới job lock (`retryOnAnotherProvider`, tối đa 4 attempt) thay vì FAILED. Key BYOK
-  lỗi không bao giờ rơi sang pool. TTS dùng đúng provider gắn với voice của job (`resolveBoundProvider`).
+  lỗi không bao giờ rơi sang pool. TTS dùng đúng provider gắn với voice của job (`resolveBoundProvider`); chỉ
+  failover sang key nền tảng **cùng protocol có đúng vendor voice đó** (giọng không đổi giữa track).
+- **Chờ rồi thử lại (deferred retry):** lỗi tạm thời (`PROVIDER_RATE_LIMITED`, `UNAVAILABLE`, `TIMEOUT`,
+  `INTERNAL_ERROR`, lỗi mạng) mà không còn key khác → stage về `PENDING` và được dispatch lại sau
+  `Retry-After` của provider (FastAPI chuyển thành `details.retryAfterSeconds`, kẹp 15 s–5 phút) hoặc backoff
+  30 s × 2ⁿ (≤ 5 phút), tối đa 5 attempt — áp dụng cả key BYOK. Hẹn giờ bằng `TaskScheduler` trong bộ nhớ;
+  restart thì cron `MediaJobReconciler` nhặt lại job. `errorDetail.retry = DEFERRED|FAILOVER` (+ `retryAt`)
+  cho UI. Rerun do user reset `attempt_count` về 0.
+- **TTS thiếu câu không COMPLETED:** còn segment chưa có clip sau các vòng thử → stage FAILED với mã lỗi
+  provider (hoặc `TTS_SEGMENTS_INCOMPLETE`) + `errorDetail.missingSegments/totalSegments`. Clip đã tạo được
+  trừ credit rồi lưu (`tts_clip_key`), lần chạy sau chỉ tạo phần thiếu. FastAPI dừng batch ngay khi gặp lỗi
+  cấp key (quota, auth, rate limit, model/endpoint, voice) và trả `error_detail` cả khi thành công một phần.
+- **Chặn credit trước khi gọi provider:** mỗi stage AI ước tính chi phí (STT theo giây audio, TRANSLATE/SUMMARIZE
+  theo token ước tính, TTS theo ký tự các câu còn thiếu) và gọi `CreditService.canAffordUsage` cho **người trả
+  theo cost mode** (Lead khi `LEAD_PAYS_ALL`). Không đủ → FAILED `INSUFFICIENT_CREDIT` trước khi tốn tiền provider.
+  Lượng thực tế vẫn trừ sau khi xong; kiểm tra lúc tạo job cũng dùng người trả theo cost mode.
 - **FreeLLMAPI:** proxy tự host (service `freellmapi`, profile compose) gom free tier nhiều LLM provider, là 1 key
   `tier=FREE`, `priority=10`, capability `TRANSLATE` trong pool; key trả phí priority 100 làm dự phòng. Tính Credit
   theo giá bóng của capability (D3). Tự đăng ký khi có `FREELLMAPI_API_KEY`.

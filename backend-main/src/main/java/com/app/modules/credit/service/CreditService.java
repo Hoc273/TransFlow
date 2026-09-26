@@ -34,6 +34,16 @@ public interface CreditService {
 
     boolean hasSufficientBalance(UUID userId, BigDecimal requiredAmount);
 
+    /** Positive balance of whoever pays in this workspace (the Lead under LEAD_PAYS_ALL). */
+    boolean hasSufficientBalance(UUID workspaceId, UUID performedByUserId);
+
+    /**
+     * Pre-flight check before an AI call: can the workspace payer cover {@code estimatedUnits}
+     * of {@code capability}? The real charge still happens afterwards with the measured usage.
+     */
+    boolean canAffordUsage(UUID workspaceId, UUID performedByUserId, String capability,
+                           long estimatedUnits, boolean hasPersonalApiKey);
+
     BigDecimal chargeUsage(UUID workspaceId, UUID performedByUserId, String capability, long tokensUsed, boolean hasPersonalApiKey);
 
     PageResponse<CreditTransactionResponse> getTransactions(UUID userId, CreditTransactionType type, Instant from, Instant to, int page, int size);

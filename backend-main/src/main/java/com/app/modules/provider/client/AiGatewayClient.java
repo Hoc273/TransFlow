@@ -34,8 +34,15 @@ public interface AiGatewayClient {
             String language,
             List<String> languages,
             String gender,
-            String displayName
-    ) {}
+            String displayName,
+            String status
+    ) {
+        /** Pre-status call sites (tests, static catalogs): lifecycle unknown. */
+        public DiscoveredVoice(String voiceId, String language, List<String> languages,
+                               String gender, String displayName) {
+            this(voiceId, language, languages, gender, displayName, null);
+        }
+    }
 
     record ProviderCapabilityProbe(boolean success, String model, String errorCode, String message) {}
 }

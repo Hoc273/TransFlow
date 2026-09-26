@@ -105,6 +105,12 @@ export type MediaJobStage = {
     protocol?: string | null
     capability?: string | null
     model?: string | null
+    /** PENDING stage waiting on an automatic retry: DEFERRED (same key, at retryAt) or FAILOVER (next key). */
+    retry?: 'DEFERRED' | 'FAILOVER' | null
+    retryAt?: string | null
+    /** TTS stopped part-way: segments still without a voice clip (finished clips are kept). */
+    missingSegments?: number | null
+    totalSegments?: number | null
   } | null
   /** Storage ref bucket/key, not the original JSON output. */
   outputRef?: string | null

@@ -146,7 +146,7 @@ class TtsVoiceServiceTest {
         when(ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM"))
                 .thenReturn(List.of(regional, multilingual));
 
-        List<TtsVoiceResponse> voices = service.listPlatformVoices("en", "PLATFORM");
+        List<TtsVoiceResponse> voices = service.listPlatformVoices("en", null);
 
         assertEquals(List.of("regional-en", "multilingual"), voices.stream().map(TtsVoiceResponse::voiceId).toList());
     }
@@ -193,11 +193,73 @@ class TtsVoiceServiceTest {
 
         List<TtsVoiceResponse> refreshed = service.refreshUserVoices(userId, providerId);
 
-        verify(ttsVoiceRepository).deleteByUserProviderId(providerId);
+        verify(ttsVoiceRepository, never()).deleteByUserProviderId(any());
         assertEquals(1, refreshed.size());
         assertEquals("alloy", refreshed.get(0).voiceId());
         assertEquals("en", refreshed.get(0).language());
         assertEquals("USER", refreshed.get(0).providerSource());
+    }
+
+    @Test
+    void testRefreshUserVoicesUpsertsAndDeactivatesInsteadOfDeleting() {
+        // A DUB job still references the existing voice row: deleting it would null the job's
+        // tts_voice_id (ON DELETE SET NULL) and violate ck_audio_mode_voice.
+        UserAiProvider provider = new UserAiProvider();
+        provider.setId(providerId);
+        provider.setUserId(userId);
+        provider.setProtocol("azure_tts");
+        provider.setBaseUrl("https://southeastasia.api.cognitive.microsoft.com/");
+        provider.setCapabilities(List.of("TTS"));
+        provider.setApiKeyEnc(new byte[]{1, 2, 3});
+        when(userAiProviderRepository.findByIdAndUserId(providerId, userId)).thenReturn(Optional.of(provider));
+        when(cryptoService.decrypt(provider.getApiKeyEnc())).thenReturn("azure-key");
+
+        TtsVoice kept = new TtsVoice();
+        UUID keptId = UUID.randomUUID();
+        kept.setId(keptId);
+        kept.setProviderSource("USER");
+        kept.setUserProviderId(providerId);
+        kept.setVoiceId("en-US-JennyNeural");
+        kept.setLanguage("en");
+        kept.setActive(true);
+        TtsVoice dropped = new TtsVoice();
+        dropped.setId(UUID.randomUUID());
+        dropped.setProviderSource("USER");
+        dropped.setUserProviderId(providerId);
+        dropped.setVoiceId("en-US-RetiredNeural");
+        dropped.setLanguage("en");
+        dropped.setActive(true);
+        when(ttsVoiceRepository.findByUserProviderId(providerId)).thenReturn(List.of(kept, dropped));
+        when(aiGatewayClient.fetchTtsVoices(anyString(), anyString(), anyString(), any()))
+                .thenReturn(List.of(new AiGatewayClient.DiscoveredVoice(
+                        "en-US-JennyNeural", "en-US", List.of("en-US"), "Female", "Jenny")));
+        when(ttsVoiceRepository.save(any(TtsVoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        List<TtsVoiceResponse> refreshed = service.refreshUserVoices(userId, providerId);
+
+        verify(ttsVoiceRepository, never()).deleteByUserProviderId(any());
+        assertEquals(1, refreshed.size());
+        assertEquals(keptId, refreshed.get(0).id());
+        assertEquals("FEMALE", kept.getGender());
+        assertFalse(dropped.isActive());
+    }
+
+    @Test
+    void testRefreshUserVoicesEmptyDiscoveryKeepsCatalog() {
+        UserAiProvider provider = new UserAiProvider();
+        provider.setId(providerId);
+        provider.setUserId(userId);
+        provider.setProtocol("azure_tts");
+        provider.setBaseUrl("https://southeastasia.api.cognitive.microsoft.com/");
+        provider.setCapabilities(List.of("TTS"));
+        provider.setApiKeyEnc(new byte[]{1, 2, 3});
+        when(userAiProviderRepository.findByIdAndUserId(providerId, userId)).thenReturn(Optional.of(provider));
+        when(cryptoService.decrypt(provider.getApiKeyEnc())).thenReturn("azure-key");
+        when(aiGatewayClient.fetchTtsVoices(anyString(), anyString(), anyString(), any())).thenReturn(List.of());
+
+        AppException ex = assertThrows(AppException.class, () -> service.refreshUserVoices(userId, providerId));
+        assertEquals(ErrorCode.PROVIDER_VOICES_FETCH_FAILED, ex.getErrorCode());
+        verify(ttsVoiceRepository, never()).save(any());
     }
 
     @Test
@@ -212,9 +274,38 @@ class TtsVoiceServiceTest {
         when(ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM"))
                 .thenReturn(List.of(pv));
 
-        List<TtsVoiceResponse> voices = service.listPlatformVoices(null, "PLATFORM");
+        List<TtsVoiceResponse> voices = service.listPlatformVoices(null, null);
         assertEquals(1, voices.size());
         assertEquals("echo", voices.get(0).voiceId());
+    }
+
+    @Test
+    void testListPlatformVoicesNarrowsToOnePlatformKey() {
+        UUID wanted = UUID.randomUUID();
+        TtsVoice mine = platformVoice(wanted);
+        TtsVoice other = platformVoice(UUID.randomUUID());
+        other.setVoiceId("echo");
+        when(ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM")).thenReturn(List.of(mine, other));
+
+        List<TtsVoiceResponse> voices = service.listPlatformVoices(null, wanted);
+
+        assertEquals(List.of("alloy"), voices.stream().map(TtsVoiceResponse::voiceId).toList());
+        verify(ttsVoiceRepository, never()).findByProviderSourceAndIsActiveTrue("USER");
+    }
+
+    @Test
+    void testListPlatformTtsProvidersKeepsActiveTtsKeysOnly() {
+        PlatformAiProvider tts = platformProvider();
+        tts.setName("Pool TTS");
+        PlatformAiProvider translateOnly = platformProvider();
+        translateOnly.setCapabilities(List.of("TRANSLATE"));
+        when(platformAiProviderRepository.findByIsActiveTrue()).thenReturn(List.of(translateOnly, tts));
+
+        var providers = service.listPlatformTtsProviders();
+
+        assertEquals(1, providers.size());
+        assertEquals(tts.getId(), providers.get(0).id());
+        assertEquals("Pool TTS", providers.get(0).name());
     }
 
     // ── POST /api/tts-voices/preview ─────────────────────────────────────────

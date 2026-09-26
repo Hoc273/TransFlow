@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { ProviderConfig } from '@/types/provider'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 
@@ -53,6 +54,10 @@ vi.mock('@/hooks/useMedia', () => ({
 
 vi.mock('@/hooks/useProviders', () => ({
   useProviders: () => providersQuery,
+  useTtsProviderOptions: () => ({
+    data: ((providersQuery.data ?? []) as ProviderConfig[]).filter((p) => p.capabilities.includes('TTS')),
+    isPending: providersQuery.isPending,
+  }),
   useTtsVoices: () => ({ data: undefined, isPending: false }),
 }))
 

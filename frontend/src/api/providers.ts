@@ -340,11 +340,37 @@ export function validateProviderApi(
   return Promise.reject(new Error('validateProvider is not supported by the backend (API_Contract §11)'))
 }
 
-/** GET /api/tts-voices?language=&providerSource= (TtsVoiceController) */
-export function listPlatformTtsVoicesApi(params: { language?: string; providerSource?: string } = {}) {
+/** GET /api/tts-voices?language=&platformProviderId= (TtsVoiceController) — platform voices only. */
+export function listPlatformTtsVoicesApi(params: { language?: string; platformProviderId?: string } = {}) {
   const search = new URLSearchParams()
   if (params.language) search.set('language', params.language)
-  if (params.providerSource) search.set('providerSource', params.providerSource)
+  if (params.platformProviderId) search.set('platformProviderId', params.platformProviderId)
   const qs = search.toString()
   return apiRequest<TtsVoice[]>(`/tts-voices${qs ? `?${qs}` : ''}`)
+}
+
+type PlatformTtsProviderDto = {
+  id: string
+  name: string | null
+  protocol: ProviderConfig['protocol']
+}
+
+/**
+ * GET /api/tts-voices/providers — shared platform TTS keys, so a user without
+ * BYOK can still pick a voice. Mapped to ProviderConfig with source=PLATFORM.
+ */
+export async function listPlatformTtsProvidersApi(): Promise<ProviderConfig[]> {
+  const rows = await apiRequest<PlatformTtsProviderDto[]>('/tts-voices/providers')
+  return (rows ?? []).map((row) => ({
+    id: row.id,
+    displayName: row.name || row.protocol,
+    protocol: row.protocol,
+    capabilities: ['TTS'],
+    defaultFor: [],
+    baseUrl: '',
+    apiKeyHint: null,
+    defaultModel: '',
+    enabled: true,
+    source: 'PLATFORM',
+  }))
 }

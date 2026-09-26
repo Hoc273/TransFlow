@@ -61,6 +61,12 @@ spring:
           initial-interval: 500ms
           max-attempts: 3
           multiplier: 2.0
+  # Cronjobs + deferred stage retries (rate limits) share this scheduler; 1 thread would let a
+  # long retention sweep delay every deferred retry.
+  task:
+    scheduling:
+      pool:
+        size: 4
   servlet:
     multipart:
       # Media asset (SRS §5.2): video ≤500MB — cap giữ cao hơn chút để service trả lỗi

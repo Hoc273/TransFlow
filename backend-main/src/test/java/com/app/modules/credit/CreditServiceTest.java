@@ -86,6 +86,50 @@ class CreditServiceTest {
         assertFalse(creditService.hasSufficientBalance(userId));
     }
 
+    private CreditAccount account(String balance) {
+        CreditAccount account = new CreditAccount();
+        account.setBalance(new BigDecimal(balance));
+        return account;
+    }
+
+    private void leadPaysAll() {
+        WorkspaceBillingConfig config = new WorkspaceBillingConfig();
+        config.setCostMode(CostMode.LEAD_PAYS_ALL);
+        when(workspaceBillingConfigRepository.findById(workspaceId)).thenReturn(Optional.of(config));
+        when(workspaceAccessService.findLeadUserId(workspaceId)).thenReturn(Optional.of(leadId));
+    }
+
+    @Test
+    void workspaceBalanceCheckUsesTheLeadUnderLeadPaysAll() {
+        leadPaysAll();
+        when(creditAccountRepository.findByUserId(leadId)).thenReturn(Optional.of(account("5.0000")));
+
+        assertTrue(creditService.hasSufficientBalance(workspaceId, userId));
+        verify(creditAccountRepository, never()).findByUserId(userId);
+    }
+
+    @Test
+    void canAffordUsageComparesTheEstimatedCostWithThePayerBalance() {
+        when(workspaceBillingConfigRepository.findById(workspaceId)).thenReturn(Optional.empty());
+        when(creditPricingConfigRepository.findActivePricing("TTS", null)).thenReturn(List.of());
+        when(creditAccountRepository.findByUserId(userId)).thenReturn(Optional.of(account("0.5000")));
+
+        // Platform source: (0.0001 + 0.0005) * 500 = 0.3 <= 0.5; * 1000 = 0.6 > 0.5
+        assertTrue(creditService.canAffordUsage(workspaceId, userId, "TTS", 500, false));
+        assertFalse(creditService.canAffordUsage(workspaceId, userId, "TTS", 1000, false));
+        // Personal key: 0.0001 * 1000 = 0.1
+        assertTrue(creditService.canAffordUsage(workspaceId, userId, "TTS", 1000, true));
+    }
+
+    @Test
+    void canAffordUsageRejectsAnEmptyBalanceEvenForAFreeEstimate() {
+        when(workspaceBillingConfigRepository.findById(workspaceId)).thenReturn(Optional.empty());
+        when(creditPricingConfigRepository.findActivePricing("STT", null)).thenReturn(List.of());
+        when(creditAccountRepository.findByUserId(userId)).thenReturn(Optional.of(account("0.0000")));
+
+        assertFalse(creditService.canAffordUsage(workspaceId, userId, "STT", 0, true));
+    }
+
     @Test
     void testChargeUsage_WithPersonalApiKey_Case1_PayPerUser() {
         // Workspace cost mode = PAY_PER_USER

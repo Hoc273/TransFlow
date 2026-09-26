@@ -429,6 +429,49 @@ describe('PipelineStepper dynamic stage order', () => {
     expect(html).toContain('Attempt 1 failed: DashScope STT response requires detected_lang')
   })
 
+  it('PENDING with a deferred retry shows the localized auto-retry reason instead of raw text', () => {
+    const stages = stagesWith({ TTS: 'PENDING' })
+    const tts = stages.find((s) => s.stageName === 'TTS')!
+    tts.attemptCount = 2
+    tts.errorCode = 'PROVIDER_RATE_LIMITED'
+    tts.errorMessage = 'Attempt 2 failed (PROVIDER_RATE_LIMITED); retrying automatically in 42s'
+    tts.errorDetail = { retry: 'DEFERRED', retryAt: '2026-09-25T10:00:42Z' }
+    const html = renderToStaticMarkup(<PipelineStepper job={job('PROCESSING', stages)} />)
+
+    expect(html).toContain('data-testid="stage-auto-retry-TTS"')
+    expect(html).toContain('pipeline.autoRetry.rateLimited')
+    expect(html).not.toContain('retrying automatically in 42s')
+  })
+
+  it('PENDING after a key failover says another key is being tried', () => {
+    const stages = stagesWith({ TRANSLATE: 'PENDING' })
+    const translate = stages.find((s) => s.stageName === 'TRANSLATE')!
+    translate.attemptCount = 1
+    translate.errorCode = 'PROVIDER_QUOTA_EXCEEDED'
+    translate.errorDetail = { retry: 'FAILOVER' }
+    const html = renderToStaticMarkup(<PipelineStepper job={job('PROCESSING', stages)} />)
+
+    expect(html).toContain('pipeline.autoRetry.failover')
+  })
+
+  it('FAILED TTS that stopped part-way reports the missing lines and the credit error is localized', () => {
+    const stages = stagesWith({ TTS: 'FAILED' })
+    const tts = stages.find((s) => s.stageName === 'TTS')!
+    tts.errorCode = 'PROVIDER_QUOTA_EXCEEDED'
+    tts.errorDetail = { message: 'Provider quota has been exhausted', missingSegments: 3, totalSegments: 10 }
+    let html = renderToStaticMarkup(<PipelineStepper job={job('FAILED', stages)} />)
+
+    expect(html).toContain('The AI provider quota for')
+    expect(html).toContain('data-testid="stage-tts-partial-TTS"')
+    expect(html).toContain('pipeline.ttsPartial')
+
+    tts.errorCode = 'INSUFFICIENT_CREDIT'
+    tts.errorDetail = { message: 'Insufficient credit' }
+    html = renderToStaticMarkup(<PipelineStepper job={job('FAILED', stages)} />)
+    expect(html).toContain('pipeline.providerErrors.insufficientCredit')
+    expect(html).not.toContain('stage-tts-partial-TTS')
+  })
+
   it('hides the attempt badge once the stage completed after retries', () => {
     const stages = stagesWith({ STT: 'COMPLETED' })
     const stt = stages.find((s) => s.stageName === 'STT')!

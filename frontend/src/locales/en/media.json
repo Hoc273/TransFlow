@@ -206,7 +206,9 @@
       "modelNotFound": "The configured model for {{stage}} was not found. Check its name in Provider Settings.",
       "unsupportedModel": "The selected model does not support {{stage}}. Choose a model that supports this capability.",
       "badRequest": "The AI provider rejected the {{stage}} request. Check the model and capability configuration.",
-      "responseMalformed": "The model returned an invalid response for {{stage}}. Check the model or choose another provider."
+      "responseMalformed": "The model returned an invalid response for {{stage}}. Check the model or choose another provider.",
+      "insufficientCredit": "Not enough credit to run {{stage}}. Top up, then rerun this stage — finished stages are not charged again.",
+      "ttsIncomplete": "{{stage}} could not voice every line. Rerun this stage to generate the missing ones."
     },
     "recovery": {
       "emptyCues": "Subtitle timeline has no usable cues — restore or edit the translated text and timing, then Save and re-run Voice Dub & Render.",
@@ -215,7 +217,13 @@
     },
     "waitingForQa": "Waiting for QA",
     "waitingForQaReason": "Handle QA issues in Review to continue",
-    "changeSourceLang": "Change"
+    "changeSourceLang": "Change",
+    "autoRetry": {
+      "rateLimited": "The AI provider is rate limiting requests — retrying automatically at {{time}}.",
+      "deferred": "The AI provider is temporarily unavailable — retrying automatically at {{time}}.",
+      "failover": "The AI key in use failed — switching to another key."
+    },
+    "ttsPartial": "{{missing}}/{{total}} lines still have no voice. Finished lines are kept; a rerun only generates and bills the missing ones."
   },
   "upload": {
     "stepTitle": "Upload video",
@@ -584,7 +592,15 @@
       "MALE": "Male",
       "FEMALE": "Female",
       "NEUTRAL": "Neutral"
-    }
+    },
+    "searchPlaceholder": "Search voices by name or locale…",
+    "searchLabel": "Search voices",
+    "genderFilterLabel": "Filter by gender",
+    "genderAll": "All",
+    "multilingualGroup": "Multilingual voices",
+    "previewTag": "Preview",
+    "filterCount": "{{shown}} / {{total}} voices",
+    "noFilterMatch": "No voice matches these filters."
   },
   "renderPrep": {
     "title": "Prepare render",

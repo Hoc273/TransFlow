@@ -206,7 +206,9 @@
       "modelNotFound": "Không tìm thấy model đã cấu hình cho bước {{stage}}. Chọn đúng tên model trong Provider Settings.",
       "unsupportedModel": "Model đã chọn không hỗ trợ bước {{stage}}. Chọn model có hỗ trợ capability này.",
       "badRequest": "Nhà cung cấp AI từ chối yêu cầu ở bước {{stage}}. Kiểm tra model và cấu hình capability.",
-      "responseMalformed": "Model trả về dữ liệu không đúng định dạng ở bước {{stage}}. Kiểm tra model hoặc chọn provider khác."
+      "responseMalformed": "Model trả về dữ liệu không đúng định dạng ở bước {{stage}}. Kiểm tra model hoặc chọn provider khác.",
+      "insufficientCredit": "Không đủ credit để chạy bước {{stage}}. Nạp thêm credit rồi chạy lại bước này — các bước đã xong không bị tính lại.",
+      "ttsIncomplete": "Bước {{stage}} chưa tạo được giọng cho mọi câu. Chạy lại bước này để tạo nốt phần còn thiếu."
     },
     "recovery": {
       "emptyCues": "Timeline phụ đề không có cue hợp lệ — hãy khôi phục hoặc chỉnh lại nội dung bản dịch và timing, sau đó Lưu và chạy lại Lồng tiếng & Render.",
@@ -215,7 +217,13 @@
     },
     "waitingForQa": "Chờ xử lý QA",
     "waitingForQaReason": "Xử lý lỗi QA ở mục Review để tiếp tục",
-    "changeSourceLang": "Đổi"
+    "changeSourceLang": "Đổi",
+    "autoRetry": {
+      "rateLimited": "Nhà cung cấp AI đang giới hạn yêu cầu — tự động thử lại lúc {{time}}.",
+      "deferred": "Nhà cung cấp AI tạm thời gặp sự cố — tự động thử lại lúc {{time}}.",
+      "failover": "Khóa AI vừa dùng bị lỗi — đang chuyển sang khóa khác."
+    },
+    "ttsPartial": "Còn {{missing}}/{{total}} câu chưa có giọng đọc. Các câu đã tạo được giữ lại; chạy lại chỉ tạo và tính phí phần còn thiếu."
   },
   "upload": {
     "stepTitle": "Tải video",
@@ -584,7 +592,15 @@
       "MALE": "Nam",
       "FEMALE": "Nữ",
       "NEUTRAL": "Trung tính"
-    }
+    },
+    "searchPlaceholder": "Tìm giọng theo tên hoặc vùng…",
+    "searchLabel": "Tìm giọng đọc",
+    "genderFilterLabel": "Lọc theo giới tính",
+    "genderAll": "Tất cả",
+    "multilingualGroup": "Giọng đa ngôn ngữ",
+    "previewTag": "Preview",
+    "filterCount": "{{shown}} / {{total}} giọng",
+    "noFilterMatch": "Không có giọng nào khớp bộ lọc."
   },
   "renderPrep": {
     "title": "Chuẩn bị render",

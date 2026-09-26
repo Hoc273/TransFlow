@@ -90,6 +90,20 @@ const PROVIDER_ERROR_KEYS: Record<string, string> = {
   PROVIDER_UNSUPPORTED_MODEL: 'pipeline.providerErrors.unsupportedModel',
   PROVIDER_BAD_REQUEST: 'pipeline.providerErrors.badRequest',
   PROVIDER_RESPONSE_MALFORMED: 'pipeline.providerErrors.responseMalformed',
+  INSUFFICIENT_CREDIT: 'pipeline.providerErrors.insufficientCredit',
+  TTS_SEGMENTS_INCOMPLETE: 'pipeline.providerErrors.ttsIncomplete',
+}
+
+/** Localized reason for a PENDING stage that the backend will retry by itself. */
+function autoRetryText(stage: MediaJobStage, t: (key: string, options?: Record<string, unknown>) => string): string | null {
+  const detail = stage.errorDetail
+  if (detail?.retry === 'FAILOVER') return t('pipeline.autoRetry.failover')
+  if (detail?.retry !== 'DEFERRED') return null
+  const at = detail.retryAt ? new Date(detail.retryAt) : null
+  const time = at && !Number.isNaN(at.getTime()) ? at.toLocaleTimeString() : ''
+  return stage.errorCode === 'PROVIDER_RATE_LIMITED'
+    ? t('pipeline.autoRetry.rateLimited', { time })
+    : t('pipeline.autoRetry.deferred', { time })
 }
 
 /**
@@ -101,7 +115,8 @@ const PROVIDER_ERROR_KEYS: Record<string, string> = {
 function maxRetriesForStage(stageName: string): number {
   const s = stageName.toUpperCase()
   if (s === 'RENDER') return 2
-  if (s === 'TRANSLATE') return 1
+  // AI stages may also wait out rate limits / switch keys (backend MAX_DEFERRED_ATTEMPTS).
+  if (s === 'STT' || s === 'SUMMARIZE' || s === 'TRANSLATE' || s === 'TTS') return 5
   return 3
 }
 
@@ -222,7 +237,12 @@ export function PipelineStepper({ job, className }: Props) {
                 })}
               </div>
             )}
-            {st === 'PENDING' &&
+            {st === 'PENDING' && autoRetryText(stage, t) && (
+              <div className="media-stage-reason warn" data-testid={`stage-auto-retry-${stage.stageName}`}>
+                <IconAlertTriangle size={10} /> {autoRetryText(stage, t)}
+              </div>
+            )}
+            {st === 'PENDING' && !autoRetryText(stage, t) &&
               stage.errorMessage?.startsWith('Attempt') && (
                 <div className="media-stage-reason warn">
                   <IconAlertTriangle size={10} />{' '}
@@ -246,6 +266,14 @@ export function PipelineStepper({ job, className }: Props) {
                   })
                   return t(key, { stage: stageLabel })
                 })()}
+                {stage.errorDetail?.missingSegments ? (
+                  <div data-testid={`stage-tts-partial-${stage.stageName}`}>
+                    {t('pipeline.ttsPartial', {
+                      missing: stage.errorDetail.missingSegments,
+                      total: stage.errorDetail.totalSegments ?? stage.errorDetail.missingSegments,
+                    })}
+                  </div>
+                ) : null}
               </div>
             )}
             {(() => {

@@ -14,6 +14,7 @@ import com.app.modules.provider.repository.TtsVoiceRepository;
 import com.app.modules.provider.repository.UserAiProviderDefaultRepository;
 import com.app.modules.provider.repository.UserAiProviderRepository;
 import com.app.modules.provider.service.UserAiProviderService;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -155,9 +156,15 @@ public class UserAiProviderServiceImpl implements UserAiProviderService {
         UserAiProvider provider = providerRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.PROVIDER_NOT_FOUND));
 
-        ttsVoiceRepository.deleteByUserProviderId(id);
-        providerDefaultRepository.deleteForProvider(id);
-        providerRepository.delete(provider);
+        try {
+            // A DUB job still bound to one of these voices rejects the delete (ck_audio_mode_voice).
+            ttsVoiceRepository.deleteByUserProviderId(id);
+            providerDefaultRepository.deleteForProvider(id);
+            providerRepository.delete(provider);
+            providerRepository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            throw new AppException(ErrorCode.PROVIDER_IN_USE);
+        }
     }
 
     @Override

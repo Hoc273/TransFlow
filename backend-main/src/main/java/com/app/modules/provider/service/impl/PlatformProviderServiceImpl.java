@@ -14,6 +14,7 @@ import com.app.modules.provider.repository.PlatformAiProviderRepository;
 import com.app.modules.provider.repository.TtsVoiceRepository;
 import com.app.modules.provider.service.PlatformProviderService;
 import com.app.modules.provider.service.ProviderHealthService;
+import com.app.modules.provider.util.TtsVoiceCatalog;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,10 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -183,42 +182,14 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
             // An empty or failed discovery must never wipe a working voice catalog.
             throw new AppException(ErrorCode.PROVIDER_VOICES_FETCH_FAILED);
         }
-        Map<String, TtsVoice> existing = new HashMap<>();
-        for (TtsVoice voice : voiceRepository.findByPlatformProviderId(id)) {
-            existing.put(voice.getVoiceId(), voice);
-        }
-        Instant now = Instant.now();
-        int active = 0;
-        for (AiGatewayClient.DiscoveredVoice d : discovered) {
-            if (d.voiceId() == null || d.voiceId().isBlank()) {
-                continue;
-            }
-            TtsVoice voice = existing.remove(d.voiceId());
-            if (voice == null) {
-                voice = new TtsVoice();
-                voice.setProviderSource("PLATFORM");
-                voice.setPlatformProviderId(id);
-                voice.setVoiceId(d.voiceId());
-            }
-            String language = d.language() != null ? d.language().toLowerCase(Locale.ROOT) : "en";
-            voice.setLanguage(language);
-            voice.setLanguages(d.languages() != null && !d.languages().isEmpty()
-                    ? d.languages().stream().map(l -> l.toLowerCase(Locale.ROOT)).toList()
-                    : List.of(language));
-            voice.setGender(d.gender() != null ? d.gender().toUpperCase(Locale.ROOT) : "UNKNOWN");
-            voice.setActive(true);
-            voice.setCachedAt(now);
-            voiceRepository.save(voice);
-            active++;
-        }
-        // Voices the provider dropped are deactivated, never deleted: jobs may still reference them.
-        for (TtsVoice gone : existing.values()) {
-            if (gone.isActive()) {
-                gone.setActive(false);
-                voiceRepository.save(gone);
-            }
-        }
-        return active;
+        // Upsert; dropped or DEPRECATED voices are deactivated, never deleted: jobs may still reference them.
+        return TtsVoiceCatalog.synchronize(voiceRepository, voiceRepository.findByPlatformProviderId(id), discovered,
+                () -> {
+                    TtsVoice voice = new TtsVoice();
+                    voice.setProviderSource("PLATFORM");
+                    voice.setPlatformProviderId(id);
+                    return voice;
+                }).size();
     }
 
     /**

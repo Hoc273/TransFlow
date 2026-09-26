@@ -6,6 +6,7 @@ import com.app.common.exception.AppException;
 import com.app.common.exception.ErrorCode;
 import com.app.modules.media_asset.service.MediaStorageService;
 import com.app.modules.provider.client.AiGatewayClient;
+import com.app.modules.provider.dto.PlatformTtsProviderResponse;
 import com.app.modules.provider.dto.PreviewTtsVoiceRequest;
 import com.app.modules.provider.dto.PreviewTtsVoiceResponse;
 import com.app.modules.provider.dto.TtsVoiceResponse;
@@ -18,14 +19,15 @@ import com.app.modules.provider.repository.UserAiProviderRepository;
 import com.app.modules.provider.service.TtsVoicePreviewRateLimiter;
 import com.app.modules.provider.service.TtsVoiceService;
 import com.app.modules.provider.util.AudioContentDetector;
+import com.app.modules.provider.util.TtsVoiceCatalog;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayInputStream;
-import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -65,14 +67,7 @@ public class TtsVoiceServiceImpl implements TtsVoiceService {
                 .orElseThrow(() -> new AppException(ErrorCode.PROVIDER_NOT_FOUND));
 
         List<TtsVoice> voices = ttsVoiceRepository.findByUserProviderIdAndIsActiveTrue(providerId);
-        if (language != null && !language.isBlank()) {
-            String norm = language.trim().toLowerCase();
-            voices = voices.stream()
-                    .filter(v -> matchesLanguage(v, norm))
-                    .toList();
-        }
-
-        return voices.stream().map(TtsVoiceResponse::from).toList();
+        return sortedForLanguage(voices, language);
     }
 
     @Override
@@ -93,46 +88,48 @@ public class TtsVoiceServiceImpl implements TtsVoiceService {
                 provider.getDefaultModel()
         );
 
-        ttsVoiceRepository.deleteByUserProviderId(providerId);
-
-        List<TtsVoice> savedVoices = new ArrayList<>();
-        Instant now = Instant.now();
-        for (AiGatewayClient.DiscoveredVoice d : discovered) {
-            TtsVoice voice = new TtsVoice();
-            voice.setProviderSource("USER");
-            voice.setUserProviderId(providerId);
-            voice.setPlatformProviderId(null);
-            voice.setVoiceId(d.voiceId());
-            voice.setLanguage(d.language() != null ? d.language().toLowerCase() : "en");
-            voice.setLanguages(d.languages() != null && !d.languages().isEmpty()
-                    ? d.languages().stream().map(String::toLowerCase).toList()
-                    : List.of(voice.getLanguage()));
-            voice.setGender(d.gender() != null ? d.gender().toUpperCase() : "UNKNOWN");
-            voice.setActive(true);
-            voice.setCachedAt(now);
-
-            savedVoices.add(ttsVoiceRepository.save(voice));
+        if (discovered == null || discovered.isEmpty()) {
+            // An empty or failed discovery must never wipe a working voice catalog.
+            throw new AppException(ErrorCode.PROVIDER_VOICES_FETCH_FAILED);
         }
 
-        return savedVoices.stream().map(TtsVoiceResponse::from).toList();
+        List<TtsVoice> active = TtsVoiceCatalog.synchronize(ttsVoiceRepository,
+                ttsVoiceRepository.findByUserProviderId(providerId), discovered, () -> {
+                    TtsVoice voice = new TtsVoice();
+                    voice.setProviderSource("USER");
+                    voice.setUserProviderId(providerId);
+                    return voice;
+                });
+
+        return active.stream()
+                .sorted(TtsVoiceCatalog.ordering(null, active))
+                .map(TtsVoiceResponse::from)
+                .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<TtsVoiceResponse> listPlatformVoices(String language, String providerSource) {
-        String source = (providerSource != null && !providerSource.isBlank())
-                ? providerSource.trim().toUpperCase()
-                : "PLATFORM";
-
-        List<TtsVoice> voices = ttsVoiceRepository.findByProviderSourceAndIsActiveTrue(source);
-        if (language != null && !language.isBlank()) {
-            String norm = language.trim().toLowerCase();
+    public List<TtsVoiceResponse> listPlatformVoices(String language, UUID platformProviderId) {
+        // Always PLATFORM: BYOK voices belong to their owner and are listed via /users/me/providers.
+        List<TtsVoice> voices = ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM");
+        if (platformProviderId != null) {
             voices = voices.stream()
-                    .filter(v -> matchesLanguage(v, norm))
+                    .filter(v -> platformProviderId.equals(v.getPlatformProviderId()))
                     .toList();
         }
+        return sortedForLanguage(voices, language);
+    }
 
-        return voices.stream().map(TtsVoiceResponse::from).toList();
+    @Override
+    @Transactional(readOnly = true)
+    public List<PlatformTtsProviderResponse> listPlatformTtsProviders() {
+        return platformAiProviderRepository.findByIsActiveTrue().stream()
+                .filter(p -> p.hasCapability("TTS"))
+                .sorted(Comparator.comparingInt((PlatformAiProvider p) -> p.getPriority())
+                        .thenComparing(PlatformAiProvider::getName,
+                                Comparator.nullsLast(String::compareToIgnoreCase)))
+                .map(PlatformTtsProviderResponse::from)
+                .toList();
     }
 
     @Override
@@ -198,7 +195,15 @@ public class TtsVoiceServiceImpl implements TtsVoiceService {
                 cryptoService.decrypt(p.getApiKeyEnc()), p.getDefaultModel());
     }
 
-    private boolean matchesLanguage(TtsVoice voice, String targetLang) {
-        return voice.isLanguageCompatible(targetLang);
+    /** Language-compatible voices (when a language is given) in picker order — first = default pick. */
+    private List<TtsVoiceResponse> sortedForLanguage(List<TtsVoice> voices, String language) {
+        String norm = language != null && !language.isBlank() ? language.trim().toLowerCase(Locale.ROOT) : null;
+        List<TtsVoice> compatible = voices.stream()
+                .filter(v -> norm == null || v.isLanguageCompatible(norm))
+                .toList();
+        return compatible.stream()
+                .sorted(TtsVoiceCatalog.ordering(norm, compatible))
+                .map(TtsVoiceResponse::from)
+                .toList();
     }
 }

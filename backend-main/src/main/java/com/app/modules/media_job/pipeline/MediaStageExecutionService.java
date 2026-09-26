@@ -64,6 +64,13 @@ public class MediaStageExecutionService {
     private static final int TTS_BATCH_SIZE = 8;
     /** Same budget as the original pipeline: 3 retry rounds, 10s apart, failed segments only. */
     private static final int MAX_TTS_SEGMENT_RETRIES = 3;
+    /** Provider-side conditions that heal with time: wait and retry the same stage. */
+    private static final Set<String> DEFERRABLE_ERRORS = Set.of(
+            "PROVIDER_RATE_LIMITED", "PROVIDER_UNAVAILABLE", "PROVIDER_TIMEOUT", "PROVIDER_INTERNAL_ERROR",
+            "PROVIDER_NETWORK_ERROR", "PROVIDER_TRANSPORT_ERROR");
+    private static final Set<MediaJobStage.StageName> AI_STAGES = Set.of(
+            MediaJobStage.StageName.STT, MediaJobStage.StageName.SUMMARIZE,
+            MediaJobStage.StageName.TRANSLATE, MediaJobStage.StageName.TTS);
     /** Narration retime bound: beyond ±10 % a voice audibly drags or rushes. */
     private static final double MIN_NARRATION_TEMPO = 0.9d;
     private static final double MAX_NARRATION_TEMPO = 1.1d;
@@ -247,7 +254,8 @@ public class MediaStageExecutionService {
                 withStack[fields.length] = sanitizedStack(ex);
                 log.error(logLine, withStack);
             }
-            if (failOverToAnotherProvider(job, stage, message, failure)) {
+            if (failOverToAnotherProvider(job, stage, message, failure)
+                    || deferRetry(job, stage, message, failure)) {
                 return;
             }
             completeFailure(job, stage, message, failure);
@@ -257,12 +265,12 @@ public class MediaStageExecutionService {
     /**
      * Shared platform pool failover: when a platform key fails with a provider-side error and
      * the pool still has another available key, the stage is re-queued instead of failing.
-     * TTS is excluded because a job's voice is bound to one provider.
+     * TTS only fails over to a key of the same protocol serving the exact same voice, because a
+     * job's voice must not change mid-track.
      */
     private boolean failOverToAnotherProvider(MediaJob job, MediaJobStage stage, MediaStageMessage message,
                                               AiStageException failure) {
         if (providerHealth == null || recoveryService == null
-                || stage.getStageName() == MediaJobStage.StageName.TTS
                 || stage.getAttemptCount() >= MediaStageRecoveryService.MAX_FAILOVER_ATTEMPTS) {
             return false;
         }
@@ -272,7 +280,7 @@ public class MediaStageExecutionService {
                 .map(list -> list.get(list.size() - 1).capability())
                 .orElse(null);
         if (capability == null || !providerHealth.reportScopeFailure(failure.getErrorCode())
-                || !providerHealth.hasPlatformAlternative(capability)) {
+                || !hasAlternative(job, stage, capability)) {
             return false;
         }
         try {
@@ -288,6 +296,61 @@ public class MediaStageExecutionService {
                     ex.toString());
             return false;
         }
+    }
+
+    private boolean hasAlternative(MediaJob job, MediaJobStage stage, String capability) {
+        if (stage.getStageName() != MediaJobStage.StageName.TTS) {
+            return providerHealth.hasPlatformAlternative(capability);
+        }
+        if (job.getTtsProviderId() == null || job.getTtsVoiceId() == null) {
+            return false;
+        }
+        return providerResolver.resolveVoiceIdentifier(job.getCreatedByUserId(), job.getTtsProviderId(),
+                        job.getTtsVoiceId())
+                .map(voice -> providerResolver.hasVoiceSibling(job.getTtsProviderId(), voice))
+                .orElse(false);
+    }
+
+    /**
+     * Transient provider failures (rate limit, overload, outage) with no other key to switch to:
+     * the stage waits and retries on the same key instead of failing, honouring the provider's
+     * Retry-After. Applies to personal keys too. Bounded by {@link MediaStageRecoveryService#MAX_DEFERRED_ATTEMPTS}.
+     */
+    private boolean deferRetry(MediaJob job, MediaJobStage stage, MediaStageMessage message, AiStageException failure) {
+        if (recoveryService == null || !DEFERRABLE_ERRORS.contains(failure.getErrorCode())
+                || !AI_STAGES.contains(stage.getStageName())
+                || stage.getAttemptCount() >= MediaStageRecoveryService.MAX_DEFERRED_ATTEMPTS) {
+            return false;
+        }
+        java.time.Duration delay = retryDelay(failure, stage.getAttemptCount());
+        try {
+            boolean deferred = recoveryService.deferRetry(job.getId(), stage.getId(),
+                    message.correlationId().toString(), failure.getErrorCode(), delay);
+            if (deferred) {
+                log.warn("Stage {} of job={} deferred {}s after {} (attempt {}/{})", stage.getStageName(),
+                        job.getId(), delay.toSeconds(), failure.getErrorCode(), stage.getAttemptCount(),
+                        MediaStageRecoveryService.MAX_DEFERRED_ATTEMPTS);
+            }
+            return deferred;
+        } catch (RuntimeException ex) {
+            log.warn("Deferring job={} stage={} failed: {}", job.getId(), stage.getStageName(), ex.toString());
+            return false;
+        }
+    }
+
+    /** Provider Retry-After when given (15 s - 5 min), else 30 s doubling per attempt up to 5 min. */
+    static java.time.Duration retryDelay(AiStageException failure, int attempt) {
+        Object details = failure.getErrorDetail().get("details");
+        if (details instanceof Map<?, ?> map && map.get("retryAfterSeconds") != null) {
+            try {
+                long seconds = Long.parseLong(String.valueOf(map.get("retryAfterSeconds")).trim());
+                return java.time.Duration.ofSeconds(Math.min(300L, Math.max(15L, seconds)));
+            } catch (NumberFormatException ignored) {
+                // Fall back to exponential backoff.
+            }
+        }
+        long seconds = 30L << Math.min(Math.max(0, attempt - 1), 4);
+        return java.time.Duration.ofSeconds(Math.min(300L, seconds));
     }
 
     private void dispatchWorker(MediaJob job, MediaJobStage stage, MediaStageMessage message) {
@@ -417,7 +480,9 @@ public class MediaStageExecutionService {
 
     private boolean isTimeoutFailure(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof SocketTimeoutException || cause instanceof HttpTimeoutException) {
+            // Spring 6.1 JdkClientHttpRequest wraps a read timeout as IOException(TimeoutException).
+            if (cause instanceof SocketTimeoutException || cause instanceof HttpTimeoutException
+                    || cause instanceof java.util.concurrent.TimeoutException) {
                 return true;
             }
         }
@@ -860,6 +925,7 @@ public class MediaStageExecutionService {
             body.put("asset_duration_ms", durationMs);
         }
         ProviderContext provider = provider(job, "STT");
+        requireCredit(job, "STT", durationMs == null ? 1L : Math.max(1L, durationMs / 1000L), provider.personalApiKey());
         body.put("provider", provider.payload());
         JsonNode result = executeSttWithRetry(stage, body, provider,
                 response -> rejectTruncatedGenerativeTranscript(job, response, durationMs));
@@ -882,7 +948,9 @@ public class MediaStageExecutionService {
                 return result;
             } catch (RuntimeException ex) {
                 AiStageException failure = stageFailure(stage, ex, provider);
-                if (!failure.isRetryable() || attempt >= retries) {
+                // A rate limit does not clear within this short backoff; the stage is deferred instead.
+                if (!failure.isRetryable() || attempt >= retries
+                        || "PROVIDER_RATE_LIMITED".equals(failure.getErrorCode())) {
                     throw failure;
                 }
                 long delayMs = 250L << Math.min(attempt, 10);
@@ -965,6 +1033,7 @@ public class MediaStageExecutionService {
         }
         if (MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(job.getRecipeId())) {
             String serialized = objectMapper.writeValueAsString(segments);
+            requireCredit(job, "SUMMARIZE_SCRIPT", estimateTokens(serialized) * 2L, hasPersonalProvider(job, "TRANSLATE"));
             String visualContext = job.isVisualContextEnabled()
                     ? fetchVisualContext(job, message, segments) : null;
             SummaryAiClient.ScriptProposalResult result =
@@ -992,6 +1061,7 @@ public class MediaStageExecutionService {
         body.put("requested_duration_seconds", duration);
         body.put("duration_tolerance", Map.of("lower_seconds", 20, "upper_seconds", 20));
         ProviderContext provider = provider(job, "TRANSLATE");
+        requireCredit(job, "SUMMARIZE_SCRIPT", serializedLength(segments), provider.personalApiKey());
         body.put("provider", provider.payload());
         JsonNode result = mediaAiClient.post().uri("/media/summarize").contentType(MediaType.APPLICATION_JSON)
                 .body(body).retrieve().body(JsonNode.class);
@@ -1097,8 +1167,9 @@ public class MediaStageExecutionService {
         }
         body.put("glossary", glossary(job));
         ProviderContext provider = provider(job, "TRANSLATE");
+        requireCredit(job, "TRANSLATE", estimateTokens(sourceText) * 2L, provider.personalApiKey());
         body.put("provider", provider.payload());
-        JsonNode result = aiClient.post().uri("/ai/translate").contentType(MediaType.APPLICATION_JSON)
+        JsonNode result = mediaAiClient.post().uri("/ai/translate").contentType(MediaType.APPLICATION_JSON)
                 .body(body).retrieve().body(JsonNode.class);
         ensureCompleted(result, "TRANSLATE");
         chargeAiUsage(job, "TRANSLATE", usageUnits(result, "TRANSLATE", sourceText.length()),
@@ -1110,9 +1181,11 @@ public class MediaStageExecutionService {
 
     /**
      * Synthesize one clip per timed subtitle segment so AUDIO_MIX/RENDER can place
-     * each clip at its own start_ms. Segments go out in bounded batches; failed
-     * segments are retried a few times, and the stage completes when at least one
-     * segment has audio (per-segment failures are reported in the output).
+     * each clip at its own start_ms. Segments go out in bounded batches and failed
+     * segments are retried a few times. The stage only completes when every segment
+     * has audio; otherwise it fails with the provider error while keeping the clips
+     * made so far, so the next attempt (failover, deferred retry or user rerun) only
+     * synthesizes and bills the missing ones.
      */
     private void executeTts(MediaJob job, MediaJobStage stage, MediaStageMessage message) {
         List<SubtitleSegment> all = subtitleSegmentRepository == null
@@ -1128,12 +1201,28 @@ public class MediaStageExecutionService {
         String voiceId = job.getTtsVoiceId() == null ? "default"
                 : providerResolver.resolveVoiceIdentifier(job.getCreatedByUserId(), job.getTtsProviderId(), job.getTtsVoiceId())
                 .orElse(job.getTtsVoiceId().toString());
-        ProviderContext provider = boundProvider(job, job.getTtsProviderId(), "TTS");
+        ProviderContext provider = boundProvider(job, job.getTtsProviderId(), "TTS", voiceId);
+        String protocol = String.valueOf(provider.payload().getOrDefault("protocol", ""));
 
+        Map<UUID, String> clipKeys = new LinkedHashMap<>();
         Map<UUID, TtsClip> clips = new LinkedHashMap<>();
+        for (SubtitleSegment segment : segments) {
+            String key = ttsClipKey(protocol, voiceId, segment.getTargetText());
+            clipKeys.put(segment.getId(), key);
+            if (reusableClip(segment, key)) {
+                clips.put(segment.getId(), new TtsClip(segment.getTtsAudioRef(), segment.getTtsDurationMs()));
+            }
+        }
+        List<SubtitleSegment> pending = segments.stream().filter(segment -> !clips.containsKey(segment.getId())).toList();
+        if (!clips.isEmpty()) {
+            log.info("TTS resumes job={} reused={} toSynthesize={}", job.getId(), clips.size(), pending.size());
+        }
+        requireCredit(job, "TTS", pending.stream().mapToLong(segment -> segment.getTargetText().length()).sum(),
+                provider.personalApiKey());
+
+        Map<UUID, TtsClip> fresh = new LinkedHashMap<>();
         JsonNode lastFailure = null;
         long characters = 0L;
-        List<SubtitleSegment> pending = segments;
         boolean retryable = true;
         for (int round = 0; round <= MAX_TTS_SEGMENT_RETRIES && !pending.isEmpty() && retryable; round++) {
             if (round > 0) {
@@ -1141,9 +1230,12 @@ public class MediaStageExecutionService {
                         job.getId(), pending.size(), round, MAX_TTS_SEGMENT_RETRIES);
                 pause(ttsSegmentRetryDelayMs);
             }
+            int freshBeforeRound = fresh.size();
+            boolean rateLimited = false;
             for (int from = 0; from < pending.size(); from += TTS_BATCH_SIZE) {
                 if (cancelRequested(stage)) {
                     // Graceful cancel: the current provider call has finished; do not start another.
+                    persistTtsClips(job, all, clips, fresh, clipKeys, characters, provider.personalApiKey());
                     callbackService.completeStage(job.getId(), stage.getId(), stage.getStageName(), false, null,
                             null, null, null, completionKey(message));
                     return;
@@ -1163,35 +1255,82 @@ public class MediaStageExecutionService {
                     TtsClip clip = storeTtsClip(job, segmentId, result);
                     if (clip != null) {
                         clips.put(segmentId, clip);
+                        fresh.put(segmentId, clip);
                     }
                 }
-                if (!"COMPLETED".equalsIgnoreCase(response.path("status").asText())) {
+                // The gateway reports the cause of missing segments even on partial success.
+                JsonNode detail = response.path("error_detail");
+                if (detail.isObject() || !"COMPLETED".equalsIgnoreCase(response.path("status").asText())) {
                     lastFailure = response;
                     // Auth/quota/unsupported-model failures will not heal on retry.
-                    retryable = response.path("error_detail").path("retryable").asBoolean(true);
+                    retryable = retryable && detail.path("retryable").asBoolean(true);
+                    rateLimited |= "PROVIDER_RATE_LIMITED".equals(detail.path("errorCode").asText());
                 }
+            }
+            // A rate limit that stopped all progress will not clear within the short segment
+            // rounds, so the stage is deferred instead. A pooled provider (FreeLLMAPI) that still
+            // produced clips this round only reported one failed pass over its chain: keep going.
+            if (rateLimited && fresh.size() == freshBeforeRound) {
+                retryable = false;
             }
             pending = pending.stream().filter(segment -> !clips.containsKey(segment.getId())).toList();
         }
-        if (clips.isEmpty()) {
-            if (lastFailure != null) {
-                throw AiStageException.fromOperationResponse(lastFailure);
-            }
-            throw AiStageException.safeFailure("PROVIDER_EMPTY_RESPONSE", "TTS returned no audio for any segment",
-                    true, "Try again or switch the TTS model.", "TTS", null);
-        }
 
+        persistTtsClips(job, all, clips, fresh, clipKeys, characters, provider.personalApiKey());
+        if (!pending.isEmpty()) {
+            log.warn("TTS incomplete job={} missing={}/{} kept={}", job.getId(), pending.size(), segments.size(),
+                    clips.size());
+            AiStageException failure = lastFailure != null
+                    ? AiStageException.fromOperationResponse(lastFailure)
+                    : AiStageException.safeFailure("TTS_SEGMENTS_INCOMPLETE",
+                            "TTS returned no audio for " + pending.size() + " of " + segments.size() + " segments",
+                            true, "Run TTS again: only the missing segments are generated.", "TTS", null);
+            throw failure.withDetail(Map.of("missingSegments", pending.size(), "totalSegments", segments.size()));
+        }
+        completeSuccess(job, stage, message, ttsOutput(segments, clips));
+    }
+
+    /**
+     * Charges the newly synthesized characters, then records every clip on its segment. Charging
+     * first means a failed charge never leaves clips that a later attempt would reuse for free.
+     */
+    private void persistTtsClips(MediaJob job, List<SubtitleSegment> all, Map<UUID, TtsClip> clips,
+                                 Map<UUID, TtsClip> fresh, Map<UUID, String> clipKeys, long characters,
+                                 boolean personalApiKey) {
+        if (fresh.isEmpty()) {
+            return;
+        }
+        long billed = characters > 0L ? characters : all.stream()
+                .filter(segment -> fresh.containsKey(segment.getId()))
+                .mapToLong(segment -> segment.getTargetText().length()).sum();
+        chargeAiUsage(job, "TTS", Math.max(1L, billed), personalApiKey);
         for (SubtitleSegment segment : all) {
             TtsClip clip = clips.get(segment.getId());
             segment.setTtsAudioRef(clip == null ? null : clip.audioRef());
+            segment.setTtsClipKey(clip == null ? null : clipKeys.get(segment.getId()));
+            segment.setTtsDurationMs(clip == null ? null : clip.durationMs());
         }
         subtitleSegmentRepository.saveAll(all);
-        if (characters <= 0L) {
-            characters = segments.stream().filter(segment -> clips.containsKey(segment.getId()))
-                    .mapToLong(segment -> segment.getTargetText().length()).sum();
+    }
+
+    /** A clip from an earlier attempt is reused when it was made from the same voice and text and still exists. */
+    private boolean reusableClip(SubtitleSegment segment, String clipKey) {
+        return segment.getTtsAudioRef() != null && !segment.getTtsAudioRef().isBlank()
+                && clipKey.equals(segment.getTtsClipKey())
+                && segment.getTtsDurationMs() != null && segment.getTtsDurationMs() > 0L
+                && !storage.objectMissing(segment.getTtsAudioRef());
+    }
+
+    /** Fingerprint of what a clip was synthesized from: protocol, vendor voice and exact text. */
+    static String ttsClipKey(String protocol, String voiceId, String text) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            String material = protocol.toLowerCase(Locale.ROOT) + "|" + voiceId + "|" + text;
+            return java.util.HexFormat.of().formatHex(
+                    digest.digest(material.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException ex) {
+            throw new IllegalStateException(ex);
         }
-        chargeAiUsage(job, "TTS", Math.max(1L, characters), provider.personalApiKey());
-        completeSuccess(job, stage, message, ttsOutput(segments, clips));
     }
 
     private JsonNode requestTts(MediaJob job, MediaStageMessage message, String voiceId,
@@ -1232,10 +1371,18 @@ public class MediaStageExecutionService {
         if (bytes.length == 0) {
             return null;
         }
+        Long durationMs = measuredMs != null ? measuredMs : wavDurationMs(bytes);
+        if (durationMs == null || durationMs <= 0L) {
+            // RENDER cannot place a clip of unknown length: keep the segment pending so TTS
+            // retries it now instead of completing and failing RENDER with TTS_SEGMENTS_INCOMPLETE.
+            log.warn("TTS clip has no measurable duration job={} segment={} bytes={}", job.getId(), segmentId,
+                    bytes.length);
+            return null;
+        }
         String[] format = audioFormat(bytes);
         String key = "dubbed/" + job.getId() + "/" + segmentId + "-" + UUID.randomUUID() + "." + format[0];
         storage.putMediaObject(key, new ByteArrayInputStream(bytes), bytes.length, format[1]);
-        return new TtsClip(storage.mediaBucket() + "/" + key, measuredMs != null ? measuredMs : wavDurationMs(bytes));
+        return new TtsClip(storage.mediaBucket() + "/" + key, durationMs);
     }
 
     private String[] audioFormat(byte[] bytes) {
@@ -1245,6 +1392,22 @@ public class MediaStageExecutionService {
         }
         if (bytes.length >= 4 && bytes[0] == 'O' && bytes[1] == 'g' && bytes[2] == 'g' && bytes[3] == 'S') {
             return new String[] {"ogg", "audio/ogg"};
+        }
+        // Proxy providers (FreeLLMAPI…) may return other containers; the worker picks the
+        // decoder from the key extension, so it must match the bytes.
+        if (bytes.length >= 4 && bytes[0] == 'f' && bytes[1] == 'L' && bytes[2] == 'a' && bytes[3] == 'C') {
+            return new String[] {"flac", "audio/flac"};
+        }
+        if (bytes.length >= 8 && bytes[4] == 'f' && bytes[5] == 't' && bytes[6] == 'y' && bytes[7] == 'p') {
+            return new String[] {"m4a", "audio/mp4"};
+        }
+        if (bytes.length >= 4 && (bytes[0] & 0xFF) == 0x1A && (bytes[1] & 0xFF) == 0x45
+                && (bytes[2] & 0xFF) == 0xDF && (bytes[3] & 0xFF) == 0xA3) {
+            return new String[] {"webm", "audio/webm"};
+        }
+        // ADTS AAC: frame sync with layer bits 00 (MP3 frames have non-zero layer bits).
+        if (bytes.length >= 2 && (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xF6) == 0xF0) {
+            return new String[] {"aac", "audio/aac"};
         }
         return new String[] {"mp3", "audio/mpeg"};
     }
@@ -1348,12 +1511,12 @@ public class MediaStageExecutionService {
                 job.getCreatedByUserId(), capability));
     }
 
-    private ProviderContext boundProvider(MediaJob job, UUID providerId, String capability) {
+    private ProviderContext boundProvider(MediaJob job, UUID providerId, String capability, String voiceIdentifier) {
         if (providerId == null) {
             return provider(job, capability);
         }
         return providerContext(capability, providerResolver.resolveBoundProvider(
-                job.getCreatedByUserId(), providerId, capability));
+                job.getCreatedByUserId(), providerId, capability, voiceIdentifier));
     }
 
     private ProviderContext providerContext(String capability, ProviderResolverService.ProviderResolution p) {
@@ -1387,6 +1550,24 @@ public class MediaStageExecutionService {
                 .map(resolved -> !resolved.platform())
                 .orElseGet(() -> providerResolver.resolveForCapability(job.getCreatedByUserId(), capability)
                         .isPersonalApiKey());
+    }
+
+    /**
+     * Pre-flight credit gate: fail before calling the provider when the workspace payer cannot
+     * cover the estimated usage, so no provider work is wasted and nothing is left half-billed.
+     * The real charge still uses the measured usage afterwards.
+     */
+    private void requireCredit(MediaJob job, String capability, long estimatedUnits, boolean personalApiKey) {
+        if (creditService == null || estimatedUnits <= 0L) {
+            return;
+        }
+        if (!creditService.canAffordUsage(job.getWorkspaceId(), job.getCreatedByUserId(), capability,
+                estimatedUnits, personalApiKey)) {
+            log.warn("Insufficient credit before {} job={} estimatedUnits={}", capability, job.getId(), estimatedUnits);
+            throw AiStageException.fromAppException(
+                    new AppException(com.app.common.exception.ErrorCode.INSUFFICIENT_CREDIT), capability)
+                    .withDetail(Map.of("estimatedUnits", estimatedUnits));
+        }
     }
 
     /** Charge only after the FastAPI stage has returned COMPLETED. */
@@ -1509,7 +1690,7 @@ public class MediaStageExecutionService {
             ProviderContext provider = provider(job, "VISION");
             body.put("provider", provider.payload());
 
-            JsonNode result = aiClient.post().uri("/media/understand/visual")
+            JsonNode result = mediaAiClient.post().uri("/media/understand/visual")
                     .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(JsonNode.class);
             if (result == null || !"COMPLETED".equalsIgnoreCase(result.path("status").asText())) {
                 log.warn("Visual context unavailable for job={}", job.getId());
@@ -1842,7 +2023,7 @@ public class MediaStageExecutionService {
             body.put("glossary", glossary(job));
             body.put("checks", List.of("accuracy", "fluency", "terminology", "length", "timing"));
             body.put("provider", provider(job, "TRANSLATE").payload());
-            JsonNode response = aiClient.post().uri("/ai/qa")
+            JsonNode response = mediaAiClient.post().uri("/ai/qa")
                     .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(JsonNode.class);
             if (response != null && "COMPLETED".equalsIgnoreCase(response.path("status").asText())
                     && response.path("issues").isArray()) {

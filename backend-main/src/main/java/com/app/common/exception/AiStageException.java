@@ -86,8 +86,18 @@ public class AiStageException extends RuntimeException {
         ErrorCode sourceCode = exception.getErrorCode();
         String code = sourceCode == null ? "PROVIDER_CONFIGURATION_ERROR" : sourceCode.name();
         String message = sourceCode == null ? "AI provider configuration is invalid" : sourceCode.getMessage();
-        return safeFailure(code, message, false,
-                "Review the provider configuration and selected model.", capability, null);
+        String action = sourceCode == ErrorCode.INSUFFICIENT_CREDIT
+                ? "Top up credit, then rerun this stage."
+                : "Review the provider configuration and selected model.";
+        return safeFailure(code, message, false, action, capability, null);
+    }
+
+    /** Copy of this failure with extra structured detail (e.g. how many segments are missing). */
+    public AiStageException withDetail(Map<String, Object> extra) {
+        Map<String, Object> detail = new LinkedHashMap<>(errorDetail);
+        detail.putAll(extra);
+        return new AiStageException(errorCode, getMessage(), retryable, recommendedAction, protocol, capability,
+                model, detail);
     }
 
     public static AiStageException safeFailure(String code, String message, boolean retryable,

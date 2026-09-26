@@ -54,6 +54,13 @@ public class TtsVoice {
     @Column
     private String gender = "UNKNOWN"; // 'MALE', 'FEMALE', 'UNKNOWN'
 
+    @Column(name = "display_name")
+    private String displayName;
+
+    /** 'GA', 'PREVIEW', 'DEPRECATED' or null (vendor publishes no lifecycle → treated as GA). */
+    @Column
+    private String status;
+
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 
@@ -84,6 +91,12 @@ public class TtsVoice {
         return languages != null && languages.stream()
                 .map(TtsVoice::primaryLanguage)
                 .anyMatch(targetPrimary::equals);
+    }
+
+    /** True when the voice's own primary language is the target (not only via multilingual support). */
+    public boolean isNativeFor(String targetLang) {
+        String targetPrimary = primaryLanguage(targetLang);
+        return targetPrimary != null && targetPrimary.equals(primaryLanguage(language));
     }
 
     private static String primaryLanguage(String languageTag) {

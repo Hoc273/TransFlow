@@ -1,4 +1,6 @@
 import asyncio
+import os
+import shutil
 import threading
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
@@ -528,7 +530,35 @@ class RenderContractTest(unittest.IsolatedAsyncioTestCase):
             out = _pad_audio_to("voice.wav", 3250, "tmp")
         cmd = run.call_args.args[0]
         self.assertIn("apad=whole_dur=3.250", cmd)
+        self.assertEqual(["-ar", "48000", "-ac", "1"], cmd[cmd.index("-ar"):cmd.index("-ac") + 2])
         self.assertEqual(out, cmd[-1])
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg not installed")
+    def test_mixed_provider_sample_rates_keep_real_time_after_concat(self):
+        # Pooled TTS mixed Gemini 24 kHz, MeloTTS 44.1 kHz and Deepgram 22.05 kHz clips; the
+        # concat demuxer read every clip at the first clip's rate and the voice drifted.
+        import subprocess
+        import tempfile
+        from app.api.render import _pad_audio_to
+
+        def seconds(path: str) -> float:
+            return float(subprocess.check_output(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path]))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            padded = []
+            for index, (rate, beat_ms) in enumerate([(24_000, 3_000), (44_100, 2_500), (22_050, 2_000)]):
+                clip = os.path.join(tmp, f"clip{index}.wav")
+                subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
+                                f"sine=frequency=440:sample_rate={rate}:duration=1.5", clip], check=True)
+                padded.append(_pad_audio_to(clip, beat_ms, tmp))
+            listing = os.path.join(tmp, "list.txt")
+            with open(listing, "w", encoding="utf-8") as f:
+                f.writelines(f"file '{p}'\n" for p in padded)
+            joined = os.path.join(tmp, "joined.wav")
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listing,
+                            "-c:a", "pcm_s16le", joined], check=True)
+            self.assertAlmostEqual(7.5, seconds(joined), delta=0.05)
 
     async def test_generative_ffmpeg_retryable_flag_reaches_callback(self):
         storage = Mock()

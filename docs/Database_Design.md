@@ -364,6 +364,8 @@ tts_voices(
   language VARCHAR NOT NULL,
   languages VARCHAR[] DEFAULT '{}',
   gender VARCHAR CHECK (gender IN ('MALE','FEMALE','UNKNOWN')) DEFAULT 'UNKNOWN',
+  display_name VARCHAR(200),                                        -- V15: tên đọc được ("Hoài My"); NULL → UI hiện voice_id
+  status VARCHAR(20) CHECK (status IN ('GA','PREVIEW','DEPRECATED')), -- V15: vòng đời vendor; NULL = không công bố (coi như GA)
   is_active BOOLEAN NOT NULL DEFAULT true,
   cached_at TIMESTAMPTZ DEFAULT now(),
   CONSTRAINT ck_tts_voice_source CHECK (
@@ -619,6 +621,11 @@ subtitle_segments(
   start_ms BIGINT NOT NULL,
   end_ms BIGINT NOT NULL CHECK (end_ms > start_ms),
   tts_audio_ref VARCHAR,
+  -- V14: TTS chạy tiếp được. SHA-256(protocol|vendor voice|target_text) của clip trong tts_audio_ref +
+  -- thời lượng đo được. Rerun/failover TTS chỉ tạo lại (và tính phí) segment có key lệch, clip đã mất
+  -- (retention) hoặc chưa có clip; segment đã sửa text hay đổi voice tự lệch key nên được tạo lại.
+  tts_clip_key VARCHAR(64),
+  tts_duration_ms BIGINT,
   word_timings JSONB,
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (media_job_id, seq)
@@ -822,7 +829,12 @@ CREATE INDEX ix_ai_usage_logs_provider ON ai_usage_logs(provider_id, created_at)
   `V8__system_presets_render_ready.sql`, `V9__shorts_preset_typography.sql`, `V10__system_presets_phrase_colors.sql` (cập nhật render presets),
   `V11__guide.sql` (bảng Hướng dẫn ở §3.2 + seed nội dung mẫu), `V12__notification_qa_blocked.sql`,
   `V13__provider_pool_and_retention.sql` (pool key nền tảng §5, health BYOK, `ai_usage_logs.provider_id`,
-  `media_assets.purged_at` retention 3 ngày, notification `PROVIDER_KEY_INVALID`, index cho cronjob).
+  `media_assets.purged_at` retention 3 ngày, notification `PROVIDER_KEY_INVALID`, index cho cronjob),
+  `V14__tts_clip_key.sql` (`subtitle_segments.tts_clip_key`, `tts_duration_ms` — TTS resume),
+  `V15__tts_voice_display_status.sql` (`tts_voices.display_name`, `status` — catalog N giọng/ngôn ngữ).
+- **Đồng bộ `tts_voices` (BYOK refresh & platform sync):** upsert theo `voice_id`, **không bao giờ xoá** —
+  job DUB có thể còn tham chiếu (FK `ON DELETE SET NULL` sẽ vi phạm `ck_audio_mode_voice`). Voice provider
+  gỡ hoặc `status=DEPRECATED` → `is_active=false`. Danh sách rỗng từ provider → lỗi, giữ nguyên catalog.
 - **Thứ tự tạo bảng chính (do FK chéo):**
   1. `users` → `workspaces` → `workspace_members` → `projects` → `project_members`.
   2. `terms_versions`, `credit_packages`, `platform_ai_providers` (độc lập).

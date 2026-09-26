@@ -51,6 +51,13 @@ public class SubtitleSegment {
     @Column(name = "tts_audio_ref")
     private String ttsAudioRef;
 
+    /** SHA-256 of (protocol, vendor voice, target text) the clip in {@code ttsAudioRef} was made from (V14). */
+    @Column(name = "tts_clip_key", length = 64)
+    private String ttsClipKey;
+
+    @Column(name = "tts_duration_ms")
+    private Long ttsDurationMs;
+
     public enum ContentSource {
         TRANSLATED_ORIGINAL, AUTHORED_SCRIPT, TRANSLATED_SCRIPT
     }

@@ -75,7 +75,7 @@ class MediaJobServiceImplTest {
     private void stubHappyPathUpToCreditCheck() {
         when(mediaAssetService.getAsset(workspaceId, userId, rootAssetId)).thenReturn(rootVideoAsset());
         when(mediaAssetService.hasCurrentConsent(rootAssetId)).thenReturn(true);
-        when(credit.hasSufficientBalance(userId)).thenReturn(true);
+        when(credit.hasSufficientBalance(workspaceId, userId)).thenReturn(true);
         when(presetResolver.resolveForJobCreation(any(), any(), any())).thenReturn(null);
         when(mediaJobRepository.save(any(MediaJob.class))).thenAnswer(inv -> {
             MediaJob j = inv.getArgument(0);
@@ -283,7 +283,7 @@ class MediaJobServiceImplTest {
     void createJob_insufficientCredit_throwsInsufficientCredit() {
         when(mediaAssetService.getAsset(workspaceId, userId, rootAssetId)).thenReturn(rootVideoAsset());
         when(mediaAssetService.hasCurrentConsent(rootAssetId)).thenReturn(true);
-        when(credit.hasSufficientBalance(userId)).thenReturn(false);
+        when(credit.hasSufficientBalance(workspaceId, userId)).thenReturn(false);
 
         AppException ex = assertThrows(AppException.class, () ->
                 service.createJob(workspaceId, userId, localizationRequest("ORIGINAL_ONLY", false, null)));
@@ -502,7 +502,7 @@ class MediaJobServiceImplTest {
         source.setSubtitleMode(MediaJob.SubtitleMode.HARD_SUB);
         source.setWorkflowMode(MediaJob.WorkflowMode.AUTO);
         when(mediaJobRepository.findByIdAndWorkspaceId(sourceJobId, workspaceId)).thenReturn(Optional.of(source));
-        when(credit.hasSufficientBalance(userId)).thenReturn(true);
+        when(credit.hasSufficientBalance(workspaceId, userId)).thenReturn(true);
         when(mediaJobRepository.save(any(MediaJob.class))).thenAnswer(inv -> {
             MediaJob j = inv.getArgument(0);
             if (j.getId() == null) j.setId(UUID.randomUUID());
@@ -541,7 +541,7 @@ class MediaJobServiceImplTest {
         when(mediaJobRepository.findByIdAndWorkspaceId(sourceJobId, workspaceId)).thenReturn(Optional.of(source));
         UUID voiceId = UUID.randomUUID();
         when(providerResolver.isVoiceLanguageCompatible(userId, providerId, voiceId, "vi")).thenReturn(true);
-        when(credit.hasSufficientBalance(userId)).thenReturn(true);
+        when(credit.hasSufficientBalance(workspaceId, userId)).thenReturn(true);
         when(mediaJobRepository.save(any(MediaJob.class))).thenAnswer(inv -> {
             MediaJob j = inv.getArgument(0);
             if (j.getId() == null) j.setId(UUID.randomUUID());
@@ -580,7 +580,7 @@ class MediaJobServiceImplTest {
         MediaJob source = existingJob(sourceJobId);
         source.setRequestedDurationSeconds(60);
         when(mediaJobRepository.findByIdAndWorkspaceId(sourceJobId, workspaceId)).thenReturn(Optional.of(source));
-        when(credit.hasSufficientBalance(userId)).thenReturn(false);
+        when(credit.hasSufficientBalance(workspaceId, userId)).thenReturn(false);
 
         AppException ex = assertThrows(AppException.class, () ->
                 service.createDerivedSummaryJob(workspaceId, userId, sourceJobId, "vi", null, null));
