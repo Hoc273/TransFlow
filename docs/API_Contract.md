@@ -379,6 +379,17 @@ kiểm tra key BYOK hằng ngày (chỉ probe auth, không tốn phí). Khi key 
 
 **Azure Speech (`azure_speech`):** `baseUrl` nhận cả endpoint Azure Portal (`https://{region}.api.cognitive.microsoft.com/`) — FastAPI tự chuyển sang `https://{region}.tts.speech.microsoft.com` vì host Portal trả 404 cho TTS REST. Voice lấy live từ `cognitiveservices/voices/list` (discovery `AUTO`), gồm cả ID dạng `Name:Model` (`en-US-Ava:DragonHDLatestNeural`, `de-DE-Klaus:MAI-Voice-2-Flash`).
 
+**Capability theo protocol** (user BYOK và platform provider; `ProviderProtocolCapabilities` ↔ `supported_capabilities` của adapter FastAPI). Tạo/sửa với capability ngoài bảng → `400 PROVIDER_CAPABILITY_NOT_SUPPORTED`. Khi update, chỉ kiểm tra lúc `protocol`/`capabilities` thay đổi, nên row cũ vẫn bật/tắt được.
+
+| Protocol | Capability | Base URL mặc định | Model gợi ý | Gọi API |
+|---|---|---|---|---|
+| `openai_compatible` | TRANSLATE, STT, TTS, VISION | `https://api.openai.com/v1` | `gpt-4o-mini`, STT `whisper-1`, TTS `tts-1` | Bearer, `/chat/completions`, `/audio/transcriptions` (`verbose_json`), `/audio/speech` |
+| `anthropic` | TRANSLATE, VISION | `https://api.anthropic.com` (chấp nhận cả `…/v1`) | `claude-haiku-4-5` | `x-api-key` + `anthropic-version`, `POST /v1/messages`, VISION gửi block `image` (url/base64). Auth probe `GET /v1/models` (không gắn model cụ thể) |
+| `dashscope_native` | TRANSLATE, STT, TTS | `https://dashscope.aliyuncs.com/compatible-mode/v1` (key Singapore: `dashscope-intl`) | `qwen-plus`, STT/TTS `qwen-omni-turbo` | Bearer, compatible-mode `/chat/completions` (Omni SSE) |
+| `elevenlabs_native` | TTS | `https://api.elevenlabs.io/v1` | `eleven_multilingual_v2` | `xi-api-key`, `/text-to-speech/{voice}`, voice live `/voices` |
+| `azure_speech` | TTS | `https://{region}.tts.speech.microsoft.com` | — (nhãn) | `Ocp-Apim-Subscription-Key`, SSML `cognitiveservices/v1`, voice live `voices/list` |
+| `google_speech` | TTS | `https://texttospeech.googleapis.com` | — (nhãn) | `X-Goog-Api-Key`, `v1/text:synthesize` (`languageCode` lấy từ tên voice), voice live `v1/voices` (`cmn`/`yue` được gắn thêm `zh`) |
+
 ---
 
 ## 12. Thông báo (SRS §5.7)

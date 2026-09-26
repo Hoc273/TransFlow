@@ -325,6 +325,8 @@
       "apiKeyKeep": "Leave empty to keep the current key.",
       "model": "Default model",
       "capabilities": "Capabilities",
+      "modelUnusedHint": "Azure / Google TTS have no model to choose — this is only a label; the voice is picked per job.",
+      "capabilityUnsupported": "{{protocol}} does not support {{capability}}",
       "capabilitiesRequired": "Pick at least one capability.",
       "priority": "Priority",
       "priorityHint": "Lower is used first (0–1000).",

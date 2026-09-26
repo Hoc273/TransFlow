@@ -152,6 +152,23 @@ class UserAiProviderServiceTest {
     }
 
     @Test
+    void createRejectsCapabilityTheProtocolAdapterCannotRun() {
+        // Anthropic / Azure adapters have no TTS / STT path: saving used to succeed and the
+        // media job failed later with PROVIDER_UNSUPPORTED_CAPABILITY.
+        for (var combo : List.of(
+                List.of("anthropic", "TTS"),
+                List.of("azure_speech", "STT"),
+                List.of("google_speech", "TRANSLATE"),
+                List.of("elevenlabs_native", "VISION"))) {
+            CreateUserAiProviderRequest req = new CreateUserAiProviderRequest(
+                    combo.get(0), List.of(combo.get(1)), "https://api.example.test", "sk-secret", "m");
+            AppException ex = assertThrows(AppException.class, () -> service.createProvider(userId, req));
+            assertEquals(ErrorCode.PROVIDER_CAPABILITY_NOT_SUPPORTED, ex.getErrorCode(), combo.toString());
+        }
+        verifyNoInteractions(providerRepository);
+    }
+
+    @Test
     void testGetProviderSuccess() {
         UserAiProvider provider = new UserAiProvider();
         provider.setId(providerId);

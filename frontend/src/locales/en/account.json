@@ -202,6 +202,8 @@
     "editTitle": "Edit API key",
     "emptyTitle": "No {{capability}} key yet",
     "emptyDesc": "Add a personal key to use your own provider for this capability.",
+    "modelUnusedHelp": "This speech API has no model to choose — the value is only a label. The voice is picked per job (TTS step) or in the voice list.",
+    "capabilityUnsupported": "{{protocol}} does not support {{capability}}",
     "modelRequired": "Base URL and model are required",
     "capabilitiesHelp": "Select every capability this endpoint can serve. One OpenAI-compatible gateway may expose TEXT, VISION, STT and TTS together.",
     "defaultRequired": "Several active {{capability}} keys but no default selected — jobs will fail with PROVIDER_DEFAULT_NOT_CONFIGURED. Click \"Set default\" on one key.",

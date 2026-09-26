@@ -140,7 +140,7 @@ function defaultModelFor(
 
   switch (protocol) {
     case 'anthropic':
-      return 'claude-3-5-haiku-latest'
+      return 'claude-haiku-4-5'
     case 'elevenlabs_native':
       return 'eleven_multilingual_v2'
     case 'dashscope_native':

@@ -19,8 +19,19 @@ import {
   useUpdatePlatformProvider,
 } from '@/hooks/usePlatform'
 import { formatDateTime } from '@/lib/format'
+import { validateProviderBaseUrl } from '@/lib/providerBaseUrl'
+import {
+  SELECTABLE_PROTOCOLS,
+  defaultBaseUrlFor,
+  defaultModelFor,
+  isModelUnused,
+  protocolCapabilities,
+  protocolSupports,
+  supportedSubset,
+} from '@/lib/providerProtocols'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
+import type { ProviderProtocol } from '@/types/provider'
 import type {
   PlatformProvider,
   PlatformProviderInput,
@@ -28,14 +39,6 @@ import type {
   ProviderTestResult,
 } from '@/types/platform'
 
-const PROTOCOLS = [
-  'openai_compatible',
-  'anthropic',
-  'elevenlabs_native',
-  'azure_speech',
-  'google_speech',
-  'dashscope_native',
-] as const
 const CAPABILITIES = ['STT', 'TRANSLATE', 'TTS', 'VISION'] as const
 
 type FormState = {
@@ -55,9 +58,9 @@ const EMPTY_FORM: FormState = {
   name: '',
   protocol: 'openai_compatible',
   capabilities: ['TRANSLATE'],
-  baseUrl: '',
+  baseUrl: defaultBaseUrlFor('openai_compatible'),
   apiKey: '',
-  defaultModel: '',
+  defaultModel: defaultModelFor('openai_compatible', ['TRANSLATE']),
   priority: '100',
   weight: '1',
   tier: 'PAID',
@@ -86,6 +89,7 @@ function errorText(error: unknown, fallback: string) {
 /** Super Admin — shared platform AI key pool used by every user without a personal key. */
 export function PlatformProvidersPage() {
   const { t } = useTranslation('platform')
+  const { t: tAll } = useTranslation(['settings'])
   const language = useUiStore((s) => s.language)
   const { data, isLoading, isError, refetch } = usePlatformProviders()
   const createMutation = useCreatePlatformProvider()
@@ -136,11 +140,21 @@ export function PlatformProvidersPage() {
       setFormError(t('providers.form.capabilitiesRequired'))
       return
     }
+    const url = validateProviderBaseUrl(form.baseUrl, form.protocol as ProviderProtocol)
+    if (!url.ok) {
+      setFormError(
+        tAll(url.messageKey, {
+          suggestion: url.suggestion,
+          defaultValue: url.suggestion ? `Invalid base URL. Suggested: ${url.suggestion}` : 'Invalid base URL',
+        }),
+      )
+      return
+    }
     const body: PlatformProviderInput = {
       name: form.name.trim(),
       protocol: form.protocol,
       capabilities: form.capabilities,
-      baseUrl: form.baseUrl.trim(),
+      baseUrl: url.value,
       defaultModel: form.defaultModel.trim(),
       priority: Number(form.priority),
       weight: Number(form.weight),
@@ -204,6 +218,21 @@ export function PlatformProvidersPage() {
       setConfirmDelete(null)
       setNotice({ tone: 'error', text: errorText(error, t('providers.deleteError')) })
     }
+  }
+
+  const changeProtocol = (protocol: string) => {
+    setForm((f) => {
+      const kept = supportedSubset(protocol, f.capabilities)
+      const first = protocolCapabilities(protocol)[0]
+      const capabilities = kept.length ? kept : [first === 'TEXT' ? 'TRANSLATE' : first]
+      return {
+        ...f,
+        protocol,
+        capabilities,
+        baseUrl: defaultBaseUrlFor(protocol),
+        defaultModel: defaultModelFor(protocol, capabilities),
+      }
+    })
   }
 
   const toggleCapability = (cap: string) => {
@@ -399,9 +428,9 @@ export function PlatformProvidersPage() {
                 className="input w-full"
                 value={form.protocol}
                 disabled={editing !== 'new'}
-                onChange={(e) => setForm({ ...form, protocol: e.target.value })}
+                onChange={(e) => changeProtocol(e.target.value)}
               >
-                {PROTOCOLS.map((p) => (
+                {SELECTABLE_PROTOCOLS.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
@@ -415,7 +444,7 @@ export function PlatformProvidersPage() {
               className="input w-full font-mono text-[13px]"
               required
               maxLength={500}
-              placeholder="https://api.openai.com/v1"
+              placeholder={defaultBaseUrlFor(form.protocol)}
               value={form.baseUrl}
               onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
             />
@@ -435,12 +464,15 @@ export function PlatformProvidersPage() {
                 onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
               />
             </Field>
-            <Field label={t('providers.form.model')}>
+            <Field
+              label={t('providers.form.model')}
+              hint={isModelUnused(form.protocol) ? t('providers.form.modelUnusedHint') : undefined}
+            >
               <input
                 className="input w-full font-mono text-[13px]"
                 required
                 maxLength={200}
-                placeholder="gpt-4o-mini"
+                placeholder={defaultModelFor(form.protocol, form.capabilities)}
                 value={form.defaultModel}
                 onChange={(e) => setForm({ ...form, defaultModel: e.target.value })}
               />
@@ -449,16 +481,24 @@ export function PlatformProvidersPage() {
 
           <Field label={t('providers.form.capabilities')}>
             <div className="flex flex-wrap gap-3">
-              {CAPABILITIES.map((c) => (
-                <label key={c} className="inline-flex items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={form.capabilities.includes(c)}
-                    onChange={() => toggleCapability(c)}
-                  />
-                  {c}
-                </label>
-              ))}
+              {CAPABILITIES.map((c) => {
+                const supported = protocolSupports(form.protocol, c)
+                return (
+                  <label
+                    key={c}
+                    title={supported ? undefined : t('providers.form.capabilityUnsupported', { protocol: form.protocol, capability: c })}
+                    className={`inline-flex items-center gap-1.5 text-sm${supported ? '' : ' opacity-40'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={!supported}
+                      checked={supported && form.capabilities.includes(c)}
+                      onChange={() => toggleCapability(c)}
+                    />
+                    {c}
+                  </label>
+                )
+              })}
             </div>
           </Field>
 

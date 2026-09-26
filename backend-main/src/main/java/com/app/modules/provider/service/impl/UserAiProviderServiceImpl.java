@@ -14,6 +14,7 @@ import com.app.modules.provider.repository.TtsVoiceRepository;
 import com.app.modules.provider.repository.UserAiProviderDefaultRepository;
 import com.app.modules.provider.repository.UserAiProviderRepository;
 import com.app.modules.provider.service.UserAiProviderService;
+import com.app.modules.provider.util.ProviderProtocolCapabilities;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -88,6 +89,7 @@ public class UserAiProviderServiceImpl implements UserAiProviderService {
         validateProtocol(request.protocol());
         validateCapabilities(request.capabilities());
         List<String> capabilities = normalize(request.capabilities());
+        ProviderProtocolCapabilities.require(request.protocol(), capabilities);
         List<String> defaults = validateDefaults(request.defaultForCapabilities(), capabilities, true,
                 request.defaultModel());
 
@@ -122,6 +124,10 @@ public class UserAiProviderServiceImpl implements UserAiProviderService {
         if (request.capabilities() != null && !request.capabilities().isEmpty()) {
             validateCapabilities(request.capabilities());
             provider.setCapabilities(normalize(request.capabilities()));
+        }
+        if (request.protocol() != null || request.capabilities() != null) {
+            // Only when either changes: legacy rows stay editable (e.g. toggling isActive).
+            ProviderProtocolCapabilities.require(provider.getProtocol(), provider.getCapabilities());
         }
         if (request.baseUrl() != null && !request.baseUrl().isBlank()) {
             provider.setBaseUrl(request.baseUrl().trim());

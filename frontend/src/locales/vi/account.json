@@ -202,6 +202,8 @@
     "editTitle": "Sửa API key",
     "emptyTitle": "Chưa có key {{capability}}",
     "emptyDesc": "Thêm key cá nhân để dùng provider riêng cho capability này.",
+    "modelUnusedHelp": "API giọng nói này không có model để chọn — giá trị chỉ dùng làm nhãn. Giọng đọc được chọn ở bước TTS của từng job hoặc trong danh sách giọng.",
+    "capabilityUnsupported": "{{protocol}} không hỗ trợ {{capability}}",
     "modelRequired": "Base URL và model là bắt buộc",
     "capabilitiesHelp": "Chọn mọi capability mà endpoint này phục vụ. Một gateway OpenAI-compatible có thể vừa TEXT, VISION, STT và TTS.",
     "defaultRequired": "Có nhiều key {{capability}} đang bật nhưng chưa chọn mặc định — job sẽ báo lỗi PROVIDER_DEFAULT_NOT_CONFIGURED. Hãy bấm \"Đặt mặc định\" cho một key.",

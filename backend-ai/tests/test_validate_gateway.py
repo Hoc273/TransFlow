@@ -118,7 +118,9 @@ class TestAuthProbe:
         assert _auth_probe_path("openai_compatible", "https://api.example.com") == "/v1/models"
 
     def test_auth_probe_path_anthropic(self):
-        assert _auth_probe_path("anthropic", "https://api.anthropic.com") == "/v1/messages"
+        # GET /v1/models: free and model-independent (a retired probe model broke valid keys).
+        assert _auth_probe_path("anthropic", "https://api.anthropic.com") == "/v1/models"
+        assert _auth_probe_path("anthropic", "https://api.anthropic.com/v1") == "/models"
 
     def test_auth_probe_path_other_protocols(self):
         assert _auth_probe_path("elevenlabs_native", "https://api.elevenlabs.io") == "/voices"

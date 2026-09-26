@@ -14,6 +14,7 @@ import com.app.modules.provider.repository.PlatformAiProviderRepository;
 import com.app.modules.provider.repository.TtsVoiceRepository;
 import com.app.modules.provider.service.PlatformProviderService;
 import com.app.modules.provider.service.ProviderHealthService;
+import com.app.modules.provider.util.ProviderProtocolCapabilities;
 import com.app.modules.provider.util.TtsVoiceCatalog;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -76,6 +77,7 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
         provider.setName(request.name().trim());
         provider.setProtocol(protocol(request.protocol()));
         provider.setCapabilities(capabilities(request.capabilities()));
+        ProviderProtocolCapabilities.require(provider.getProtocol(), provider.getCapabilities());
         provider.setBaseUrl(request.baseUrl().trim());
         setKey(provider, request.apiKey());
         provider.setDefaultModel(request.defaultModel().trim());
@@ -96,6 +98,7 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
         }
         if (request.capabilities() != null) {
             provider.setCapabilities(capabilities(request.capabilities()));
+            ProviderProtocolCapabilities.require(provider.getProtocol(), provider.getCapabilities());
         }
         if (request.baseUrl() != null && !request.baseUrl().isBlank()) {
             credentialsChanged |= !request.baseUrl().trim().equals(provider.getBaseUrl());

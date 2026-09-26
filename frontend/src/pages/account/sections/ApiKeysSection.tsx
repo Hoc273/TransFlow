@@ -31,6 +31,15 @@ import {
 } from '@/hooks/useProviders'
 import { formatVoiceLanguage, voiceMatchesTargetLang } from '@/lib/media/voiceSelection'
 import { validateProviderBaseUrl } from '@/lib/providerBaseUrl'
+import {
+  SELECTABLE_PROTOCOLS,
+  defaultBaseUrlFor,
+  defaultModelFor,
+  isModelUnused,
+  protocolCapabilities,
+  protocolSupports,
+  supportedSubset,
+} from '@/lib/providerProtocols'
 import { ApiError } from '@/types/api'
 import type { ProviderCapability, ProviderConfig, ProviderProtocol, TestConnectionResponse } from '@/types/provider'
 
@@ -56,16 +65,6 @@ const CAPABILITY_SECTIONS: {
 
 const ALL_CAPABILITIES = CAPABILITY_SECTIONS.map((s) => s.capability)
 
-/** Protocols accepted by UserAiProviderServiceImpl.ALLOWED_PROTOCOLS. */
-const ALL_PROTOCOLS: ProviderProtocol[] = [
-  'openai_compatible',
-  'anthropic',
-  'elevenlabs_native',
-  'dashscope_native',
-  'azure_speech',
-  'google_speech',
-]
-
 type FormState = {
   protocol: ProviderProtocol
   baseUrl: string
@@ -75,49 +74,11 @@ type FormState = {
   enabled: boolean
 }
 
-function defaultModelFor(protocol: ProviderProtocol, capability: ProviderCapability): string {
-  switch (protocol) {
-    case 'anthropic':
-      return 'claude-3-5-haiku-latest'
-    case 'elevenlabs_native':
-      return 'eleven_multilingual_v2'
-    case 'dashscope_native':
-      return capability === 'TEXT' ? 'qwen-plus' : 'qwen-omni-turbo'
-    case 'azure_speech':
-      return 'en-US-JennyNeural'
-    case 'google_speech':
-      return 'en-US-Neural2-A'
-    case 'openai_compatible':
-    default:
-      if (capability === 'STT') return 'whisper-1'
-      if (capability === 'TTS') return 'tts-1'
-      return 'gpt-4o-mini'
-  }
-}
-
-function defaultBaseUrlFor(protocol: ProviderProtocol): string {
-  switch (protocol) {
-    case 'anthropic':
-      return 'https://api.anthropic.com'
-    case 'elevenlabs_native':
-      return 'https://api.elevenlabs.io/v1'
-    case 'dashscope_native':
-      return 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-    case 'azure_speech':
-      return 'https://eastus.tts.speech.microsoft.com'
-    case 'google_speech':
-      return 'https://texttospeech.googleapis.com'
-    case 'openai_compatible':
-    default:
-      return 'https://api.openai.com/v1'
-  }
-}
-
 const emptyForm = (capability: ProviderCapability = 'TEXT'): FormState => ({
   protocol: 'openai_compatible',
   baseUrl: defaultBaseUrlFor('openai_compatible'),
   apiKey: '',
-  defaultModel: defaultModelFor('openai_compatible', capability),
+  defaultModel: defaultModelFor('openai_compatible', [capability]),
   capabilities: [capability],
   enabled: true,
 })
@@ -128,7 +89,12 @@ function formFromProvider(p: ProviderConfig): FormState {
     baseUrl: p.baseUrl,
     apiKey: '',
     defaultModel: p.defaultModel,
-    capabilities: p.capabilities.filter((c) => ALL_CAPABILITIES.includes(c)),
+    // Legacy rows may hold a capability the adapter cannot run (Anthropic + TTS); the
+    // backend now rejects saving those, so the form drops them.
+    capabilities: supportedSubset(
+      p.protocol,
+      p.capabilities.filter((c) => ALL_CAPABILITIES.includes(c)),
+    ),
     enabled: p.enabled,
   }
 }
@@ -144,7 +110,7 @@ type TestState = {
 }
 
 export function ApiKeysSection() {
-  const { t } = useTranslation(['account', 'settings', 'common'])
+  const { t } = useTranslation(['account', 'settings', 'common', 'media'])
   const tp = (key: string, options?: Record<string, unknown>) =>
     t(`settings:providers.${key}`, options)
 
@@ -646,16 +612,21 @@ export function ApiKeysSection() {
               value={form.protocol}
               onChange={(e) => {
                 const protocol = e.target.value as ProviderProtocol
-                setForm((f) => ({
-                  ...f,
-                  protocol,
-                  defaultModel: defaultModelFor(protocol, f.capabilities[0] ?? 'TEXT'),
-                  baseUrl: defaultBaseUrlFor(protocol),
-                }))
+                setForm((f) => {
+                  const kept = supportedSubset(protocol, f.capabilities)
+                  const capabilities = kept.length ? kept : [protocolCapabilities(protocol)[0]]
+                  return {
+                    ...f,
+                    protocol,
+                    capabilities,
+                    defaultModel: defaultModelFor(protocol, capabilities),
+                    baseUrl: defaultBaseUrlFor(protocol),
+                  }
+                })
                 setBaseUrlHint(null)
               }}
             >
-              {ALL_PROTOCOLS.map((protocol) => (
+              {SELECTABLE_PROTOCOLS.map((protocol) => (
                 <option key={protocol} value={protocol}>
                   {protocolLabel(protocol)}
                 </option>
@@ -673,7 +644,9 @@ export function ApiKeysSection() {
               placeholder={tp('field.modelPlaceholder')}
               required
             />
-            <FieldHelp>{tp('field.modelHelp')}</FieldHelp>
+            <FieldHelp>
+              {isModelUnused(form.protocol) ? t('account:apiKeys.modelUnusedHelp') : tp('field.modelHelp')}
+            </FieldHelp>
           </label>
 
           <label className="field-label sm:col-span-2">
@@ -720,19 +693,27 @@ export function ApiKeysSection() {
             </legend>
             <FieldHelp>{t('account:apiKeys.capabilitiesHelp')}</FieldHelp>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {ALL_CAPABILITIES.map((capability) => (
-                <label
-                  key={capability}
-                  className="flex min-h-9 items-center gap-2 border border-[var(--color-border)] px-2 text-xs text-[var(--color-text-secondary)]"
-                >
-                  <input
-                    type="checkbox"
-                    checked={form.capabilities.includes(capability)}
-                    onChange={() => toggleCapability(capability)}
-                  />
-                  {capability}
-                </label>
-              ))}
+              {ALL_CAPABILITIES.map((capability) => {
+                const supported = protocolSupports(form.protocol, capability)
+                return (
+                  <label
+                    key={capability}
+                    title={supported ? undefined : t('account:apiKeys.capabilityUnsupported', {
+                      protocol: protocolLabel(form.protocol),
+                      capability,
+                    })}
+                    className={`flex min-h-9 items-center gap-2 border border-[var(--color-border)] px-2 text-xs text-[var(--color-text-secondary)]${supported ? '' : ' opacity-40'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={!supported}
+                      checked={supported && form.capabilities.includes(capability)}
+                      onChange={() => toggleCapability(capability)}
+                    />
+                    {capability}
+                  </label>
+                )
+              })}
             </div>
           </fieldset>
 
@@ -761,6 +742,7 @@ export function ApiKeysSection() {
         })}
         description={tp('voices.description')}
         size="lg"
+        className="voice-catalog-modal"
       >
         <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -804,7 +786,7 @@ export function ApiKeysSection() {
             </label>
           )}
 
-          <div className="overflow-hidden rounded-lg border border-[var(--color-border)]">
+          <div className="voice-catalog-table-wrap">
             {voiceQuery.isLoading ? (
               <p className="m-0 p-4 text-sm text-[var(--color-text-tertiary)]">{t('common:loading')}</p>
             ) : (voiceQuery.data?.length ?? 0) === 0 ? (
@@ -814,27 +796,35 @@ export function ApiKeysSection() {
                 {tp('voices.noneForLanguage', { language: formatVoiceLanguage(voiceLanguageFilter) })}
               </p>
             ) : (
-              <table className="dd-table">
+              <table className="dd-table voice-catalog-table">
                 <thead>
                   <tr>
                     <th>{tp('voices.displayName')}</th>
-                    <th>{tp('voices.voiceId')}</th>
                     <th>{tp('voices.language')}</th>
                     <th>{tp('voices.gender')}</th>
-                    <th>{tp('voices.preview')}</th>
+                    <th className="voice-catalog-preview-col">{tp('voices.preview')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredVoices?.map((voice) => (
                     <tr key={voice.id}>
-                      <td>{voice.displayName || voice.voiceId}</td>
-                      <td className="font-mono text-xs">{voice.voiceId}</td>
-                      <td>{voice.language}</td>
-                      <td>{voice.gender}</td>
                       <td>
+                        <div className="font-medium text-[var(--color-text-primary)]">
+                          {voice.displayName || voice.voiceId}
+                          {voice.status === 'PREVIEW' && (
+                            <span className="role-pill ml-1.5 text-[10px]">{t('media:voice.previewTag')}</span>
+                          )}
+                        </div>
+                        <div className="voice-catalog-id" title={voice.voiceId}>
+                          {voice.voiceId}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap">{voice.language}</td>
+                      <td className="whitespace-nowrap">{voice.gender}</td>
+                      <td className="voice-catalog-preview-col">
                         <button
                           type="button"
-                          className="btn-secondary btn-sm"
+                          className="btn-secondary btn-sm whitespace-nowrap"
                           disabled={!voiceProvider || voicePreview.isPending}
                           onClick={() => {
                             if (!voiceProvider) return

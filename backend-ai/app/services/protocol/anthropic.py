@@ -1,4 +1,11 @@
-"""Anthropic native protocol adapter (TEXT only)."""
+"""Anthropic native protocol adapter (TEXT + VISION).
+
+Messages API: ``POST {root}/v1/messages`` with ``x-api-key`` +
+``anthropic-version``. The base URL may be the API root
+(``https://api.anthropic.com``) or end in ``/v1``; both resolve to the same
+paths. The auth probe is ``GET /v1/models`` — free, and independent of any model
+id (a probe that names a retired model reports a valid key as broken).
+"""
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -9,7 +16,7 @@ from app.core.config import settings
 from app.core.logging_config import get_provider_logger
 from app.schemas.contract import ProviderPayload, Usage
 from app.services.protocol.adapter import ProtocolAdapter
-from app.services.protocol.http_utils import raise_for_http_status
+from app.services.protocol.http_utils import normalize_base_url, raise_for_http_status
 from app.services.protocol.types import (
     Capability,
     ChatResult,
@@ -17,14 +24,37 @@ from app.services.protocol.types import (
     ValidationPhaseResult,
     VoiceDiscoveryStrategy,
 )
-from app.services.provider_errors import ProviderTransport
+from app.services.provider_errors import ProviderErrorCode, ProviderTransport, ProviderValidation
 
 _prov_log = get_provider_logger("adapter.anthropic")
+
+_DATA_URI_PREFIX = "data:"
+
+
+def _api_path(base_url: str, path: str) -> str:
+    """``/v1/<path>`` for an API root, ``/<path>`` when the base already ends in ``/v1``."""
+    return f"/{path}" if normalize_base_url(base_url).endswith("/v1") else f"/v1/{path}"
+
+
+def _image_block(image: str, provider: ProviderPayload) -> dict[str, Any]:
+    """Anthropic image content block from an http(s) URL or a ``data:image/...;base64`` URI."""
+    if isinstance(image, str) and image.startswith(("http://", "https://")):
+        return {"type": "image", "source": {"type": "url", "url": image}}
+    if isinstance(image, str) and image.startswith(_DATA_URI_PREFIX + "image/") and ";base64," in image:
+        header, data = image[len(_DATA_URI_PREFIX):].split(";base64,", 1)
+        return {"type": "image", "source": {"type": "base64", "media_type": header, "data": data}}
+    raise ProviderValidation(
+        "Vision image must be an http(s) URL or a data:image/...;base64 URI",
+        code=ProviderErrorCode.PROVIDER_BAD_REQUEST,
+        provider=provider.base_url,
+        protocol=provider.protocol,
+        capability="VISION",
+    )
 
 
 class AnthropicAdapter(ProtocolAdapter):
     protocol = "anthropic"
-    supported_capabilities = frozenset({Capability.TEXT.value})
+    supported_capabilities = frozenset({Capability.TEXT.value, Capability.VISION.value})
     voice_discovery_strategy = VoiceDiscoveryStrategy.UNSUPPORTED
 
     def auth_headers(self, api_key: str) -> dict[str, str]:
@@ -35,17 +65,7 @@ class AnthropicAdapter(ProtocolAdapter):
         }
 
     def auth_probe_path(self, base_url: str) -> str:
-        return "/v1/messages"
-
-    def auth_probe_method(self) -> str:
-        return "POST"
-
-    def auth_probe_body(self) -> Optional[dict[str, Any]]:
-        return {
-            "model": "claude-3-5-haiku-latest",
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "ping"}],
-        }
+        return _api_path(base_url, "models")
 
     def optional_feature_hints(self) -> dict[str, bool]:
         return {"streaming": True, "tool_calling": False, "realtime": False}
@@ -61,11 +81,9 @@ class AnthropicAdapter(ProtocolAdapter):
         extra_body: Optional[dict[str, Any]] = None,
         images: Optional[list[str]] = None,
     ) -> ChatResult:
-        if images:
-            self.require_provider_capability(provider, Capability.VISION)
-        self.require_provider_capability(provider, Capability.TEXT)
-        base = provider.base_url.rstrip("/")
-        url = base + ("/messages" if base.endswith("/v1") else "/v1/messages")
+        capability = Capability.VISION.value if images else Capability.TEXT.value
+        self.require_provider_capability(provider, capability)
+        url = normalize_base_url(provider.base_url) + _api_path(provider.base_url, "messages")
         # Anthropic Messages API does not accept OpenAI-style response_format;
         # JSON-mode is opt-in per-model. We keep the field for interface
         # parity and silently drop it for Anthropic (the system prompt
@@ -74,13 +92,17 @@ class AnthropicAdapter(ProtocolAdapter):
         # the wire shape we use; leave the system prompt as the lever.
         _ = response_format
         _ = extra_body
-        payload = {
+        content: Any = user
+        if images:
+            content = [*(_image_block(img, provider) for img in images), {"type": "text", "text": user}]
+        payload: dict[str, Any] = {
             "model": provider.model,
             "max_tokens": max_tokens,
-            "temperature": provider.temperature,
             "system": system,
-            "messages": [{"role": "user", "content": user}],
+            "messages": [{"role": "user", "content": content}],
         }
+        if provider.temperature is not None:
+            payload["temperature"] = provider.temperature
         try:
             async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
                 resp = await client.post(
@@ -93,10 +115,10 @@ class AnthropicAdapter(ProtocolAdapter):
                 str(exc),
                 provider=provider.base_url,
                 protocol=provider.protocol,
-                capability="TEXT",
+                capability=capability,
             ) from exc
 
-        raise_for_http_status(resp, provider, operation="chat", capability="TEXT", log=_prov_log)
+        raise_for_http_status(resp, provider, operation="chat", capability=capability, log=_prov_log)
         data = resp.json()
         text = "".join(
             block.get("text", "")
@@ -120,17 +142,23 @@ class AnthropicAdapter(ProtocolAdapter):
         )
 
     async def discover_models(self, provider: ProviderPayload) -> ModelDiscoveryResult:
-        return ModelDiscoveryResult(
-            available=False,
-            detail="Anthropic does not expose a public model listing endpoint",
-        )
+        url = normalize_base_url(provider.base_url) + _api_path(provider.base_url, "models")
+        try:
+            async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+                resp = await client.get(url, headers=self.auth_headers(provider.api_key))
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            return ModelDiscoveryResult(available=False, detail=f"Model listing unreachable: {exc}")
+        if resp.status_code >= 400:
+            return ModelDiscoveryResult(available=False, detail=f"Model listing returned {resp.status_code}")
+        models = [m.get("id") for m in (resp.json() or {}).get("data", []) if m.get("id")]
+        return ModelDiscoveryResult(available=True, models=models, detail=f"{len(models)} models")
 
     async def validate_capability(
         self,
         provider: ProviderPayload,
         capability: str,
     ) -> ValidationPhaseResult:
-        if capability != Capability.TEXT.value:
+        if capability not in (Capability.TEXT.value, Capability.VISION.value):
             return ValidationPhaseResult(
                 ok=False,
                 message=f"Protocol {self.protocol} does not support {capability}",

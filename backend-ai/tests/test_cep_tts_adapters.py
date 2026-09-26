@@ -540,6 +540,67 @@ class AzureSpeechEndpointAndDiscoveryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ProviderErrorCode.PROVIDER_AUTH_FAILED, ctx.exception.code)
 
 
+class GoogleSpeechDiscoveryTest(unittest.IsolatedAsyncioTestCase):
+    """Google voices are listed live from ``v1/voices``; synthesis takes the
+    ``languageCode`` from the voice name (a hard-coded vi-VN broke every other
+    language)."""
+
+    async def test_synthesize_uses_locale_of_voice_name(self):
+        cases = {
+            "en-US-Neural2-A": "en-US",
+            "cmn-CN-Wavenet-B": "cmn-CN",
+            "en-US-Chirp3-HD-Achernar": "en-US",
+            "es-419-Standard-A": "es-419",
+        }
+        for voice_id, lang in cases.items():
+            client = _FakeClient(
+                httpx.Response(200, json={"audioContent": base64.b64encode(b"x").decode()})
+            )
+            with patch("app.services.protocol.google_tts.httpx.AsyncClient", return_value=client):
+                await GoogleSpeechAdapter().synthesize(_provider("google_speech"), "hi", voice_id)
+            self.assertEqual(
+                {"languageCode": lang, "name": voice_id}, client.calls[0][2]["json"]["voice"], voice_id
+            )
+
+    async def test_foreign_protocol_voice_rejected_before_call(self):
+        client = _FakeClient(httpx.Response(200, json={}))
+        with patch("app.services.protocol.google_tts.httpx.AsyncClient", return_value=client):
+            with self.assertRaises(ProviderValidation) as ctx:
+                await GoogleSpeechAdapter().synthesize(_provider("google_speech"), "hi", "alloy")
+        self.assertEqual(ProviderErrorCode.PROVIDER_TTS_VOICE_NOT_FOUND, ctx.exception.code)
+        self.assertEqual([], client.calls)
+
+    async def test_discover_voices_lists_live_catalog(self):
+        payload = {"voices": [
+            {"languageCodes": ["vi-VN"], "name": "vi-VN-Neural2-A", "ssmlGender": "FEMALE"},
+            {"languageCodes": ["en-US"], "name": "en-US-Chirp3-HD-Achernar", "ssmlGender": "FEMALE"},
+            {"languageCodes": ["cmn-CN"], "name": "cmn-CN-Wavenet-B", "ssmlGender": "MALE"},
+            {"languageCodes": [], "name": "", "ssmlGender": "NEUTRAL"},
+        ]}
+        client = _FakeClient(httpx.Response(200, json=payload))
+        provider = _provider("google_speech")
+        provider.base_url = "https://texttospeech.googleapis.com"
+        with patch("app.services.protocol.google_tts.httpx.AsyncClient", return_value=client):
+            result = await GoogleSpeechAdapter().discover_voices(provider)
+
+        method, url, kwargs = client.calls[0]
+        self.assertEqual(("GET", "https://texttospeech.googleapis.com/v1/voices"), (method, url))
+        self.assertEqual("sk-test", kwargs["headers"]["X-Goog-Api-Key"])
+        self.assertEqual("AUTHORITATIVE", result.mode)
+        by_id = {v.voice_id: v for v in result.voices}
+        self.assertEqual({"vi-VN-Neural2-A", "en-US-Chirp3-HD-Achernar", "cmn-CN-Wavenet-B"}, set(by_id))
+        self.assertEqual("Chirp3-HD-Achernar", by_id["en-US-Chirp3-HD-Achernar"].display_name)
+        # Mandarin is tagged ``cmn`` by Google; Chinese targets in the app are ``zh``.
+        self.assertEqual(["cmn", "zh"], by_id["cmn-CN-Wavenet-B"].languages)
+        self.assertEqual("MALE", by_id["cmn-CN-Wavenet-B"].gender)
+
+    async def test_discover_voices_maps_bad_key(self):
+        client = _FakeClient(httpx.Response(403, json={"error": {"message": "API key not valid"}}))
+        with patch("app.services.protocol.google_tts.httpx.AsyncClient", return_value=client):
+            with self.assertRaises(ProviderException):
+                await GoogleSpeechAdapter().discover_voices(_provider("google_speech"))
+
+
 # ── Catalogs & registry ──────────────────────────────────────────────────────
 
 class CatalogRegistryTest(unittest.TestCase):

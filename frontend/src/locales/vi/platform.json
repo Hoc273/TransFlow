@@ -325,6 +325,8 @@
       "apiKeyKeep": "Để trống để giữ key hiện tại.",
       "model": "Model mặc định",
       "capabilities": "Năng lực",
+      "modelUnusedHint": "Azure / Google TTS không có model để chọn — giá trị chỉ là nhãn; giọng đọc chọn theo từng job.",
+      "capabilityUnsupported": "{{protocol}} không hỗ trợ {{capability}}",
       "capabilitiesRequired": "Chọn ít nhất một năng lực.",
       "priority": "Ưu tiên",
       "priorityHint": "Số nhỏ dùng trước (0–1000).",

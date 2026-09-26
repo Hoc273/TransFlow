@@ -29,8 +29,8 @@ from app.services.protocol.types import (
 from app.services.provider_errors import ProviderErrorCode, ProviderValidation
 
 ADAPTER_CLASSES = (PiperAdapter, GoogleSpeechAdapter, AzureSpeechAdapter)
-# Azure discovers its catalog live (voices/list); only these keep a STATIC one.
-STATIC_ADAPTER_CLASSES = (PiperAdapter, GoogleSpeechAdapter)
+# Azure (voices/list) and Google (v1/voices) discover live; only Piper keeps a STATIC one.
+STATIC_ADAPTER_CLASSES = (PiperAdapter,)
 
 
 def _provider(protocol: str) -> ProviderPayload:

@@ -229,6 +229,32 @@
 .modal-panel-lg {
   max-width: 560px;
 }
+/* TTS voice catalog (API keys → voices): Azure ids like
+ * "en-US-Ava:DragonHDLatestNeural" pushed the "Preview" column out of a 560px panel. */
+.voice-catalog-modal {
+  max-width: min(880px, 96vw);
+  max-height: min(90vh, 820px);
+}
+.voice-catalog-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.voice-catalog-table {
+  width: 100%;
+}
+.voice-catalog-id {
+  margin-top: 2px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  word-break: break-all;
+}
+.voice-catalog-preview-col {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
 /* Credit package picker: wide enough for 3 landing-style cards side by side. */
 .credit-packages-modal {
   max-width: min(980px, 96vw);
