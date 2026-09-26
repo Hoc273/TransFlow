@@ -6,6 +6,7 @@ import com.app.common.exception.ErrorCode;
 import com.app.modules.credit.dto.*;
 import com.app.modules.credit.entity.*;
 import com.app.modules.credit.repository.*;
+import com.app.modules.credit.service.CreditPricingService;
 import com.app.modules.credit.service.CreditService;
 import com.app.modules.workspace.service.WorkspaceAccessService;
 import org.slf4j.Logger;
@@ -28,8 +29,8 @@ public class CreditServiceImpl implements CreditService {
 
     private static final Logger log = LoggerFactory.getLogger(CreditServiceImpl.class);
 
-    private static final BigDecimal DEFAULT_INFRA_X = new BigDecimal("0.000100");
-    private static final BigDecimal DEFAULT_TOKEN_Y = new BigDecimal("0.000500");
+    private static final BigDecimal DEFAULT_INFRA_X = CreditPricingService.FALLBACK_INFRA_X;
+    private static final BigDecimal DEFAULT_TOKEN_Y = CreditPricingService.FALLBACK_TOKEN_Y;
 
     private final CreditAccountRepository creditAccountRepository;
     private final CreditTransactionRepository creditTransactionRepository;
@@ -155,8 +156,9 @@ public class CreditServiceImpl implements CreditService {
     @Override
     @Transactional(readOnly = true)
     public boolean canAffordUsage(UUID workspaceId, UUID performedByUserId, String capability,
-                                  long estimatedUnits, boolean hasPersonalApiKey) {
-        BigDecimal cost = usageCost(capability, estimatedUnits, hasPersonalApiKey);
+                                  long estimatedUnits, boolean hasPersonalApiKey,
+                                  String providerScope, Instant pricedAt) {
+        BigDecimal cost = usageCost(capability, estimatedUnits, hasPersonalApiKey, providerScope, pricedAt);
         return creditAccountRepository.findByUserId(resolvePayer(workspaceId, performedByUserId))
                 .map(acc -> acc.getBalance().compareTo(BigDecimal.ZERO) > 0 && acc.getBalance().compareTo(cost) >= 0)
                 .orElse(false);
@@ -164,9 +166,10 @@ public class CreditServiceImpl implements CreditService {
 
     @Override
     @Transactional
-    public BigDecimal chargeUsage(UUID workspaceId, UUID performedByUserId, String capability, long tokensUsed, boolean hasPersonalApiKey) {
+    public BigDecimal chargeUsage(UUID workspaceId, UUID performedByUserId, String capability, long tokensUsed,
+                                  boolean hasPersonalApiKey, String providerScope, Instant pricedAt) {
         UUID chargedUserId = resolvePayer(workspaceId, performedByUserId);
-        BigDecimal cost = usageCost(capability, tokensUsed, hasPersonalApiKey);
+        BigDecimal cost = usageCost(capability, tokensUsed, hasPersonalApiKey, providerScope, pricedAt);
 
         // Invariant khoá ghi (Arch §12): SELECT ... FOR UPDATE trên credit_accounts
         CreditAccount account = creditAccountRepository.findByUserIdForUpdate(chargedUserId)
@@ -204,13 +207,18 @@ public class CreditServiceImpl implements CreditService {
         return performedByUserId;
     }
 
-    /** Case 1 (personal key): x * tokens; case 2 (platform source): (x + y) * tokens (SRS §5.6, Arch §10.2). */
-    private BigDecimal usageCost(String capability, long tokensUsed, boolean hasPersonalApiKey) {
+    /**
+     * Case 1 (personal key): x * units; case 2 (platform source): (x + y) * units (SRS §5.6, Arch §10.2).
+     * The price row is the most specific {@code provider_scope} match in effect at {@code pricedAt}.
+     */
+    private BigDecimal usageCost(String capability, long tokensUsed, boolean hasPersonalApiKey,
+                                 String providerScope, Instant pricedAt) {
         BigDecimal infraX = DEFAULT_INFRA_X;
         BigDecimal tokenY = DEFAULT_TOKEN_Y;
-        List<CreditPricingConfig> pricingConfigs = creditPricingConfigRepository.findActivePricing(capability, null);
-        if (!pricingConfigs.isEmpty()) {
-            CreditPricingConfig config = pricingConfigs.get(0);
+        Instant at = pricedAt != null ? pricedAt : Instant.now();
+        Optional<CreditPricingConfig> pricing = creditPricingConfigRepository.resolve(capability, providerScope, at);
+        if (pricing.isPresent()) {
+            CreditPricingConfig config = pricing.get();
             if (config.getInfraCoefficientX() != null) {
                 infraX = config.getInfraCoefficientX();
             }
@@ -218,7 +226,8 @@ public class CreditServiceImpl implements CreditService {
                 tokenY = config.getTokenCoefficientY();
             }
         } else {
-            log.warn("No active CreditPricingConfig found for capability={}, using fallback x={}, y={}", capability, infraX, tokenY);
+            log.warn("No CreditPricingConfig for capability={} scope={} at={}, using fallback x={}, y={}",
+                    capability, providerScope, at, infraX, tokenY);
         }
         BigDecimal tokens = BigDecimal.valueOf(Math.max(0, tokensUsed));
         BigDecimal rate = hasPersonalApiKey ? infraX : infraX.add(tokenY);

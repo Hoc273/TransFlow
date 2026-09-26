@@ -22,6 +22,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -111,7 +113,7 @@ class CreditServiceTest {
     @Test
     void canAffordUsageComparesTheEstimatedCostWithThePayerBalance() {
         when(workspaceBillingConfigRepository.findById(workspaceId)).thenReturn(Optional.empty());
-        when(creditPricingConfigRepository.findActivePricing("TTS", null)).thenReturn(List.of());
+        when(creditPricingConfigRepository.resolve(eq("TTS"), isNull(), any())).thenReturn(Optional.empty());
         when(creditAccountRepository.findByUserId(userId)).thenReturn(Optional.of(account("0.5000")));
 
         // Platform source: (0.0001 + 0.0005) * 500 = 0.3 <= 0.5; * 1000 = 0.6 > 0.5
@@ -124,7 +126,7 @@ class CreditServiceTest {
     @Test
     void canAffordUsageRejectsAnEmptyBalanceEvenForAFreeEstimate() {
         when(workspaceBillingConfigRepository.findById(workspaceId)).thenReturn(Optional.empty());
-        when(creditPricingConfigRepository.findActivePricing("STT", null)).thenReturn(List.of());
+        when(creditPricingConfigRepository.resolve(eq("STT"), isNull(), any())).thenReturn(Optional.empty());
         when(creditAccountRepository.findByUserId(userId)).thenReturn(Optional.of(account("0.0000")));
 
         assertFalse(creditService.canAffordUsage(workspaceId, userId, "STT", 0, true));
@@ -141,7 +143,7 @@ class CreditServiceTest {
         CreditPricingConfig pricing = new CreditPricingConfig();
         pricing.setInfraCoefficientX(new BigDecimal("0.000100"));
         pricing.setTokenCoefficientY(new BigDecimal("0.000300"));
-        when(creditPricingConfigRepository.findActivePricing("TRANSLATE", null)).thenReturn(List.of(pricing));
+        when(creditPricingConfigRepository.resolve(eq("TRANSLATE"), isNull(), any())).thenReturn(Optional.of(pricing));
 
         // Account with balance 50.0000
         CreditAccount account = new CreditAccount();
@@ -176,7 +178,7 @@ class CreditServiceTest {
         CreditPricingConfig pricing = new CreditPricingConfig();
         pricing.setInfraCoefficientX(new BigDecimal("0.000100"));
         pricing.setTokenCoefficientY(new BigDecimal("0.000300"));
-        when(creditPricingConfigRepository.findActivePricing("TRANSLATE", null)).thenReturn(List.of(pricing));
+        when(creditPricingConfigRepository.resolve(eq("TRANSLATE"), isNull(), any())).thenReturn(Optional.of(pricing));
 
         CreditAccount account = new CreditAccount();
         account.setUserId(userId);
@@ -201,7 +203,7 @@ class CreditServiceTest {
         CreditPricingConfig pricing = new CreditPricingConfig();
         pricing.setInfraCoefficientX(new BigDecimal("0.000100"));
         pricing.setTokenCoefficientY(new BigDecimal("0.000300"));
-        when(creditPricingConfigRepository.findActivePricing("TTS", null)).thenReturn(List.of(pricing));
+        when(creditPricingConfigRepository.resolve(eq("TTS"), isNull(), any())).thenReturn(Optional.of(pricing));
 
         CreditAccount leadAccount = new CreditAccount();
         leadAccount.setUserId(leadId);
@@ -230,7 +232,7 @@ class CreditServiceTest {
         CreditPricingConfig pricing = new CreditPricingConfig();
         pricing.setInfraCoefficientX(new BigDecimal("0.000100"));
         pricing.setTokenCoefficientY(new BigDecimal("0.000300"));
-        when(creditPricingConfigRepository.findActivePricing("TRANSLATE", null)).thenReturn(List.of(pricing));
+        when(creditPricingConfigRepository.resolve(eq("TRANSLATE"), isNull(), any())).thenReturn(Optional.of(pricing));
 
         CreditAccount account = new CreditAccount();
         account.setUserId(userId);

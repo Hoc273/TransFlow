@@ -105,8 +105,8 @@ class MediaStageResilienceTest {
                 new ProviderResolverService.ProviderResolution(UUID.randomUUID(), "dashscope_native",
                         "https://dashscope.example/api", "secret", "qwen3-omni-flash", true));
         when(storage.mediaBucket()).thenReturn("transflow-media");
-        when(creditService.canAffordUsage(any(), any(), anyString(), anyLong(), anyBoolean())).thenReturn(true);
-        when(creditService.chargeUsage(any(), any(), anyString(), anyLong(), anyBoolean())).thenReturn(BigDecimal.ONE);
+        when(creditService.canAffordUsage(any(), any(), anyString(), anyLong(), anyBoolean(), any(), any())).thenReturn(true);
+        when(creditService.chargeUsage(any(), any(), anyString(), anyLong(), anyBoolean(), any(), any())).thenReturn(BigDecimal.ONE);
         wav = Base64.getEncoder().encodeToString(wavBytes(3_000));
     }
 
@@ -124,7 +124,7 @@ class MediaStageResilienceTest {
         pipeline(server).execute(message());
 
         server.verify(); // quota is not retried in later segment rounds
-        verify(creditService).chargeUsage(workspaceId, userId, "TTS", 15L, true);
+        verify(creditService).chargeUsage(eq(workspaceId), eq(userId), eq("TTS"), eq(15L), eq(true), any(), any());
         assertNotNull(first.getTtsAudioRef());
         assertNotNull(first.getTtsClipKey());
         assertEquals(3_000L, first.getTtsDurationMs());
@@ -147,7 +147,7 @@ class MediaStageResilienceTest {
         pipeline(server).execute(message());
 
         server.verify();
-        verify(creditService).chargeUsage(workspaceId, userId, "TTS", 16L, true);
+        verify(creditService).chargeUsage(eq(workspaceId), eq(userId), eq("TTS"), eq(16L), eq(true), any(), any());
         assertEquals("transflow-media/dubbed/old-first.wav", first.getTtsAudioRef());
         verify(callbackService).completeStage(eq(jobId), eq(stageId), eq(MediaJobStage.StageName.TTS),
                 eq(true), argThat(output -> output.path("success_count").asInt() == 2
@@ -175,14 +175,14 @@ class MediaStageResilienceTest {
 
     @Test
     void insufficientCreditFailsBeforeAnyProviderCall() {
-        when(creditService.canAffordUsage(any(), any(), eq("TTS"), anyLong(), anyBoolean())).thenReturn(false);
+        when(creditService.canAffordUsage(any(), any(), eq("TTS"), anyLong(), anyBoolean(), any(), any())).thenReturn(false);
         RestClient.Builder builder = RestClient.builder().baseUrl("http://ai.test");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
 
         pipeline(builder.build()).execute(message());
 
         server.verify(); // no TTS request was sent
-        verify(creditService, never()).chargeUsage(any(), any(), anyString(), anyLong(), anyBoolean());
+        verify(creditService, never()).chargeUsage(any(), any(), anyString(), anyLong(), anyBoolean(), any(), any());
         verify(callbackService).completeStage(eq(jobId), eq(stageId), eq(MediaJobStage.StageName.TTS),
                 eq(false), isNull(), anyString(), eq("INSUFFICIENT_CREDIT"), any(), anyString());
     }

@@ -95,6 +95,10 @@ export const queryKeys = {
     ['platform', 'audit', params] as const,
   platformRealtime: ['platform', 'realtime'] as const,
   platformProviders: ['platform', 'providers'] as const,
+  platformPricing: ['platform', 'pricing'] as const,
+  platformPricingHistory: (params: Record<string, string | undefined>) =>
+    ['platform', 'pricing', 'history', params] as const,
+  platformPricingCoverage: ['platform', 'pricing', 'coverage'] as const,
   // Guide (Public + Platform Admin)
   guideCategories: (lang?: string) => ['guide', 'categories', lang ?? 'vi'] as const,
   guideArticles: (params?: Record<string, string | number | undefined>) =>

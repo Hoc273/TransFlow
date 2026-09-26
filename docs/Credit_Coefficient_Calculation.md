@@ -448,6 +448,8 @@ Request tạo version (ví dụ):
 
 ## 11. Thay đổi cần làm trong code / DB / docs
 
+> **Đã làm (2026-09-26):** C8 (truyền `protocol/model` vào `chargeUsage`), C13 (`V16__credit_pricing_admin.sql`), C14, C15, C16, C18, một phần C5 (resolver `protocol/model` → `protocol` → `NULL`; **vẫn giữ** fallback hard-code, hiện ở `/coverage` là `MISSING`), D3/D4 (mã 2305, 2306; 2304 để dành), D5, T2. Chưa làm: C1–C4, C6, C7, C9–C12, C17.
+
 | # | Hạng mục | Thay đổi | Liên quan |
 |---|---|---|---|
 | C1 | DB — migration mới `V11__credit_pricing_v2.sql` | `ADD COLUMN billing_unit VARCHAR NOT NULL` (CHECK `AUDIO_SECOND, VIDEO_SECOND, TOKEN, CHARACTER`); mở CHECK `capability` thêm `AUDIO_SEPARATION`; đóng row cũ (`effective_to = now()`); insert row §7.2 | P1–P4 |

@@ -237,7 +237,8 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
     }
 
     private ProviderResolution record(String capability, ProviderResolution resolution) {
-        ProviderUsageScope.recordResolution(capability, resolution.providerId(), !resolution.isPersonalApiKey());
+        ProviderUsageScope.recordResolution(capability, resolution.providerId(), !resolution.isPersonalApiKey(),
+                resolution.providerType(), resolution.model());
         return resolution;
     }
 

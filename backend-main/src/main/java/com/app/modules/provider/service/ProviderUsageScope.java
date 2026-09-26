@@ -2,6 +2,7 @@ package com.app.modules.provider.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -40,8 +41,8 @@ public final class ProviderUsageScope implements AutoCloseable {
         return key;
     }
 
-    void record(String capability, UUID providerId, boolean platform) {
-        resolved.add(new Resolved(capability, providerId, platform));
+    void record(String capability, UUID providerId, boolean platform, String protocol, String model) {
+        resolved.add(new Resolved(capability, providerId, platform, protocol, model));
     }
 
     /** Every resolution made in this scope, oldest first. */
@@ -68,14 +69,28 @@ public final class ProviderUsageScope implements AutoCloseable {
         }
     }
 
-    public record Resolved(String capability, UUID providerId, boolean platform) {
+    public record Resolved(String capability, UUID providerId, boolean platform, String protocol, String model) {
+
+        /** Credit pricing key {@code protocol/model} (credit_pricing_config.provider_scope), or null. */
+        public String pricingScope() {
+            if (protocol == null || protocol.isBlank()) {
+                return null;
+            }
+            String p = protocol.trim().toLowerCase(Locale.ROOT);
+            return model == null || model.isBlank() ? p : p + "/" + model.trim().toLowerCase(Locale.ROOT);
+        }
     }
 
     /** Package hook for the resolver implementation. */
     public static void recordResolution(String capability, UUID providerId, boolean platform) {
+        recordResolution(capability, providerId, platform, null, null);
+    }
+
+    public static void recordResolution(String capability, UUID providerId, boolean platform,
+                                        String protocol, String model) {
         ProviderUsageScope scope = CURRENT.get();
         if (scope != null && providerId != null) {
-            scope.record(capability, providerId, platform);
+            scope.record(capability, providerId, platform, protocol, model);
         }
     }
 }

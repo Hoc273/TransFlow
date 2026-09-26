@@ -24,7 +24,8 @@
     "workspaces": "Workspace",
     "audit": "Nhật ký audit",
     "guides": "Hướng dẫn",
-    "providers": "AI providers"
+    "providers": "AI providers",
+    "pricing": "Bảng giá Credit"
   },
   "menu": {
     "console": "Bảng điều khiển Platform"
@@ -245,7 +246,10 @@
     "ip": "IP",
     "empty": "Chưa có bản ghi audit",
     "error": "Không tải được audit",
-    "system": "system"
+    "system": "system",
+    "viewPricing": "Xem bảng giá",
+    "previewPricing": "Xem trước giá",
+    "createPricing": "Tạo phiên bản giá"
   },
   "pagination": {
     "prev": "Trước",
@@ -338,6 +342,126 @@
       "tier": "Loại",
       "active": "Bật key này",
       "saveError": "Không lưu được key."
+    }
+  },
+  "pricing": {
+    "title": "Bảng giá Credit",
+    "subtitle": "Cấu hình hệ số x (hạ tầng) và y (chi phí AI nhà cung cấp) để tính Credit cho từng thao tác AI. Mỗi lần đổi giá tạo một phiên bản mới, không sửa hay xoá giá cũ.",
+    "add": "Tạo phiên bản giá",
+    "addForCapability": "+ Thêm giá",
+    "saved": "Đã lưu phiên bản giá mới.",
+    "loadError": "Không tải được bảng giá.",
+    "defaultScope": "Mặc định",
+    "noRow": "Chưa có giá — hệ thống đang dùng hệ số dự phòng hard-code.",
+    "unitsPerMinute": "~{{count}} đơn vị / phút video",
+    "renderHint": "RENDER hiện chưa bị trừ Credit trong pipeline; giá RENDER chỉ có hiệu lực khi stage này được tính phí.",
+    "history": "Lịch sử",
+    "change": "Đổi giá",
+    "historyTitle": "Lịch sử giá · {{capability}} · {{scope}}",
+    "startsAt": "Bắt đầu {{at}}",
+    "endsAt": "Kết thúc {{at}}",
+    "since": "Từ {{at}}",
+    "stats": {
+      "active": "Giá đang áp dụng",
+      "scheduled": "Giá đã hẹn giờ",
+      "fallback": "Provider dùng giá mặc định",
+      "fallbackHint": "Chưa có giá riêng cho model",
+      "missing": "Provider thiếu giá",
+      "missingHint": "Đang tính theo hệ số dự phòng"
+    },
+    "formula": {
+      "title": "Công thức tính Credit (SRS §5.6)",
+      "byok": "BYOK (API key cá nhân): Credit = x × số đơn vị",
+      "platform": "Nguồn AI nền tảng: Credit = (x + y) × số đơn vị",
+      "versioning": "Job luôn tính theo giá có hiệu lực tại thời điểm tạo job — đổi giá không ảnh hưởng job đang chạy.",
+      "scope": "Giá được chọn theo thứ tự: protocol/model → protocol → mặc định. Giá mặc định nên đặt bằng model đắt nhất."
+    },
+    "col": {
+      "scope": "Provider / model",
+      "platformPerMinute": "Nền tảng / phút",
+      "byokPerMinute": "BYOK / phút",
+      "status": "Trạng thái",
+      "reason": "Lý do",
+      "actions": "Thao tác",
+      "effective": "Hiệu lực"
+    },
+    "status": {
+      "ACTIVE": "Đang áp dụng",
+      "SCHEDULED": "Đã hẹn giờ",
+      "EXPIRED": "Hết hiệu lực"
+    },
+    "capability": {
+      "STT": "STT — Nhận dạng giọng nói",
+      "TRANSLATE": "TRANSLATE — Dịch",
+      "SUMMARIZE_SCRIPT": "SUMMARIZE_SCRIPT — Kịch bản tóm tắt",
+      "TTS": "TTS — Lồng tiếng",
+      "VISION": "VISION — Phân tích hình ảnh",
+      "RENDER": "RENDER — Xuất video"
+    },
+    "unit": {
+      "STT": "Đơn vị: giây audio (token nếu provider trả token)",
+      "TRANSLATE": "Đơn vị: token",
+      "SUMMARIZE_SCRIPT": "Đơn vị: token",
+      "TTS": "Đơn vị: ký tự",
+      "VISION": "Đơn vị: token",
+      "RENDER": "Đơn vị: giây video output"
+    },
+    "job": {
+      "SUBTITLE": "Phụ đề (STT + dịch)",
+      "DUB": "Lồng tiếng (STT + dịch + TTS)",
+      "SUMMARY_VLM": "Tóm tắt + hình ảnh"
+    },
+    "warning": {
+      "DEFAULT_Y_BELOW_SCOPED_MAX": "Giá mặc định đang thấp hơn model đắt nhất — model chưa có giá riêng có thể bị tính quá rẻ.",
+      "NO_DEFAULT_ROW": "Capability này chưa có giá mặc định — model chưa có giá riêng sẽ dùng hệ số dự phòng."
+    },
+    "coverage": {
+      "title": "Provider nền tảng chưa có giá riêng",
+      "hint": "Các key nền tảng đang bật dưới đây không có dòng giá khớp protocol/model, nên đang tính theo giá mặc định hoặc hệ số dự phòng.",
+      "EXACT": "Khớp model",
+      "PROTOCOL": "Khớp protocol",
+      "DEFAULT": "Dùng giá mặc định",
+      "MISSING": "Thiếu giá",
+      "addRow": "Thêm giá cho model"
+    },
+    "preview": {
+      "title": "Xem trước",
+      "empty": "Nhập x và y hợp lệ để xem giá Credit/phút trước khi lưu.",
+      "error": "Không tính được bản xem trước.",
+      "comparedWith": "So với giá hiện hành: {{scope}}",
+      "noCurrent": "Chưa có giá hiện hành",
+      "perMinute": "Credit / phút (~{{count}} đơn vị)",
+      "current": "Hiện tại",
+      "proposed": "Đề xuất",
+      "platform": "Nguồn nền tảng",
+      "byok": "BYOK",
+      "change": "Thay đổi",
+      "jobType": "Loại job (Credit/phút, nguồn nền tảng)",
+      "jobHint": "Ước tính loại job dùng giá mặc định cho các bước còn lại; số đơn vị/phút theo giả định trong tài liệu tính giá.",
+      "largeChange": "x hoặc y thay đổi quá ±50% so với phiên bản hiện tại — cần xác nhận khi lưu."
+    },
+    "form": {
+      "title": "Tạo phiên bản giá mới",
+      "description": "Phiên bản hiện tại của cặp capability + provider sẽ tự đóng tại thời điểm giá mới có hiệu lực.",
+      "capability": "Capability",
+      "scope": "Provider / model",
+      "scopeHint": "protocol/model (vd. openai_compatible/tts-1), chỉ protocol, hoặc để trống = giá mặc định.",
+      "x": "Hệ số x (hạ tầng)",
+      "xHint": "Credit / đơn vị — áp dụng cả BYOK và nền tảng.",
+      "y": "Hệ số y (chi phí AI)",
+      "yHint": "Credit / đơn vị — chỉ áp dụng khi dùng nguồn AI nền tảng.",
+      "effective": "Hiệu lực",
+      "effectiveNow": "Ngay bây giờ",
+      "effectiveLater": "Hẹn giờ",
+      "reason": "Lý do thay đổi",
+      "reasonHint": "Bắt buộc — lưu cùng phiên bản để đối soát.",
+      "submit": "Lưu phiên bản",
+      "coefficientInvalid": "x và y phải là số ≥ 0, tối đa 6 chữ số thập phân.",
+      "reasonRequired": "Vui lòng nhập lý do thay đổi.",
+      "scheduleInvalid": "Thời điểm hẹn giờ phải ở tương lai.",
+      "largeChange": "Giá thay đổi quá ±50% so với phiên bản hiện tại. Xác nhận bên dưới rồi lưu lại.",
+      "confirmLargeChange": "Tôi xác nhận thay đổi giá lớn hơn ±50%.",
+      "saveError": "Không lưu được phiên bản giá."
     }
   }
 }

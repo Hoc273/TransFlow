@@ -52,6 +52,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -1562,7 +1563,7 @@ public class MediaStageExecutionService {
             return;
         }
         if (!creditService.canAffordUsage(job.getWorkspaceId(), job.getCreatedByUserId(), capability,
-                estimatedUnits, personalApiKey)) {
+                estimatedUnits, personalApiKey, pricingScope(capability), job.getCreatedAt())) {
             log.warn("Insufficient credit before {} job={} estimatedUnits={}", capability, job.getId(), estimatedUnits);
             throw AiStageException.fromAppException(
                     new AppException(com.app.common.exception.ErrorCode.INSUFFICIENT_CREDIT), capability)
@@ -1594,12 +1595,12 @@ public class MediaStageExecutionService {
         }
         long billableUnits = Math.max(1L, units);
         long loggedOutputTokens = Math.min(billableUnits, Math.max(0L, outputTokens));
+        // Price version is pinned to the job's creation time (Credit_Coefficient_Calculation §10.1).
         java.math.BigDecimal creditUsed = creditService.chargeUsage(
-                job.getWorkspaceId(), job.getCreatedByUserId(), capability, billableUnits, personalApiKey);
+                job.getWorkspaceId(), job.getCreatedByUserId(), capability, billableUnits, personalApiKey,
+                pricingScope(capability), job.getCreatedAt());
         if (aiUsageLogService != null) {
-            String resolvedCapability = "SUMMARIZE_SCRIPT".equals(capability) ? "TRANSLATE" : capability;
-            UUID providerId = ProviderUsageScope.current()
-                    .flatMap(scope -> scope.last(resolvedCapability))
+            UUID providerId = lastResolved(capability)
                     .map(ProviderUsageScope.Resolved::providerId)
                     .orElse(null);
             try {
@@ -1613,6 +1614,17 @@ public class MediaStageExecutionService {
                         job.getId(), capability, ex.getMessage());
             }
         }
+    }
+
+    /** Provider resolved for {@code capability} in this attempt (SUMMARIZE_SCRIPT runs on the TRANSLATE key). */
+    private static Optional<ProviderUsageScope.Resolved> lastResolved(String capability) {
+        String resolvedCapability = "SUMMARIZE_SCRIPT".equals(capability) ? "TRANSLATE" : capability;
+        return ProviderUsageScope.current().flatMap(scope -> scope.last(resolvedCapability));
+    }
+
+    /** {@code protocol/model} used to pick the scoped credit price row; null = default row. */
+    private static String pricingScope(String capability) {
+        return lastResolved(capability).map(ProviderUsageScope.Resolved::pricingScope).orElse(null);
     }
 
     private long usageUnits(JsonNode result, String operation, long fallbackUnits) {

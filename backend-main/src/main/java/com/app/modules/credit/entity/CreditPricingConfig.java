@@ -45,6 +45,12 @@ public class CreditPricingConfig {
     @Column(name = "effective_to")
     private Instant effectiveTo;
 
+    @Column(name = "created_by_user_id")
+    private UUID createdByUserId;
+
+    @Column(name = "change_reason", columnDefinition = "TEXT")
+    private String changeReason;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

@@ -24,7 +24,8 @@
     "workspaces": "Workspaces",
     "audit": "Audit Log",
     "guides": "Guides",
-    "providers": "AI providers"
+    "providers": "AI providers",
+    "pricing": "Credit pricing"
   },
   "menu": {
     "console": "Platform console"
@@ -245,7 +246,10 @@
     "ip": "IP",
     "empty": "No audit entries yet",
     "error": "Failed to load audit logs",
-    "system": "system"
+    "system": "system",
+    "viewPricing": "View pricing",
+    "previewPricing": "Preview pricing",
+    "createPricing": "Create price version"
   },
   "pagination": {
     "prev": "Previous",
@@ -338,6 +342,126 @@
       "tier": "Tier",
       "active": "Key is active",
       "saveError": "Could not save the key."
+    }
+  },
+  "pricing": {
+    "title": "Credit pricing",
+    "subtitle": "Configure the x (infrastructure) and y (AI provider cost) coefficients used to charge Credit for each AI operation. Every change creates a new version; old prices are never edited or deleted.",
+    "add": "New price version",
+    "addForCapability": "+ Add price",
+    "saved": "New price version saved.",
+    "loadError": "Could not load the price table.",
+    "defaultScope": "Default",
+    "noRow": "No price yet — billing uses the hard-coded fallback coefficients.",
+    "unitsPerMinute": "~{{count}} units / video minute",
+    "renderHint": "RENDER is not charged by the pipeline yet; its price only applies once that stage is billed.",
+    "history": "History",
+    "change": "Change price",
+    "historyTitle": "Price history · {{capability}} · {{scope}}",
+    "startsAt": "Starts {{at}}",
+    "endsAt": "Ends {{at}}",
+    "since": "Since {{at}}",
+    "stats": {
+      "active": "Active prices",
+      "scheduled": "Scheduled prices",
+      "fallback": "Providers on default price",
+      "fallbackHint": "No model-specific price",
+      "missing": "Providers without price",
+      "missingHint": "Billed with fallback coefficients"
+    },
+    "formula": {
+      "title": "Credit formula (SRS §5.6)",
+      "byok": "BYOK (personal API key): Credit = x × units",
+      "platform": "Platform AI source: Credit = (x + y) × units",
+      "versioning": "A job is always billed with the price in effect when it was created — changes never affect running jobs.",
+      "scope": "Price lookup order: protocol/model → protocol → default. Set the default to the most expensive model."
+    },
+    "col": {
+      "scope": "Provider / model",
+      "platformPerMinute": "Platform / min",
+      "byokPerMinute": "BYOK / min",
+      "status": "Status",
+      "reason": "Reason",
+      "actions": "Actions",
+      "effective": "Effective"
+    },
+    "status": {
+      "ACTIVE": "Active",
+      "SCHEDULED": "Scheduled",
+      "EXPIRED": "Expired"
+    },
+    "capability": {
+      "STT": "STT — Speech to text",
+      "TRANSLATE": "TRANSLATE — Translation",
+      "SUMMARIZE_SCRIPT": "SUMMARIZE_SCRIPT — Summary script",
+      "TTS": "TTS — Dubbing voice",
+      "VISION": "VISION — Visual analysis",
+      "RENDER": "RENDER — Video export"
+    },
+    "unit": {
+      "STT": "Unit: audio second (token when the provider reports tokens)",
+      "TRANSLATE": "Unit: token",
+      "SUMMARIZE_SCRIPT": "Unit: token",
+      "TTS": "Unit: character",
+      "VISION": "Unit: token",
+      "RENDER": "Unit: output video second"
+    },
+    "job": {
+      "SUBTITLE": "Subtitles (STT + translate)",
+      "DUB": "Dubbing (STT + translate + TTS)",
+      "SUMMARY_VLM": "Summary + visuals"
+    },
+    "warning": {
+      "DEFAULT_Y_BELOW_SCOPED_MAX": "The default price is below the most expensive model — models without their own price may be undercharged.",
+      "NO_DEFAULT_ROW": "This capability has no default price — models without their own price use the fallback coefficients."
+    },
+    "coverage": {
+      "title": "Platform providers without their own price",
+      "hint": "These active platform keys have no price row matching their protocol/model, so they are billed with the default price or the fallback coefficients.",
+      "EXACT": "Model match",
+      "PROTOCOL": "Protocol match",
+      "DEFAULT": "Default price",
+      "MISSING": "No price",
+      "addRow": "Add model price"
+    },
+    "preview": {
+      "title": "Preview",
+      "empty": "Enter valid x and y to preview Credit per minute before saving.",
+      "error": "Could not compute the preview.",
+      "comparedWith": "Compared with current price: {{scope}}",
+      "noCurrent": "No current price",
+      "perMinute": "Credit / minute (~{{count}} units)",
+      "current": "Current",
+      "proposed": "Proposed",
+      "platform": "Platform source",
+      "byok": "BYOK",
+      "change": "Change",
+      "jobType": "Job type (Credit/min, platform source)",
+      "jobHint": "Job estimates use the default price for the other steps; units per minute follow the pricing document assumptions.",
+      "largeChange": "x or y moves more than ±50% from the current version — confirmation required when saving."
+    },
+    "form": {
+      "title": "New price version",
+      "description": "The current version of this capability + provider pair closes automatically when the new price takes effect.",
+      "capability": "Capability",
+      "scope": "Provider / model",
+      "scopeHint": "protocol/model (e.g. openai_compatible/tts-1), protocol only, or empty = default price.",
+      "x": "Coefficient x (infrastructure)",
+      "xHint": "Credit / unit — applies to BYOK and platform.",
+      "y": "Coefficient y (AI cost)",
+      "yHint": "Credit / unit — only with the platform AI source.",
+      "effective": "Effective",
+      "effectiveNow": "Right now",
+      "effectiveLater": "Schedule",
+      "reason": "Reason for change",
+      "reasonHint": "Required — stored with the version for reconciliation.",
+      "submit": "Save version",
+      "coefficientInvalid": "x and y must be numbers ≥ 0 with at most 6 decimals.",
+      "reasonRequired": "Please enter a reason for the change.",
+      "scheduleInvalid": "The scheduled time must be in the future.",
+      "largeChange": "The price moves more than ±50% from the current version. Confirm below and save again.",
+      "confirmLargeChange": "I confirm this price change above ±50%.",
+      "saveError": "Could not save the price version."
     }
   }
 }

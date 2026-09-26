@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   adminAdjustUserCreditApi,
+  createPlatformPricingApi,
+  getPlatformPricingApi,
+  getPlatformPricingCoverageApi,
+  getPlatformPricingHistoryApi,
+  previewPlatformPricingApi,
   createPlatformProviderApi,
   deletePlatformProviderApi,
   getPlatformProvidersApi,
@@ -23,6 +28,7 @@ import type {
   PlatformOverviewQuery,
   PlatformProviderInput,
   PlatformUsersQuery,
+  PricingVersionInput,
   PlatformWorkspacesQuery,
 } from '@/types/platform'
 
@@ -174,4 +180,45 @@ export function useTestPlatformProvider() {
 
 export function useSyncPlatformProviderVoices() {
   return useProviderMutation((id: string) => syncPlatformProviderVoicesApi(id))
+}
+
+/** SA — credit price versions in effect now + scheduled ones. */
+export function usePlatformPricing() {
+  return useQuery({
+    queryKey: queryKeys.platformPricing,
+    queryFn: () => getPlatformPricingApi(),
+    staleTime: 30_000,
+  })
+}
+
+export function usePlatformPricingHistory(capability?: string, providerScope?: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.platformPricingHistory({ capability, providerScope }),
+    queryFn: () => getPlatformPricingHistoryApi({ capability, providerScope }),
+    enabled,
+  })
+}
+
+export function usePlatformPricingCoverage() {
+  return useQuery({
+    queryKey: queryKeys.platformPricingCoverage,
+    queryFn: () => getPlatformPricingCoverageApi(),
+    staleTime: 30_000,
+  })
+}
+
+export function useCreatePlatformPricing() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: PricingVersionInput) => createPlatformPricingApi(body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.platformPricing })
+    },
+  })
+}
+
+export function usePreviewPlatformPricing() {
+  return useMutation({
+    mutationFn: (body: Parameters<typeof previewPlatformPricingApi>[0]) => previewPlatformPricingApi(body),
+  })
 }

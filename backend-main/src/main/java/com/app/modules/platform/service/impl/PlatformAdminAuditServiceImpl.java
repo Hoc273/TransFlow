@@ -98,6 +98,13 @@ public class PlatformAdminAuditServiceImpl implements PlatformAdminAuditService 
         if (path == null) {
             return PlatformAdminAuditAction.OTHER;
         }
+        if (path.contains("/pricing")) {
+            if (!"POST".equalsIgnoreCase(method)) {
+                return PlatformAdminAuditAction.VIEW_PRICING;
+            }
+            return path.endsWith("/preview")
+                    ? PlatformAdminAuditAction.PREVIEW_PRICING : PlatformAdminAuditAction.CREATE_PRICING;
+        }
         if (path.contains("/providers")) {
             return "GET".equalsIgnoreCase(method)
                     ? PlatformAdminAuditAction.LIST_PROVIDERS : PlatformAdminAuditAction.MANAGE_PROVIDERS;

@@ -41,10 +41,27 @@ public interface CreditService {
      * Pre-flight check before an AI call: can the workspace payer cover {@code estimatedUnits}
      * of {@code capability}? The real charge still happens afterwards with the measured usage.
      */
-    boolean canAffordUsage(UUID workspaceId, UUID performedByUserId, String capability,
-                           long estimatedUnits, boolean hasPersonalApiKey);
+    default boolean canAffordUsage(UUID workspaceId, UUID performedByUserId, String capability,
+                                   long estimatedUnits, boolean hasPersonalApiKey) {
+        return canAffordUsage(workspaceId, performedByUserId, capability, estimatedUnits, hasPersonalApiKey,
+                null, null);
+    }
 
-    BigDecimal chargeUsage(UUID workspaceId, UUID performedByUserId, String capability, long tokensUsed, boolean hasPersonalApiKey);
+    /**
+     * @param providerScope {@code protocol/model} that serves the call; picks the scoped price row (P4)
+     * @param pricedAt      price version to apply — the job's creation time (§10.1); null = now
+     */
+    boolean canAffordUsage(UUID workspaceId, UUID performedByUserId, String capability,
+                           long estimatedUnits, boolean hasPersonalApiKey, String providerScope, Instant pricedAt);
+
+    default BigDecimal chargeUsage(UUID workspaceId, UUID performedByUserId, String capability, long tokensUsed,
+                                   boolean hasPersonalApiKey) {
+        return chargeUsage(workspaceId, performedByUserId, capability, tokensUsed, hasPersonalApiKey, null, null);
+    }
+
+    /** See {@link #canAffordUsage(UUID, UUID, String, long, boolean, String, Instant)} for the pricing args. */
+    BigDecimal chargeUsage(UUID workspaceId, UUID performedByUserId, String capability, long tokensUsed,
+                           boolean hasPersonalApiKey, String providerScope, Instant pricedAt);
 
     PageResponse<CreditTransactionResponse> getTransactions(UUID userId, CreditTransactionType type, Instant from, Instant to, int page, int size);
 

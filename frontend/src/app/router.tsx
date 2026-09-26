@@ -21,6 +21,7 @@ const PlatformUsersPage = lazy(() => import('@/pages/platform/PlatformUsersPage'
 const PlatformWorkspacesPage = lazy(() => import('@/pages/platform/PlatformWorkspacesPage').then(m => ({ default: m.PlatformWorkspacesPage })))
 const PlatformAuditPage = lazy(() => import('@/pages/platform/PlatformAuditPage').then(m => ({ default: m.PlatformAuditPage })))
 const PlatformProvidersPage = lazy(() => import('@/pages/platform/PlatformProvidersPage').then(m => ({ default: m.PlatformProvidersPage })))
+const PlatformPricingPage = lazy(() => import('@/pages/platform/PlatformPricingPage').then(m => ({ default: m.PlatformPricingPage })))
 const GuideAdminPage = lazy(() => import('@/pages/platform/GuideAdminPage').then(m => ({ default: m.GuideAdminPage })))
 
 function DashboardRedirect() {
@@ -86,6 +87,7 @@ export function AppRouter() {
             <Route path="users" element={<PlatformUsersPage />} />
             <Route path="workspaces" element={<PlatformWorkspacesPage />} />
             <Route path="providers" element={<PlatformProvidersPage />} />
+            <Route path="pricing" element={<PlatformPricingPage />} />
             <Route path="audit" element={<PlatformAuditPage />} />
             <Route path="guides" element={<GuideAdminPage />} />
           </Route>

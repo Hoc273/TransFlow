@@ -63,6 +63,9 @@ public enum ErrorCode {
     CREDIT_PACKAGE_NOT_FOUND(2301, "Credit package not found", HttpStatus.NOT_FOUND),
     CREDIT_PACKAGE_INACTIVE(2302, "Credit package is not active", HttpStatus.BAD_REQUEST),
     CREDIT_ACCOUNT_NOT_FOUND(2303, "Credit account not found", HttpStatus.NOT_FOUND),
+    // 2304 reserved: PRICING_CONFIG_MISSING (Credit_Coefficient_Calculation P8)
+    PRICING_INVALID(2305, "Invalid credit pricing configuration", HttpStatus.BAD_REQUEST),
+    PRICING_LARGE_CHANGE_UNCONFIRMED(2306, "Pricing change above 50% requires confirmation", HttpStatus.CONFLICT),
 
     // 24xx - provider (Member A)
     PROVIDER_NOT_FOUND(2400, "AI provider not found", HttpStatus.NOT_FOUND),

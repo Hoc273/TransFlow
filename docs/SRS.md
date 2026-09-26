@@ -632,8 +632,12 @@ trạng thái "cần chạy lại".
   chuyên mục → bài viết (tạo, sửa, sắp xếp, xoá, chuyển Nháp/Xuất bản, xem trước). Chỉ bài đã xuất bản
   thuộc chuyên mục đang hiển thị mới xuất hiện ở trang `/guide`; trang này ai cũng xem được, không cần đăng
   nhập. Không xoá được chuyên mục khi còn bài viết.
+- **Bảng giá Credit [bổ sung 2026-09-26]:** Super Admin cấu hình hệ số x (hạ tầng) và y (chi phí AI) theo
+  thao tác AI và theo provider/model nền tảng, xem trước giá Credit/phút trước khi lưu, hẹn giờ giá mới và xem
+  lịch sử. Mỗi lần đổi giá tạo một phiên bản mới kèm lý do; giá cũ không bị sửa/xoá và không hồi tố. Job luôn
+  tính theo giá có hiệu lực lúc tạo job. Người dùng thường không xem được x, y.
 - Người không có cờ Platform Admin phải bị từ chối ở backend, kể cả khi biết URL hoặc tự gọi API.
-- Ngoài 2 thao tác trên, các API quản trị chỉ phục vụ quan sát/tra cứu trong MVP; không cấp quyền sửa dữ
+- Ngoài các thao tác trên, các API quản trị chỉ phục vụ quan sát/tra cứu trong MVP; không cấp quyền sửa dữ
   liệu nghiệp vụ của Workspace (Project, Media Job, thành viên…) hoặc bỏ qua các gate RBAC/ownership hiện
   hành.
 

@@ -429,6 +429,11 @@ Workspace; tài khoản thường nhận `UNAUTHORIZED` (HTTP 403). Response v�
 | DELETE | `/api/platform/providers/{id}` | Xoá key (cascade voice). Còn job gắn voice của key → `PROVIDER_IN_USE` (2412, HTTP 409) — dùng PATCH `isActive=false`. |
 | POST | `/api/platform/providers/{id}/test` | Probe auth + từng capability qua FastAPI (`TestConnectionResponse`), lưu kết quả vào health. |
 | POST | `/api/platform/providers/{id}/voices/sync` | Đồng bộ voice TTS (upsert, voice bị provider gỡ → `is_active=false`, không xoá). Trả `{activeVoices}`. |
+| GET | `/api/platform/pricing` | Bảng giá Credit đang hiệu lực **và** đã hẹn giờ (`PricingVersionResponse[]`: `id, capability, providerScope, infraCoefficientX, tokenCoefficientY, effectiveFrom, effectiveTo, status (ACTIVE\|SCHEDULED\|EXPIRED), createdByUserId, changeReason, createdAt`). `providerScope = null` là giá mặc định của capability. |
+| GET | `/api/platform/pricing/history?capability=&providerScope=` | Mọi version (kể cả đã đóng), mới nhất trước. `providerScope` bỏ trống = mọi scope; `default` = chỉ row mặc định. |
+| POST | `/api/platform/pricing` | Tạo version mới cho 1 cặp `capability` + `providerScope`: `{capability, providerScope?, infraCoefficientX, tokenCoefficientY, effectiveFrom?, changeReason, confirmLargeChange?}`. Version đang mở của cặp tự đóng tại `effectiveFrom` của version mới (khoá `FOR UPDATE`). Trả `{version, closedVersion, warnings[]}`; `warnings ⊂ {DEFAULT_Y_BELOW_SCOPED_MAX, NO_DEFAULT_ROW}` không chặn lưu. **Không có** endpoint sửa/xoá giá. |
+| POST | `/api/platform/pricing/preview` | `{capability, providerScope?, infraCoefficientX, tokenCoefficientY}` → Credit/đơn vị và Credit/phút video (hiện tại vs đề xuất, BYOK vs nền tảng), % thay đổi, `largeChange`, Credit/phút theo loại job (`SUBTITLE`, `DUB`, `SUMMARY_VLM`), `warnings`. Không lưu gì. |
+| GET | `/api/platform/pricing/coverage` | Với mỗi capability của mọi key nền tảng đang bật (TRANSLATE kèm SUMMARIZE_SCRIPT): `pricingScope = protocol/defaultModel` khớp row nào — `matchedBy ∈ EXACT \| PROTOCOL \| DEFAULT \| MISSING` (MISSING = đang dùng hệ số dự phòng hard-code). |
 
 Ngoài ra, quản trị nội dung trang Hướng dẫn nằm dưới `/api/platform/guides/*` — xem §13.2.
 
@@ -439,8 +444,16 @@ random theo `weight`. Khi key nền tảng lỗi `PROVIDER_RATE_LIMITED`/`QUOTA_
 chỉ failover sang key cùng protocol có đúng vendor voice của job. Credit tính theo capability như cũ (key FREE vẫn
 tính giá bóng theo D3).
 
+**Bảng giá Credit** (Credit_Coefficient_Calculation §10). Validation khi tạo version: `capability` thuộc CHECK của
+`credit_pricing_config`; `providerScope` chuẩn hoá chữ thường `protocol[/model]`; x, y ∈ [0, 10000) tối đa 6 chữ số
+thập phân; `changeReason` bắt buộc (≤ 500); `effectiveFrom` bỏ trống = now, không được ở quá khứ (dung sai 2 phút) và
+phải **sau** `effectiveFrom` của version đang mở (kể cả version đã hẹn giờ) → sai: `PRICING_INVALID` (2305). x hoặc y
+lệch > ±50% so với version đang mở mà thiếu `confirmLargeChange=true` → `PRICING_LARGE_CHANGE_UNCONFIRMED` (2306, HTTP 409).
+Khi trừ Credit, stage tra giá theo thứ tự `protocol/model` → `protocol` → mặc định, tại thời điểm `media_jobs.created_at`
+(đổi giá không ảnh hưởng job đã tạo). Audit action: `VIEW_PRICING` (GET), `PREVIEW_PRICING`, `CREATE_PRICING`.
+
 Nhóm API này read-only trong MVP, **trừ** điều chỉnh Credit của user (`POST .../credit/adjust`), quản lý pool key
-AI (`/api/platform/providers*`) và quản trị Hướng dẫn (§13.2); không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.
+AI (`/api/platform/providers*`), tạo version bảng giá Credit (`POST /api/platform/pricing`) và quản trị Hướng dẫn (§13.2); không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.
 
 Quy tắc chung cho nhóm:
 
@@ -768,7 +781,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `auth` | 2000–2099 | `EMAIL_ALREADY_EXISTS` = 2000, `INVALID_CREDENTIALS` = 2001, `ACCOUNT_DISABLED` = 2002, `OAUTH_ONLY_ACCOUNT` = 2003, `INVALID_REFRESH_TOKEN` = 2004, `USER_NOT_FOUND` = 2005, `GOOGLE_OAUTH_FAILED` = 2006, `GOOGLE_EMAIL_UNVERIFIED` = 2007, `GOOGLE_ACCOUNT_CONFLICT` = 2008, `GOOGLE_NOT_CONFIGURED` = 2009, `GOOGLE_STATE_INVALID` = 2010, `INVALID_OTP` = 2011, `OTP_REQUIRED` = 2012, `OTP_RATE_LIMIT_EXCEEDED` = 2013 |
 | `workspace` | 2100–2199 | `WORKSPACE_NOT_FOUND` = 2100, `WORKSPACE_MEMBER_NOT_FOUND` = 2101, `LEAD_CANNOT_BE_REMOVED` = 2102, `WORKSPACE_MEMBER_ALREADY_EXISTS` = 2103, `CANNOT_ASSIGN_LEAD_ROLE` = 2104, `WORKSPACE_SLUG_ALREADY_EXISTS` = 2105 |
 | `project` | 2200–2299 | `PROJECT_NOT_FOUND` = 2200, `PROJECT_MEMBER_NOT_FOUND` = 2201, `PROJECT_ACCESS_DENIED` = 2202, `USER_NOT_WORKSPACE_MEMBER` = 2203, `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` = 2204, `PROJECT_MEMBER_ALREADY_EXISTS` = 2205 |
-| `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303 |
+| `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303, 2304 dành cho `PRICING_CONFIG_MISSING`, `PRICING_INVALID` = 2305, `PRICING_LARGE_CHANGE_UNCONFIRMED` = 2306 |
 | `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406, `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` = 2407, `TTS_PREVIEW_FAILED` = 2408, `PROVIDER_KEY_DECRYPTION_FAILED` = 2409, `PROVIDER_DEFAULT_NOT_CONFIGURED` = 2410, `PROVIDER_MODEL_NOT_CONFIGURED` = 2411, `PROVIDER_IN_USE` = 2412 |
 | `preset` | 2500–2599 | `PRESET_NOT_FOUND` = 2500, `PRESET_INACTIVE` = 2501, `PRESET_SCOPE_INVALID` = 2502, `CANNOT_DELETE_ONLY_DEFAULT_PRESET` = 2503, `SYSTEM_PRESET_READ_ONLY` = 2504, `PRESET_DEFAULT_CONFLICT` = 2505, `REPLACEMENT_PRESET_INVALID` = 2506 |
 | `notification` | 2600–2699 | `NOTIFICATION_NOT_FOUND` = 2600, `NOTIFICATION_TYPE_INVALID` = 2601 |
@@ -825,6 +838,8 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `CREDIT_PACKAGE_NOT_FOUND` | 2301 | 404 | Gói credit không tồn tại. |
 | `CREDIT_PACKAGE_INACTIVE` | 2302 | 400 | Gói credit đang tạm ngưng không khả dụng để mua. |
 | `CREDIT_ACCOUNT_NOT_FOUND` | 2303 | 404 | Không tìm thấy tài khoản credit của người dùng. |
+| `PRICING_INVALID` | 2305 | 400 | Version giá không hợp lệ: capability lạ, `providerScope` sai định dạng, x/y âm hoặc quá 6 chữ số thập phân, thiếu lý do, `effectiveFrom` ở quá khứ hoặc không sau version đang mở. |
+| `PRICING_LARGE_CHANGE_UNCONFIRMED` | 2306 | 409 | x hoặc y lệch > ±50% so với version đang mở mà chưa gửi `confirmLargeChange=true`. |
 | `REFINE_LIMIT_REACHED` | 3000 | 429 | Vượt 5 lần refine/phiên Summarization. |
 | `PROPOSAL_ALREADY_TRANSLATED` | 3001 | 409 | Đổi `selected_proposal_id` hoặc refine phương án đang chọn khi stage `TRANSLATE` của job đã `COMPLETED` từ phương án đó (SRS §5.5 — phải rerun-from-stage `TRANSLATE` trước). |
 | `BATCH_SIZE_EXCEEDED` | 3100 | 400 | `sourceAssetIds` rỗng hoặc > 20 khi tạo batch. |

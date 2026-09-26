@@ -268,10 +268,19 @@ credit_pricing_config(
   token_coefficient_y NUMERIC(10,6),
   effective_from TIMESTAMPTZ NOT NULL DEFAULT now(),
   effective_to TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  created_by_user_id UUID REFERENCES users(id),   -- V16: Super Admin tạo version
+  change_reason TEXT                              -- V16: lý do đổi giá
 )
 CREATE INDEX ix_credit_pricing_active
   ON credit_pricing_config(capability, provider_scope) WHERE effective_to IS NULL;
+-- V16: đúng 1 version đang mở cho mỗi cặp capability + provider_scope
+CREATE UNIQUE INDEX ux_credit_pricing_open
+  ON credit_pricing_config(capability, COALESCE(provider_scope, '')) WHERE effective_to IS NULL;
+CREATE INDEX ix_credit_pricing_history
+  ON credit_pricing_config(capability, provider_scope, effective_from DESC);
+-- Row giá không bao giờ UPDATE giá trị / DELETE: đổi giá = đóng row đang mở (effective_to = effective_from mới)
+-- + insert row mới. provider_scope = 'protocol/model' | 'protocol' | NULL (mặc định), chữ thường.
 
 credit_packages(
   id UUID PK,

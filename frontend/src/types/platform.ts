@@ -231,3 +231,84 @@ export type ProviderTestResult = {
     message: string | null
   }[]
 }
+
+/** Credit price table x, y (Credit_Coefficient_Calculation §10). */
+export type PricingCapability = 'STT' | 'TRANSLATE' | 'TTS' | 'SUMMARIZE_SCRIPT' | 'RENDER' | 'VISION'
+
+export type PricingVersionStatus = 'ACTIVE' | 'SCHEDULED' | 'EXPIRED'
+
+export interface PricingVersion {
+  id: string
+  capability: PricingCapability
+  /** `protocol/model`, `protocol`, or null = default row. */
+  providerScope: string | null
+  infraCoefficientX: number
+  tokenCoefficientY: number
+  effectiveFrom: string
+  effectiveTo: string | null
+  status: PricingVersionStatus
+  createdByUserId: string | null
+  changeReason: string | null
+  createdAt: string | null
+}
+
+export interface PricingVersionInput {
+  capability: PricingCapability
+  providerScope?: string | null
+  infraCoefficientX: number
+  tokenCoefficientY: number
+  /** ISO instant; omitted = now. */
+  effectiveFrom?: string
+  changeReason: string
+  confirmLargeChange?: boolean
+}
+
+export type PricingWarning = 'DEFAULT_Y_BELOW_SCOPED_MAX' | 'NO_DEFAULT_ROW'
+
+export interface CreatePricingVersionResult {
+  version: PricingVersion
+  closedVersion: PricingVersion | null
+  warnings: PricingWarning[]
+}
+
+export interface PricingRate {
+  byokPerUnit: number
+  platformPerUnit: number
+  byokPerMinute: number
+  platformPerMinute: number
+}
+
+export interface PricingJobEstimate {
+  jobType: 'SUBTITLE' | 'DUB' | 'SUMMARY_VLM'
+  capabilities: PricingCapability[]
+  currentCreditsPerMinute: number
+  proposedCreditsPerMinute: number
+}
+
+export interface PricingPreview {
+  capability: PricingCapability
+  providerScope: string | null
+  current: PricingVersion | null
+  unitsPerMinute: number
+  currentRate: PricingRate
+  proposedRate: PricingRate
+  infraChangePercent: number | null
+  tokenChangePercent: number | null
+  largeChange: boolean
+  jobEstimates: PricingJobEstimate[]
+  warnings: PricingWarning[]
+}
+
+export type PricingMatchedBy = 'EXACT' | 'PROTOCOL' | 'DEFAULT' | 'MISSING'
+
+export interface PricingCoverageItem {
+  providerId: string
+  providerName: string
+  capability: PricingCapability
+  pricingScope: string
+  matchedBy: PricingMatchedBy
+  matchedVersionId: string | null
+  matchedScope: string | null
+  infraCoefficientX: number | null
+  tokenCoefficientY: number | null
+}

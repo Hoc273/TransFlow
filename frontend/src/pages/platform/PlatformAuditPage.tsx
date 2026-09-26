@@ -20,6 +20,9 @@ const ACTION_FILTERS = [
   { value: 'VIEW_USER_CREDIT', labelKey: 'audit.viewUserCredit' as const },
   { value: 'ADJUST_USER_CREDIT', labelKey: 'audit.adjustUserCredit' as const },
   { value: 'SEED_GRANT', labelKey: 'audit.seedGrant' as const },
+  { value: 'VIEW_PRICING', labelKey: 'audit.viewPricing' as const },
+  { value: 'PREVIEW_PRICING', labelKey: 'audit.previewPricing' as const },
+  { value: 'CREATE_PRICING', labelKey: 'audit.createPricing' as const },
   { value: 'DENIED', labelKey: 'audit.denied' as const },
 ] as const
 
@@ -41,6 +44,8 @@ function actionBadgeClass(action: string) {
       return 'platform-action-badge platform-action-amber'
     case 'SEED_GRANT':
       return 'platform-action-badge platform-action-success'
+    case 'CREATE_PRICING':
+      return 'platform-action-badge platform-action-amber'
     case 'DENIED':
       return 'platform-action-badge platform-action-danger'
     default:

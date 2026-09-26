@@ -2,6 +2,7 @@ import { apiRequest } from '@/lib/api/client'
 import type {
   AdminCreditAdjustRequest,
   AdminCreditAdjustResponse,
+  CreatePricingVersionResult,
   PlatformAuditLogItem,
   PlatformAuditQuery,
   PlatformOverview,
@@ -15,6 +16,10 @@ import type {
   PlatformUsersQuery,
   PlatformWorkspaceItem,
   PlatformWorkspacesQuery,
+  PricingCoverageItem,
+  PricingPreview,
+  PricingVersion,
+  PricingVersionInput,
   ProviderTestResult,
 } from '@/types/platform'
 
@@ -150,4 +155,29 @@ export function testPlatformProviderApi(id: string) {
 
 export function syncPlatformProviderVoicesApi(id: string) {
   return apiRequest<{ activeVoices: number }>(`/platform/providers/${id}/voices/sync`, { method: 'POST' })
+}
+
+/** SA — credit price table (versioned; no update/delete). */
+export function getPlatformPricingApi() {
+  return apiRequest<PricingVersion[]>('/platform/pricing')
+}
+
+export function getPlatformPricingHistoryApi(query: { capability?: string; providerScope?: string } = {}) {
+  return apiRequest<PricingVersion[]>(
+    `/platform/pricing/history${qs({ capability: query.capability, providerScope: query.providerScope })}`,
+  )
+}
+
+export function createPlatformPricingApi(body: PricingVersionInput) {
+  return apiRequest<CreatePricingVersionResult>('/platform/pricing', { method: 'POST', body })
+}
+
+export function previewPlatformPricingApi(
+  body: Pick<PricingVersionInput, 'capability' | 'providerScope' | 'infraCoefficientX' | 'tokenCoefficientY'>,
+) {
+  return apiRequest<PricingPreview>('/platform/pricing/preview', { method: 'POST', body })
+}
+
+export function getPlatformPricingCoverageApi() {
+  return apiRequest<PricingCoverageItem[]>('/platform/pricing/coverage')
 }
