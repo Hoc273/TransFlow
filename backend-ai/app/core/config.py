@@ -70,15 +70,6 @@ class Settings(BaseSettings):
     internal_service_token: str = ""
     media_storage_secure: bool = False
 
-    # ── Capability Execution Platform — A1.2 Piper (Q-M-TTS-03/20, ADR-CEP §93) ──
-    # Local zero-key TTS engine. Runs in-process (Inference Gateway), never more
-    # than `piper_semaphore` concurrent syntheses (invariant 4, `93` §8).
-    piper_semaphore: int = 2
-    # Directory containing baked Piper voice models ({model_name}.onnx +
-    # {model_name}.onnx.json). Docker image bakes voices at build time
-    # (backend-ai/piper/download_voices.py); runtime never downloads.
-    piper_voices_dir: str = "piper/voices"
-
     # ── Capability Execution Platform — A2.1 Generated Asset Cache (Q-M-TTS-09/10) ──
     # Content-addressable cache of synthesized TTS assets in MinIO under
     # `{gen_cache_prefix}/tts/{protocol}/{voice}/{hash}.{ext}` (namespace

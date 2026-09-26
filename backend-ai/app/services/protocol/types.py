@@ -152,10 +152,9 @@ class TtsCacheDescriptor:
     be built without an engine call (ADR-CEP A2.1, B1/B2):
 
     * ``resolved_model`` — the model that will actually be executed
-      (Piper maps voice → bundled ONNX stem; other adapters use
-      ``provider.model``), so a runtime/voice-model change rotates the key.
+      (``provider.model`` or the adapter default), so a runtime/voice-model change rotates the key.
     * ``mime_type``/``extension`` — the adapter's static output format
-      (Piper/DashScope: WAV; Google/Azure/ElevenLabs/OpenAI-compatible: MP3).
+      (DashScope: WAV; Google/Azure/ElevenLabs/OpenAI-compatible: MP3).
     * ``speed`` — fixed ``"1.0"`` (the TTS wire contract has no speed field).
 
     Pure — no I/O, no vendor calls.

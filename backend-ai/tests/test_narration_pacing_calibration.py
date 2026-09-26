@@ -45,7 +45,7 @@ def test_sixty_second_beat_default_stays_840():
     assert narration_target_chars(60_000) == 840
 
 
-def test_three_hundred_second_target_budget_matches_piper_vi():
+def test_three_hundred_second_target_budget_matches_vi_tts():
     assert narration_target_chars(300_000, cps=19) == 5_700
 
 

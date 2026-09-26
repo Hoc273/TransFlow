@@ -51,7 +51,7 @@ class ProtocolAdapter(ABC):
     #: True when the gateway must gate/mock this adapter on ``api_key`` presence
     #: (Phase D P2-3 runtime finding: cloud adapters extending ``ProtocolAdapter``
     #: directly had no such attribute — every gateway key-gate crashed for them).
-    #: Zero-key adapters override with ``False`` (e.g. ``local_piper``).
+    #: Every registered adapter currently requires a key (no local zero-key engine).
     requires_api_key: bool = True
 
     # ── Capability gate ──────────────────────────────────────────────────────
@@ -157,7 +157,7 @@ class ProtocolAdapter(ABC):
 
         Default assumes an MP3-returning TTS adapter whose executed model is
         ``provider.model``; adapters with a different output format or a
-        voice→model mapping (Piper, DashScope WAV) override. Adapters with a
+        voice→model mapping (e.g. DashScope WAV) override. Adapters with a
         voice catalog must also validate the voice here (see BaseTtsAdapter)
         so a cache hit can never bypass the fail-fast voice gate. Pure, no I/O.
         """

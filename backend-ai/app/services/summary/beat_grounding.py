@@ -60,7 +60,7 @@ DEGRADED_MIN_SILENCE_GAP_MS = SILENCE_BOUNDARY_MS
 DEGRADED_MIN_SPAN_TO_SPLIT_MS = SINGLE_PLAN_MIN_SPAN_TO_SPLIT_MS
 DEGRADED_MIN_SUB_BEAT_MS = SINGLE_PLAN_MIN_SUB_BEAT_MS
 
-# Measured narration density (vi, Piper TTS): ~14-15 chars/s. Used ONLY as a
+# Measured narration density (vi TTS): ~14-15 chars/s. Used ONLY as a
 # per-section writer length target so narration roughly fills its footage.
 # Planning guidance only â€” never overrides measured TTS truth.
 NARRATION_TARGET_CPS = 14

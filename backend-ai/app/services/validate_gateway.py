@@ -363,7 +363,7 @@ async def probe_tts_capability(req: TtsProbeRequest) -> TtsProbeResponse:
     provider = req.provider
 
     # Phase D P2: resolve the adapter BEFORE the key gate. Zero-key adapters
-    # (requires_api_key=False, e.g. local_piper) must never be probe-skipped on
+    # (requires_api_key=False) must never be probe-skipped on
     # an empty/placeholder key — this mirrors tts_gateway.py's zero-key gate.
     try:
         adapter = require_adapter(provider.protocol, capability="TTS")

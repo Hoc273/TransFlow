@@ -20,7 +20,6 @@ from app.services.protocol.dashscope_native import DashScopeNativeAdapter
 from app.services.protocol.elevenlabs_native import ElevenLabsNativeAdapter
 from app.services.protocol.google_tts import GoogleSpeechAdapter
 from app.services.protocol.openai_compatible import OpenAICompatibleAdapter
-from app.services.protocol.piper import PiperAdapter
 from app.services.provider_errors import ProviderConfiguration, ProviderErrorCode
 
 
@@ -69,7 +68,6 @@ def _build_default_registry() -> ProtocolAdapterRegistry:
         AnthropicAdapter(),
         ElevenLabsNativeAdapter(),
         DashScopeNativeAdapter(),
-        PiperAdapter(),
         GoogleSpeechAdapter(),
         AzureSpeechAdapter(),
     ):

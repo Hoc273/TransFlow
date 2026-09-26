@@ -25,7 +25,6 @@ ProviderProtocol = Literal[
     "google_speech",
     "amazon_polly",
     "dashscope_native",
-    "local_piper",
 ]
 ProviderCapability = Literal[
     "TEXT",
@@ -415,7 +414,7 @@ class TtsVoice(BaseModel):
     # [language] so legacy payloads keep working. ``language`` stays the first
     # entry (primary display language) for backward-compatible ordering/index.
     languages: Optional[list[str]] = None
-    # Unknown gender (e.g. Piper vi models, MODEL_CARD does not publish it) = None.
+    # Unknown gender (vendor does not publish it) = None.
     gender: Optional[Literal["MALE", "FEMALE"]] = None
     display_name: str
     # Vendor lifecycle when published (Azure: GA / Preview / Deprecated). None = unknown,
