@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     media_storage_access_key: str = ""
     media_storage_secret_key: str = ""
     media_storage_bucket: str = "transflow-media"
+
+    # Shared secret backend-main sends as X-Internal-Token (app.core.internal_auth).
+    # Empty = check disabled (local dev only).
+    internal_service_token: str = ""
     media_storage_secure: bool = False
 
     # ── Capability Execution Platform — A1.2 Piper (Q-M-TTS-03/20, ADR-CEP §93) ──

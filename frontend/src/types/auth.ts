@@ -9,9 +9,9 @@ export type User = {
   avatarUrl?: string | null
 }
 
+/** The refresh token is not in the body — it is set as an HttpOnly cookie. */
 export type AuthResponse = {
   accessToken: string
-  refreshToken: string
   user: User
 }
 
@@ -28,5 +28,5 @@ export type RegisterRequest = {
 }
 
 export type RefreshRequest = {
-  refreshToken: string
+  refreshToken?: string
 }

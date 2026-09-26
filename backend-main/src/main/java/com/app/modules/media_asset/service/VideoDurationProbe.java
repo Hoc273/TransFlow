@@ -10,11 +10,38 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Extracts video duration (ms) via ffprobe. Returns null when ffprobe is
- * unavailable or cannot parse the file — caller decides how to react.
+ * unavailable or cannot parse the file — caller decides how to react
+ * ({@link #isAvailable()} tells the two apart).
  */
 @Slf4j
 @Component
 public class VideoDurationProbe {
+
+    private volatile Boolean available;
+
+    /** Whether ffprobe can be executed on this host (checked once, then cached). */
+    public boolean isAvailable() {
+        Boolean a = available;
+        if (a == null) {
+            a = checkAvailable();
+            available = a;
+            if (!a) {
+                log.warn("ffprobe not found — uploaded videos are NOT content-checked and the 30-minute limit "
+                        + "is not enforced. Install ffmpeg on the backend-main host.");
+            }
+        }
+        return a;
+    }
+
+    private static boolean checkAvailable() {
+        try {
+            Process p = new ProcessBuilder("ffprobe", "-version").redirectErrorStream(true).start();
+            p.getInputStream().transferTo(java.io.OutputStream.nullOutputStream());
+            return p.waitFor(10, TimeUnit.SECONDS) && p.exitValue() == 0;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
 
     public Long extractDurationMs(Path file) {
         try {

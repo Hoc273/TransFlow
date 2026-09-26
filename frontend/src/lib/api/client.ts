@@ -77,24 +77,22 @@ async function tryRefreshAccessToken(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight
 
   refreshInFlight = (async () => {
-    const refreshToken = useAuthStore.getState().refreshToken
-    if (!refreshToken) return false
-
     try {
+      // The refresh token rides in the HttpOnly cookie; the backend rotates it on success.
       const res = await fetch(`${apiBaseUrl}/auth/refresh`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ refreshToken }),
+        headers: { Accept: 'application/json' },
+        credentials: 'include',
       })
       if (!res.ok) return false
       const raw = await res.json()
       const data =
         raw && typeof raw === 'object' && typeof raw.code === 'number' && 'data' in raw
-          ? (raw.data as { accessToken?: string; refreshToken?: string })
-          : (raw as { accessToken?: string; refreshToken?: string })
+          ? (raw.data as { accessToken?: string })
+          : (raw as { accessToken?: string })
 
-      if (data?.accessToken && data?.refreshToken) {
-        useAuthStore.getState().setTokens(data.accessToken, data.refreshToken)
+      if (data?.accessToken) {
+        useAuthStore.getState().setAccessToken(data.accessToken)
         return true
       }
       return false
@@ -145,7 +143,8 @@ export async function apiResponse(path: string, options: RequestOptions = {}): P
     }
   }
 
-  const res = await fetch(url, { method, headers: reqHeaders, body: payload, signal })
+  // credentials: login/register/google-exchange responses set the refresh cookie.
+  const res = await fetch(url, { method, headers: reqHeaders, body: payload, signal, credentials: 'include' })
 
   if (res.status === 401 && !skipAuth && !skipRefresh) {
     const refreshed = await tryRefreshAccessToken()

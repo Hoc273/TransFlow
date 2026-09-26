@@ -1,3 +1,6 @@
+# Bảo mật mạng: mọi cổng hạ tầng chỉ bind 127.0.0.1 (VPS all-in-one: backend-main trên host
+# vẫn truy cập qua localhost, nhưng Internet không chạm được DB/Redis/MQ/MinIO/AI/worker).
+# Muốn mở ra ngoài phải chủ động đổi BIND_ADDR — không bao giờ mở Postgres/Redis ra public.
 services:
   postgres:
     image: postgres:16-alpine
@@ -7,7 +10,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-transflow}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${BIND_ADDR:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -19,13 +22,16 @@ services:
   redis:
     image: redis:7-alpine
     container_name: transflow-redis
-    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    # REDIS_PASSWORD rỗng = không auth (chỉ dev); production phải đặt (backend-main đọc cùng biến).
+    command: ["sh", "-c", "if [ -n \"$$REDIS_PASSWORD\" ]; then exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\"; else exec redis-server --appendonly yes; fi"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${BIND_ADDR:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping; else redis-cli ping; fi | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -38,8 +44,10 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      # API 9000 phục vụ presigned URL cho trình duyệt: public hoá qua reverse proxy TLS
+      # (MEDIA_STORAGE_PUBLIC_ENDPOINT), không mở trực tiếp. Console 9001 chỉ localhost/SSH tunnel.
+      - "${BIND_ADDR:-127.0.0.1}:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - miniodata:/data
     healthcheck:
@@ -55,8 +63,8 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-transflow}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-transflow}
     ports:
-      - "${RABBITMQ_PORT:-5672}:5672"
-      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+      - "${BIND_ADDR:-127.0.0.1}:${RABBITMQ_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:
       - rabbitmqdata:/var/lib/rabbitmq
     healthcheck:
@@ -88,11 +96,13 @@ services:
       SEPARATION_CPU_FALLBACK: ${SEPARATION_CPU_FALLBACK:-true}
       SEPARATION_MAX_CONCURRENT_JOBS: 1
       MOCK_MODE: "false"
+      # Chỉ nhận request có X-Internal-Token khớp (gửi từ backend-main).
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
     depends_on:
       minio:
         condition: service_healthy
     ports:
-      - "${AI_SERVICE_PORT:-8000}:8000"
+      - "${BIND_ADDR:-127.0.0.1}:${AI_SERVICE_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -145,13 +155,14 @@ services:
       MEDIA_WORKER_REVISION: ${MEDIA_WORKER_REVISION:-unknown}
       MEDIA_WORKER_VALIDATION_DURATION_TOLERANCE_MS: ${MEDIA_WORKER_VALIDATION_DURATION_TOLERANCE_MS:-500}
       MEDIA_WORKER_VALIDATION_DURATION_TOLERANCE_PCT: ${MEDIA_WORKER_VALIDATION_DURATION_TOLERANCE_PCT:-2}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       minio:
         condition: service_healthy
     ports:
-      - "${MEDIA_WORKER_PORT:-8001}:8000"
+      - "${BIND_ADDR:-127.0.0.1}:${MEDIA_WORKER_PORT:-8001}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -178,6 +189,10 @@ services:
   #     DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
   #     REDIS_HOST: redis
   #     REDIS_PORT: 6379
+  #     REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+  #     INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
+  #     STRICT_SECRETS: ${STRICT_SECRETS:-true}
+  #     REQUIRE_HTTPS: ${REQUIRE_HTTPS:-false}
   #     RABBITMQ_HOST: rabbitmq
   #     RABBITMQ_PORT: 5672
   #     RABBITMQ_USER: ${RABBITMQ_USER:-transflow}

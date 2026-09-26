@@ -3,7 +3,12 @@ package com.app.modules.auth.controller;
 import com.app.common.dto.ApiResponse;
 import com.app.common.security.AuthenticatedUser;
 import com.app.modules.auth.dto.*;
+import com.app.common.exception.AppException;
+import com.app.common.exception.ErrorCode;
+import com.app.modules.auth.service.AuthCookieService;
 import com.app.modules.auth.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -17,16 +22,20 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final AuthCookieService authCookieService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, AuthCookieService authCookieService) {
         this.authService = authService;
+        this.authCookieService = authCookieService;
     }
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<AuthResponse> register(@Valid @RequestBody RegisterRequest req) {
+    public ApiResponse<AuthResponse> register(@Valid @RequestBody RegisterRequest req, HttpServletResponse response) {
+        AuthResponse auth = authService.register(req);
+        authCookieService.writeRefreshCookie(response, auth.refreshToken());
         return ApiResponse.<AuthResponse>builder()
-                .data(authService.register(req))
+                .data(auth)
                 .build();
     }
 
@@ -38,17 +47,39 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest req) {
+    public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest req, HttpServletResponse response) {
+        AuthResponse auth = authService.login(req);
+        authCookieService.writeRefreshCookie(response, auth.refreshToken());
         return ApiResponse.<AuthResponse>builder()
-                .data(authService.login(req))
+                .data(auth)
                 .build();
     }
 
+    /**
+     * Rotates the refresh token. Browsers send it via the HttpOnly cookie; a JSON body
+     * {@code {refreshToken}} is still accepted for non-browser clients.
+     */
     @PostMapping("/refresh")
-    public ApiResponse<TokenRefreshResponse> refresh(@Valid @RequestBody RefreshRequest req) {
+    public ApiResponse<TokenRefreshResponse> refresh(@Valid @RequestBody(required = false) RefreshRequest req,
+                                                     HttpServletRequest request,
+                                                     HttpServletResponse response) {
+        String token = authCookieService.readRefreshCookie(request)
+                .orElse(req != null ? req.refreshToken() : null);
+        if (token == null || token.isBlank()) {
+            throw new AppException(ErrorCode.INVALID_REFRESH_TOKEN);
+        }
+        TokenRefreshResponse tokens = authService.refresh(new RefreshRequest(token));
+        authCookieService.writeRefreshCookie(response, tokens.refreshToken());
         return ApiResponse.<TokenRefreshResponse>builder()
-                .data(authService.refresh(req))
+                .data(tokens)
                 .build();
+    }
+
+    /** Clears the refresh cookie. Public so an expired session can still sign out cleanly. */
+    @PostMapping("/logout")
+    public ApiResponse<Void> logout(HttpServletResponse response) {
+        authCookieService.clearRefreshCookie(response);
+        return ApiResponse.<Void>builder().build();
     }
 
     @GetMapping("/me")

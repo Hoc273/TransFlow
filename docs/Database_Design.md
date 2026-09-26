@@ -82,7 +82,8 @@ erDiagram
 users(
   id UUID PK,
   email VARCHAR(320) NOT NULL,
-  password_hash VARCHAR,           -- NULL nếu chỉ đăng nhập Google
+  email_canonical VARCHAR(320),    -- V17: hộp thư gốc bỏ alias (+tag; Gmail bỏ dấu chấm, googlemail→gmail); chặn 1 inbox tạo nhiều tài khoản farm credit
+  password_hash VARCHAR,           -- NULL nếu chỉ đăng nhập Google; BCrypt
   full_name VARCHAR(200) NOT NULL,
   google_sub VARCHAR,
   google_linked BOOLEAN NOT NULL DEFAULT false,
@@ -94,6 +95,8 @@ users(
 )
 CREATE UNIQUE INDEX ux_users_email ON users (lower(email));
 CREATE UNIQUE INDEX ux_users_google_sub ON users (google_sub) WHERE google_sub IS NOT NULL;
+-- Không unique (dữ liệu trước V17 có thể đã trùng canonical); service kiểm tra khi đăng ký mới.
+CREATE INDEX idx_users_email_canonical ON users (email_canonical);
 
 workspaces(
   id UUID PK,

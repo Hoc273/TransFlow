@@ -1,5 +1,7 @@
 package com.app.modules.project.controller;
 
+import com.app.testsupport.TestRegistration;
+
 import com.app.modules.auth.dto.RegisterRequest;
 import com.app.modules.project.dto.AssignProjectMemberRequest;
 import com.app.modules.project.dto.CreateProjectRequest;
@@ -30,12 +32,15 @@ class ProjectControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private com.app.modules.auth.service.RegisterOtpStore registerOtpStore;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     private record AuthInfo(String token, UUID userId, UUID defaultWorkspaceId) {}
 
     private AuthInfo register(String email, String name) throws Exception {
-        RegisterRequest reg = new RegisterRequest(email, "Password123!", name);
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest(email, "Password123!", name));
         MvcResult res = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))

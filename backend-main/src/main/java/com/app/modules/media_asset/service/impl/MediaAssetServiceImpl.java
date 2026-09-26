@@ -30,6 +30,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 
     private static final long MAX_FILE_SIZE_BYTES = 524_288_000L; // 500MB (SRS §6)
     private static final long MAX_DURATION_MS = 1_800_000L; // 30 phút (SRS §6)
+    private static final int MAX_FILE_NAME_LENGTH = 255;
 
     private final MediaAssetRepository mediaAssetRepository;
     private final MediaConsentRepository mediaConsentRepository;
@@ -64,14 +65,22 @@ public class MediaAssetServiceImpl implements MediaAssetService {
             throw new AppException(ErrorCode.MEDIA_FILE_TOO_LARGE);
         }
 
-        String fileName = (name != null && !name.isBlank()) ? name : file.getOriginalFilename();
-        String contentType = file.getContentType() != null ? file.getContentType() : "video/mp4";
+        // Client-declared type is only a first filter; ffprobe below is the real content check.
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.toLowerCase(java.util.Locale.ROOT).startsWith("video/")) {
+            throw new AppException(ErrorCode.MEDIA_INVALID_FILE);
+        }
+        String fileName = sanitizeFileName((name != null && !name.isBlank()) ? name : file.getOriginalFilename());
         Path tempFile = null;
         try {
             tempFile = Files.createTempFile("media_upload_", "_" + UUID.randomUUID());
             file.transferTo(tempFile);
 
             Long durationMs = durationProbe.extractDurationMs(tempFile);
+            if ((durationMs == null || durationMs <= 0) && durationProbe.isAvailable()) {
+                // ffprobe ran but found no decodable media (renamed .exe, HTML, zip, ...): never store it.
+                throw new AppException(ErrorCode.MEDIA_INVALID_FILE);
+            }
             if (durationMs != null && durationMs > MAX_DURATION_MS) {
                 throw new AppException(ErrorCode.MEDIA_DURATION_EXCEEDED);
             }
@@ -107,6 +116,20 @@ public class MediaAssetServiceImpl implements MediaAssetService {
                 }
             }
         }
+    }
+
+    /** Display name only (the object key is a random UUID): strip path parts and control chars, cap length. */
+    static String sanitizeFileName(String raw) {
+        if (raw == null) {
+            return "video";
+        }
+        String base = raw.replace('\\', '/');
+        base = base.substring(base.lastIndexOf('/') + 1);
+        base = base.replaceAll("[\\p{Cntrl}<>:\"|?*]", "_").trim();
+        if (base.isEmpty() || base.equals(".") || base.equals("..")) {
+            return "video";
+        }
+        return base.length() > MAX_FILE_NAME_LENGTH ? base.substring(0, MAX_FILE_NAME_LENGTH) : base;
     }
 
     @Override

@@ -99,3 +99,4 @@ stt_segments.json
 /transflow_origin/
 /open-6-terminals.bat
 /transflow.pem
+/.gitleaks.toml

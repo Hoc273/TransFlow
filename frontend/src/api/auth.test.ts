@@ -10,7 +10,6 @@ import { googleExchangeApi } from './auth'
 
 const authResponse: AuthResponse = {
   accessToken: 'access-token',
-  refreshToken: 'refresh-token',
   user: {
     id: 'user-id',
     email: 'user@example.com',

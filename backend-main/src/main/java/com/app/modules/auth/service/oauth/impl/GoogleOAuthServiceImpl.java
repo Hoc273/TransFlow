@@ -7,6 +7,7 @@ import com.app.modules.auth.dto.AuthResponse;
 import com.app.modules.auth.entity.User;
 import com.app.modules.auth.entity.UserStatus;
 import com.app.modules.auth.repository.UserRepository;
+import com.app.modules.auth.service.EmailNormalizer;
 import com.app.modules.auth.service.AuthService;
 import com.app.modules.auth.service.oauth.GoogleOAuthService;
 import com.app.modules.auth.service.oauth.GoogleOAuthSessionStore;
@@ -185,6 +186,12 @@ public class GoogleOAuthServiceImpl implements GoogleOAuthService {
                 existing.setFullName(profile.fullName().trim());
             }
             return new UserUpsertResult(userRepository.save(existing), false);
+        }
+
+        // An alias of an existing mailbox (a.b@gmail.com vs ab@gmail.com) must not spawn a second
+        // account with a second initial-credit grant; auto-linking is unsafe outside Gmail, so refuse.
+        if (userRepository.existsByEmailCanonical(EmailNormalizer.canonicalize(profile.email()))) {
+            throw new GoogleAccountConflictException();
         }
 
         User created = new User();
