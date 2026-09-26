@@ -1,5 +1,7 @@
 package com.app.modules.auth.controller;
 
+import com.app.testsupport.TestRegistration;
+
 import com.app.common.exception.ErrorCode;
 import com.app.modules.auth.dto.LoginRequest;
 import com.app.modules.auth.dto.RefreshRequest;
@@ -85,7 +87,7 @@ class AuthControllerTest {
 
     @Test
     void testRegisterSuccessAndAutoInit() throws Exception {
-        RegisterRequest req = new RegisterRequest("lead@transflow.com", "Password123!", "Nguyen Van A");
+        RegisterRequest req = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("lead@transflow.com", "Password123!", "Nguyen Van A"));
 
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -93,7 +95,11 @@ class AuthControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value(1000))
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.data.refreshToken").isNotEmpty())
+                .andExpect(jsonPath("$.data.refreshToken").doesNotExist())
+                .andExpect(cookie().httpOnly("tf_refresh", true))
+                .andExpect(cookie().secure("tf_refresh", true))
+                .andExpect(cookie().path("tf_refresh", "/api/auth"))
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("SameSite=Strict")))
                 .andExpect(jsonPath("$.data.user.email").value("lead@transflow.com"))
                 .andExpect(jsonPath("$.data.user.fullName").value("Nguyen Van A"))
                 .andExpect(jsonPath("$.data.user.googleLinked").value(false))
@@ -140,7 +146,7 @@ class AuthControllerTest {
 
     @Test
     void testRegisterDuplicateEmailReturnsConflict() throws Exception {
-        RegisterRequest req = new RegisterRequest("dup@transflow.com", "Password123!", "Nguyen Van A");
+        RegisterRequest req = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("dup@transflow.com", "Password123!", "Nguyen Van A"));
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -157,7 +163,7 @@ class AuthControllerTest {
 
     @Test
     void testLoginSuccess() throws Exception {
-        RegisterRequest reg = new RegisterRequest("login@transflow.com", "Password123!", "Tran Van B");
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("login@transflow.com", "Password123!", "Tran Van B"));
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))
@@ -170,7 +176,8 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(1000))
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.data.refreshToken").isNotEmpty())
+                .andExpect(jsonPath("$.data.refreshToken").doesNotExist())
+                .andExpect(cookie().exists("tf_refresh"))
                 .andExpect(jsonPath("$.data.user.email").value("login@transflow.com"))
                 .andExpect(jsonPath("$.data.workspaceId").isNotEmpty())
                 .andExpect(jsonPath("$.data.projectId").isNotEmpty());
@@ -178,7 +185,7 @@ class AuthControllerTest {
 
     @Test
     void testLoginWrongPassword() throws Exception {
-        RegisterRequest reg = new RegisterRequest("user@transflow.com", "Password123!", "Tran Van B");
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("user@transflow.com", "Password123!", "Tran Van B"));
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))
@@ -195,24 +202,102 @@ class AuthControllerTest {
 
     @Test
     void testRefreshToken() throws Exception {
-        RegisterRequest reg = new RegisterRequest("refresh@transflow.com", "Password123!", "Le Van C");
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("refresh@transflow.com", "Password123!", "Le Van C"));
         MvcResult regRes = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        JsonNode json = objectMapper.readTree(regRes.getResponse().getContentAsString()).path("data");
-        String refreshToken = json.path("refreshToken").asText();
+        jakarta.servlet.http.Cookie refreshCookie = regRes.getResponse().getCookie("tf_refresh");
+        assertNotNull(refreshCookie);
 
-        RefreshRequest refreshReq = new RefreshRequest(refreshToken);
+        // Browser path: cookie only, no body.
+        mockMvc.perform(post("/api/auth/refresh").cookie(refreshCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.data.refreshToken").doesNotExist())
+                .andExpect(cookie().httpOnly("tf_refresh", true));
+
+        // Non-browser path: token in JSON body still accepted.
+        RefreshRequest refreshReq = new RefreshRequest(refreshCookie.getValue());
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(refreshReq)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(1000))
-                .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.data.refreshToken").isNotEmpty());
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty());
+
+        // No cookie and no body -> 401.
+        mockMvc.perform(post("/api/auth/refresh"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_REFRESH_TOKEN.getCode()));
+    }
+
+    @Test
+    void testLogoutClearsRefreshCookie() throws Exception {
+        mockMvc.perform(post("/api/auth/logout"))
+                .andExpect(status().isOk())
+                .andExpect(cookie().maxAge("tf_refresh", 0))
+                .andExpect(cookie().httpOnly("tf_refresh", true));
+    }
+
+    @Test
+    void testRegisterWithoutOtpIsRejected() throws Exception {
+        RegisterRequest req = new RegisterRequest("nootp@transflow.com", "Password123!", "No Otp");
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.OTP_REQUIRED.getCode()));
+        assertFalse(userRepository.existsByEmailIgnoreCase("nootp@transflow.com"));
+    }
+
+    @Test
+    void testRegisterGmailAliasIsRejected() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(TestRegistration.withOtp(registerOtpStore,
+                                new RegisterRequest("john.doe@gmail.com", "Password123!", "John")))))
+                .andExpect(status().isCreated());
+
+        for (String alias : new String[]{"johndoe+1@gmail.com", "J.O.H.N.D.O.E@googlemail.com", "john.doe+promo@gmail.com"}) {
+            // Both the OTP send and the registration refuse an alias of an existing mailbox.
+            mockMvc.perform(post("/api/auth/register/otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.RegisterOtpRequest(alias))))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.EMAIL_ALREADY_EXISTS.getCode()));
+            mockMvc.perform(post("/api/auth/register")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(TestRegistration.withOtp(registerOtpStore,
+                                    new RegisterRequest(alias, "Password123!", "Alias")))))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.EMAIL_ALREADY_EXISTS.getCode()));
+        }
+    }
+
+    @Test
+    void testRegisterRejectsPasswordOverBcryptLimit() throws Exception {
+        // 30 Vietnamese chars x 3 bytes = 90 bytes > 72 even though under the 72-char DTO cap.
+        String longPassword = "ệ".repeat(30);
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(TestRegistration.withOtp(registerOtpStore,
+                                new RegisterRequest("longpw@transflow.com", longPassword, "Long")))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_ERROR.getCode()));
+    }
+
+    @Test
+    void testApiResponsesCarrySecurityHeaders() throws Exception {
+        mockMvc.perform(get("/api/auth/me"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("X-Frame-Options", "DENY"))
+                .andExpect(header().string("Referrer-Policy", "no-referrer"))
+                .andExpect(header().exists("Permissions-Policy"))
+                .andExpect(header().string("Content-Security-Policy",
+                        org.hamcrest.Matchers.containsString("frame-ancestors 'none'")));
     }
 
     @Test
@@ -224,7 +309,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.message").value(ErrorCode.UNAUTHENTICATED.getMessage()));
 
         // Authenticated
-        RegisterRequest reg = new RegisterRequest("me@transflow.com", "Password123!", "Pham Van D");
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("me@transflow.com", "Password123!", "Pham Van D"));
         MvcResult regRes = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))
@@ -249,7 +334,7 @@ class AuthControllerTest {
     @Test
     void testForgotPasswordFlowSuccess() throws Exception {
         // 1. Create user
-        RegisterRequest reg = new RegisterRequest("reset@transflow.com", "OldPassword123!", "Nguyen Reset");
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("reset@transflow.com", "OldPassword123!", "Nguyen Reset"));
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))
@@ -311,7 +396,7 @@ class AuthControllerTest {
 
     @Test
     void testForgotPasswordVerify_InvalidOtp() throws Exception {
-        RegisterRequest reg = new RegisterRequest("wrongotp@transflow.com", "Password123!", "Wrong Otp");
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("wrongotp@transflow.com", "Password123!", "Wrong Otp"));
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))
@@ -328,7 +413,7 @@ class AuthControllerTest {
 
     @Test
     void testForgotPasswordVerify_MaxAttemptsDeletesOtp() throws Exception {
-        RegisterRequest reg = new RegisterRequest("attempts@transflow.com", "Password123!", "Attempts User");
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("attempts@transflow.com", "Password123!", "Attempts User"));
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))
@@ -356,7 +441,7 @@ class AuthControllerTest {
     void testForgotPasswordReset_WrongOtpAfterVerify() throws Exception {
         // Regression: /reset must re-check the real OTP — a prior /verify must NOT
         // let any arbitrary 6-digit code reset the password.
-        RegisterRequest reg = new RegisterRequest("bypass@transflow.com", "Password123!", "Bypass User");
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("bypass@transflow.com", "Password123!", "Bypass User"));
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))
@@ -450,7 +535,7 @@ class AuthControllerTest {
 
     @Test
     void testUpdateProfile_Success() throws Exception {
-        RegisterRequest reg = new RegisterRequest("profile_test@transflow.com", "Password123!", "Old Name");
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("profile_test@transflow.com", "Password123!", "Old Name"));
         MvcResult regRes = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))
@@ -472,7 +557,7 @@ class AuthControllerTest {
 
     @Test
     void testChangePassword_SuccessAndInvalidCurrent() throws Exception {
-        RegisterRequest reg = new RegisterRequest("pw_test@transflow.com", "Password123!", "Pw User");
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("pw_test@transflow.com", "Password123!", "Pw User"));
         MvcResult regRes = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))
@@ -511,7 +596,7 @@ class AuthControllerTest {
 
     @Test
     void testAvatar_UpdateAndDelete() throws Exception {
-        RegisterRequest reg = new RegisterRequest("avatar_test@transflow.com", "Password123!", "Avatar User");
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("avatar_test@transflow.com", "Password123!", "Avatar User"));
         MvcResult regRes = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))
@@ -529,6 +614,18 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(updateReq)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.avatarUrl").value("data:image/jpeg;base64,samplebase64"));
+
+        // 1b. Script-capable or oversized avatars are refused
+        for (String bad : new String[]{"javascript:alert(1)", "data:image/svg+xml;base64,PHN2Zz4=",
+                "data:text/html;base64,PGgxPg==", "http://insecure.example/a.png"}) {
+            mockMvc.perform(put("/api/auth/me")
+                            .header("Authorization", "Bearer " + accessToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new com.app.modules.auth.dto.UpdateProfileRequest("Avatar User", bad))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_AVATAR.getCode()));
+        }
 
         // 2. Delete avatar
         mockMvc.perform(delete("/api/auth/avatar")

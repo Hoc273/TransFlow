@@ -49,6 +49,7 @@ export const queryKeys = {
   notifications: (wsId: string, params?: { limit?: number; offset?: number }) =>
     ['notifications', wsId, params ?? {}] as const,
   notificationsInfinite: (wsId: string) => ['notifications', wsId, 'infinite'] as const,
+  notificationsUnreadCount: (wsId: string) => ['notifications', wsId, 'unread-count'] as const,
   projects: (wsId: string) => ['projects', wsId] as const,
   projectMembers: (wsId: string, projectId: string) =>
     ['projectMembers', wsId, projectId] as const,

@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const setAccessTokenMock = vi.hoisted(() => vi.fn())
+
 vi.mock('@/config/featureFlags', () => ({
   apiBaseUrl: 'http://localhost:8080/api',
   featureFlags: {},
 }))
 vi.mock('@/store/authStore', () => ({
-  useAuthStore: { getState: () => ({ accessToken: 'token', refreshToken: null }) },
+  useAuthStore: { getState: () => ({ accessToken: 'token', setAccessToken: setAccessTokenMock }) },
   clearAuthAndRedirect: () => undefined,
 }))
 
@@ -102,3 +104,31 @@ describe('apiRequest ApiResponse unwrapping', () => {
   })
 })
 
+
+describe('401 refresh via HttpOnly cookie', () => {
+  it('refreshes with credentials (no token in body) and retries once', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 401, statusText: 'Unauthorized', json: async () => ({}) })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ code: 1000, data: { accessToken: 'new-access' } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ code: 1000, data: { ok: true } }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await apiRequest('/workspaces')
+    expect(res).toEqual({ ok: true })
+
+    const [refreshUrl, refreshInit] = fetchMock.mock.calls[1]
+    expect(refreshUrl).toBe('http://localhost:8080/api/auth/refresh')
+    expect(refreshInit.credentials).toBe('include')
+    expect(refreshInit.body).toBeUndefined()
+    expect(setAccessTokenMock).toHaveBeenCalledWith('new-access')
+  })
+})

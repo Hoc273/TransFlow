@@ -1,5 +1,7 @@
 package com.app.modules.workspace.controller;
 
+import com.app.testsupport.TestRegistration;
+
 import com.app.common.exception.ErrorCode;
 import com.app.modules.auth.dto.RegisterRequest;
 import com.app.modules.credit.entity.CostMode;
@@ -29,10 +31,13 @@ class WorkspaceControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private com.app.modules.auth.service.RegisterOtpStore registerOtpStore;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     private String registerAndGetToken(String email, String name) throws Exception {
-        RegisterRequest reg = new RegisterRequest(email, "Password123!", name);
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest(email, "Password123!", name));
         MvcResult res = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))

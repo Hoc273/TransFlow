@@ -27,6 +27,11 @@ import java.util.UUID;
 @Service
 public class GlossaryServiceImpl implements GlossaryService {
 
+    static final long MAX_IMPORT_BYTES = 2L * 1024 * 1024;
+    static final int MAX_IMPORT_ROWS = 10_000;
+    static final int MAX_TERM_LENGTH = 500;
+    static final int MAX_LANG_LENGTH = 16;
+
     private final GlossaryRepository glossaryRepository;
     private final GlossaryTermRepository glossaryTermRepository;
     private final WorkspaceAccessService access;
@@ -105,6 +110,9 @@ public class GlossaryServiceImpl implements GlossaryService {
         if (file == null || file.isEmpty()) {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
+        if (file.getSize() > MAX_IMPORT_BYTES) {
+            throw new AppException(ErrorCode.GLOSSARY_IMPORT_TOO_LARGE);
+        }
         Glossary glossary = getOrCreateGlossary(workspaceId, userId, projectId);
 
         int imported = 0;
@@ -124,9 +132,14 @@ public class GlossaryServiceImpl implements GlossaryService {
                     continue;
                 }
                 headerSkipped = true; // header is optional — only skip it once, at most, when present
+                if (imported + skipped >= MAX_IMPORT_ROWS) {
+                    throw new AppException(ErrorCode.GLOSSARY_IMPORT_TOO_LARGE);
+                }
 
                 String[] cols = line.split(",", -1);
-                if (cols.length != 3 || cols[0].isBlank() || cols[1].isBlank() || cols[2].isBlank()) {
+                if (cols.length != 3 || cols[0].isBlank() || cols[1].isBlank() || cols[2].isBlank()
+                        || cols[0].trim().length() > MAX_TERM_LENGTH || cols[1].trim().length() > MAX_TERM_LENGTH
+                        || cols[2].trim().length() > MAX_LANG_LENGTH) {
                     skipped++;
                     errors.add("Line " + lineNo + ": expected source_term,target_term,target_lang");
                     continue;

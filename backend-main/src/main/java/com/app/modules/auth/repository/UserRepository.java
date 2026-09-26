@@ -19,6 +19,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     boolean existsByEmailIgnoreCase(String email);
 
+    /** Alias-aware duplicate check — see {@code EmailNormalizer#canonicalize}. */
+    boolean existsByEmailCanonical(String emailCanonical);
+
     Optional<User> findByGoogleSub(String googleSub);
 
     @Query("SELECT u FROM User u WHERE (:q IS NULL OR LOWER(u.email) LIKE LOWER(CONCAT('%', :q, '%')) OR LOWER(u.fullName) LIKE LOWER(CONCAT('%', :q, '%'))) AND (:isAdmin IS NULL OR u.isPlatformAdmin = :isAdmin)")

@@ -1,5 +1,10 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { listNotificationsApi } from '@/api/notifications'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  countUnreadNotificationsApi,
+  listNotificationsApi,
+  markAllNotificationsReadApi,
+  markNotificationReadApi,
+} from '@/api/notifications'
 import { STALE, queryKeys } from '@/lib/queryClient'
 
 const PAGE_SIZE = 20
@@ -31,6 +36,34 @@ export function useNotificationsInfinite(workspaceId: string | undefined) {
     enabled: !!workspaceId,
     staleTime: STALE.realtime,
     refetchInterval: 30_000,
+  })
+}
+
+/** Unread total for the bell badge (server-side count, not the loaded page). */
+export function useUnreadNotificationCount(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.notificationsUnreadCount(workspaceId ?? ''),
+    queryFn: () => countUnreadNotificationsApi(workspaceId!),
+    enabled: !!workspaceId,
+    staleTime: STALE.realtime,
+    refetchInterval: 30_000,
+  })
+}
+
+/** Mark one notification read; refreshes every notification query of the workspace. */
+export function useMarkNotificationRead(workspaceId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (notificationId: string) => markNotificationReadApi(workspaceId!, notificationId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications', workspaceId ?? ''] }),
+  })
+}
+
+export function useMarkAllNotificationsRead(workspaceId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => markAllNotificationsReadApi(workspaceId!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications', workspaceId ?? ''] }),
   })
 }
 

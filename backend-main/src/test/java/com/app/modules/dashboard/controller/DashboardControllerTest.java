@@ -1,5 +1,7 @@
 package com.app.modules.dashboard.controller;
 
+import com.app.testsupport.TestRegistration;
+
 import com.app.common.exception.ErrorCode;
 import com.app.modules.auth.dto.RegisterRequest;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -28,12 +30,15 @@ class DashboardControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private com.app.modules.auth.service.RegisterOtpStore registerOtpStore;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     private record AuthContext(String token, UUID userId, UUID workspaceId, UUID projectId) {}
 
     private AuthContext registerUser(String email) throws Exception {
-        RegisterRequest req = new RegisterRequest(email, "Password123!", "Dashboard Test User");
+        RegisterRequest req = TestRegistration.withOtp(registerOtpStore, new RegisterRequest(email, "Password123!", "Dashboard Test User"));
         MvcResult res = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))

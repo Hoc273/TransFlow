@@ -36,3 +36,13 @@ app:
       exchange-ttl-seconds: 120
   media-worker:
     hmac-secret: test-media-worker-hmac-secret
+  # Integration tests share one client IP and may reuse a local Redis across runs —
+  # keep the security limits out of their way (limiters have their own unit tests).
+  security:
+    login:
+      max-failures: 1000
+    auth-throttle:
+      max-requests: 100000
+  rate-limit:
+    forgot-password-otp:
+      max-requests: 100000

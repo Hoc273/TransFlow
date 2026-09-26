@@ -4,22 +4,22 @@ import type { User } from '@/types/auth'
 import type { Workspace } from '@/types/workspace'
 import type { Role } from '@/lib/permissions'
 import { isRole } from '@/lib/permissions'
+import { apiBaseUrl } from '@/config/featureFlags'
 
 const LAST_WORKSPACE_KEY = 'tf-last-workspace'
 
+/**
+ * The refresh token is never visible to JS: the backend keeps it in an HttpOnly,
+ * SameSite=Strict cookie scoped to /api/auth (see lib/api/client.ts refresh flow).
+ */
 interface AuthState {
   accessToken: string | null
-  refreshToken: string | null
   user: User | null
   currentWorkspace: Workspace | null
   /** Derived from currentWorkspace.myRole for convenience. */
   role: Role | null
-  setSession: (payload: {
-    accessToken: string
-    refreshToken: string
-    user: User
-  }) => void
-  setTokens: (accessToken: string, refreshToken: string) => void
+  setSession: (payload: { accessToken: string; user: User }) => void
+  setAccessToken: (accessToken: string) => void
   setUser: (user: User) => void
   setCurrentWorkspace: (workspace: Workspace | null) => void
   logout: () => void
@@ -29,13 +29,11 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       accessToken: null,
-      refreshToken: null,
       user: null,
       currentWorkspace: null,
       role: null,
-      setSession: ({ accessToken, refreshToken, user }) =>
-        set({ accessToken, refreshToken, user }),
-      setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
+      setSession: ({ accessToken, user }) => set({ accessToken, user }),
+      setAccessToken: (accessToken) => set({ accessToken }),
       setUser: (user) => set({ user }),
       setCurrentWorkspace: (workspace) => {
         if (workspace?.id) {
@@ -50,20 +48,20 @@ export const useAuthStore = create<AuthState>()(
           role: workspace && isRole(workspace.myRole) ? workspace.myRole : null,
         })
       },
-      logout: () =>
+      logout: () => {
+        revokeRefreshCookie()
         set({
           accessToken: null,
-          refreshToken: null,
           user: null,
           currentWorkspace: null,
           role: null,
-        }),
+        })
+      },
     }),
     {
       name: 'tf-auth',
       partialize: (state) => ({
         accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
         user: state.user,
         currentWorkspace: state.currentWorkspace,
         role: state.role,
@@ -77,9 +75,12 @@ export const useAuthStore = create<AuthState>()(
             : isRole(p.role)
               ? p.role
               : null
+        // Drop the refresh token older builds persisted in localStorage.
+        const { refreshToken: _legacyRefresh, ...rest } = p as Partial<AuthState> & { refreshToken?: unknown }
+        void _legacyRefresh
         return {
           ...current,
-          ...p,
+          ...rest,
           currentWorkspace: workspace,
           role,
         }
@@ -87,6 +88,15 @@ export const useAuthStore = create<AuthState>()(
     },
   ),
 )
+
+/** Ask the backend to expire the HttpOnly refresh cookie (JS cannot delete it itself). */
+function revokeRefreshCookie() {
+  try {
+    void fetch(`${apiBaseUrl}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {})
+  } catch {
+    /* fetch unavailable (tests/SSR) */
+  }
+}
 
 export function getLastWorkspaceId(): string | null {
   try {

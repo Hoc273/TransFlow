@@ -20,9 +20,11 @@ class RestClientConfigTest {
     void mediaWorkerClientPostsExtractRequestOverHttp11() throws Exception {
         AtomicReference<String> protocol = new AtomicReference<>();
         AtomicReference<String> requestBody = new AtomicReference<>();
+        AtomicReference<String> internalToken = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/internal/media/extract-audio", exchange -> {
             protocol.set(exchange.getProtocol());
+            internalToken.set(exchange.getRequestHeaders().getFirst(RestClientConfig.INTERNAL_TOKEN_HEADER));
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] response = "{\"correlation_id\":\"correlation\",\"status\":\"ACCEPTED\"}"
                     .getBytes(StandardCharsets.UTF_8);
@@ -41,7 +43,8 @@ class RestClientConfigTest {
                     null,
                     new AppProperties.Ai("http://localhost:8000", 5000, 30000, 3),
                     null);
-            RestClient client = new RestClientConfig().mediaWorkerRestClient(props);
+            SecurityProperties security = new SecurityProperties(false, false, "internal-token-123", null, null, null);
+            RestClient client = new RestClientConfig(security).mediaWorkerRestClient(props);
 
             var response = client.post()
                     .uri("/internal/media/extract-audio")
@@ -52,6 +55,7 @@ class RestClientConfigTest {
 
             assertEquals(202, response.getStatusCode().value());
             assertEquals("HTTP/1.1", protocol.get());
+            assertEquals("internal-token-123", internalToken.get());
             JsonNode json = new ObjectMapper().readTree(requestBody.get());
             assertEquals("correlation", json.path("correlation_id").asText());
             assertEquals("job", json.path("media_job_id").asText());

@@ -1,7 +1,9 @@
 package com.app.modules.auth.entity;
 
 import com.app.common.entity.BaseEntity;
+import com.app.modules.auth.service.EmailNormalizer;
 import jakarta.persistence.*;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -13,6 +15,11 @@ public class User extends BaseEntity {
 
     @Column(nullable = false, length = 320)
     private String email;
+
+    /** Alias-free mailbox ({@link EmailNormalizer#canonicalize}); derived from {@code email}, never set directly. */
+    @Setter(AccessLevel.NONE)
+    @Column(name = "email_canonical", length = 320)
+    private String emailCanonical;
 
     /** Null for OAuth-only (Google) accounts. */
     @Column(name = "password_hash")
@@ -37,4 +44,10 @@ public class User extends BaseEntity {
 
     @Column(name = "avatar_url")
     private String avatarUrl;
+
+    @PrePersist
+    @PreUpdate
+    void syncEmailCanonical() {
+        this.emailCanonical = EmailNormalizer.canonicalize(email);
+    }
 }

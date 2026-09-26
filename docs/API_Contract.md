@@ -69,14 +69,21 @@
 
 | Method | Path | Auth | Mô tả |
 |---|---|---|---|
-| POST | `/api/auth/register` | không | `{email,password,fullName,otp?}` → tạo user; **lần đầu đăng nhập** trigger auto-init Workspace+Project+Credit (Arch §3). Trả `{accessToken,refreshToken,user,workspaceId,projectId}`. Nếu đã gọi `register/otp` cho email này thì `otp` bắt buộc (`OTP_REQUIRED`). |
-| POST | `/api/auth/register/otp` | không | `{email}` → gửi OTP 6 số xác thực email đăng ký (Redis `auth:otp:register:<email>`, TTL 5 phút, lưu plain). Trả `{message}`. Email đã tồn tại → `EMAIL_ALREADY_EXISTS`. |
-| POST | `/api/auth/login` | không | `{email,password}` → cùng response shape như trên. |
-| POST | `/api/auth/refresh` | không (refresh token) | `{refreshToken}` → `{accessToken,refreshToken}`. Refresh token cũ **không** bị thu hồi sau reset mật khẩu (JWT stateless, chưa có cơ chế revocation). |
+| POST | `/api/auth/register` | không | `{email,password,fullName,otp}` → tạo user; **lần đầu đăng nhập** trigger auto-init Workspace+Project+Credit (Arch §3). Trả `{accessToken,user,workspaceId,projectId}` + cookie refresh (xem dưới). **`otp` luôn bắt buộc** (thiếu → `OTP_REQUIRED`, sai → `INVALID_OTP`). `password` 8–72 ký tự và ≤ 72 byte UTF-8 (giới hạn BCrypt) → vượt: `VALIDATION_ERROR`. Email trùng **hoặc là alias của hộp thư đã đăng ký** (`a+1@gmail.com`, `a.b@gmail.com`, `@googlemail.com`; mọi domain: bỏ `+tag`) → `EMAIL_ALREADY_EXISTS`. |
+| POST | `/api/auth/register/otp` | không | `{email}` → gửi OTP 6 số xác thực email đăng ký (Redis `auth:otp:register:<email>`, TTL 5 phút, lưu plain). Trả `{message}`. Email đã tồn tại/alias → `EMAIL_ALREADY_EXISTS`. Rate limit theo email như forgot-password → `OTP_RATE_LIMIT_EXCEEDED`. |
+| POST | `/api/auth/login` | không | `{email,password}` → cùng response shape như trên. Sai mật khẩu ≥ `LOGIN_MAX_FAILURES` (mặc định 5) lần trong `LOGIN_LOCK_DURATION` (15 phút) → khoá email đó tới hết cửa sổ: `LOGIN_TEMPORARILY_LOCKED` (kể cả khi nhập đúng). |
+| POST | `/api/auth/refresh` | không (refresh cookie) | Đọc refresh token từ cookie `tf_refresh`; client không phải trình duyệt có thể gửi body `{refreshToken}`. Trả `{accessToken}` và **xoay vòng** cookie. Thiếu/sai → `INVALID_REFRESH_TOKEN`. Refresh token cũ **không** bị thu hồi sau reset mật khẩu (JWT stateless, chưa có cơ chế revocation). |
+| POST | `/api/auth/logout` | không | Xoá cookie `tf_refresh` (`Max-Age=0`). `data` rỗng. |
+
+**Refresh token cookie** (register / login / google-exchange / refresh): `Set-Cookie: tf_refresh=<jwt>; Path=/api/auth; HttpOnly; Secure; SameSite=Strict; Max-Age=<JWT_REFRESH_TTL_DAYS>`.
+Refresh token **không** xuất hiện trong JSON (JS/XSS không đọc được); FE gọi API với `credentials: 'include'`.
+
+**Throttle theo IP**: `POST` `/api/auth/login`, `/register`, `/register/otp`, `/forgot-password/*`, `/google/exchange`
+dùng chung ngân sách `AUTH_THROTTLE_MAX_REQUESTS` (30) request / `AUTH_THROTTLE_WINDOW` (5 phút) mỗi IP → 429 `TOO_MANY_REQUESTS` + header `Retry-After`.
 | GET | `/api/auth/me` | JWT | Thông tin user hiện tại (`UserResponse`): `{id,email,fullName,googleLinked,isPlatformAdmin,avatarUrl}`. |
-| PUT | `/api/auth/me` | JWT | `{fullName, avatarUrl?}` → cập nhật hồ sơ (`fullName` bắt buộc, tối đa 200 ký tự). Trả `UserResponse`. |
+| PUT | `/api/auth/me` | JWT | `{fullName, avatarUrl?}` → cập nhật hồ sơ (`fullName` bắt buộc, tối đa 200 ký tự). `avatarUrl` chỉ nhận `data:image/(png|jpeg|webp|gif);base64,...` ≤ ~1MB hoặc URL `https://` ≤ 2048 ký tự; khác (SVG, `javascript:`, http, ...) → `INVALID_AVATAR`. Trả `UserResponse`. |
 | DELETE | `/api/auth/avatar` | JWT | Xoá avatar của user hiện tại (`users.avatar_url = null`). Trả `UserResponse`. |
-| PUT | `/api/auth/password` | JWT | `{currentPassword?, newPassword}` → đổi mật khẩu (`newPassword` ≥ 8 ký tự). Nếu user đã có mật khẩu thì `currentPassword` bắt buộc và phải khớp, sai → `INVALID_CREDENTIALS`; tài khoản Google-only (chưa có `password_hash`) được đặt mật khẩu mới mà không cần `currentPassword`. `data` rỗng. |
+| PUT | `/api/auth/password` | JWT | `{currentPassword?, newPassword}` → đổi mật khẩu (`newPassword` 8–72 ký tự, ≤ 72 byte). Nếu user đã có mật khẩu thì `currentPassword` bắt buộc và phải khớp, sai → `INVALID_CREDENTIALS`; tài khoản Google-only (chưa có `password_hash`) được đặt mật khẩu mới mà không cần `currentPassword`. `data` rỗng. |
 | GET | `/api/auth/google/start` | không | Redirect sang Google OAuth2 consent screen. |
 | GET | `/api/auth/google/callback` | không | Google redirect về; set cookie/state tạm, FE gọi `exchange` tiếp theo. |
 | POST | `/api/auth/google/exchange` | không | `{code}` → cùng response shape `register/login`; nếu `google_sub` chưa gắn user nào thì chạy auto-init như lần đầu (Arch §3). |
@@ -765,6 +772,7 @@ mọi lỗi nghiệp vụ ném qua `new AppException(ErrorCode.XXX)`.
 | `ErrorCode` | `code` | HTTP | Khi nào |
 |---|---|---|---|
 | `SUCCESS` | 1000 | 200 | Mặc định cho mọi response thành công. |
+| `TOO_MANY_REQUESTS` | 9994 | 429 | Vượt throttle theo IP ở các endpoint auth công khai (§1); kèm header `Retry-After`. |
 | `RESOURCE_NOT_FOUND` | 9995 | 404 | Không thấy resource hoặc không có quyền xem (không phân biệt để tránh lộ thông tin). |
 | `UNAUTHORIZED` | 9996 | 403 | Không đủ quyền (role/project assignment/job-ownership) — dùng chung, không thay thế mã nghiệp vụ cụ thể hơn ở §15.3 khi đã có. |
 | `UNAUTHENTICATED` | 9997 | 401 | Thiếu/hết hạn JWT. |
@@ -778,7 +786,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 
 | Module | Dải `code` | Đã dùng |
 |---|---|---|
-| `auth` | 2000–2099 | `EMAIL_ALREADY_EXISTS` = 2000, `INVALID_CREDENTIALS` = 2001, `ACCOUNT_DISABLED` = 2002, `OAUTH_ONLY_ACCOUNT` = 2003, `INVALID_REFRESH_TOKEN` = 2004, `USER_NOT_FOUND` = 2005, `GOOGLE_OAUTH_FAILED` = 2006, `GOOGLE_EMAIL_UNVERIFIED` = 2007, `GOOGLE_ACCOUNT_CONFLICT` = 2008, `GOOGLE_NOT_CONFIGURED` = 2009, `GOOGLE_STATE_INVALID` = 2010, `INVALID_OTP` = 2011, `OTP_REQUIRED` = 2012, `OTP_RATE_LIMIT_EXCEEDED` = 2013 |
+| `auth` | 2000–2099 | `EMAIL_ALREADY_EXISTS` = 2000, `INVALID_CREDENTIALS` = 2001, `ACCOUNT_DISABLED` = 2002, `OAUTH_ONLY_ACCOUNT` = 2003, `INVALID_REFRESH_TOKEN` = 2004, `USER_NOT_FOUND` = 2005, `GOOGLE_OAUTH_FAILED` = 2006, `GOOGLE_EMAIL_UNVERIFIED` = 2007, `GOOGLE_ACCOUNT_CONFLICT` = 2008, `GOOGLE_NOT_CONFIGURED` = 2009, `GOOGLE_STATE_INVALID` = 2010, `INVALID_OTP` = 2011, `OTP_REQUIRED` = 2012, `OTP_RATE_LIMIT_EXCEEDED` = 2013, `LOGIN_TEMPORARILY_LOCKED` = 2014, `INVALID_AVATAR` = 2015 |
 | `workspace` | 2100–2199 | `WORKSPACE_NOT_FOUND` = 2100, `WORKSPACE_MEMBER_NOT_FOUND` = 2101, `LEAD_CANNOT_BE_REMOVED` = 2102, `WORKSPACE_MEMBER_ALREADY_EXISTS` = 2103, `CANNOT_ASSIGN_LEAD_ROLE` = 2104, `WORKSPACE_SLUG_ALREADY_EXISTS` = 2105 |
 | `project` | 2200–2299 | `PROJECT_NOT_FOUND` = 2200, `PROJECT_MEMBER_NOT_FOUND` = 2201, `PROJECT_ACCESS_DENIED` = 2202, `USER_NOT_WORKSPACE_MEMBER` = 2203, `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` = 2204, `PROJECT_MEMBER_ALREADY_EXISTS` = 2205 |
 | `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303, 2304 dành cho `PRICING_CONFIG_MISSING`, `PRICING_INVALID` = 2305, `PRICING_LARGE_CHANGE_UNCONFIRMED` = 2306 |
@@ -786,11 +794,11 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `preset` | 2500–2599 | `PRESET_NOT_FOUND` = 2500, `PRESET_INACTIVE` = 2501, `PRESET_SCOPE_INVALID` = 2502, `CANNOT_DELETE_ONLY_DEFAULT_PRESET` = 2503, `SYSTEM_PRESET_READ_ONLY` = 2504, `PRESET_DEFAULT_CONFLICT` = 2505, `REPLACEMENT_PRESET_INVALID` = 2506 |
 | `notification` | 2600–2699 | `NOTIFICATION_NOT_FOUND` = 2600, `NOTIFICATION_TYPE_INVALID` = 2601 |
 | `dashboard` | 2700–2799 | `DASHBOARD_DATE_RANGE_INVALID` = 2700, `DASHBOARD_GROUP_BY_INVALID` = 2701 |
-| `media_asset` | 2800–2899 | `TERMS_NOT_ACCEPTED` = 2800, `MEDIA_FILE_TOO_LARGE` = 2801, `MEDIA_DURATION_EXCEEDED` = 2802, `TERMS_VERSION_MISMATCH` = 2803, `MEDIA_FILE_EXPIRED` = 2804 |
+| `media_asset` | 2800–2899 | `TERMS_NOT_ACCEPTED` = 2800, `MEDIA_FILE_TOO_LARGE` = 2801, `MEDIA_DURATION_EXCEEDED` = 2802, `TERMS_VERSION_MISMATCH` = 2803, `MEDIA_FILE_EXPIRED` = 2804, `MEDIA_INVALID_FILE` = 2805 |
 | `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902, `STYLE_NOT_FOUND` = 2903, `INVALID_STYLE_KEY` = 2904, `DOWNLOAD_SELECTION_TOO_LARGE` = 2905 |
 | `summarization` | 3000–3099 | `REFINE_LIMIT_REACHED` = 3000, `PROPOSAL_ALREADY_TRANSLATED` = 3001 |
 | `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100, `BATCH_RATE_LIMIT_EXCEEDED` = 3101 |
-| `glossary` | 3200–3299 | — |
+| `glossary` | 3200–3299 | `GLOSSARY_IMPORT_TOO_LARGE` = 3200 |
 | `qa` | 3300–3399 | `QA_BLOCKED` = 3300, `OVERRIDE_NOT_ALLOWED` = 3301 |
 | `platform` (gồm `guide`) | 3400–3499 | `GUIDE_CATEGORY_NOT_FOUND` = 3400, `GUIDE_CATEGORY_HAS_ARTICLES` = 3401, `GUIDE_SLUG_ALREADY_EXISTS` = 3402, `GUIDE_ARTICLE_NOT_FOUND` = 3403, `INVALID_SLUG_FORMAT` = 3404 (các API Platform khác vẫn dùng mã chung `VALIDATION_ERROR`/`UNAUTHORIZED`/`RESOURCE_NOT_FOUND`/`INSUFFICIENT_CREDIT`) |
 
@@ -811,7 +819,9 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `GOOGLE_STATE_INVALID` | 2010 | 400 | State OAuth Google không hợp lệ/hết hạn. |
 | `INVALID_OTP` | 2011 | 400 | OTP sai, hết hạn, hoặc đã bị xoá do verify sai quá 5 lần (đăng ký & quên mật khẩu). |
 | `OTP_REQUIRED` | 2012 | 400 | Đăng ký với email đã gửi OTP nhưng request không kèm `otp`. |
-| `OTP_RATE_LIMIT_EXCEEDED` | 2013 | 429 | Vượt giới hạn gửi OTP quên mật khẩu theo email (mặc định 5 lần/10 phút, cấu hình `app.rate-limit.forgot-password-otp.*`). |
+| `OTP_RATE_LIMIT_EXCEEDED` | 2013 | 429 | Vượt giới hạn gửi OTP (quên mật khẩu hoặc đăng ký) theo email (mặc định 5 lần/10 phút, cấu hình `app.rate-limit.forgot-password-otp.*`). |
+| `LOGIN_TEMPORARILY_LOCKED` | 2014 | 429 | Email bị khoá đăng nhập tạm thời sau quá nhiều lần sai mật khẩu (`app.security.login.*`). |
+| `INVALID_AVATAR` | 2015 | 400 | `avatarUrl` không phải ảnh raster data-URL ≤ ~1MB hoặc URL https. |
 | `WORKSPACE_NOT_FOUND` | 2100 | 404 | Workspace không tồn tại hoặc user không có quyền xem. |
 | `WORKSPACE_MEMBER_NOT_FOUND` | 2101 | 404 | Thành viên không tồn tại trong Workspace. |
 | `LEAD_CANNOT_BE_REMOVED` | 2102 | 400 | Cố xoá hoặc hạ role của Workspace Lead. |
@@ -833,6 +843,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `TERMS_NOT_ACCEPTED` | 2800 | 403 | Tạo job từ asset chưa có `media_consents` khớp `terms_version` hiện hành. |
 | `MEDIA_FILE_TOO_LARGE` | 2801 | 400 | Upload video vượt 500MB (SRS §6), enforce ở service layer. |
 | `MEDIA_DURATION_EXCEEDED` | 2802 | 400 | Video vượt 30 phút (SRS §6), enforce ở service layer sau khi ffprobe. |
+| `MEDIA_INVALID_FILE` | 2805 | 400 | Content-Type không phải `video/*`, hoặc ffprobe (có trên host) không đọc được stream media — file không được lưu. |
 | `TERMS_VERSION_MISMATCH` | 2803 | 400 | `termsVersion` gửi lên không khớp `terms_versions.is_current` tại thời điểm consent. |
 | `INSUFFICIENT_CREDIT` | 2300 | 402 | Số dư không đủ khi tạo job hoặc trừ credit. |
 | `CREDIT_PACKAGE_NOT_FOUND` | 2301 | 404 | Gói credit không tồn tại. |
@@ -844,6 +855,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `PROPOSAL_ALREADY_TRANSLATED` | 3001 | 409 | Đổi `selected_proposal_id` hoặc refine phương án đang chọn khi stage `TRANSLATE` của job đã `COMPLETED` từ phương án đó (SRS §5.5 — phải rerun-from-stage `TRANSLATE` trước). |
 | `BATCH_SIZE_EXCEEDED` | 3100 | 400 | `sourceAssetIds` rỗng hoặc > 20 khi tạo batch. |
 | `BATCH_RATE_LIMIT_EXCEEDED` | 3101 | 429 | Vượt giới hạn tạo batch/khoảng thời gian của user (mặc định 5 lần/10 phút — cần BA xác nhận). |
+| `GLOSSARY_IMPORT_TOO_LARGE` | 3200 | 400 | CSV glossary > 2MB hoặc > 10.000 dòng (term > 500 ký tự / lang > 16 ký tự bị skip từng dòng). |
 | `QA_BLOCKED` | 3300 | 403 | Xuất bản/dựng video/publish-package khi còn `qa_issues` chặn hành động tương ứng chưa resolve/override. |
 | `OVERRIDE_NOT_ALLOWED` | 3301 | 403 | Cố override `issue_type` thuộc nhóm không bao giờ override được. |
 | `PROVIDER_NOT_FOUND` | 2400 | 404 | Nguồn AI (BYOK) không tồn tại hoặc không thuộc quyền sở hữu của user. |

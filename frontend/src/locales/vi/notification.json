@@ -2,5 +2,24 @@
   "title": "Thông báo",
   "emptyTitle": "Chưa có thông báo",
   "loadMore": "Tải thêm",
-  "loadingMore": "Đang tải…"
+  "loadingMore": "Đang tải…",
+  "markAllRead": "Đánh dấu tất cả đã đọc",
+  "markRead": "Đánh dấu đã đọc",
+  "unread": "Chưa đọc",
+  "unreadCount": "{{count}} chưa đọc",
+  "filter": {
+    "all": "Tất cả",
+    "unread": "Chưa đọc"
+  },
+  "emptyUnread": "Bạn đã đọc hết thông báo",
+  "types": {
+    "JOB_COMPLETED": "Media job đã hoàn tất",
+    "JOB_FAILED": "Media job thất bại",
+    "JOB_NEEDS_RERUN": "Media job cần chạy lại",
+    "JOB_QA_BLOCKED": "Render đang chờ duyệt QA",
+    "BATCH_COMPLETED": "Batch đã hoàn tất",
+    "BATCH_PARTIALLY_FAILED": "Batch lỗi một phần",
+    "BATCH_FAILED": "Batch thất bại",
+    "PROVIDER_KEY_INVALID": "API key của provider bị từ chối"
+  }
 }

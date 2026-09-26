@@ -1,0 +1,16 @@
+# TransFlow — cấu hình HTTP tạm, chỉ dùng lần đầu khi chưa có chứng chỉ (phục vụ ACME webroot).
+# deploy/server-deploy.sh thay __DOMAIN__ / __WWW_DOMAIN__ / __STORAGE_DOMAIN__ rồi ghi vào /etc/nginx/conf.d/transflow.conf.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __DOMAIN__ __WWW_DOMAIN__ __STORAGE_DOMAIN__;
+    server_tokens off;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 503;
+    }
+}

@@ -54,8 +54,7 @@ export function GoogleAuthDonePage() {
         if (cancelled) return
         setSession({
           accessToken: data.accessToken,
-          refreshToken: data.refreshToken,
-          user: data.user,
+            user: data.user,
         })
         const path = await resolvePostAuthPath()
         if (!cancelled) navigate(path, { replace: true })

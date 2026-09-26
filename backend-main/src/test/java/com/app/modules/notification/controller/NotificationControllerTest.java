@@ -1,5 +1,7 @@
 package com.app.modules.notification.controller;
 
+import com.app.testsupport.TestRegistration;
+
 import com.app.common.exception.ErrorCode;
 import com.app.modules.auth.dto.RegisterRequest;
 import com.app.modules.notification.service.NotificationService;
@@ -30,6 +32,9 @@ class NotificationControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private com.app.modules.auth.service.RegisterOtpStore registerOtpStore;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
@@ -38,7 +43,7 @@ class NotificationControllerTest {
     private record AuthContext(String token, UUID userId, UUID workspaceId, UUID projectId) {}
 
     private AuthContext registerUser(String email) throws Exception {
-        RegisterRequest req = new RegisterRequest(email, "Password123!", "Notification Test User");
+        RegisterRequest req = TestRegistration.withOtp(registerOtpStore, new RegisterRequest(email, "Password123!", "Notification Test User"));
         MvcResult res = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))

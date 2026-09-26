@@ -1,6 +1,7 @@
 package com.app.common.security;
 
 import com.app.common.config.AppProperties;
+import com.app.common.config.SecurityProperties;
 import com.app.common.dto.ApiResponse;
 import com.app.common.exception.ErrorCode;
 import com.app.modules.platform.security.PlatformAdminAuditFilter;
@@ -19,6 +20,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.header.writers.StaticHeadersWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -36,11 +39,9 @@ public class SecurityConfig {
             "/api/auth/refresh",
             "/api/auth/forgot-password/**",
             "/api/auth/google/**",
+            "/api/auth/logout",
             "/actuator/health",
             "/actuator/health/**",
-            "/v3/api-docs/**",
-            "/swagger-ui/**",
-            "/swagger-ui.html",
             "/api/guides/**"
     };
 
@@ -48,13 +49,23 @@ public class SecurityConfig {
             "/internal/media/**"
     };
 
+    /** JSON API only: nothing should ever render, frame, or load sub-resources from a response. */
+    private static final String API_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+    private static final String PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=(), usb=()";
+
     private final JwtAuthFilter jwtAuthFilter;
     private final PlatformAdminAuditService platformAdminAuditService;
+    private final SecurityProperties securityProperties;
+    private final FixedWindowRateLimiter rateLimiter;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
-                          PlatformAdminAuditService platformAdminAuditService) {
+                          PlatformAdminAuditService platformAdminAuditService,
+                          SecurityProperties securityProperties,
+                          FixedWindowRateLimiter rateLimiter) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.platformAdminAuditService = platformAdminAuditService;
+        this.securityProperties = securityProperties;
+        this.rateLimiter = rateLimiter;
     }
 
     @Bean
@@ -65,6 +76,15 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Defaults already add X-Content-Type-Options, X-Frame-Options: DENY, no-cache and
+                // HSTS (HTTPS requests only); extend with CSP / Referrer / Permissions policies.
+                .headers(h -> h
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(API_CSP))
+                        .referrerPolicy(rp -> rp.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31_536_000))
+                        .addHeaderWriter(new StaticHeadersWriter("Permissions-Policy", PERMISSIONS_POLICY)))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
                         .requestMatchers(HttpMethod.POST, HMAC_AUTHENTICATED_PATHS).permitAll()
@@ -87,10 +107,21 @@ public class SecurityConfig {
                                     .build());
                         }))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new AuthThrottleFilter(rateLimiter, securityProperties, objectMapper),
+                        JwtAuthFilter.class)
                 // Audit-only: logs every /api/platform/** request incl. denied ones;
                 // runs after JWT auth so the principal is populated when present.
                 .addFilterAfter(new PlatformAdminAuditFilter(platformAdminAuditService),
                         JwtAuthFilter.class);
+
+        if (securityProperties.requireHttps()) {
+            // TLS terminates at the reverse proxy; isSecure() comes from its X-Forwarded-Proto
+            // (server.forward-headers-strategy=native). In-network calls (worker callbacks,
+            // health probes) stay on plain HTTP inside the private network.
+            http.requiresChannel(ch -> ch
+                    .requestMatchers("/internal/**", "/actuator/health", "/actuator/health/**").requiresInsecure()
+                    .anyRequest().requiresSecure());
+        }
 
         return http.build();
     }
@@ -103,7 +134,7 @@ public class SecurityConfig {
                 : "http://localhost:5173";
         cfg.setAllowedOrigins(List.of(origin, "http://localhost:5173", "http://127.0.0.1:5173"));
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        cfg.setAllowedHeaders(List.of("*"));
+        cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Accept-Language", "X-Requested-With"));
         cfg.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cfg);

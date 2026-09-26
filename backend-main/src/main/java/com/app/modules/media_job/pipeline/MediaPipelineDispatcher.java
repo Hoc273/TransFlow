@@ -139,6 +139,10 @@ public class MediaPipelineDispatcher {
             if (!cancelled) {
                 job.setStatus(MediaJob.JobStatus.COMPLETED);
                 jobRepository.save(job);
+                if (notificationService != null) {
+                    notificationService.notify(job.getWorkspaceId(), job.getCreatedByUserId(), "JOB_COMPLETED",
+                            job.getId(), "Media job completed");
+                }
             }
         }
     }

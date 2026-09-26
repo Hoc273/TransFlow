@@ -1,0 +1,169 @@
+name: CD (Deploy To Production)
+
+# Deploy production sau khi CI xanh trên main (hoặc chạy tay từ tab Actions).
+# 1. build: build 4 image, push ghcr.io/<owner>/transflow-*:<sha> (+ :latest)
+# 2. deploy: SSH vào VPS, chép compose + deploy/, ghi .env từ secret ENV_PROD,
+#    chạy deploy/server-deploy.sh (nginx + certbot + compose up + health check).
+#
+# Secrets (Settings → Secrets and variables → Actions → Secrets, hoặc environment "production"):
+#   SSH_HOST, SSH_USER, SSH_PRIVATE_KEY, ENV_PROD, (tuỳ chọn) SSH_KNOWN_HOSTS
+# Variables (tuỳ chọn): SSH_PORT (22), APP_DIR (/opt/transflow), VITE_DEFAULT_LANGUAGE (vi)
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  build:
+    name: build / ${{ matrix.image }}
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - image: transflow-backend-main
+            context: backend-main
+          - image: transflow-backend-ai
+            context: backend-ai
+          - image: transflow-media-worker
+            context: backend-media-worker
+          - image: transflow-frontend
+            context: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Resolve image registry
+        id: reg
+        run: echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: |
+            ${{ steps.reg.outputs.registry }}/${{ matrix.image }}:${{ env.DEPLOY_SHA }}
+            ${{ steps.reg.outputs.registry }}/${{ matrix.image }}:latest
+          # Chỉ frontend dùng các build-arg này (VITE_* bake vào bundle); image khác bỏ qua.
+          build-args: |
+            VITE_API_BASE_URL=/api
+            VITE_DEFAULT_LANGUAGE=${{ vars.VITE_DEFAULT_LANGUAGE || 'vi' }}
+            VITE_ENABLE_GLOBAL_SEARCH=false
+            VITE_ENABLE_GOOGLE_AUTH=true
+            VITE_ENABLE_QA_OVERRIDE=true
+            VITE_ENABLE_NARRATIVE_REVIEW_AI=true
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  deploy:
+    name: deploy / production
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+      APP_DIR: ${{ vars.APP_DIR || '/opt/transflow' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Check required secrets
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          ENV_PROD: ${{ secrets.ENV_PROD }}
+        run: |
+          missing=""
+          [ -n "$SSH_HOST" ] || missing="$missing SSH_HOST"
+          [ -n "$SSH_USER" ] || missing="$missing SSH_USER"
+          [ -n "$SSH_PRIVATE_KEY" ] || missing="$missing SSH_PRIVATE_KEY"
+          [ -n "$ENV_PROD" ] || missing="$missing ENV_PROD"
+          if [ -n "$missing" ]; then echo "::error::Missing secrets:$missing"; exit 1; fi
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SSH_KNOWN_HOSTS not set — trusting host key from ssh-keyscan"
+            ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts
+          fi
+          chmod 600 ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host prod
+            HostName $SSH_HOST
+            User $SSH_USER
+            Port $SSH_PORT
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            ServerAliveInterval 30
+          EOF
+          ssh prod 'echo "connected to $(hostname)"'
+
+      - name: Upload compose + deploy files
+        run: |
+          ssh prod "mkdir -p '$APP_DIR/deploy/nginx'"
+          scp docker-compose.prod.yml "prod:$APP_DIR/docker-compose.prod.yml"
+          scp deploy/server-deploy.sh "prod:$APP_DIR/deploy/server-deploy.sh"
+          scp deploy/nginx/*.template deploy/nginx/*.conf "prod:$APP_DIR/deploy/nginx/"
+
+      - name: Write .env and .env.deploy
+        env:
+          ENV_PROD: ${{ secrets.ENV_PROD }}
+        run: |
+          printf '%s\n' "$ENV_PROD" | ssh prod "umask 077 && cat > '$APP_DIR/.env'"
+          printf 'IMAGE_REGISTRY=ghcr.io/%s\nIMAGE_TAG=%s\n' "${GITHUB_REPOSITORY_OWNER,,}" "$DEPLOY_SHA" \
+            | ssh prod "umask 077 && cat > '$APP_DIR/.env.deploy'"
+
+      - name: Log in to GHCR on server
+        run: |
+          # GITHUB_TOKEN chỉ sống trong job này; login lại mỗi lần deploy, logout ở bước cuối.
+          printf '%s' "${{ secrets.GITHUB_TOKEN }}" \
+            | ssh prod "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+
+      - name: Run server deploy
+        run: ssh prod "APP_DIR='$APP_DIR' bash '$APP_DIR/deploy/server-deploy.sh'"
+
+      - name: Log out of GHCR on server
+        if: always()
+        run: ssh prod "docker logout ghcr.io" || true
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Deployed \`${DEPLOY_SHA::7}\` to production" >> "$GITHUB_STEP_SUMMARY"

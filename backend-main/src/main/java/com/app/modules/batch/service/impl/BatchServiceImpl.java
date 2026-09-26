@@ -12,6 +12,7 @@ import com.app.modules.media_job.dto.CreateMediaJobRequest;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.service.MediaJobService;
+import com.app.modules.notification.service.NotificationService;
 import com.app.modules.workspace.service.WorkspaceAccessService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -31,17 +32,20 @@ public class BatchServiceImpl implements BatchService {
     private final MediaJobService mediaJobService;
     private final BatchCreateRateLimiter rateLimiter;
     private final ObjectMapper objectMapper;
+    private final NotificationService notificationService;
 
     public BatchServiceImpl(LocalizationBatchRepository localizationBatchRepository,
                              WorkspaceAccessService access,
                              MediaJobService mediaJobService,
                              BatchCreateRateLimiter rateLimiter,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             NotificationService notificationService) {
         this.localizationBatchRepository = localizationBatchRepository;
         this.access = access;
         this.mediaJobService = mediaJobService;
         this.rateLimiter = rateLimiter;
         this.objectMapper = objectMapper;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -160,6 +164,7 @@ public class BatchServiceImpl implements BatchService {
         if (children.isEmpty()) {
             return;
         }
+        LocalizationBatch.BatchStatus previous = batch.getStatus();
         boolean anyInFlight = children.stream()
                 .anyMatch(j -> j.getStatus() == MediaJob.JobStatus.PENDING || j.getStatus() == MediaJob.JobStatus.PROCESSING);
         if (anyInFlight) {
@@ -172,6 +177,31 @@ public class BatchServiceImpl implements BatchService {
                     : LocalizationBatch.BatchStatus.PARTIALLY_FAILED);
         }
         localizationBatchRepository.save(batch);
+        if (batch.getStatus() != previous) {
+            notifyTerminal(batch, children);
+        }
+    }
+
+    /** Notify the batch creator once when the batch settles (COMPLETED / PARTIALLY_FAILED / FAILED). */
+    private void notifyTerminal(LocalizationBatch batch, List<MediaJob> children) {
+        String type = switch (batch.getStatus()) {
+            case COMPLETED -> "BATCH_COMPLETED";
+            case PARTIALLY_FAILED -> "BATCH_PARTIALLY_FAILED";
+            case FAILED -> "BATCH_FAILED";
+            default -> null;
+        };
+        if (type == null || batch.getCreatedBy() == null) {
+            return;
+        }
+        long completed = children.stream().filter(j -> j.getStatus() == MediaJob.JobStatus.COMPLETED).count();
+        String name = batch.getName() != null && !batch.getName().isBlank() ? "\"" + batch.getName() + "\"" : "Batch";
+        String message = switch (batch.getStatus()) {
+            case COMPLETED -> name + " completed: all " + children.size() + " videos are ready";
+            case PARTIALLY_FAILED -> name + " finished: " + completed + "/" + children.size()
+                    + " videos completed, the rest failed or were cancelled";
+            default -> name + " failed: no video completed";
+        };
+        notificationService.notify(batch.getWorkspaceId(), batch.getCreatedBy(), type, batch.getId(), message);
     }
 
     private LocalizationBatch requireBatchInWorkspace(UUID workspaceId, UUID batchId) {

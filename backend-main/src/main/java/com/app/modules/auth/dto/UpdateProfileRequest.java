@@ -8,6 +8,7 @@ public record UpdateProfileRequest(
         @Size(max = 200, message = "Full name must be at most 200 characters")
         String fullName,
 
+        @Size(max = 1_500_000, message = "Avatar is too large")
         String avatarUrl
 ) {
     public UpdateProfileRequest(String fullName) {

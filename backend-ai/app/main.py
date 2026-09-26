@@ -13,6 +13,7 @@ from app.api.routes import router
 from app.api.source_separation import source_separation_router
 from app.api.validate import validate_router
 from app.core.config import settings
+from app.core.internal_auth import InternalTokenMiddleware
 from app.core.logging_config import setup_logging
 from app.services.provider_errors import ProviderException
 
@@ -23,6 +24,8 @@ app = FastAPI(
     version="0.2.0",
     description="AI Gateway for TransFlow Media Studio: STT, TTS, Translate, QA, Summarize, VLM, Source Separation.",
 )
+
+app.add_middleware(InternalTokenMiddleware, token_getter=lambda: settings.internal_service_token)
 
 app.include_router(router)
 app.include_router(media_router)

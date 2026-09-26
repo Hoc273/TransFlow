@@ -334,8 +334,8 @@ def _execution_info(
 def _should_mock(provider, adapter) -> bool:
     """Mock when in mock mode, or when a key-requiring adapter has no usable key.
 
-    Zero-key adapters (``adapter.requires_api_key = False``, e.g.
-    local_piper) are never gated on ``api_key`` — an empty key is their
+    Zero-key adapters (``adapter.requires_api_key = False``, none are
+    registered today) are never gated on ``api_key`` — an empty key is their
     normal operating mode, not a misconfiguration (P0-1 fix).
     """
     if settings.mock_mode:

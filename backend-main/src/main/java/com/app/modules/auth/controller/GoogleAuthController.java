@@ -3,6 +3,7 @@ package com.app.modules.auth.controller;
 import com.app.common.dto.ApiResponse;
 import com.app.modules.auth.dto.AuthResponse;
 import com.app.modules.auth.dto.GoogleExchangeRequest;
+import com.app.modules.auth.service.AuthCookieService;
 import com.app.modules.auth.service.oauth.GoogleOAuthService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -19,9 +20,11 @@ import java.io.IOException;
 public class GoogleAuthController {
 
     private final GoogleOAuthService googleOAuthService;
+    private final AuthCookieService authCookieService;
 
-    public GoogleAuthController(GoogleOAuthService googleOAuthService) {
+    public GoogleAuthController(GoogleOAuthService googleOAuthService, AuthCookieService authCookieService) {
         this.googleOAuthService = googleOAuthService;
+        this.authCookieService = authCookieService;
     }
 
     @GetMapping("/start")
@@ -46,9 +49,12 @@ public class GoogleAuthController {
     }
 
     @PostMapping("/exchange")
-    public ApiResponse<AuthResponse> exchange(@Valid @RequestBody GoogleExchangeRequest req) {
+    public ApiResponse<AuthResponse> exchange(@Valid @RequestBody GoogleExchangeRequest req,
+                                              HttpServletResponse response) {
+        AuthResponse auth = googleOAuthService.exchange(req.code());
+        authCookieService.writeRefreshCookie(response, auth.refreshToken());
         return ApiResponse.<AuthResponse>builder()
-                .data(googleOAuthService.exchange(req.code()))
+                .data(auth)
                 .build();
     }
 }

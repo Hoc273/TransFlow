@@ -1,5 +1,7 @@
 package com.app.modules.media_job.callback.controller;
 
+import com.app.testsupport.TestRegistration;
+
 import com.app.common.exception.ErrorCode;
 import com.app.modules.auth.dto.RegisterRequest;
 import com.app.modules.auth.repository.UserRepository;
@@ -51,6 +53,9 @@ class MediaCallbackControllerTest {
     private static final String SECRET = "test-media-worker-hmac-secret";
 
     @Autowired private MockMvc mockMvc;
+
+    @Autowired
+    private com.app.modules.auth.service.RegisterOtpStore registerOtpStore;
     @Autowired private ObjectMapper objectMapper;
 
     @Autowired private UserRepository userRepository;
@@ -107,7 +112,7 @@ class MediaCallbackControllerTest {
     }
 
     private Lead registerLeadWithWorkspace(String email) throws Exception {
-        RegisterRequest req = new RegisterRequest(email, "Password123!", "Lead " + email);
+        RegisterRequest req = TestRegistration.withOtp(registerOtpStore, new RegisterRequest(email, "Password123!", "Lead " + email));
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))

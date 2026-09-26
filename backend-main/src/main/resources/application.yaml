@@ -1,5 +1,11 @@
 server:
   port: 8080
+  # Sau reverse proxy (nginx): lấy IP/scheme thật từ X-Forwarded-*; Tomcat chỉ tin header này khi
+  # request đến từ proxy mạng nội bộ (10/8, 172.16/12, 192.168/16, 127/8) nên client không giả mạo được.
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:native}
+  error:
+    include-stacktrace: never
+    include-message: never
 
 spring:
   application:
@@ -46,6 +52,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
   # RabbitMQ transport reserved for the media.stage.* pipeline.
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
@@ -104,7 +111,7 @@ app:
     job-reconciler-interval: PT5M
     job-idle-threshold: PT5M
     batch-reconciler-interval: PT10M
-    platform-provider-check-interval: ${PLATFORM_PROVIDER_CHECK_INTERVAL:PT30M}
+    platform-provider-check-interval: ${PLATFORM_PROVIDER_CHECK_INTERVAL:PT2H}
     platform-voice-sync-cron: "0 30 4 * * *"
     user-provider-check-cron: "0 0 4 * * *"
     notification-cleanup-cron: "0 30 3 * * SUN"
@@ -171,6 +178,26 @@ app:
     model: ${FREELLMAPI_MODEL:auto}
     capabilities: ${FREELLMAPI_CAPABILITIES:TRANSLATE}
     priority: ${FREELLMAPI_PRIORITY:10}
+  # Hardening (docs/Security_Hardening.md). Mọi giá trị có default an toàn cho dev.
+  security:
+    # true ở production: từ chối khởi động nếu còn secret mặc định/yếu (JWT, AES, HMAC, MinIO, DB...).
+    strict-secrets: ${STRICT_SECRETS:false}
+    # true khi đứng sau proxy TLS: redirect HTTP -> HTTPS (trừ /internal/** và health).
+    require-https: ${REQUIRE_HTTPS:false}
+    # Token dùng chung gửi kèm header X-Internal-Token sang backend-ai & media-worker.
+    internal-service-token: ${INTERNAL_SERVICE_TOKEN:}
+    refresh-cookie:
+      name: tf_refresh
+      # Trình duyệt coi http://localhost là secure context nên để true cả khi dev.
+      secure: ${AUTH_COOKIE_SECURE:true}
+      same-site: Strict
+      path: /api/auth
+    login:
+      max-failures: ${LOGIN_MAX_FAILURES:5}
+      lock-duration: ${LOGIN_LOCK_DURATION:PT15M}
+    auth-throttle:
+      max-requests: ${AUTH_THROTTLE_MAX_REQUESTS:30}
+      window: ${AUTH_THROTTLE_WINDOW:PT5M}
   platform-admin:
     seed-on-startup: ${PLATFORM_ADMIN_SEED_ON_STARTUP:false}
     emails: ${PLATFORM_ADMIN_EMAILS:}

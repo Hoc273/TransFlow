@@ -148,6 +148,30 @@ class GlossaryServiceImplTest {
     }
 
     @Test
+    void importCsv_overSizeLimit_isRejected() {
+        byte[] big = new byte[(int) GlossaryServiceImpl.MAX_IMPORT_BYTES + 1];
+        MockMultipartFile file = new MockMultipartFile("file", "terms.csv", "text/csv", big);
+
+        AppException ex = assertThrows(AppException.class, () ->
+                service.importCsv(workspaceId, userId, projectId, file));
+        assertEquals(ErrorCode.GLOSSARY_IMPORT_TOO_LARGE, ex.getErrorCode());
+        verifyNoInteractions(glossaryTermRepository);
+    }
+
+    @Test
+    void importCsv_overlongTerm_isSkipped() {
+        Glossary glossary = existingGlossary();
+        when(glossaryRepository.findByProjectId(projectId)).thenReturn(Optional.of(glossary));
+
+        String csv = "x".repeat(GlossaryServiceImpl.MAX_TERM_LENGTH + 1) + ",dich,vi\n";
+        MockMultipartFile file = new MockMultipartFile("file", "terms.csv", "text/csv", csv.getBytes());
+
+        ImportResult result = service.importCsv(workspaceId, userId, projectId, file);
+        assertEquals(0, result.imported());
+        assertEquals(1, result.skipped());
+    }
+
+    @Test
     void importCsv_withHeaderAndMixedRows_importsValidSkipsInvalid() {
         Glossary glossary = existingGlossary();
         when(glossaryRepository.findByProjectId(projectId)).thenReturn(Optional.of(glossary));

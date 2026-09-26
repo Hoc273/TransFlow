@@ -25,6 +25,7 @@ public enum ErrorCode {
     UNAUTHENTICATED(9997, "Authentication required", HttpStatus.UNAUTHORIZED),
     UNAUTHORIZED(9996, "Access denied", HttpStatus.FORBIDDEN),
     RESOURCE_NOT_FOUND(9995, "Resource not found", HttpStatus.NOT_FOUND),
+    TOO_MANY_REQUESTS(9994, "Too many requests; please try again later", HttpStatus.TOO_MANY_REQUESTS),
 
     // 20xx - auth (Member A)
     EMAIL_ALREADY_EXISTS(2000, "Email is already registered", HttpStatus.CONFLICT),
@@ -41,6 +42,8 @@ public enum ErrorCode {
     INVALID_OTP(2011, "Invalid or expired verification OTP", HttpStatus.BAD_REQUEST),
     OTP_REQUIRED(2012, "Email verification OTP is required", HttpStatus.BAD_REQUEST),
     OTP_RATE_LIMIT_EXCEEDED(2013, "Too many OTP requests; please try again later", HttpStatus.TOO_MANY_REQUESTS),
+    LOGIN_TEMPORARILY_LOCKED(2014, "Too many failed sign-in attempts; please try again later", HttpStatus.TOO_MANY_REQUESTS),
+    INVALID_AVATAR(2015, "Avatar must be a PNG/JPEG/WEBP/GIF image under 1MB or an https URL", HttpStatus.BAD_REQUEST),
 
     // 21xx - workspace (Member A)
     WORKSPACE_NOT_FOUND(2100, "Workspace not found", HttpStatus.NOT_FOUND),
@@ -104,6 +107,7 @@ public enum ErrorCode {
     MEDIA_FILE_TOO_LARGE(2801, "Uploaded file exceeds the maximum allowed size of 500MB", HttpStatus.BAD_REQUEST),
     MEDIA_DURATION_EXCEEDED(2802, "Video duration exceeds the maximum allowed length of 30 minutes", HttpStatus.BAD_REQUEST),
     TERMS_VERSION_MISMATCH(2803, "termsVersion does not match the current terms version", HttpStatus.BAD_REQUEST),
+    MEDIA_INVALID_FILE(2805, "Uploaded file is not a readable video", HttpStatus.BAD_REQUEST),
     MEDIA_FILE_EXPIRED(2804, "Media files were deleted after the retention period; upload the video again", HttpStatus.GONE),
 
     // 29xx - media_job (Member B)
@@ -121,6 +125,9 @@ public enum ErrorCode {
     // 31xx - batch (Member B)
     BATCH_SIZE_EXCEEDED(3100, "sourceAssetIds must contain between 1 and 20 items", HttpStatus.BAD_REQUEST),
     BATCH_RATE_LIMIT_EXCEEDED(3101, "Too many batches created recently; please wait before creating another", HttpStatus.TOO_MANY_REQUESTS),
+
+    // 32xx - glossary (Member B)
+    GLOSSARY_IMPORT_TOO_LARGE(3200, "Glossary CSV exceeds 2MB or 10,000 rows", HttpStatus.BAD_REQUEST),
 
     // 33xx - qa (Member B)
     QA_BLOCKED(3300, "Blocking QA issues must be resolved or overridden first", HttpStatus.FORBIDDEN),

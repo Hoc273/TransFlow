@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin"
     media_bucket: str = "transflow-media"
     callback_secret: str = "change-me"
+    # Shared secret backend-main sends as X-Internal-Token (app.core.internal_auth).
+    # Same env name as backend-main/backend-ai; empty = check disabled (local dev only).
+    internal_service_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("MEDIA_WORKER_INTERNAL_SERVICE_TOKEN", "INTERNAL_SERVICE_TOKEN"),
+    )
     callback_base_url: str = "http://localhost:8080"
     log_level: str = "INFO"
     # Deployment-visible worker revision (git SHA or release version). This is

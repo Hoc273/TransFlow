@@ -84,47 +84,6 @@ OPENAI_TTS_HINT_VOICES: list[TtsVoice] = [
     TtsVoice(voice_id="onyx", language="en-US", gender="MALE", display_name="Onyx"),
 ]
 
-# ── Piper (System tier, zero-key, MIT rhasspy/piper-voices v1.0.0) ────────────
-# Voice ids are aligned to the V32 seed asset_key naming scheme (ADR-CEP §6)
-# so the Spring strategy layer can map 1:1 once the seed correction lands.
-#
-# ⚡ AMENDED 2026-08-02 (A1.2 review): "reproducible model assets" — the list
-# contains ONLY models verified to exist in the official MIT repo
-# rhasspy/piper-voices (piper `voices.json` + VOICES.md + MODEL_CARD).
-# The previous 7 vi voices (bich-ngoc, pham-tuyen, ...) do NOT exist upstream
-# and were removed. Gender/dialect of the vi models is unknown (MODEL_CARD
-# does not publish it) → null. Sample rates are the real model config values
-# (vais1000 22050 / 25hours 16000 / vivos 16000), NOT assumed 22050.
-# Licensing caveat (documented, not blocking): vivos trains on VIVOS
-# (CC BY-NC-SA 4.0 data), 25hours dataset license = unknown → for commercial
-# deployments prefer piper-vi-vais1000 (CC-BY-4.0 data, medium quality).
-# PiperAdapter.discover_voices further intersects this catalog with the model
-# files actually baked in PIPER_VOICES_DIR — no phantom voices.
-# ⚡ NOTE (release gate 2026-08-02): the V32 DB seed is UNCHANGED (10 voices,
-# CONFIRMED A1.1) — editing it was reverted because it breaks the Flyway
-# checksum of already-applied migrations. Therefore asset_key here matches
-# the V32 seed only for piper-en-amy/joe/alan; the 3 vi keys
-# (piper-vi-vais1000/25hours/vivos) require a NEW additive migration + BA
-# approval before the Spring strategy layer can map 1:1 (see docs/93 v4).
-PIPER_VOICES: list[TtsVoice] = [
-    TtsVoice(voice_id="piper-vi-vais1000", language="vi-VN", gender=None, display_name="VAIS1000 (Piper)"),
-    TtsVoice(voice_id="piper-vi-25hours", language="vi-VN", gender=None, display_name="25 Hours Single (Piper)"),
-    TtsVoice(voice_id="piper-vi-vivos", language="vi-VN", gender=None, display_name="VIVOS (Piper)"),
-    TtsVoice(voice_id="piper-en-amy", language="en-US", gender="FEMALE", display_name="Amy (Piper)"),
-    TtsVoice(voice_id="piper-en-joe", language="en-US", gender="MALE", display_name="Joe (Piper)"),
-    TtsVoice(voice_id="piper-en-alan", language="en-GB", gender="MALE", display_name="Alan (Piper)"),
-]
-
-# asset_key → rhasspy/piper-voices model stem (used to locate .onnx/.onnx.json).
-PIPER_VOICE_MODELS: dict[str, str] = {
-    "piper-vi-vais1000": "vi_VN-vais1000-medium",
-    "piper-vi-25hours": "vi_VN-25hours_single-low",
-    "piper-vi-vivos": "vi_VN-vivos-x_low",
-    "piper-en-amy": "en_US-amy-medium",
-    "piper-en-joe": "en_US-joe-medium",
-    "piper-en-alan": "en_GB-alan-medium",
-}
-
 # ── Google Cloud TTS (Workspace tier, BYOK) — snapshot 2026-08-02 ─────────────
 # Official GA list for vi-VN (docs.cloud.google.com/text-to-speech/docs/
 # list-voices-and-types): Neural2-A/D + Standard-A..D + Wavenet-A..D = 10.
@@ -154,7 +113,6 @@ AZURE_TTS_VOICES: list[TtsVoice] = [
 DEFAULT_PROBE_VOICES: dict[str, str] = {
     "dashscope_native": "Serena",
     "openai_compatible": "alloy",
-    "local_piper": "piper-vi-vais1000",
     "google_speech": "vi-VN-Neural2-A",
     "azure_speech": "vi-VN-HoaiMyNeural",
 }
@@ -190,8 +148,6 @@ def voices_for_protocol(protocol: str, model: str | None = None) -> list[TtsVoic
         return voices_for_dashscope_model(model)
     if protocol == "openai_compatible":
         return list(OPENAI_TTS_HINT_VOICES)
-    if protocol == "local_piper":
-        return list(PIPER_VOICES)
     if protocol == "google_speech":
         return list(GOOGLE_TTS_VOICES)
     if protocol == "azure_speech":

@@ -1,0 +1,83 @@
+name: Security
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+  schedule:
+    # Hằng tuần: CVE mới xuất hiện kể cả khi code không đổi.
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Secret đã commit (kể cả trong lịch sử) — chặn merge nếu phát hiện.
+  gitleaks:
+    name: secrets / gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan git history
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.21.2 \
+            git /repo --config /repo/.gitleaks.toml --redact --verbose --exit-code 1
+
+  npm-audit:
+    name: deps / npm audit (frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Audit production dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+
+  pip-audit:
+    name: deps / pip-audit (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend-ai, backend-media-worker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Audit requirements
+        run: |
+          pip install -q pip-audit
+          # PYSEC-2026-1845: pytest (test-only tool) — fix 9.0.3 blocked by pytest-asyncio<1.
+          # Remove this ignore once pytest-asyncio is upgraded (docs/Security_Hardening.md).
+          pip-audit -r ${{ matrix.service }}/requirements.txt --progress-spinner off --ignore-vuln PYSEC-2026-1845
+
+  trivy-maven:
+    name: deps / trivy (backend-main, Dockerfiles)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      # Trivy needs the resolved dependency tree to see transitive Maven artifacts.
+      - name: Resolve Maven dependencies
+        working-directory: backend-main
+        run: chmod +x mvnw && ./mvnw -B -q dependency:go-offline
+      - name: Scan dependencies & Dockerfile misconfig
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

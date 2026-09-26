@@ -2,5 +2,24 @@
   "title": "Notifications",
   "emptyTitle": "No notifications",
   "loadMore": "Load more",
-  "loadingMore": "Loading…"
+  "loadingMore": "Loading…",
+  "markAllRead": "Mark all as read",
+  "markRead": "Mark as read",
+  "unread": "Unread",
+  "unreadCount": "{{count}} unread",
+  "filter": {
+    "all": "All",
+    "unread": "Unread"
+  },
+  "emptyUnread": "You're all caught up",
+  "types": {
+    "JOB_COMPLETED": "Media job completed",
+    "JOB_FAILED": "Media job failed",
+    "JOB_NEEDS_RERUN": "Media job needs a rerun",
+    "JOB_QA_BLOCKED": "Render waiting for QA review",
+    "BATCH_COMPLETED": "Batch completed",
+    "BATCH_PARTIALLY_FAILED": "Batch partially failed",
+    "BATCH_FAILED": "Batch failed",
+    "PROVIDER_KEY_INVALID": "AI provider key rejected"
+  }
 }

@@ -37,9 +37,8 @@ class BaseTtsAdapter(ProtocolAdapter):
     #: TTS-only adapters expose a static catalog (no live voice-list API).
     voice_discovery_strategy: VoiceDiscoveryStrategy = VoiceDiscoveryStrategy.STATIC
 
-    #: Whether this adapter requires an API key. Zero-key System-tier adapters
-    #: (e.g. local_piper) override to False so the gateway does not mock/gate
-    #: on ``api_key`` presence.
+    #: Whether this adapter requires an API key. All TTS adapters are cloud
+    #: providers (BYOK / platform key), so the gateway gates on ``api_key``.
     requires_api_key: bool = True
 
     def catalog(self) -> list[TtsVoice]:

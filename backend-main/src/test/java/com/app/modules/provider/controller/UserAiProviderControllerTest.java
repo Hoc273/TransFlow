@@ -1,5 +1,7 @@
 package com.app.modules.provider.controller;
 
+import com.app.testsupport.TestRegistration;
+
 import com.app.common.exception.ErrorCode;
 import com.app.modules.auth.dto.RegisterRequest;
 import com.app.modules.provider.client.AiGatewayClient;
@@ -32,13 +34,16 @@ class UserAiProviderControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private com.app.modules.auth.service.RegisterOtpStore registerOtpStore;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @MockBean
     private AiGatewayClient aiGatewayClient;
 
     private String registerAndGetToken(String email, String name) throws Exception {
-        RegisterRequest reg = new RegisterRequest(email, "Password123!", name);
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest(email, "Password123!", name));
         MvcResult res = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))

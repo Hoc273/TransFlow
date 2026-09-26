@@ -104,6 +104,17 @@ class MediaPipelineDispatcherQaGateTest {
         verify(notificationService, never()).notify(any(), any(), any(), any(), any());
     }
 
+    @Test
+    void completingTheLastStagesHereNotifiesJobCompleted() {
+        render.setStatus(MediaJobStage.StageStatus.SKIPPED);
+
+        dispatcher.dispatchNext(jobId);
+
+        assertEquals(MediaJob.JobStatus.COMPLETED, job.getStatus());
+        verify(notificationService, times(1)).notify(eq(workspaceId), eq(ownerId), eq("JOB_COMPLETED"),
+                eq(jobId), any());
+    }
+
     private MediaJobStage stage(MediaJobStage.StageName name, int order, MediaJobStage.StageStatus status) {
         MediaJobStage stage = new MediaJobStage();
         stage.setId(UUID.randomUUID());

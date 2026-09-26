@@ -9,6 +9,10 @@ import com.app.modules.auth.entity.User;
 import com.app.modules.auth.entity.UserStatus;
 import com.app.modules.auth.repository.UserRepository;
 import com.app.modules.auth.service.AuthService;
+import com.app.modules.auth.service.AvatarPolicy;
+import com.app.modules.auth.service.EmailNormalizer;
+import com.app.modules.auth.service.LoginAttemptService;
+import com.app.modules.auth.service.PasswordPolicy;
 import com.app.modules.credit.entity.CostMode;
 import com.app.modules.credit.service.CreditService;
 import com.app.modules.project.entity.Project;
@@ -50,6 +54,9 @@ public class AuthServiceImpl implements AuthService {
     private final ForgotPasswordOtpRateLimiter otpRateLimiter;
     private final RegisterOtpStore registerOtpStore;
     private final EmailService emailService;
+    private final LoginAttemptService loginAttemptService;
+    /** Hash compared against when the email is unknown, so response time does not reveal registered emails. */
+    private volatile String dummyPasswordHash;
 
     public AuthServiceImpl(UserRepository userRepository,
                            WorkspaceService workspaceService,
@@ -61,7 +68,8 @@ public class AuthServiceImpl implements AuthService {
                            ForgotPasswordOtpStore otpStore,
                            ForgotPasswordOtpRateLimiter otpRateLimiter,
                            RegisterOtpStore registerOtpStore,
-                           EmailService emailService) {
+                           EmailService emailService,
+                           LoginAttemptService loginAttemptService) {
         this.userRepository = userRepository;
         this.workspaceService = workspaceService;
         this.projectService = projectService;
@@ -73,27 +81,23 @@ public class AuthServiceImpl implements AuthService {
         this.otpRateLimiter = otpRateLimiter;
         this.registerOtpStore = registerOtpStore;
         this.emailService = emailService;
+        this.loginAttemptService = loginAttemptService;
     }
 
     @Override
     @Transactional
     public AuthResponse register(RegisterRequest req) {
-        String email = req.email().trim().toLowerCase(Locale.ROOT);
-        if (userRepository.existsByEmailIgnoreCase(email)) {
-            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
-        }
+        String email = EmailNormalizer.normalize(req.email());
+        requireEmailAvailable(email);
+        PasswordPolicy.requireAcceptable(req.password());
 
-        if (registerOtpStore.hasOtp(email)) {
-            if (req.otp() == null || req.otp().isBlank()) {
-                throw new AppException(ErrorCode.OTP_REQUIRED);
-            }
-            if (!registerOtpStore.verifyAndConsumeOtp(email, req.otp())) {
-                throw new AppException(ErrorCode.INVALID_OTP);
-            }
-        } else if (req.otp() != null && !req.otp().isBlank()) {
-            if (!registerOtpStore.verifyAndConsumeOtp(email, req.otp())) {
-                throw new AppException(ErrorCode.INVALID_OTP);
-            }
+        // Email ownership is always proven by OTP: without it bots could mass-register
+        // unverified addresses and farm the initial credit grant.
+        if (req.otp() == null || req.otp().isBlank()) {
+            throw new AppException(ErrorCode.OTP_REQUIRED);
+        }
+        if (!registerOtpStore.verifyAndConsumeOtp(email, req.otp())) {
+            throw new AppException(ErrorCode.INVALID_OTP);
         }
 
         User user = new User();
@@ -112,10 +116,10 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public OtpMessageResponse sendRegisterOtp(RegisterOtpRequest req) {
-        String email = req.email().trim().toLowerCase(Locale.ROOT);
-        if (userRepository.existsByEmailIgnoreCase(email)) {
-            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
-        }
+        String email = EmailNormalizer.normalize(req.email());
+        requireEmailAvailable(email);
+        // Same per-email budget as forgot-password: stops OTP mail-bombing a victim's inbox.
+        otpRateLimiter.check("register:" + email);
 
         String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
         registerOtpStore.saveOtp(email, otp);
@@ -128,9 +132,19 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResponse login(LoginRequest req) {
-        String email = req.email().trim().toLowerCase(Locale.ROOT);
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new AppException(ErrorCode.INVALID_CREDENTIALS));
+        String email = EmailNormalizer.normalize(req.email());
+        loginAttemptService.ensureNotLocked(email);
+
+        Optional<User> found = userRepository.findByEmailIgnoreCase(email);
+        if (found.isEmpty()) {
+            // Burn the same BCrypt cost as a real check so timing does not reveal unknown emails.
+            if (PasswordPolicy.fitsBcrypt(req.password())) {
+                passwordEncoder.matches(req.password(), dummyPasswordHash());
+            }
+            loginAttemptService.recordFailure(email);
+            throw new AppException(ErrorCode.INVALID_CREDENTIALS);
+        }
+        User user = found.get();
 
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new AppException(ErrorCode.ACCOUNT_DISABLED);
@@ -138,9 +152,12 @@ public class AuthServiceImpl implements AuthService {
         if (user.getPasswordHash() == null || user.getPasswordHash().isBlank()) {
             throw new AppException(ErrorCode.OAUTH_ONLY_ACCOUNT);
         }
-        if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
+        if (!PasswordPolicy.fitsBcrypt(req.password())
+                || !passwordEncoder.matches(req.password(), user.getPasswordHash())) {
+            loginAttemptService.recordFailure(email);
             throw new AppException(ErrorCode.INVALID_CREDENTIALS);
         }
+        loginAttemptService.recordSuccess(email);
 
         WorkspaceProjectInit init = resolveOrCreateDefaultWorkspaceAndProject(user);
         return issueAuthTokens(user, init.workspaceId(), init.projectId());
@@ -188,7 +205,7 @@ public class AuthServiceImpl implements AuthService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         user.setFullName(req.fullName().trim());
         if (req.avatarUrl() != null) {
-            user.setAvatarUrl(req.avatarUrl().trim().isEmpty() ? null : req.avatarUrl().trim());
+            user.setAvatarUrl(AvatarPolicy.sanitize(req.avatarUrl()));
         }
         userRepository.save(user);
         return UserResponse.from(user);
@@ -211,10 +228,12 @@ public class AuthServiceImpl implements AuthService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         if (user.getPasswordHash() != null && !user.getPasswordHash().isBlank()) {
-            if (req.currentPassword() == null || !passwordEncoder.matches(req.currentPassword(), user.getPasswordHash())) {
+            if (req.currentPassword() == null || !PasswordPolicy.fitsBcrypt(req.currentPassword())
+                    || !passwordEncoder.matches(req.currentPassword(), user.getPasswordHash())) {
                 throw new AppException(ErrorCode.INVALID_CREDENTIALS);
             }
         }
+        PasswordPolicy.requireAcceptable(req.newPassword());
 
         user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
         userRepository.save(user);
@@ -321,6 +340,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public OtpMessageResponse resetPasswordWithOtp(ResetPasswordOtpRequest req) {
         String email = req.email().trim().toLowerCase(Locale.ROOT);
+        PasswordPolicy.requireAcceptable(req.newPassword());
         boolean valid = otpStore.consumeOtp(email, req.otp().trim());
         if (!valid) {
             throw new AppException(ErrorCode.INVALID_OTP);
@@ -334,8 +354,26 @@ public class AuthServiceImpl implements AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
         userRepository.save(user);
+        loginAttemptService.recordSuccess(email);
 
         return new OtpMessageResponse("Mật khẩu đã được cập nhật thành công.");
+    }
+
+    /** Rejects exact duplicates and aliases of an existing mailbox (a+1@gmail.com, a.b@gmail.com). */
+    private void requireEmailAvailable(String email) {
+        if (userRepository.existsByEmailIgnoreCase(email)
+                || userRepository.existsByEmailCanonical(EmailNormalizer.canonicalize(email))) {
+            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
+        }
+    }
+
+    private String dummyPasswordHash() {
+        String h = dummyPasswordHash;
+        if (h == null) {
+            h = passwordEncoder.encode("tf-dummy-" + UUID.randomUUID());
+            dummyPasswordHash = h;
+        }
+        return h;
     }
 
     @Override

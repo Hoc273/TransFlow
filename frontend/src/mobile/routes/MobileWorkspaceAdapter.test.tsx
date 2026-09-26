@@ -30,7 +30,11 @@ vi.mock('../hooks/useIsMobile', () => ({
 }))
 
 vi.mock('@/hooks/useNotifications', () => ({
-  useNotifications: vi.fn(() => ({ data: { items: [], unreadCount: 0 }, isLoading: false })),
+  useNotifications: vi.fn(() => ({ data: [], isLoading: false })),
+  useNotificationsInfinite: vi.fn(() => ({ data: { pages: [] }, isLoading: false })),
+  useUnreadNotificationCount: vi.fn(() => ({ data: 0 })),
+  useMarkNotificationRead: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useMarkAllNotificationsRead: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }))
 
 vi.mock('@/hooks/useWorkspaces', () => ({

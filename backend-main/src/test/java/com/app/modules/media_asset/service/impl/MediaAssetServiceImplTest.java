@@ -129,8 +129,40 @@ class MediaAssetServiceImplTest {
     }
 
     @Test
+    void upload_nonVideoContentType_isRejectedBeforeStorage() {
+        MultipartFile file = new MockMultipartFile("file", "evil.html", "text/html", "<script>".getBytes());
+
+        AppException ex = assertThrows(AppException.class, () ->
+                service.upload(workspaceId, userId, projectId, file, null));
+        assertEquals(ErrorCode.MEDIA_INVALID_FILE, ex.getErrorCode());
+        verifyNoInteractions(mediaAssetRepository, storageService);
+    }
+
+    @Test
+    void upload_undecodableFile_isRejectedWhenFfprobeAvailable() {
+        // Declared video/mp4 but ffprobe (present) finds no media stream -> refuse to store it.
+        MultipartFile file = new MockMultipartFile("file", "fake.mp4", "video/mp4", "MZ-not-a-video".getBytes());
+        when(durationProbe.isAvailable()).thenReturn(true);
+        when(durationProbe.extractDurationMs(any(Path.class))).thenReturn(null);
+
+        AppException ex = assertThrows(AppException.class, () ->
+                service.upload(workspaceId, userId, projectId, file, null));
+        assertEquals(ErrorCode.MEDIA_INVALID_FILE, ex.getErrorCode());
+        verifyNoInteractions(mediaAssetRepository, storageService);
+    }
+
+    @Test
+    void sanitizeFileName_stripsPathsAndControlCharsAndCapsLength() {
+        assertEquals("passwd", MediaAssetServiceImpl.sanitizeFileName("../../etc/passwd"));
+        assertEquals("clip.mp4", MediaAssetServiceImpl.sanitizeFileName("C:\\Users\\x\\clip.mp4"));
+        assertEquals("a_b_.mp4", MediaAssetServiceImpl.sanitizeFileName("a<b>.mp4"));
+        assertEquals("video", MediaAssetServiceImpl.sanitizeFileName(".."));
+        assertEquals(255, MediaAssetServiceImpl.sanitizeFileName("x".repeat(400)).length());
+    }
+
+    @Test
     void upload_unknownDuration_isAllowedThrough() {
-        // ffprobe unavailable/undetermined -> null duration must not block upload (best-effort probe).
+        // ffprobe unavailable on this host -> null duration must not block upload (best-effort probe).
         MultipartFile file = new MockMultipartFile("file", "clip.mp4", "video/mp4", "x".getBytes());
         when(durationProbe.extractDurationMs(any(Path.class))).thenReturn(null);
         when(storageService.providerName()).thenReturn("minio");

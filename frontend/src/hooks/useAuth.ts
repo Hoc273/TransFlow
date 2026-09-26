@@ -48,7 +48,6 @@ export function useLogin() {
       const data = await loginApi(body)
       setSession({
         accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
         user: data.user,
       })
       await qc.invalidateQueries({ queryKey: queryKeys.workspaces })
@@ -72,7 +71,6 @@ export function useRegister() {
       const data = await registerApi(body)
       setSession({
         accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
         user: data.user,
       })
       await qc.invalidateQueries({ queryKey: queryKeys.workspaces })

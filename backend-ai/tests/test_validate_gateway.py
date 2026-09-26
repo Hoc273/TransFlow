@@ -94,10 +94,6 @@ class TestAuthProbe:
     def test_auth_headers_contain_key_placeholder(self):
         from app.services.validate_gateway import _AUTH_HEADER_TEMPLATES
         for protocol, headers in _AUTH_HEADER_TEMPLATES.items():
-            # local_piper is the zero-key System tier ‚Äî no auth headers by design.
-            if protocol == "local_piper":
-                assert headers == {}, "local_piper must not fabricate auth headers"
-                continue
             # At least one header value should carry the key (Bearer / xi-api-key / x-api-key).
             values = " ".join(headers.values())
             assert "{key}" in values or any(
@@ -129,8 +125,6 @@ class TestAuthProbe:
         assert _auth_probe_path("google_speech", "https://texttospeech.googleapis.com") == "/v1/voices"
         assert _auth_probe_path("google_speech", "https://texttospeech.googleapis.com/v1") == "/voices"
         assert _auth_probe_path("azure_speech", "https://eastus.tts.speech.microsoft.com") == "/cognitiveservices/voices/list"
-        # Zero-key System tier (local_piper) has no auth probe.
-        assert _auth_probe_path("local_piper", "https://piper.local") == ""
         # Unregistered placeholder protocols return empty path (no adapter).
         assert _auth_probe_path("amazon_polly", "https://polly.example") == ""
 
@@ -314,11 +308,10 @@ class TestVisionProbe(unittest.IsolatedAsyncioTestCase):
         assert result.ok is False
         assert "capability VISION" in result.message
 
-# -- Phase D P2: zero-key TTS probe gate -------------------------------------
+# -- Phase D P2: TTS probe API-key gate -------------------------------------
 
 class TestTtsProbeKeyGate(unittest.IsolatedAsyncioTestCase):
-    """Zero-key adapters (requires_api_key=False, e.g. local_piper) must never be
-    probe-skipped on an empty/placeholder key ó mirrors tts_gateway.py's gate."""
+    """Every TTS adapter requires an API key: an empty key skips the probe."""
 
     class _FakeAdapter:
         def __init__(self, requires_api_key: bool):
@@ -330,12 +323,12 @@ class TestTtsProbeKeyGate(unittest.IsolatedAsyncioTestCase):
             return SimpleNamespace(audio_bytes=b"RIFF....WAVE....")
 
     @staticmethod
-    def _piper_provider() -> ProviderPayload:
+    def _keyless_provider() -> ProviderPayload:
         return ProviderPayload(
-            protocol="local_piper",
-            base_url="system://piper",
+            protocol="openai_compatible",
+            base_url="https://example.com/v1",
             api_key="",
-            model="piper",
+            model="tts-1",
         )
 
     async def _probe(self, adapter, provider):
@@ -343,38 +336,12 @@ class TestTtsProbeKeyGate(unittest.IsolatedAsyncioTestCase):
         with patch("app.services.validate_gateway.require_adapter", return_value=adapter), \
                 patch.object(vg.settings, "mock_mode", False):
             return await vg.probe_tts_capability(
-                TtsProbeRequest(provider=provider, voice_id="piper-vi-vais1000")
+                TtsProbeRequest(provider=provider, voice_id="alloy")
             )
-
-    async def test_zero_key_adapter_synthesizes_with_empty_key(self):
-        adapter = self._FakeAdapter(requires_api_key=False)
-        resp = await self._probe(adapter, self._piper_provider())
-        assert resp.ok is True
-        assert adapter.synthesized == 1
-        assert "successful" in resp.message
-        assert resp.audio_bytes > 0
 
     async def test_key_requiring_adapter_skipped_with_empty_key(self):
         adapter = self._FakeAdapter(requires_api_key=True)
-        provider = ProviderPayload(
-            protocol="openai_compatible",
-            base_url="https://example.com/v1",
-            api_key="",
-            model="tts-1",
-        )
-        resp = await self._probe(adapter, provider)
-        assert resp.ok is True
-        assert adapter.synthesized == 0
-        assert "skipped" in resp.message
-
-    async def test_mock_mode_wins_even_for_zero_key(self):
-        import app.services.validate_gateway as vg
-        adapter = self._FakeAdapter(requires_api_key=False)
-        with patch("app.services.validate_gateway.require_adapter", return_value=adapter), \
-                patch.object(vg.settings, "mock_mode", True):
-            resp = await vg.probe_tts_capability(
-                TtsProbeRequest(provider=self._piper_provider(), voice_id="piper-vi-vais1000")
-            )
+        resp = await self._probe(adapter, self._keyless_provider())
         assert resp.ok is True
         assert adapter.synthesized == 0
         assert "skipped" in resp.message
@@ -392,7 +359,7 @@ class TestTtsProbeKeyGate(unittest.IsolatedAsyncioTestCase):
         with patch("app.services.validate_gateway.require_adapter", side_effect=_raise), \
                 patch.object(vg.settings, "mock_mode", False):
             resp = await vg.probe_tts_capability(
-                TtsProbeRequest(provider=self._piper_provider(), voice_id="piper-vi-vais1000")
+                TtsProbeRequest(provider=self._keyless_provider(), voice_id="alloy")
             )
         assert resp.ok is False
         assert "no adapter" in resp.message

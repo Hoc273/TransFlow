@@ -6,5 +6,8 @@ export type NotificationItem = {
   relatedEntityType: string | null
   relatedEntityId: string | null
   payload: unknown
+  /** ISO timestamp the user read it; null = unread. */
+  readAt: string | null
+  isRead: boolean
   createdAt: string
 }

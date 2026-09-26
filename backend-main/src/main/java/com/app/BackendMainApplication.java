@@ -1,6 +1,7 @@
 package com.app;
 
 import com.app.common.config.AppProperties;
+import com.app.common.config.SecurityProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -13,7 +14,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * {@code com.app.common.*} and {@code com.app.modules.*} package (CLAUDE.md §4.8).
  */
 @SpringBootApplication
-@EnableConfigurationProperties(AppProperties.class)
+@EnableConfigurationProperties({AppProperties.class, SecurityProperties.class})
 @EnableJpaAuditing
 @EnableAsync
 @EnableScheduling
