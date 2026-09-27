@@ -52,8 +52,10 @@ server {
 
     # Upload video ≤500MB (SRS §5.2) — khớp frontend nginx + spring multipart (520MB).
     client_max_body_size 520m;
-    # Stream thẳng upload lớn sang upstream thay vì đệm ra đĩa.
-    proxy_request_buffering off;
+    # KHÔNG tắt proxy_request_buffering ở đây: với HTTP/2 + unbuffered, nginx chỉ mở cửa sổ
+    # flow-control bằng client_body_buffer_size mỗi RTT => upload chỉ ~100-200KB/s. Đệm ra đĩa
+    # (EBS nhanh) rồi đẩy qua loopback; frontend nginx phía sau stream thẳng sang Spring.
+    client_body_buffer_size 1m;
     proxy_connect_timeout 30s;
     proxy_send_timeout 600s;
     proxy_read_timeout 600s;
