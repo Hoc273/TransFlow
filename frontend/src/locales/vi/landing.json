@@ -320,51 +320,51 @@
     "title": "Bảng giá nạp Credits — Dùng bao nhiêu, thanh toán bấy nhiêu",
     "starter": {
       "name": "Starter",
-      "desc": "Gói Khởi Động cho Creator trải nghiệm & video ngắn",
+      "desc": "Gói khởi động để creator thử trên video thật",
       "price": "50.000 ₫",
-      "credits": "/ 50.000 Credits",
+      "credits": "/ 500 Credit (100 ₫/Credit)",
       "cta": "Chọn gói Starter",
       "featuresTitle": "Quyền lợi bao gồm:",
       "features": [
-        "~15–20 phút video hoàn thiện (STT + Dịch + TTS)",
-        "Phù hợp cho video ngắn (Shorts, Reels, TikTok)",
-        "AI Tóm tắt: 1 đề xuất Cut-plan & 5 vòng Refine",
-        "Xuất file Hard-sub và Soft-sub rời (.srt, .vtt)"
+        "~75 phút phụ đề dịch, hoặc ~37 phút lồng tiếng giữ nhạc nền",
+        "Phù hợp video ngắn (Shorts, Reels, TikTok)",
+        "Tóm tắt video bằng AI, tinh chỉnh tối đa 5 vòng",
+        "Xuất hard-sub và file phụ đề rời (.srt, .vtt)"
       ]
     },
     "freelancer": {
-      "bonusBadge": "Tặng +10% Credits",
+      "bonusBadge": "Tiết kiệm 5%",
       "badge": "Phổ biến",
-      "name": "Freelancer",
-      "desc": "Gói phổ biến nhất cho cá nhân làm dịch thuật & video đều đặn",
-      "price": "200.000 ₫",
-      "credits": "220.000 Credits",
-      "bonus": "+20.000 Credits tặng",
-      "cta": "Nạp 200.000 VNĐ",
+      "name": "Creator",
+      "desc": "Cho creator và biên tập viên ra video đều đặn",
+      "price": "190.000 ₫",
+      "credits": "2.000 Credit",
+      "bonus": "95 ₫/Credit",
+      "cta": "Nạp 190.000 VNĐ",
       "featuresTitle": "Bao gồm toàn bộ Starter và:",
       "features": [
-        "~80–100 phút video hoàn thiện (10–15 clip)",
-        "Xử lý hàng loạt Batch (tối đa 20 video)",
-        "Tách nguồn âm thanh giữ trọn nhạc nền",
-        "Đồng bộ Glossary & Bộ nhớ dịch (TM)",
-        "Kiểm duyệt QA 3 chiều chống đè timeline & lỗi CPS"
+        "~300 phút phụ đề dịch, hoặc ~150 phút lồng tiếng giữ nhạc nền",
+        "Xử lý hàng loạt tối đa 20 video mỗi lô",
+        "Tách giọng khỏi nhạc nền để lồng tiếng (chế độ Studio)",
+        "Bảng thuật ngữ giữ đúng tên thương hiệu",
+        "Kiểm tra chất lượng phụ đề trước khi xuất bản"
       ]
     },
     "proStudio": {
-      "bonusBadge": "Tặng +20% Credits",
-      "name": "Pro Studio",
-      "desc": "Gói tiết kiệm tối đa cho Creator chuyên nghiệp & dự án lớn",
-      "price": "500.000 ₫",
-      "credits": "600.000 Credits",
-      "bonus": "+100.000 Credits tặng",
-      "cta": "Nạp 500.000 VNĐ",
+      "bonusBadge": "Tiết kiệm 10%",
+      "name": "Business",
+      "desc": "Cho studio, media team và dự án lớn",
+      "price": "900.000 ₫",
+      "credits": "10.000 Credit",
+      "bonus": "90 ₫/Credit",
+      "cta": "Nạp 900.000 VNĐ",
       "featuresTitle": "Bao gồm toàn bộ Freelancer, thêm:",
       "features": [
-        "~250–300 phút video hoặc dự án dài",
-        "Giới hạn file tối đa: 500MB & 30 phút/file",
-        "Phân tích ngữ cảnh hình ảnh AI Vision",
-        "Ưu tiên worker khi render & mix audio",
-        "Không giới hạn lưu trữ Preset phụ đề"
+        "~1.500 phút phụ đề dịch, hoặc ~750 phút lồng tiếng giữ nhạc nền",
+        "Video tối đa 500MB và 30 phút mỗi file",
+        "Phân tích ngữ cảnh hình ảnh bằng AI khi tóm tắt",
+        "Lead trả chung cho cả Workspace hoặc ai dùng nấy trả",
+        "Theo dõi chi tiêu Credit theo dự án và thành viên"
       ]
     }
   },

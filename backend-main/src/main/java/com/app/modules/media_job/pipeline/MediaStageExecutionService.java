@@ -65,6 +65,8 @@ public class MediaStageExecutionService {
 
     /** Credit capability of the SOURCE_SEPARATION stage (Demucs). */
     static final String AUDIO_SEPARATION = "AUDIO_SEPARATION";
+    /** Credit capability of the RENDER stage, charged on the worker's completion callback. */
+    static final String RENDER = "RENDER";
     /** engine.engineVersion that backend-ai reports for its non-separating CPU fallback. */
     static final String CPU_FALLBACK_ENGINE_VERSION = "cpu-fallback";
     /** AUDIO_MIX gains when the user has not set any: original track lowered, voice raised. */
@@ -437,6 +439,9 @@ public class MediaStageExecutionService {
                     cues = RenderSubtitleCues.toOutputTimeline(sourceCues(job), ranges);
                     timelineMs = ranges.stream().mapToLong(range -> Math.max(0L, range[1] - range[0])).sum();
                 }
+                // RENDER is billed x-only per output second when the worker reports COMPLETED
+                // (MediaCallbackServiceImpl); fail before rendering if the payer cannot cover it.
+                requireCredit(job, RENDER, Math.max(1L, Math.round(timelineMs / 1000.0d)), false);
                 body.put("subtitle_track", defaultSubtitleTrack(job, timelineMs, cues));
                 Map<String, Object> renderConfig = jsonObject(job.getRenderConfig());
                 body.put("output_aspect_ratio", stringValue(renderConfig.get("outputAspectRatio"), "ORIGINAL"));
@@ -1666,9 +1671,22 @@ public class MediaStageExecutionService {
         return lastResolved(capability).map(ProviderUsageScope.Resolved::pricingScope).orElse(null);
     }
 
-    private long usageUnits(JsonNode result, String operation, long fallbackUnits) {
+    /**
+     * Billing units per capability (Credit_Coefficient_Calculation §4.2): STT is always seconds of
+     * source audio — even when the provider reports tokens — because its price is per second;
+     * {@code fallbackUnits} is then the asset duration in ms. TTS is characters; LLM work is tokens.
+     */
+    static long usageUnits(JsonNode result, String operation, long fallbackUnits) {
         JsonNode usage = result == null ? null : result.get("usage");
-        if (usage != null && usage.isObject()) {
+        boolean hasUsage = usage != null && usage.isObject();
+        if ("STT".equals(operation)) {
+            double seconds = hasUsage ? usage.path("audio_seconds").asDouble(0.0) : 0.0;
+            if (seconds > 0.0) {
+                return Math.max(1L, Math.round(seconds));
+            }
+            return Math.max(1L, Math.round(fallbackUnits / 1000.0d));
+        }
+        if (hasUsage) {
             long tokenUnits = usage.path("total_tokens").asLong(0L);
             if (tokenUnits == 0L) {
                 tokenUnits = usage.path("input_tokens").asLong(0L)
@@ -1677,12 +1695,6 @@ public class MediaStageExecutionService {
             if (tokenUnits > 0L) {
                 return tokenUnits;
             }
-            if ("STT".equals(operation)) {
-                double seconds = usage.path("audio_seconds").asDouble(0.0);
-                if (seconds > 0.0) {
-                    return Math.max(1L, Math.round(seconds));
-                }
-            }
             if ("TTS".equals(operation)) {
                 long characters = usage.path("characters").asLong(0L);
                 if (characters > 0L) {
@@ -1690,11 +1702,7 @@ public class MediaStageExecutionService {
                 }
             }
         }
-        long fallback = fallbackUnits;
-        if ("STT".equals(operation) && fallback > 1000L) {
-            fallback = Math.round(fallback / 1000.0d);
-        }
-        return Math.max(1L, fallback);
+        return Math.max(1L, fallbackUnits);
     }
 
     private long estimateTokens(String text) {

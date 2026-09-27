@@ -129,21 +129,49 @@ VALUES ('v1', 'terms/v1.md', true, now());
 INSERT INTO credit_packages (id, name, credit_amount, price_amount, price_currency, is_active, created_at)
 VALUES
     (gen_random_uuid(), 'Gói Khởi động (Starter)', 500.0000, 50000.00, 'VND', true, now()),
-    (gen_random_uuid(), 'Gói Sáng tạo (Creator)', 2000.0000, 180000.00, 'VND', true, now()),
-    (gen_random_uuid(), 'Gói Chuyên nghiệp (Business)', 10000.0000, 800000.00, 'VND', true, now());
+    (gen_random_uuid(), 'Gói Sáng tạo (Creator)', 2000.0000, 190000.00, 'VND', true, now()),
+    (gen_random_uuid(), 'Gói Chuyên nghiệp (Business)', 10000.0000, 900000.00, 'VND', true, now());
 
+-- Bảng giá Credit v2.2 đã chốt 2026-09-27 (Credit_Coefficient_Calculation §7.2): 1 Credit = 100đ,
+-- x = chi phí hạ tầng × 1,375, y = giá niêm yết provider × 1,5. Thứ tự khớp khi tính giá:
+-- 'protocol/model' → 'protocol' → NULL. Row NULL = model đắt nhất của capability (P4); row
+-- 'openai_compatible' (theo protocol) lấy giá model rẻ đang dùng — áp cho FreeLLMAPI ('auto') và
+-- provider OpenAI-compatible chưa khai báo model. Đổi giá sau này qua /api/platform/pricing.
 INSERT INTO credit_pricing_config (
     id, capability, provider_scope, infra_coefficient_x, token_coefficient_y,
-    effective_from, effective_to, created_at
+    effective_from, effective_to, created_at, change_reason
 ) VALUES
-    (gen_random_uuid(), 'STT', NULL, 0.000100, 0.000300, now(), NULL, now()),
-    (gen_random_uuid(), 'TRANSLATE', NULL, 0.000100, 0.000400, now(), NULL, now()),
-    (gen_random_uuid(), 'TTS', NULL, 0.000150, 0.000500, now(), NULL, now()),
-    (gen_random_uuid(), 'SUMMARIZE_SCRIPT', NULL, 0.000100, 0.000400, now(), NULL, now()),
-    (gen_random_uuid(), 'RENDER', NULL, 0.000200, 0.000000, now(), NULL, now()),
-    (gen_random_uuid(), 'VISION', NULL, 0.000200, 0.000600, now(), NULL, now()),
-    -- Demucs chạy local trên GPU: chỉ thu x theo giây audio, y = 0 (Credit_Coefficient_Calculation §7.2).
-    (gen_random_uuid(), 'AUDIO_SEPARATION', NULL, 0.013750, 0.000000, now(), NULL, now());
+    -- STT: đơn vị giây audio nguồn; x gánh hạ tầng cố định (234đ/phút ở 5.000 phút/tháng).
+    (gen_random_uuid(), 'STT', NULL,                                        0.054313, 0.039000, now(), NULL, now(), 'Seed v2.2 — whisper-1'),
+    (gen_random_uuid(), 'STT', 'openai_compatible',                         0.054313, 0.039000, now(), NULL, now(), 'Seed v2.2 — whisper-1'),
+    (gen_random_uuid(), 'STT', 'openai_compatible/whisper-1',               0.054313, 0.039000, now(), NULL, now(), 'Seed v2.2'),
+    (gen_random_uuid(), 'STT', 'openai_compatible/gpt-4o-mini-transcribe',  0.054313, 0.019500, now(), NULL, now(), 'Seed v2.2'),
+    -- TRANSLATE: đơn vị token.
+    (gen_random_uuid(), 'TRANSLATE', NULL,                                  0.000007, 0.002438, now(), NULL, now(), 'Seed v2.2 — gpt-4o (đắt nhất)'),
+    (gen_random_uuid(), 'TRANSLATE', 'openai_compatible',                   0.000007, 0.000146, now(), NULL, now(), 'Seed v2.2 — gpt-4o-mini / FreeLLMAPI'),
+    (gen_random_uuid(), 'TRANSLATE', 'openai_compatible/gpt-4o',            0.000007, 0.002438, now(), NULL, now(), 'Seed v2.2'),
+    (gen_random_uuid(), 'TRANSLATE', 'openai_compatible/gpt-4o-mini',       0.000007, 0.000146, now(), NULL, now(), 'Seed v2.2'),
+    (gen_random_uuid(), 'TRANSLATE', 'dashscope_native/qwen-plus',          0.000007, 0.000312, now(), NULL, now(), 'Seed v2.2'),
+    -- SUMMARIZE_SCRIPT: đơn vị token, chạy trên key TRANSLATE.
+    (gen_random_uuid(), 'SUMMARIZE_SCRIPT', NULL,                           0.000007, 0.001560, now(), NULL, now(), 'Seed v2.2 — gpt-4o (đắt nhất)'),
+    (gen_random_uuid(), 'SUMMARIZE_SCRIPT', 'openai_compatible',            0.000007, 0.000094, now(), NULL, now(), 'Seed v2.2 — gpt-4o-mini / FreeLLMAPI'),
+    (gen_random_uuid(), 'SUMMARIZE_SCRIPT', 'openai_compatible/gpt-4o',     0.000007, 0.001560, now(), NULL, now(), 'Seed v2.2'),
+    (gen_random_uuid(), 'SUMMARIZE_SCRIPT', 'openai_compatible/gpt-4o-mini',0.000007, 0.000094, now(), NULL, now(), 'Seed v2.2'),
+    (gen_random_uuid(), 'SUMMARIZE_SCRIPT', 'dashscope_native/qwen-plus',   0.000007, 0.000218, now(), NULL, now(), 'Seed v2.2'),
+    -- TTS: đơn vị ký tự. MVP chỉ mở tts-1; NULL theo tts-1-hd để model lạ không bị bán lỗ.
+    (gen_random_uuid(), 'TTS', NULL,                                        0.000027, 0.011700, now(), NULL, now(), 'Seed v2.2 — tts-1-hd (đắt nhất)'),
+    (gen_random_uuid(), 'TTS', 'openai_compatible',                         0.000027, 0.005850, now(), NULL, now(), 'Seed v2.2 — tts-1'),
+    (gen_random_uuid(), 'TTS', 'openai_compatible/tts-1',                   0.000027, 0.005850, now(), NULL, now(), 'Seed v2.2'),
+    (gen_random_uuid(), 'TTS', 'openai_compatible/tts-1-hd',                0.000027, 0.011700, now(), NULL, now(), 'Seed v2.2'),
+    -- VISION: đơn vị token (gồm image token).
+    (gen_random_uuid(), 'VISION', NULL,                                     0.000069, 0.001267, now(), NULL, now(), 'Seed v2.2 — gpt-4o (đắt nhất)'),
+    (gen_random_uuid(), 'VISION', 'openai_compatible',                      0.000069, 0.000076, now(), NULL, now(), 'Seed v2.2 — gpt-4o-mini'),
+    (gen_random_uuid(), 'VISION', 'openai_compatible/gpt-4o',               0.000069, 0.001267, now(), NULL, now(), 'Seed v2.2'),
+    (gen_random_uuid(), 'VISION', 'openai_compatible/gpt-4o-mini',          0.000069, 0.000076, now(), NULL, now(), 'Seed v2.2'),
+    -- Chạy local, không gọi provider: chỉ thu x. AUDIO_SEPARATION theo giây audio nguồn (Demucs GPU),
+    -- RENDER theo giây video output (FFmpeg + AUDIO_MIX + lưu trữ/băng thông).
+    (gen_random_uuid(), 'AUDIO_SEPARATION', NULL,                           0.013750, 0.000000, now(), NULL, now(), 'Seed v2.2'),
+    (gen_random_uuid(), 'RENDER', NULL,                                     0.017188, 0.000000, now(), NULL, now(), 'Seed v2.2');
 
 -- api_key_enc: AES-256-GCM (IV 12 byte + ciphertext + tag 16 byte) của placeholder 'platform-default-key'
 -- theo PROVIDER_KEY_ENC_SECRET hiện hành; key thật do Super Admin cấu hình qua /api/platform.
@@ -155,7 +183,7 @@ INSERT INTO platform_ai_providers (
     ARRAY['STT','TRANSLATE','TTS','VISION']::VARCHAR[],
     'https://api.openai.com/v1',
     decode('ULMH8clSy2enHAf7Iz/h7k0hzfBkt1uOVLSTbn/CE+9V9aOHKnu6B9cg5bwIWWtd', 'base64'),
-    'gpt-4o',
+    'gpt-4o-mini',
     true,
     now(),
     'openai_compatible (STT,TRANSLATE,TTS,VISION)'

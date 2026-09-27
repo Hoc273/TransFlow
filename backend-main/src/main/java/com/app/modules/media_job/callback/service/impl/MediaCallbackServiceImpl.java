@@ -3,6 +3,8 @@ package com.app.modules.media_job.callback.service.impl;
 import com.app.common.exception.AppException;
 import com.app.common.exception.ErrorCode;
 import com.app.modules.batch.service.BatchService;
+import com.app.modules.credit.service.AiUsageLogService;
+import com.app.modules.credit.service.CreditService;
 import com.app.modules.media_job.callback.service.MediaCallbackService;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
@@ -19,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -33,6 +36,11 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
     private final NotificationService notification;
     private final BatchService batchService;
     private final MediaPipelineDispatcher mediaPipelineDispatcher;
+    private CreditService creditService;
+    private AiUsageLogService aiUsageLogService;
+
+    /** Credit capability billed for the RENDER stage. */
+    static final String RENDER_CAPABILITY = "RENDER";
 
     @Autowired
     public MediaCallbackServiceImpl(MediaJobRepository mediaJobRepository,
@@ -53,6 +61,16 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
                                     NotificationService notification,
                                     BatchService batchService) {
         this(mediaJobRepository, mediaJobStageRepository, notification, batchService, null);
+    }
+
+    @Autowired(required = false)
+    public void setCreditService(CreditService creditService) {
+        this.creditService = creditService;
+    }
+
+    @Autowired(required = false)
+    public void setAiUsageLogService(AiUsageLogService aiUsageLogService) {
+        this.aiUsageLogService = aiUsageLogService;
     }
 
     @Override
@@ -119,6 +137,14 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
             return;
         }
 
+        if (success && expectedStage == MediaJobStage.StageName.RENDER && !chargeRender(job, outputRef)) {
+            success = false;
+            errorCode = ErrorCode.INSUFFICIENT_CREDIT.name();
+            errorMessage = "Insufficient credit to bill RENDER";
+            errorDetail = null;
+            outputRef = null;
+        }
+
         stage.setCompletedAt(Instant.now());
         stage.setOutputRef(outputRef != null ? outputRef.toString() : null);
         stage.setStatus(success ? MediaJobStage.StageStatus.COMPLETED : MediaJobStage.StageStatus.FAILED);
@@ -174,6 +200,42 @@ public class MediaCallbackServiceImpl implements MediaCallbackService {
             }
         }
         completeStage(jobId, stageId, expectedStage, success, outputRef, errorMessage, errorCode, errorDetail);
+    }
+
+    /**
+     * RENDER is billed x-only per second of rendered output (Credit_Coefficient_Calculation §4.2/§7.2),
+     * once, under the job lock: a duplicate callback finds the stage terminal and returns before this.
+     * Affordability is checked first so a short balance fails the stage instead of rolling back the
+     * callback transaction; the output is withheld and the user can rerun RENDER after topping up.
+     *
+     * @return false when the payer can no longer cover the render
+     */
+    private boolean chargeRender(MediaJob job, JsonNode outputRef) {
+        if (creditService == null) {
+            return true;
+        }
+        long durationMs = outputRef == null ? 0L : outputRef.path("mediaProbe").path("durationMs").asLong(0L);
+        if (durationMs <= 0L) {
+            log.warn("RENDER of job={} completed without a probed duration; not billed", job.getId());
+            return true;
+        }
+        long seconds = Math.max(1L, Math.round(durationMs / 1000.0d));
+        if (!creditService.canAffordUsage(job.getWorkspaceId(), job.getCreatedByUserId(), RENDER_CAPABILITY,
+                seconds, false, null, job.getCreatedAt())) {
+            log.warn("Insufficient credit to bill RENDER job={} seconds={}", job.getId(), seconds);
+            return false;
+        }
+        BigDecimal creditUsed = creditService.chargeUsage(job.getWorkspaceId(), job.getCreatedByUserId(),
+                RENDER_CAPABILITY, seconds, false, null, job.getCreatedAt());
+        if (aiUsageLogService != null) {
+            try {
+                aiUsageLogService.record(job.getWorkspaceId(), job.getProjectId(), job.getId(),
+                        job.getCreatedByUserId(), RENDER_CAPABILITY, false, seconds, 0L, creditUsed);
+            } catch (Exception ex) {
+                log.warn("AI usage log failed for job={} operation=RENDER: {}", job.getId(), ex.getMessage());
+            }
+        }
+        return true;
     }
 
     private static String correlationOf(String dedupeKey) {

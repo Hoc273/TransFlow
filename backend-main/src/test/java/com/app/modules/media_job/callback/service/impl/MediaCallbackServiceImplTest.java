@@ -3,6 +3,7 @@ package com.app.modules.media_job.callback.service.impl;
 import com.app.common.exception.AppException;
 import com.app.common.exception.ErrorCode;
 import com.app.modules.batch.service.BatchService;
+import com.app.modules.credit.service.CreditService;
 import com.app.modules.media_job.entity.MediaJob;
 import com.app.modules.media_job.entity.MediaJobStage;
 import com.app.modules.media_job.repository.MediaJobRepository;
@@ -10,12 +11,15 @@ import com.app.modules.media_job.repository.MediaJobStageRepository;
 import com.app.modules.notification.service.NotificationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,6 +28,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -238,5 +245,71 @@ class MediaCallbackServiceImplTest {
                 null, null, "extract-audio:current-correlation:complete");
 
         assertEquals(MediaJobStage.StageStatus.COMPLETED, stage.getStatus());
+    }
+
+    // ---- RENDER billing ----
+
+    private JsonNode renderOutput(long durationMs) {
+        ObjectNode output = new ObjectMapper().createObjectNode().put("objectRef", "rendered/out.mp4");
+        output.putObject("mediaProbe").put("durationMs", durationMs);
+        return output;
+    }
+
+    @Test
+    void completeStage_renderSuccess_chargesXOnlyPerOutputSecondOnce() {
+        CreditService creditService = mock(CreditService.class);
+        service.setCreditService(creditService);
+        MediaJob job = job(MediaJob.JobStatus.PROCESSING, null);
+        job.setCreatedAt(Instant.parse("2026-09-27T00:00:00Z"));
+        when(mediaJobRepository.findWithLockById(jobId)).thenReturn(Optional.of(job));
+        MediaJobStage renderStage = stage(MediaJobStage.StageName.RENDER, MediaJobStage.StageStatus.PROCESSING);
+        when(mediaJobStageRepository.findById(stageId)).thenReturn(Optional.of(renderStage));
+        when(mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId)).thenReturn(List.of(renderStage));
+        when(creditService.canAffordUsage(job.getWorkspaceId(), job.getCreatedByUserId(), "RENDER", 600L, false,
+                null, job.getCreatedAt())).thenReturn(true);
+        when(creditService.chargeUsage(job.getWorkspaceId(), job.getCreatedByUserId(), "RENDER", 600L, false,
+                null, job.getCreatedAt())).thenReturn(new BigDecimal("10.3128"));
+
+        service.completeStage(jobId, stageId, MediaJobStage.StageName.RENDER, true, renderOutput(600_400L), null);
+        // Duplicate callback: the stage is terminal now and must not be billed again.
+        service.completeStage(jobId, stageId, MediaJobStage.StageName.RENDER, true, renderOutput(600_400L), null);
+
+        assertEquals(MediaJobStage.StageStatus.COMPLETED, renderStage.getStatus());
+        verify(creditService, times(1)).chargeUsage(job.getWorkspaceId(), job.getCreatedByUserId(), "RENDER",
+                600L, false, null, job.getCreatedAt());
+    }
+
+    @Test
+    void completeStage_renderWithoutEnoughCredit_failsStageWithoutOutput() {
+        CreditService creditService = mock(CreditService.class);
+        service.setCreditService(creditService);
+        MediaJob job = job(MediaJob.JobStatus.PROCESSING, null);
+        when(mediaJobRepository.findWithLockById(jobId)).thenReturn(Optional.of(job));
+        MediaJobStage renderStage = stage(MediaJobStage.StageName.RENDER, MediaJobStage.StageStatus.PROCESSING);
+        when(mediaJobStageRepository.findById(stageId)).thenReturn(Optional.of(renderStage));
+        when(creditService.canAffordUsage(any(), any(), eq("RENDER"), eq(30L), eq(false), isNull(), any()))
+                .thenReturn(false);
+
+        service.completeStage(jobId, stageId, MediaJobStage.StageName.RENDER, true, renderOutput(30_000L), null);
+
+        assertEquals(MediaJobStage.StageStatus.FAILED, renderStage.getStatus());
+        assertEquals("INSUFFICIENT_CREDIT", renderStage.getErrorCode());
+        assertNull(renderStage.getOutputRef());
+        assertEquals(MediaJob.JobStatus.FAILED, job.getStatus());
+        verify(creditService, never()).chargeUsage(any(), any(), any(), anyLong(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void completeStage_nonRenderStage_isNotBilledHere() {
+        CreditService creditService = mock(CreditService.class);
+        service.setCreditService(creditService);
+        when(mediaJobRepository.findWithLockById(jobId)).thenReturn(Optional.of(job(MediaJob.JobStatus.PROCESSING, null)));
+        MediaJobStage stage = stage(MediaJobStage.StageName.AUDIO_MIX, MediaJobStage.StageStatus.PROCESSING);
+        when(mediaJobStageRepository.findById(stageId)).thenReturn(Optional.of(stage));
+        when(mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId)).thenReturn(List.of(stage));
+
+        service.completeStage(jobId, stageId, MediaJobStage.StageName.AUDIO_MIX, true, renderOutput(30_000L), null);
+
+        verifyNoInteractions(creditService);
     }
 }

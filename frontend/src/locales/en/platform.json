@@ -354,7 +354,7 @@
     "defaultScope": "Default",
     "noRow": "No price yet — billing uses the hard-coded fallback coefficients.",
     "unitsPerMinute": "~{{count}} units / video minute",
-    "renderHint": "RENDER is not charged by the pipeline yet; its price only applies once that stage is billed.",
+    "renderHint": "RENDER and AUDIO_SEPARATION run locally, so only x applies (y = 0): RENDER per second of output video, charged when the worker reports the render finished.",
     "history": "History",
     "change": "Change price",
     "historyTitle": "Price history · {{capability}} · {{scope}}",

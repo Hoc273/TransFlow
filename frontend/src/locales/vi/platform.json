@@ -354,7 +354,7 @@
     "defaultScope": "Mặc định",
     "noRow": "Chưa có giá — hệ thống đang dùng hệ số dự phòng hard-code.",
     "unitsPerMinute": "~{{count}} đơn vị / phút video",
-    "renderHint": "RENDER hiện chưa bị trừ Credit trong pipeline; giá RENDER chỉ có hiệu lực khi stage này được tính phí.",
+    "renderHint": "RENDER và AUDIO_SEPARATION chạy local nên chỉ thu x (y = 0): RENDER theo giây video output, trừ khi worker báo render xong.",
     "history": "Lịch sử",
     "change": "Đổi giá",
     "historyTitle": "Lịch sử giá · {{capability}} · {{scope}}",
