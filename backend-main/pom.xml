@@ -28,7 +28,7 @@
     </scm>
     <properties>
         <java.version>21</java.version>
-        <jjwt.version>0.12.6</jjwt.version>
+        <jjwt.version>0.13.0</jjwt.version>
         <minio.version>8.6.0</minio.version>
         <!-- minio 8.6 dùng okhttp 5 (Kotlin 2.2): artifact "okhttp" trên Maven là jar KMP rỗng,
              phải khai báo okhttp-jvm; kotlin-stdlib do Boot quản lý (1.9) phải nâng cho khớp. -->
