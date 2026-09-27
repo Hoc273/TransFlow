@@ -1,0 +1,19 @@
+# gitleaks config — default rules + allowlist cho giá trị giả trong test/tài liệu.
+title = "TransFlow gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Dev-only fallbacks and test fixtures (not real credentials)"
+paths = [
+  '''(^|/)src/test/''',
+  '''(^|/)tests/''',
+  '''\.test\.(ts|tsx)$''',
+  '''(^|/)\.env\.example$''',
+]
+regexes = [
+  # Dev fallbacks in application.yaml — SecretsStartupValidator refuses them when STRICT_SECRETS=true.
+  '''ZGV2LW9ubHktc2VjcmV0LWNoYW5nZS1tZS0zMi1ieXRlcy1sb25nISE=''',
+  '''MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=''',
+]
