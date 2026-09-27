@@ -133,7 +133,25 @@
     "speedFast": "Very fast",
     "speedGood": "Good",
     "speedModerate": "Normal",
-    "speedSlow": "Slow"
+    "speedSlow": "Slow",
+    "categories": {
+      "primaryDatabase": "Primary Database",
+      "cacheQueue": "Cache & Message Queue",
+      "mediaCluster": "Media Processing Cluster",
+      "gpuRender": "Composition & GPU Render",
+      "objectStorage": "Object & File Storage",
+      "aiGateway": "AI Inference Gateway",
+      "messageBroker": "Message Broker",
+      "backendApi": "Backend API Service",
+      "corePlatform": "Core Platform Service",
+      "systemService": "System Service"
+    },
+    "noMatchTitle": "No matching services found",
+    "noMatchHint": "Try clearing your search query",
+    "resetFilters": "Reset filters",
+    "justNow": "Just now",
+    "secondsAgo": "{{count}}s ago",
+    "minutesAgo": "{{count}}m ago"
   },
   "users": {
     "title": "Users Directory",
@@ -211,7 +229,8 @@
       "perWorkspacePage": "on current page",
       "pageMembers": "Members (page)",
       "onThisPage": "sum of this page"
-    }
+    },
+    "goToWorkspace": "Go to this workspace"
   },
   "audit": {
     "title": "Platform Audit Log",
@@ -466,5 +485,22 @@
       "confirmLargeChange": "I confirm this price change above ±50%.",
       "saveError": "Could not save the price version."
     }
+  },
+  "realtime": {
+    "activityTitle": "Real-time System Activity",
+    "activitySubtitle": "Active processing jobs across all workspaces · Auto-refreshes every 3 seconds",
+    "processing": "Processing",
+    "processingJobs": "Processing jobs",
+    "doneToday": "Done Today",
+    "tokensLastHour": "Tokens/last hr",
+    "collecting": "Collecting data…",
+    "jobUnit_one": "job",
+    "jobUnit_other": "jobs",
+    "userUnit_one": "user",
+    "userUnit_other": "users",
+    "onlineTitle": "Online users",
+    "onlineSubtitle": "Users with a heartbeat in the last 2 minutes · Auto-refreshes every 3 seconds",
+    "online": "Online",
+    "onlineUsers": "Online users"
   }
 }

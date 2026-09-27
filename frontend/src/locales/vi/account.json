@@ -48,7 +48,8 @@
     "joined": "Tham gia từ",
     "joinedUnknown": "—",
     "saveLocal": "Chỉ lưu trong phiên này. Cập nhật hồ sơ server (PATCH /api/me) chưa có.",
-    "saveSuccess": "Đã cập nhật hồ sơ cho phiên hiện tại"
+    "saveSuccess": "Đã cập nhật hồ sơ cho phiên hiện tại",
+    "updateFailed": "Cập nhật hồ sơ thất bại"
   },
   "security": {
     "title": "Bảo mật",
@@ -86,7 +87,9 @@
     "disconnect": "Ngắt kết nối",
     "disconnectTitle": "Ngắt kết nối tài khoản Google?",
     "disconnectDesc": "Bạn sẽ không thể đăng nhập bằng Google nữa. Có thể kết nối lại sau.",
-    "disconnectSuccess": "Tính năng ngắt kết nối tài khoản Google đang được cập nhật."
+    "disconnectSuccess": "Tính năng ngắt kết nối tài khoản Google đang được cập nhật.",
+    "failed": "Đổi mật khẩu thất bại",
+    "updatedHint": "Mật khẩu đã được cập nhật an toàn trong hệ thống."
   },
   "prefs": {
     "title": "Tùy chọn",

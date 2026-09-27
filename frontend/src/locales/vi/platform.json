@@ -133,7 +133,25 @@
     "speedFast": "Rất nhanh",
     "speedGood": "Tốt",
     "speedModerate": "Bình thường",
-    "speedSlow": "Chậm"
+    "speedSlow": "Chậm",
+    "categories": {
+      "primaryDatabase": "Cơ sở dữ liệu chính",
+      "cacheQueue": "Bộ nhớ đệm & Hàng đợi",
+      "mediaCluster": "Worker xử lý video / âm thanh",
+      "gpuRender": "Worker dựng hình & Render GPU",
+      "objectStorage": "Lưu trữ tệp & Object Store",
+      "aiGateway": "Cổng điều phối AI Inference",
+      "messageBroker": "Hàng đợi tin nhắn",
+      "backendApi": "Dịch vụ API backend",
+      "corePlatform": "Dịch vụ Core platform",
+      "systemService": "Dịch vụ hệ thống"
+    },
+    "noMatchTitle": "Không tìm thấy service phù hợp",
+    "noMatchHint": "Hãy thử xoá bộ lọc tìm kiếm",
+    "resetFilters": "Xoá bộ lọc",
+    "justNow": "Vừa xong",
+    "secondsAgo": "{{count}} giây trước",
+    "minutesAgo": "{{count}} phút trước"
   },
   "users": {
     "title": "Danh bạ người dùng",
@@ -211,7 +229,8 @@
       "perWorkspacePage": "trên trang hiện tại",
       "pageMembers": "Thành viên (trang)",
       "onThisPage": "tổng trang này"
-    }
+    },
+    "goToWorkspace": "Vào workspace này"
   },
   "audit": {
     "title": "Nhật ký audit Platform",
@@ -466,5 +485,22 @@
       "confirmLargeChange": "Tôi xác nhận thay đổi giá lớn hơn ±50%.",
       "saveError": "Không lưu được phiên bản giá."
     }
+  },
+  "realtime": {
+    "activityTitle": "Hoạt động hệ thống theo thời gian thực",
+    "activitySubtitle": "Theo dõi job đang xử lý · Tự động làm mới mỗi 3 giây",
+    "processing": "Đang xử lý",
+    "processingJobs": "Đang xử lý",
+    "doneToday": "Hoàn thành hôm nay",
+    "tokensLastHour": "Token/giờ qua",
+    "collecting": "Đang thu thập dữ liệu…",
+    "jobUnit_one": "job",
+    "jobUnit_other": "job",
+    "userUnit_one": "user",
+    "userUnit_other": "user",
+    "onlineTitle": "Người đang online",
+    "onlineSubtitle": "User có tín hiệu trong 2 phút qua · Tự động làm mới mỗi 3 giây",
+    "online": "Đang online",
+    "onlineUsers": "Đang online"
   }
 }

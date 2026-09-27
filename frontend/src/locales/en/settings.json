@@ -192,7 +192,10 @@
       "actions": "Actions"
     },
     "keyRejected": "Key rejected",
-    "keyRejectedHint": "Daily check: the provider rejected this key (expired or revoked). Update it with a new key."
+    "keyRejectedHint": "Daily check: the provider rejected this key (expired or revoked). Update it with a new key.",
+    "adapterVoiceDiscovery": "Voice discovery",
+    "adapterModelDiscovery": "Model discovery",
+    "adapterRequestFormat": "Request format"
   },
   "ttsProviders": {
     "title": "Text-to-speech providers",

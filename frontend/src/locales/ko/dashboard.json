@@ -1,0 +1,141 @@
+{
+  "title": "대시보드",
+  "updatedAt": "새로고침",
+  "loading": "불러오는 중…",
+  "widget": {
+    "usage": {
+      "title": "AI 리소스 사용량",
+      "subtitle": "워크스페이스 전체",
+      "inputTokens": "입력 토큰",
+      "outputTokens": "출력 토큰",
+      "embedTokens": "임베딩 토큰",
+      "cost": "예상 비용",
+      "comingSoon": "곧 제공 예정",
+      "empty": "아직 사용량 데이터가 없습니다",
+      "restricted": "AI 리소스 사용량은 PM과 관리자만 볼 수 있습니다.",
+      "loadError": "사용량을 불러올 수 없습니다"
+    },
+    "queue": {
+      "title": "진행 중인 배치",
+      "subtitle": "대기열에서 처리 중",
+      "emptyTitle": "진행 중인 배치가 없습니다",
+      "emptyDesc": "PENDING 또는 PROCESSING 상태의 배치가 여기에 표시됩니다.",
+      "loadError": "배치를 불러올 수 없습니다"
+    },
+    "notifications": {
+      "title": "최근 알림",
+      "subtitle": "배치 종료 이벤트",
+      "emptyTitle": "알림이 없습니다",
+      "loadError": "알림을 불러올 수 없습니다"
+    },
+    "recentProjects": {
+      "title": "최근 프로젝트",
+      "emptyTitle": "아직 프로젝트가 없습니다",
+      "emptyDesc": "프로젝트를 만들어 시작하세요.",
+      "loadError": "프로젝트를 불러올 수 없습니다",
+      "tmOn": "TM 켜짐",
+      "tmOff": "TM 꺼짐"
+    }
+  },
+  "usage": {
+    "title": "AI 리소스 사용량",
+    "subtitle": "AI 작업, 프로젝트, 멤버별 토큰 및 크레딧 사용량",
+    "backToDashboard": "대시보드로 돌아가기",
+    "empty": "이 범위에 대한 사용량 데이터가 없습니다",
+    "summary": {
+      "input": "입력 토큰",
+      "output": "출력 토큰",
+      "total": "전체 토큰",
+      "operations": "작업 수",
+      "currentScope": "현재 범위",
+      "cost": "예상 비용",
+      "creditUsed": "사용한 크레딧"
+    },
+    "filter": {
+      "project": "프로젝트",
+      "allProjects": "모든 프로젝트",
+      "document": "문서",
+      "allDocuments": "모든 문서",
+      "job": "작업",
+      "allJobs": "모든 작업",
+      "clear": "필터 지우기"
+    },
+    "byOperation": {
+      "title": "작업 유형별 사용량",
+      "subtitle": "AI 작업 유형별 토큰 및 호출 수"
+    },
+    "byModel": {
+      "title": "모델별 사용량",
+      "subtitle": "제공업체 / 모델별 토큰 및 호출 수"
+    },
+    "col": {
+      "operation": "작업 유형",
+      "input": "입력",
+      "output": "출력",
+      "total": "합계",
+      "calls": "호출",
+      "provider": "제공업체",
+      "model": "모델",
+      "share": "비중",
+      "credit": "크레딧",
+      "project": "프로젝트",
+      "user": "멤버"
+    },
+    "byProject": {
+      "title": "프로젝트별 사용량",
+      "subtitle": "프로젝트별 토큰, 호출 수 및 크레딧"
+    },
+    "byUser": {
+      "title": "멤버별 사용량",
+      "subtitle": "멤버별 토큰, 호출 수 및 크레딧"
+    }
+  },
+  "col": {
+    "name": "이름",
+    "status": "상태",
+    "progress": "진행률",
+    "docs": "문서",
+    "createdBy": "생성자",
+    "createdAt": "생성일",
+    "domain": "도메인",
+    "sourceLang": "원본",
+    "updatedAt": "수정일",
+    "tm": "TM",
+    "tone": "어조"
+  },
+  "status": {
+    "pending": "대기 중",
+    "processing": "처리 중",
+    "completed": "완료",
+    "partiallyFailed": "일부 실패",
+    "failed": "실패",
+    "cancelled": "취소됨"
+  },
+  "viewAll": "모두 보기",
+  "continue": "계속",
+  "breadcrumbWorkspace": "워크스페이스",
+  "live": {
+    "indicator": "실시간",
+    "statusOnline": "실시간 데이터",
+    "chartTitle": "실시간 AI 리소스 분석",
+    "byOperation": "작업 유형별",
+    "byModel": "모델별",
+    "operationsTitle": "AI 작업 유형 분석",
+    "balanceTitle": "입력 대 출력 토큰 비율",
+    "totalTokens": "전체 토큰",
+    "totalCalls": "호출",
+    "totalProjects": "프로젝트",
+    "inputTokens": "입력",
+    "outputTokens": "출력",
+    "share": "비중",
+    "noData": "이 워크스페이스에는 아직 AI 사용량 데이터가 없습니다",
+    "quickLaunch": "빠른 실행",
+    "quickNewProject": "새 프로젝트",
+    "quickNewBatch": "일괄 처리",
+    "quickMedia": "Media Studio",
+    "quickGlossary": "용어집",
+    "quickUsage": "AI 리소스",
+    "successRate": "성공률",
+    "pipelineTitle": "진행 중인 대기열 및 처리 파이프라인"
+  }
+}

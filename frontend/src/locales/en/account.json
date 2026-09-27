@@ -48,7 +48,8 @@
     "joined": "Member since",
     "joinedUnknown": "—",
     "saveLocal": "Saved in this session only. Server profile update (PATCH /api/me) is not available yet.",
-    "saveSuccess": "Profile updated for this session"
+    "saveSuccess": "Profile updated for this session",
+    "updateFailed": "Profile update failed"
   },
   "security": {
     "title": "Security",
@@ -86,7 +87,9 @@
     "disconnect": "Disconnect",
     "disconnectTitle": "Disconnect Google account?",
     "disconnectDesc": "You will no longer be able to sign in with Google. You can reconnect later.",
-    "disconnectSuccess": "Google disconnect feature is coming soon."
+    "disconnectSuccess": "Google disconnect feature is coming soon.",
+    "failed": "Password change failed",
+    "updatedHint": "Your password has been securely updated."
   },
   "prefs": {
     "title": "Preferences",

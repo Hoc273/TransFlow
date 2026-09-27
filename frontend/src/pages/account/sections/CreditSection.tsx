@@ -18,7 +18,7 @@ import {
   usePurchaseCreditPackage,
   useUserCredit,
 } from '@/hooks/useCredit'
-import { formatDateTime, formatNumber } from '@/lib/format'
+import { formatDateTime, formatNumber, intlLocale } from '@/lib/format'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
 import type { CreditPackage, CreditTransactionType } from '@/types/credit'
@@ -363,7 +363,7 @@ function PurchaseCreditModal({
                 name={creditPackage.name}
                 credits={formatNumber(Number(creditPackage.creditAmount), language)}
                 creditsUnit={t('account:credit.unit')}
-                price={new Intl.NumberFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
+                price={new Intl.NumberFormat(intlLocale(language), {
                   style: 'currency',
                   currency: creditPackage.priceCurrency,
                 }).format(Number(creditPackage.priceAmount))}

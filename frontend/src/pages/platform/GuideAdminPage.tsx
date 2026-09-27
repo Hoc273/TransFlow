@@ -134,7 +134,7 @@ export function GuideAdminPage() {
   const handleSaveCategory = async () => {
     setCategoryError(null)
     if (!categoryForm.titleVi.trim() || !categoryForm.titleEn.trim()) {
-      setCategoryError('Tiêu đề Tiếng Việt và Tiếng Anh là bắt buộc.')
+      setCategoryError(t('admin.errTitlesRequired'))
       return
     }
 
@@ -151,7 +151,7 @@ export function GuideAdminPage() {
       }
       setCategoryModalOpen(false)
     } catch (err: any) {
-      setCategoryError(err?.message || 'Có lỗi xảy ra khi lưu danh mục.')
+      setCategoryError(err?.message || t('admin.errSaveCategory'))
     }
   }
 
@@ -159,7 +159,7 @@ export function GuideAdminPage() {
     if (!window.confirm(t('admin.deleteConfirm'))) return
     try {
       await deleteCategoryMut.mutateAsync(cat.id)
-      showToast('Đã xóa danh mục thành công.')
+      showToast(t('admin.categoryDeleted'))
     } catch (err: any) {
       alert(err?.message || t('admin.deleteHasArticles'))
     }
@@ -235,15 +235,15 @@ export function GuideAdminPage() {
   const handleSaveArticle = async () => {
     setArticleError(null)
     if (!articleForm.titleVi.trim() || !articleForm.titleEn.trim()) {
-      setArticleError('Tiêu đề Tiếng Việt và Tiếng Anh là bắt buộc.')
+      setArticleError(t('admin.errTitlesRequired'))
       return
     }
     if (!articleForm.categoryId) {
-      setArticleError('Vui lòng chọn danh mục cho bài viết.')
+      setArticleError(t('admin.errCategoryRequired'))
       return
     }
     if (!articleForm.contentVi.trim() || !articleForm.contentEn.trim()) {
-      setArticleError('Nội dung Tiếng Việt và Tiếng Anh là bắt buộc.')
+      setArticleError(t('admin.errContentRequired'))
       return
     }
 
@@ -260,7 +260,7 @@ export function GuideAdminPage() {
       }
       setArticleModalOpen(false)
     } catch (err: any) {
-      setArticleError(err?.message || 'Có lỗi xảy ra khi lưu bài viết.')
+      setArticleError(err?.message || t('admin.errSaveArticle'))
     }
   }
 
@@ -268,9 +268,9 @@ export function GuideAdminPage() {
     if (!window.confirm(t('admin.deleteConfirm'))) return
     try {
       await deleteArticleMut.mutateAsync(art.id)
-      showToast('Đã xóa bài viết.')
+      showToast(t('admin.articleDeleted'))
     } catch (err: any) {
-      alert(err?.message || 'Không thể xóa bài viết.')
+      alert(err?.message || t('admin.errDeleteArticle'))
     }
   }
 
@@ -283,7 +283,7 @@ export function GuideAdminPage() {
       })
       showToast(newStatus === 'PUBLISHED' ? t('admin.publish') : t('admin.unpublish'))
     } catch (err: any) {
-      alert(err?.message || 'Không thể đổi trạng thái.')
+      alert(err?.message || t('admin.errToggleStatus'))
     }
   }
 
@@ -344,7 +344,7 @@ export function GuideAdminPage() {
             </div>
           ) : categories.length === 0 ? (
             <div className="text-center py-6 text-xs text-[var(--color-text-tertiary)]">
-              Chưa có danh mục nào.
+              {t('admin.noCategories')}
             </div>
           ) : (
             <div className="space-y-2">
@@ -413,7 +413,7 @@ export function GuideAdminPage() {
                           {cat.titleEn} · slug: <code className="font-mono">{cat.slug}</code>
                         </div>
                         <div className="text-[10px] text-primary font-medium mt-1">
-                          {cat.articleCount} bài viết
+                          {t('admin.articleCount', { count: cat.articleCount })}
                         </div>
                       </div>
 
@@ -469,7 +469,7 @@ export function GuideAdminPage() {
                 onChange={(e) => setStatusFilter(e.target.value as GuideArticleStatus | '')}
                 className="px-2.5 py-1.5 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
               >
-                <option value="">{t('admin.filterStatus')} (Tất cả)</option>
+                <option value="">{t('admin.filterStatus')} ({t('admin.all')})</option>
                 <option value="DRAFT">{t('admin.draft')}</option>
                 <option value="PUBLISHED">{t('admin.published')}</option>
               </select>
@@ -503,7 +503,7 @@ export function GuideAdminPage() {
           {/* Articles Table */}
           {articlesLoading ? (
             <div className="py-12 text-center text-xs text-[var(--color-text-tertiary)] animate-pulse">
-              Đang tải danh sách bài viết…
+              {t('admin.loadingArticles')}
             </div>
           ) : articles.length === 0 ? (
             <div className="py-12 text-center text-xs text-[var(--color-text-tertiary)]">
@@ -517,8 +517,8 @@ export function GuideAdminPage() {
                     <th className="py-2.5 px-3">{t('admin.articles')}</th>
                     <th className="py-2.5 px-3">{t('admin.status')}</th>
                     <th className="py-2.5 px-3">{t('admin.order')}</th>
-                    <th className="py-2.5 px-3">Cập nhật</th>
-                    <th className="py-2.5 px-3 text-right">Thao tác</th>
+                    <th className="py-2.5 px-3">{t('admin.updated')}</th>
+                    <th className="py-2.5 px-3 text-right">{t('admin.actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border)]">
@@ -632,7 +632,7 @@ export function GuideAdminPage() {
                   type="text"
                   value={categoryForm.titleVi}
                   onChange={(e) => setCategoryForm({ ...categoryForm, titleVi: e.target.value })}
-                  placeholder="Ví dụ: Bắt đầu"
+                  placeholder={t('admin.categoryTitlePlaceholder')}
                   className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                 />
               </div>
@@ -658,7 +658,7 @@ export function GuideAdminPage() {
                   type="text"
                   value={categoryForm.slug ?? ''}
                   onChange={(e) => setCategoryForm({ ...categoryForm, slug: e.target.value })}
-                  placeholder="Tự sinh từ tiêu đề nếu để trống"
+                  placeholder={t('admin.slugPlaceholder')}
                   className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] font-mono focus:outline-hidden"
                 />
               </div>
@@ -739,7 +739,7 @@ export function GuideAdminPage() {
                     }
                     className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                   >
-                    <option value="">-- Chọn danh mục --</option>
+                    <option value="">{t('admin.selectCategory')}</option>
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.titleVi} ({c.titleEn})
@@ -792,7 +792,7 @@ export function GuideAdminPage() {
                     type="text"
                     value={articleForm.titleVi}
                     onChange={(e) => setArticleForm({ ...articleForm, titleVi: e.target.value })}
-                    placeholder="Tiêu đề tiếng Việt"
+                    placeholder={t('admin.titleViPlaceholder')}
                     className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                   />
                 </div>
@@ -821,7 +821,7 @@ export function GuideAdminPage() {
                     type="text"
                     value={articleForm.slug ?? ''}
                     onChange={(e) => setArticleForm({ ...articleForm, slug: e.target.value })}
-                    placeholder="Tự sinh từ tiêu đề tiếng Việt nếu để trống"
+                    placeholder={t('admin.articleSlugPlaceholder')}
                     className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] font-mono focus:outline-hidden"
                   />
                 </div>
@@ -854,7 +854,7 @@ export function GuideAdminPage() {
                     onChange={(e) =>
                       setArticleForm({ ...articleForm, excerptVi: e.target.value })
                     }
-                    placeholder="Tóm tắt ngắn gọn bài viết..."
+                    placeholder={t('admin.excerptPlaceholder')}
                     className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden"
                   />
                 </div>
@@ -880,10 +880,10 @@ export function GuideAdminPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-bold text-[var(--color-text-primary)]">
-                      Nội dung Markdown
+                      {t('admin.markdownContent')}
                     </span>
                     <span className="text-[11px] text-[var(--color-text-tertiary)]">
-                      (Hỗ trợ GitHub Flavored Markdown)
+                      {t('admin.gfmSupported')}
                     </span>
                   </div>
 
@@ -950,7 +950,7 @@ export function GuideAdminPage() {
                       onChange={(e) =>
                         setArticleForm({ ...articleForm, contentVi: e.target.value })
                       }
-                      placeholder="# Tiêu đề bài viết\n\nNội dung Markdown tiếng Việt..."
+                      placeholder={t('admin.contentViPlaceholder')}
                       className="w-full p-3 rounded-xl text-xs font-mono bg-[var(--color-bg-surface-2)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-hidden leading-relaxed"
                     />
                   ) : (
@@ -968,8 +968,8 @@ export function GuideAdminPage() {
                   <div className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-hover)] min-h-[300px] overflow-y-auto prose prose-neutral dark:prose-invert max-w-none text-xs">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {articleContentLang === 'vi'
-                        ? articleForm.contentVi || '*Chưa có nội dung Tiếng Việt*'
-                        : articleForm.contentEn || '*No English content yet*'}
+                        ? articleForm.contentVi || t('admin.noViContent')
+                        : articleForm.contentEn || t('admin.noEnContent')}
                     </ReactMarkdown>
                   </div>
                 )}

@@ -212,7 +212,7 @@ export function SecuritySection() {
             <div>
               <div className="font-semibold text-emerald-300">{info}</div>
               <div className="text-[11px] text-emerald-400/80 mt-0.5">
-                Mật khẩu đã được cập nhật an toàn trong hệ thống.
+                {t('account:security.updatedHint')}
               </div>
             </div>
           </div>

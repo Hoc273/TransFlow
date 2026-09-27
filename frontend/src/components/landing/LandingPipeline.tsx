@@ -381,8 +381,8 @@ export function LandingPipeline() {
               >
                 <span>
                   {showAllTechDetails
-                    ? (t('pipeline.collapseDetails', 'Thu gọn') || 'Thu gọn')
-                    : (t('pipeline.expandDetails', 'Xem chi tiết thuật toán ▾') || 'Xem chi tiết thuật toán ▾')}
+                    ? t('pipeline.collapseDetails')
+                    : t('pipeline.expandDetails')}
                 </span>
                 {showAllTechDetails ? <IconChevronUp size={12} /> : <IconChevronDown size={12} />}
               </button>

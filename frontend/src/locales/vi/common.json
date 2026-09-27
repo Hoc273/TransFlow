@@ -28,7 +28,15 @@
     "navigateHint": "Điều hướng",
     "openHint": "Mở",
     "closeHint": "Đóng",
-    "shortcutHint": "ESC để đóng"
+    "shortcutHint": "ESC để đóng",
+    "pageDesc": {
+      "dashboard": "Tổng quan hoạt động và thống kê workspace",
+      "projects": "Quản lý dự án bản địa hóa",
+      "glossaries": "Chuẩn hóa danh mục thuật ngữ theo domain",
+      "media": "Dịch video, lồng tiếng AI giọng đọc & phụ đề",
+      "usage": "Thống kê lượng dùng token, chi phí và hạn ngạch",
+      "members": "Quản lý thành viên workspace và phân quyền"
+    }
   },
   "profile": "Hồ sơ",
   "guide": "Hướng dẫn",
@@ -120,5 +128,16 @@
     "activityPhase2": "Phase 2 — chờ backend",
     "qaInEditor": "QA nằm trong Editor — mở job dịch để xem",
     "mediaDocs": "Media Studio → docs/19"
+  },
+  "characters": "ký tự",
+  "saving": "Đang lưu…",
+  "errorBoundary": {
+    "globalTitle": "Đã xảy ra lỗi",
+    "globalDesc": "Đã xảy ra lỗi không mong muốn. Hãy tải lại trang để tiếp tục.",
+    "reload": "Tải lại trang",
+    "routeTitle": "Không thể tải màn hình này",
+    "routeDesc": "Các phần khác của ứng dụng vẫn hoạt động bình thường.",
+    "tryAgain": "Thử lại",
+    "dashboard": "Bảng điều khiển"
   }
 }

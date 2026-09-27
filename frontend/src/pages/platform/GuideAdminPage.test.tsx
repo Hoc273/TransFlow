@@ -121,7 +121,7 @@ describe('GuideAdminPage', () => {
 
     // Category panel
     expect(screen.getAllByText('Bắt đầu').length).toBeGreaterThan(0)
-    expect(screen.getByText(/1 bài viết/i)).toBeInTheDocument()
+    expect(screen.getByText('admin.articleCount')).toBeInTheDocument()
 
     // Article row
     expect(screen.getByText('Tổng quan TransFlow')).toBeInTheDocument()
@@ -154,9 +154,9 @@ describe('GuideAdminPage', () => {
     const newCatBtn = screen.getByRole('button', { name: /admin.newCategory/i })
     fireEvent.click(newCatBtn)
 
-    expect(screen.getByPlaceholderText('Ví dụ: Bắt đầu')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('admin.categoryTitlePlaceholder')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByPlaceholderText('Ví dụ: Bắt đầu'), {
+    fireEvent.change(screen.getByPlaceholderText('admin.categoryTitlePlaceholder'), {
       target: { value: 'Nâng cao' },
     })
     fireEvent.change(screen.getByPlaceholderText('Example: Getting Started'), {

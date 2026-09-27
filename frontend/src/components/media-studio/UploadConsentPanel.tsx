@@ -840,7 +840,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
               {staged.some((s) => s.uploadStatus === 'ready') && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-status-completed-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-status-completed)]">
                   <IconCheck size={11} stroke={3} />
-                  {language === 'vi' ? 'Đã tải lên' : 'Uploaded'}
+                  {t('media:createPanel.uploaded')}
                 </span>
               )}
             </header>
@@ -1010,7 +1010,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
               {consented && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-status-completed-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-status-completed)]">
                   <IconCheck size={11} stroke={3} />
-                  {language === 'vi' ? 'Đã xác nhận' : 'Confirmed'}
+                  {t('media:createPanel.confirmed')}
                 </span>
               )}
             </header>
@@ -1073,14 +1073,12 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 ) : staged.length > 1 ? (
                   <span className="media-source-pill">
                     <IconVideo size={13} />
-                    <span>{staged.length} {language === 'vi' ? 'video' : 'videos'}</span>
+                    <span>{t('media:createPanel.videoCount', { count: staged.length })}</span>
                   </span>
                 ) : null}
               </div>
               <p className="media-config-master-subtitle">
-                {language === 'vi'
-                  ? 'Thiết lập công thức xử lý, ngôn ngữ, giọng đọc AI và quy trình tự động'
-                  : 'Configure transformation recipe, languages, AI voice, and automated workflow'}
+                {t('media:createPanel.subtitle')}
               </p>
             </div>
           </header>
@@ -1185,7 +1183,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                     </div>
                     <div className="flex items-center gap-2 pt-2 border-t border-[var(--color-border)]">
                       <span className="text-xs text-[var(--color-text-tertiary)] shrink-0">
-                        {language === 'vi' ? 'Hoặc nhập tuỳ chỉnh:' : 'Or custom duration:'}
+                        {t('media:createPanel.customDuration')}
                       </span>
                       <div className="relative flex items-center">
                         <IconClock
@@ -1297,7 +1295,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                         ) : (
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--color-media-soft)] text-[var(--color-media)]">
-                              {language === 'vi' ? `${selectedTargets.length} ngôn ngữ` : `${selectedTargets.length} languages`}
+                              {t('media:createPanel.languageCount', { count: selectedTargets.length })}
                             </span>
                             <span className="text-xs text-[var(--color-text-secondary)] truncate">
                               {selectedTargets.map((l) => l.toUpperCase()).join(', ')}
@@ -1324,7 +1322,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                       aria-label={t('media:targetLangLabel')}
                     >
                       <div className="px-2.5 py-1 text-[11px] font-semibold text-[var(--color-text-tertiary)] flex justify-between items-center border-b border-[var(--color-border)] mb-1">
-                        <span>{language === 'vi' ? 'Chọn ngôn ngữ đích' : 'Select target languages'}</span>
+                        <span>{t('media:createPanel.selectTargets')}</span>
                         <span className="font-mono text-[10px]">{selectedTargets.length} / {LANG_OPTIONS.length}</span>
                       </div>
                       <div className="space-y-0.5">
@@ -1348,9 +1346,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                                 locked
                                   ? t('media:batch.multiVideoLocksTarget')
                                   : isOnlyChecked
-                                    ? language === 'vi'
-                                      ? 'Phải giữ lại tối thiểu 1 ngôn ngữ đích'
-                                      : 'At least one target language is required'
+                                    ? t('media:createPanel.minOneTarget')
                                     : undefined
                               }
                             >
@@ -1367,7 +1363,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                               </span>
                               {checked && (
                                 <span className="text-[11px] font-semibold text-[var(--color-media)] shrink-0">
-                                  {language === 'vi' ? 'Đã chọn' : 'Selected'}
+                                  {t('media:createPanel.selected')}
                                 </span>
                               )}
                             </label>
@@ -1404,7 +1400,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                   )}
 
                   <span className="field-help text-[11px] mt-1 block">
-                    {language === 'vi' ? 'Ngôn ngữ đích cho phụ đề và lồng tiếng' : 'Target language for subtitles & dubbing'}
+                    {t('media:createPanel.targetHelp')}
                   </span>
                   {staged.length > 1 && (
                     <span className="field-help text-[11px] mt-1 block">
@@ -1656,7 +1652,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
         <div className="media-create-action-bar mt-3.5 pt-3 border-t border-[var(--color-border)]">
           <div className="media-create-summary-strip">
             <span className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider">
-              {language === 'vi' ? 'Tóm tắt cấu hình:' : 'Config summary:'}
+              {t('media:createPanel.configSummary')}
             </span>
             <div className="media-summary-pills">
               <span className="media-summary-pill highlight">
@@ -1673,7 +1669,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 )}
               </span>
               <span className="media-summary-pill">
-                {(sourceLang ? formatLanguageOption(sourceLang, language) : (language === 'vi' ? 'Tự nhận diện' : 'Auto-detect'))}
+                {(sourceLang ? formatLanguageOption(sourceLang, language) : t('media:createPanel.autoDetect'))}
                 {' → '}
                 {isMultiTarget
                   ? `${formatLanguageOption(selectedTargets[0], language)} +${selectedTargets.length - 1}`
@@ -1752,14 +1748,15 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 <span className="font-semibold text-[var(--color-status-completed)] flex items-center gap-1.5">
                   <IconCheck size={16} className="shrink-0" />
                   <span>
-                    {language === 'vi'
-                      ? `${batchSummary.created}/${staged.length > 1 ? staged.length : selectedTargets.length} jobs thành công`
-                      : `${batchSummary.created}/${staged.length > 1 ? staged.length : selectedTargets.length} jobs created`}
+                    {t('media:createPanel.jobsCreated', {
+                      created: batchSummary.created,
+                      total: staged.length > 1 ? staged.length : selectedTargets.length,
+                    })}
                   </span>
                 </span>
                 {batchSummary.failed > 0 && (
                   <span className="font-semibold text-[var(--color-error)] flex items-center gap-1">
-                    · <span>{language === 'vi' ? `${batchSummary.failed} jobs thất bại` : `${batchSummary.failed} failed`}</span>
+                    · <span>{t('media:createPanel.jobsFailed', { count: batchSummary.failed })}</span>
                   </span>
                 )}
               </div>
@@ -1774,9 +1771,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 >
                   <IconLoader2 size={13} className="animate-spin text-[var(--color-media)] shrink-0" />
                   <span>
-                    {language === 'vi'
-                      ? `Đang chuyển hướng (${redirectCountdown ?? 3}s)... (Redirecting)`
-                      : `Redirecting... (${redirectCountdown ?? 3}s)`}
+                    {t('media:createPanel.redirecting', { seconds: redirectCountdown ?? 3 })}
                   </span>
                 </button>
               )}
@@ -1817,9 +1812,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
               {noTtsProviders && recipeId !== 'summary.generative' && !keepOriginalAudio && (
                 <span className="text-[var(--color-error)] flex items-center gap-1">
                   <IconAlertCircle size={14} />
-                  {language === 'vi'
-                    ? 'Chưa có nhà cung cấp TTS nào khả dụng trong workspace.'
-                    : 'No TTS providers available in this workspace.'}
+                  {t('media:createPanel.noTtsProviders')}
                 </span>
               )}
             </div>

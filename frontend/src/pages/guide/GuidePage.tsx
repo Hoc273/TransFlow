@@ -36,7 +36,8 @@ export function GuidePage() {
         : '/dashboard'
     : '/login'
 
-  const lang = i18n.language === 'en' ? 'en' : 'vi'
+  // Guide articles exist in vi/en only; Korean readers get the English version.
+  const lang = i18n.language === 'vi' ? 'vi' : 'en'
   const { data: categories = [], isLoading: catsLoading } = useGuideCategories(lang)
   const { data: articles = [], isLoading: articlesLoading } = useGuideArticles({ lang })
 

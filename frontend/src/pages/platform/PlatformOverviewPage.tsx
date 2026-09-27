@@ -27,7 +27,8 @@ import {
 } from 'recharts'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { usePlatformOverview, usePlatformRealtime, usePlatformStatus } from '@/hooks/usePlatform'
-import { formatCompactNumber, formatNumber, initialsFromName } from '@/lib/format'
+import { formatCompactNumber, formatNumber, initialsFromName, intlLocale } from '@/lib/format'
+import i18n from '@/i18n'
 import { useUiStore } from '@/store/uiStore'
 import { isUnavailableJob, type JobStatusCounts, type PlatformOverview } from '@/types/platform'
 
@@ -136,8 +137,8 @@ function buildRangeLabels(rangeDays: number, count: number): string[] {
     const d = new Date(now.getTime() - i * ((rangeDays / count) * 24 * 60 * 60 * 1000))
     labels.push(
       rangeDays <= 7
-        ? d.toLocaleDateString(undefined, { weekday: 'short' })
-        : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        ? d.toLocaleDateString(intlLocale(i18n.language), { weekday: 'short' })
+        : d.toLocaleDateString(intlLocale(i18n.language), { month: 'short', day: 'numeric' }),
     )
   }
   return labels
@@ -601,7 +602,7 @@ export function PlatformOverviewPage() {
         </div>
 
         {/* Online users — live presence chart */}
-        <OnlineUsersCard language={language} />
+        <OnlineUsersCard />
 
         {/* Real-time Active Users Chart */}
         <RealtimeActiveUsersCard language={language} />
@@ -897,6 +898,7 @@ function JobTypeRow({
  * Replaces the previous mock-random "concurrent users" chart.
  */
 function RealtimeActiveUsersCard({ language }: { language: string }) {
+  const { t } = useTranslation('platform')
   const { data: snap } = usePlatformRealtime()
 
   // Rolling 19-point time-series of processingJobs — one point per 3 s poll
@@ -933,7 +935,7 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
-                  {language === 'vi' ? 'Hoạt động hệ thống theo thời gian thực' : 'Real-time System Activity'}
+                  {t('realtime.activityTitle')}
                 </h3>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">
                   <span className="relative flex h-2 w-2">
@@ -944,9 +946,7 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
                 </span>
               </div>
               <p className="text-[11px] text-[var(--color-text-tertiary)] mt-0.5">
-                {language === 'vi'
-                  ? 'Theo dõi job đang xử lý · Tự động làm mới mỗi 3 giây'
-                  : 'Active processing jobs across all workspaces · Auto-refreshes every 3 seconds'}
+                {t('realtime.activitySubtitle')}
               </p>
             </div>
           </div>
@@ -955,31 +955,31 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
         <div className="flex items-center gap-5 self-start sm:self-center">
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-              {language === 'vi' ? 'Đang xử lý' : 'Processing'}
+              {t('realtime.processing')}
             </div>
             <div className="text-xl font-bold font-mono text-emerald-400 tabular-nums">
               {processingJobs}{' '}
               <span className="text-xs font-normal text-[var(--color-text-secondary)]">
-                {language === 'vi' ? 'job' : 'jobs'}
+                {t('realtime.jobUnit', { count: processingJobs })}
               </span>
             </div>
           </div>
           <div className="h-8 w-px bg-[var(--color-border)]" />
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-              {language === 'vi' ? 'Hoàn thành hôm nay' : 'Done Today'}
+              {t('realtime.doneToday')}
             </div>
             <div className="text-xl font-bold font-mono text-[var(--color-text-primary)] tabular-nums">
               {completedToday}{' '}
               <span className="text-xs font-normal text-[var(--color-text-secondary)]">
-                {language === 'vi' ? 'job' : 'jobs'}
+                {t('realtime.jobUnit', { count: completedToday })}
               </span>
             </div>
           </div>
           <div className="h-8 w-px bg-[var(--color-border)]" />
           <div className="text-right hidden sm:block">
             <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-              {language === 'vi' ? 'Token/giờ qua' : 'Tokens/last hr'}
+              {t('realtime.tokensLastHour')}
             </div>
             <div className="text-xl font-bold font-mono text-[var(--color-accent)] tabular-nums">
               {formatCompactNumber(tokensLastHour, language)}
@@ -992,7 +992,7 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
         {chartData.length === 0 ? (
           <div className="flex h-full items-center justify-center text-xs text-[var(--color-text-tertiary)]">
             <IconClock size={14} className="mr-1.5 opacity-60" />
-            {language === 'vi' ? 'Đang thu thập dữ liệu…' : 'Collecting data…'}
+            {t('realtime.collecting')}
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
@@ -1016,8 +1016,8 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
                 }}
                 labelStyle={{ color: 'var(--color-text-primary)', fontWeight: 600 }}
                 formatter={(val) => [
-                  `${val ?? 0} ${language === 'vi' ? 'job' : 'jobs'}`,
-                  language === 'vi' ? 'Đang xử lý' : 'Processing jobs',
+                  `${val ?? 0} ${t('realtime.jobUnit', { count: Number(val ?? 0) })}`,
+                  t('realtime.processingJobs'),
                 ]}
               />
               <Area
@@ -1045,7 +1045,8 @@ function RealtimeActiveUsersCard({ language }: { language: string }) {
  * heartbeat every 60 s while logged in; a user counts as online within
  * 2 minutes of their last heartbeat.
  */
-function OnlineUsersCard({ language }: { language: string }) {
+function OnlineUsersCard() {
+  const { t } = useTranslation('platform')
   const { data: snap } = usePlatformRealtime()
 
   // Rolling 19-point time-series of onlineUsers — one point per 3 s poll
@@ -1080,7 +1081,7 @@ function OnlineUsersCard({ language }: { language: string }) {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
-                  {language === 'vi' ? 'Người đang online' : 'Online users'}
+                  {t('realtime.onlineTitle')}
                 </h3>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-400 border border-sky-500/20">
                   <span className="relative flex h-2 w-2">
@@ -1091,9 +1092,7 @@ function OnlineUsersCard({ language }: { language: string }) {
                 </span>
               </div>
               <p className="text-[11px] text-[var(--color-text-tertiary)] mt-0.5">
-                {language === 'vi'
-                  ? 'User có tín hiệu trong 2 phút qua · Tự động làm mới mỗi 3 giây'
-                  : 'Users with a heartbeat in the last 2 minutes · Auto-refreshes every 3 seconds'}
+                {t('realtime.onlineSubtitle')}
               </p>
             </div>
           </div>
@@ -1102,12 +1101,12 @@ function OnlineUsersCard({ language }: { language: string }) {
         <div className="flex items-center gap-5 self-start sm:self-center">
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-              {language === 'vi' ? 'Đang online' : 'Online'}
+              {t('realtime.online')}
             </div>
             <div className="text-xl font-bold font-mono text-sky-400 tabular-nums">
               {onlineUsers}{' '}
               <span className="text-xs font-normal text-[var(--color-text-secondary)]">
-                {language === 'vi' ? 'user' : 'users'}
+                {t('realtime.userUnit', { count: onlineUsers })}
               </span>
             </div>
           </div>
@@ -1118,7 +1117,7 @@ function OnlineUsersCard({ language }: { language: string }) {
         {chartData.length === 0 ? (
           <div className="flex h-full items-center justify-center text-xs text-[var(--color-text-tertiary)]">
             <IconClock size={14} className="mr-1.5 opacity-60" />
-            {language === 'vi' ? 'Đang thu thập dữ liệu…' : 'Collecting data…'}
+            {t('realtime.collecting')}
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
@@ -1142,8 +1141,8 @@ function OnlineUsersCard({ language }: { language: string }) {
                 }}
                 labelStyle={{ color: 'var(--color-text-primary)', fontWeight: 600 }}
                 formatter={(val) => [
-                  `${val ?? 0} ${language === 'vi' ? 'user' : 'users'}`,
-                  language === 'vi' ? 'Đang online' : 'Online users',
+                  `${val ?? 0} ${t('realtime.userUnit', { count: Number(val ?? 0) })}`,
+                  t('realtime.onlineUsers'),
                 ]}
               />
               <Area

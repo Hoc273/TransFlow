@@ -361,7 +361,7 @@ export function ProfileSection() {
             className="btn-primary btn-sm flex items-center gap-1.5 text-xs shadow-xs"
           >
             <IconDeviceFloppy size={14} />
-            <span>{updateProfile.isPending ? t('account:common.saving', { defaultValue: 'Đang lưu...' }) : t('account:common.save')}</span>
+            <span>{updateProfile.isPending ? t('common:saving') : t('account:common.save')}</span>
           </button>
         </div>
       </form>

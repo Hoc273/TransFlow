@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useUiStore } from '@/store/uiStore'
+import { normalizeLanguage } from '@/lib/uiLanguage'
 
 /** Bidirectional sync between uiStore.language and i18next. */
 export function useLanguageSync() {
@@ -17,7 +18,7 @@ export function useLanguageSync() {
 
   // Rehydrate store from i18n if localStorage key differs (first load via detector)
   useEffect(() => {
-    const lng = (i18n.resolvedLanguage || i18n.language || 'en').startsWith('vi') ? 'vi' : 'en'
+    const lng = normalizeLanguage(i18n.resolvedLanguage || i18n.language)
     if (lng !== language) {
       setLanguage(lng)
     }

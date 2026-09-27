@@ -16,6 +16,7 @@ import enAccount from '@/locales/en/account.json'
 import enMedia from '@/locales/en/media.json'
 import enPlatform from '@/locales/en/platform.json'
 import enGuide from '@/locales/en/guide.json'
+import enMobile from '@/locales/en/mobile.json'
 import viCommon from '@/locales/vi/common.json'
 import viAuth from '@/locales/vi/auth.json'
 import viLanding from '@/locales/vi/landing.json'
@@ -30,8 +31,23 @@ import viAccount from '@/locales/vi/account.json'
 import viMedia from '@/locales/vi/media.json'
 import viPlatform from '@/locales/vi/platform.json'
 import viGuide from '@/locales/vi/guide.json'
-
-const defaultLanguage = import.meta.env.VITE_DEFAULT_LANGUAGE === 'vi' ? 'vi' : 'en'
+import viMobile from '@/locales/vi/mobile.json'
+import koCommon from '@/locales/ko/common.json'
+import koAuth from '@/locales/ko/auth.json'
+import koLanding from '@/locales/ko/landing.json'
+import koDashboard from '@/locales/ko/dashboard.json'
+import koSettings from '@/locales/ko/settings.json'
+import koBatch from '@/locales/ko/batch.json'
+import koProject from '@/locales/ko/project.json'
+import koNotification from '@/locales/ko/notification.json'
+import koGlossary from '@/locales/ko/glossary.json'
+import koJob from '@/locales/ko/job.json'
+import koAccount from '@/locales/ko/account.json'
+import koMedia from '@/locales/ko/media.json'
+import koPlatform from '@/locales/ko/platform.json'
+import koGuide from '@/locales/ko/guide.json'
+import koMobile from '@/locales/ko/mobile.json'
+import { defaultLanguage } from '@/config/featureFlags'
 
 void i18n
   .use(LanguageDetector)
@@ -53,6 +69,7 @@ void i18n
         media: enMedia,
         platform: enPlatform,
         guide: enGuide,
+        mobile: enMobile,
       },
       vi: {
         common: viCommon,
@@ -69,9 +86,29 @@ void i18n
         media: viMedia,
         platform: viPlatform,
         guide: viGuide,
+        mobile: viMobile,
+      },
+      ko: {
+        common: koCommon,
+        auth: koAuth,
+        landing: koLanding,
+        dashboard: koDashboard,
+        settings: koSettings,
+        batch: koBatch,
+        project: koProject,
+        notification: koNotification,
+        glossary: koGlossary,
+        job: koJob,
+        account: koAccount,
+        media: koMedia,
+        platform: koPlatform,
+        guide: koGuide,
+        mobile: koMobile,
       },
     },
     fallbackLng: defaultLanguage,
+    supportedLngs: ['en', 'vi', 'ko'],
+    nonExplicitSupportedLngs: true,
     defaultNS: 'common',
     ns: [
       'common',
@@ -88,6 +125,7 @@ void i18n
       'media',
       'platform',
       'guide',
+      'mobile',
     ],
     interpolation: {
       escapeValue: false,

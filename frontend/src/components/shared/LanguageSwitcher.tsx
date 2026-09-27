@@ -13,6 +13,7 @@ interface LanguageSwitcherProps {
 const LANGUAGES: Array<{ value: Language; code: string; name: string }> = [
   { value: 'vi', code: 'VI', name: 'Tiếng Việt' },
   { value: 'en', code: 'EN', name: 'English' },
+  { value: 'ko', code: 'KO', name: '한국어' },
 ]
 
 export function LanguageSwitcher({

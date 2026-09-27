@@ -1,3 +1,5 @@
+import { normalizeLanguage } from '@/lib/uiLanguage'
+
 /**
  * Feature flags from env (09b A.5.6). Screens must import from here — never
  * read `import.meta.env` directly for product flags.
@@ -25,6 +27,4 @@ export const featureFlags = {
 export const apiBaseUrl =
   (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '')
 
-export const defaultLanguage = (import.meta.env.VITE_DEFAULT_LANGUAGE === 'vi' ? 'vi' : 'en') as
-  | 'en'
-  | 'vi'
+export const defaultLanguage = normalizeLanguage(import.meta.env.VITE_DEFAULT_LANGUAGE)

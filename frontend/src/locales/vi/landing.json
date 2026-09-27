@@ -165,7 +165,8 @@
         "translatedLockedPrefix": "Chúng tôi đã tích hợp trực tiếp khả năng ",
         "translatedLockedHighlight": "xử lý hàng loạt đồng thời cao",
         "translatedLockedSuffix": " vào quy trình đám mây của mình.",
-        "translatedRawHighlight": "xử lý mẻ đồng thời cao"
+        "translatedRawHighlight": "xử lý mẻ đồng thời cao",
+        "srcTermLabel": "EN (Thuật ngữ nguồn)"
       },
       "dub": {
         "title": "Lồng tiếng AI (Neural TTS)",
@@ -221,7 +222,9 @@
         "downloadRecapBtn": "Tải Recap Video (.MP4)",
         "downloadReportBtn": "Tải Báo Cáo (.PDF / .MD)"
       }
-    }
+    },
+    "collapseDetails": "Thu gọn",
+    "expandDetails": "Xem chi tiết thuật toán ▾"
   },
   "productivity": {
     "titlePrefix": "Nâng cao năng suất & ",

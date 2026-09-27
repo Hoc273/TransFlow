@@ -13,7 +13,7 @@ import { PlatformPagination } from '@/components/platform/PlatformPagination'
 import { Modal } from '@/components/shared/Modal'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { usePlatformOverview, usePlatformWorkspaces } from '@/hooks/usePlatform'
-import { formatDateTime, formatNumber, initialsFromName } from '@/lib/format'
+import { formatDateTime, formatNumber, initialsFromName, intlLocale } from '@/lib/format'
 import { useUiStore } from '@/store/uiStore'
 import type { PlatformWorkspaceItem } from '@/types/platform'
 
@@ -140,7 +140,7 @@ export function PlatformWorkspacesPage() {
           label={t('workspaces.stats.avgMembers')}
           value={
             avgMembers != null
-              ? avgMembers.toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US', {
+              ? avgMembers.toLocaleString(intlLocale(language), {
                   maximumFractionDigits: 1,
                 })
               : '—'
