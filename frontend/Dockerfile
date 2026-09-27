@@ -2,7 +2,7 @@
 # Stage 1: build static dist. Mọi VITE_* đều bake vào bundle lúc build
 # (Vite thay import.meta.env bằng giá trị tĩnh), nên muốn đổi API URL
 # phải build lại image với --build-arg khác.
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
