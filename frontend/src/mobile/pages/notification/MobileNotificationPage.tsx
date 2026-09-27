@@ -42,7 +42,7 @@ export function MobileNotificationPage() {
   const { workspaceId } = useParams()
   const currentWorkspaceId = useAuthStore((s) => s.currentWorkspace?.id)
   const wsId = workspaceId ?? currentWorkspaceId
-  const language = useUiStore((s) => s.language) ?? 'vi'
+  const language = useUiStore((s) => s.language)
 
   const { t } = useTranslation('notification')
   const navigate = useNavigate()
@@ -61,7 +61,7 @@ export function MobileNotificationPage() {
   return (
     <div className="w-full min-w-0 space-y-4 overflow-x-clip pb-8">
       <div className="flex min-w-0 items-center justify-between gap-2">
-        <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">Thông báo</h1>
+        <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">{t('mobile:notifications.title')}</h1>
         <button
           type="button"
           onClick={() => markAllRead.mutate()}
@@ -69,17 +69,17 @@ export function MobileNotificationPage() {
           className="flex h-9 shrink-0 items-center gap-1 whitespace-nowrap text-xs font-semibold text-primary active:opacity-75 transition-opacity cursor-pointer disabled:opacity-40 disabled:cursor-default"
         >
           <IconCheck size={14} />
-          <span>Đọc tất cả</span>
+          <span>{t('mobile:notifications.markAllRead')}</span>
         </button>
       </div>
 
       {isLoading ? (
-        <div className="py-12 text-center text-sm text-neutral-400">Đang tải thông báo...</div>
+        <div className="py-12 text-center text-sm text-neutral-400">{t('mobile:notifications.loading')}</div>
       ) : notifications.length === 0 ? (
         <MobileEmptyState
           icon={<IconBell size={36} />}
-          title="Không có thông báo mới"
-          description="Bạn sẽ nhận được thông báo khi tiến trình dịch hoặc media hoàn tất."
+          title={t('mobile:notifications.emptyTitle')}
+          description={t('mobile:notifications.emptyDesc')}
         />
       ) : (
         <div className="min-w-0 space-y-2">
@@ -119,8 +119,8 @@ export function MobileNotificationPage() {
                     {!isRead && (
                       <span
                         className="h-2 w-2 shrink-0 rounded-full bg-primary"
-                        aria-label="Chưa đọc"
-                        title="Chưa đọc"
+                        aria-label={t('mobile:notifications.unread')}
+                        title={t('mobile:notifications.unread')}
                       />
                     )}
                     {timeDisplay && (
@@ -146,7 +146,7 @@ export function MobileNotificationPage() {
               disabled={isFetchingNextPage}
               className="h-10 w-full text-xs font-semibold text-primary active:opacity-75 cursor-pointer"
             >
-              {isFetchingNextPage ? 'Đang tải…' : 'Tải thêm'}
+              {isFetchingNextPage ? t('mobile:notifications.loadingMore') : t('mobile:notifications.loadMore')}
             </button>
           )}
         </div>

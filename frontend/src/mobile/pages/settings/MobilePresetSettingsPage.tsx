@@ -10,6 +10,7 @@ import { MobileCard } from '../../components/MobileCard'
 import { BottomSheet } from '../../components/BottomSheet'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
 import * as presetHooks from '@/hooks/useWorkflowPresets'
+import { useTranslation } from 'react-i18next'
 
 interface NormalizedPreset {
   id: string
@@ -25,6 +26,7 @@ interface NormalizedPreset {
 }
 
 export function MobilePresetSettingsPage() {
+  const { t } = useTranslation('mobile')
   const { workspaceId = '' } = useParams<{ workspaceId: string }>()
 
   // Defensively invoke useWorkflowPresets with or without workspaceId
@@ -47,8 +49,8 @@ export function MobilePresetSettingsPage() {
 
       return {
         id: String(p?.id || `preset-${idx}`),
-        name: p?.name || 'Preset không tên',
-        description: p?.description || 'Không có mô tả chi tiết',
+        name: p?.name || t('mobile:presets.unnamed'),
+        description: p?.description || t('mobile:presets.noDescription'),
         scope,
         isSystem,
         isDefault: Boolean(p?.isDefault),
@@ -58,7 +60,7 @@ export function MobilePresetSettingsPage() {
         raw: p,
       }
     })
-  }, [rawPresets])
+  }, [rawPresets, t])
 
   // Filter presets by search term
   const filteredPresets = useMemo(() => {
@@ -76,8 +78,8 @@ export function MobilePresetSettingsPage() {
     <div className="w-full min-w-0 space-y-4 overflow-x-clip pb-8">
       {/* Header */}
       <div className="min-w-0">
-        <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">Workflow Presets</h1>
-        <p className="text-xs text-neutral-500 line-clamp-2">Cấu hình mẫu cho pipeline dịch thuật và TTS video.</p>
+        <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">{t('mobile:presets.title')}</h1>
+        <p className="text-xs text-neutral-500 line-clamp-2">{t('mobile:presets.subtitle')}</p>
       </div>
 
       {/* Search Input */}
@@ -91,7 +93,7 @@ export function MobilePresetSettingsPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm preset theo tên, mô tả..."
+            placeholder={t('mobile:presets.searchPlaceholder')}
             className="h-10 w-full min-w-0 rounded-xl border border-neutral-200 bg-neutral-50/50 py-2.5 pl-9 pr-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-primary focus:bg-white focus:outline-none dark:border-neutral-800 dark:bg-neutral-900 dark:text-white dark:focus:bg-neutral-900"
           />
         </div>
@@ -99,18 +101,18 @@ export function MobilePresetSettingsPage() {
 
       {/* Preset List Content */}
       {isLoading ? (
-        <div className="py-12 text-center text-sm text-neutral-400">Đang tải presets...</div>
+        <div className="py-12 text-center text-sm text-neutral-400">{t('mobile:presets.loading')}</div>
       ) : presets.length === 0 ? (
         <MobileEmptyState
           icon={<IconAdjustments size={36} />}
-          title="Chưa có preset nào"
-          description="Hiện chưa có preset cấu hình workflow nào trong workspace này."
+          title={t('mobile:presets.emptyTitle')}
+          description={t('mobile:presets.emptyDesc')}
         />
       ) : filteredPresets.length === 0 ? (
         <MobileEmptyState
           icon={<IconSearch size={36} />}
-          title="Không tìm thấy preset"
-          description="Không có cấu hình workflow nào phù hợp với tìm kiếm của bạn."
+          title={t('mobile:presets.noMatchTitle')}
+          description={t('mobile:presets.noMatchDesc')}
         />
       ) : (
         <div className="min-w-0 space-y-3">
@@ -128,7 +130,7 @@ export function MobilePresetSettingsPage() {
                   </span>
                   {preset.isDefault && (
                     <span className="shrink-0 whitespace-nowrap rounded-full bg-primary/10 text-primary px-1.5 py-0.5 text-[9px] font-bold">
-                      Mặc định
+                      {t('mobile:presets.default')}
                     </span>
                   )}
                 </div>
@@ -139,7 +141,7 @@ export function MobilePresetSettingsPage() {
                       : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
                   }`}
                 >
-                  {preset.isSystem ? 'Hệ thống' : 'Tùy chỉnh'}
+                  {preset.isSystem ? t('mobile:presets.system') : t('mobile:presets.custom')}
                 </span>
               </div>
 
@@ -170,7 +172,7 @@ export function MobilePresetSettingsPage() {
       <BottomSheet
         isOpen={Boolean(selectedPreset)}
         onClose={() => setSelectedPreset(null)}
-        title="Chi tiết Preset"
+        title={t('mobile:presets.detailsTitle')}
       >
         {selectedPreset && (
           <div className="space-y-4">
@@ -185,17 +187,17 @@ export function MobilePresetSettingsPage() {
                     : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
                 }`}
               >
-                {selectedPreset.isSystem ? 'Hệ thống' : 'Tùy chỉnh'}
+                {selectedPreset.isSystem ? t('mobile:presets.system') : t('mobile:presets.custom')}
               </span>
               {selectedPreset.isDefault && (
                 <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-semibold">
-                  Mặc định cho workspace
+                  {t('mobile:presets.workspaceDefault')}
                 </span>
               )}
             </div>
 
             <div>
-              <h4 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Mô tả</h4>
+              <h4 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{t('mobile:presets.description')}</h4>
               <p className="text-sm text-neutral-700 dark:text-neutral-300 mt-1">
                 {selectedPreset.description}
               </p>
@@ -204,24 +206,24 @@ export function MobilePresetSettingsPage() {
             {selectedPreset.raw?.config && (
               <div className="space-y-2 border-t border-neutral-100 dark:border-neutral-800 pt-3">
                 <h4 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
-                  Cấu hình chi tiết
+                  {t('mobile:presets.config')}
                 </h4>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800/50 p-2.5">
-                    <span className="text-neutral-400 block text-[10px]">Chế độ xử lý</span>
+                    <span className="text-neutral-400 block text-[10px]">{t('mobile:presets.workflowMode')}</span>
                     <span className="font-semibold text-neutral-800 dark:text-neutral-200">
                       {selectedPreset.raw.config.workflowMode || 'AUTO'}
                     </span>
                   </div>
                   <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800/50 p-2.5">
-                    <span className="text-neutral-400 block text-[10px]">Phụ đề</span>
+                    <span className="text-neutral-400 block text-[10px]">{t('mobile:presets.subtitles')}</span>
                     <span className="font-semibold text-neutral-800 dark:text-neutral-200">
-                      {selectedPreset.raw.config.subtitleMode || 'Mặc định'}
+                      {selectedPreset.raw.config.subtitleMode || t('mobile:presets.default')}
                     </span>
                   </div>
                   {selectedPreset.raw.config.subtitlePosition && (
                     <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800/50 p-2.5">
-                      <span className="text-neutral-400 block text-[10px]">Vị trí phụ đề</span>
+                      <span className="text-neutral-400 block text-[10px]">{t('mobile:presets.subtitlePosition')}</span>
                       <span className="font-semibold text-neutral-800 dark:text-neutral-200">
                         {selectedPreset.raw.config.subtitlePosition}
                       </span>
@@ -229,7 +231,7 @@ export function MobilePresetSettingsPage() {
                   )}
                   {selectedPreset.raw.config.outputAspectRatio && (
                     <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800/50 p-2.5">
-                      <span className="text-neutral-400 block text-[10px]">Tỷ lệ khung hình</span>
+                      <span className="text-neutral-400 block text-[10px]">{t('mobile:presets.aspectRatio')}</span>
                       <span className="font-semibold text-neutral-800 dark:text-neutral-200">
                         {selectedPreset.raw.config.outputAspectRatio}
                       </span>
@@ -244,7 +246,7 @@ export function MobilePresetSettingsPage() {
               onClick={() => setSelectedPreset(null)}
               className="w-full rounded-xl bg-neutral-100 dark:bg-neutral-800 py-3 text-sm font-semibold text-neutral-700 dark:text-neutral-300 active:scale-[0.98] transition-transform"
             >
-              Đóng
+              {t('mobile:presets.close')}
             </button>
           </div>
         )}

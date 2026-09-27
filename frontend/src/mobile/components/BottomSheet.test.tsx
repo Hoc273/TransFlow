@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { BottomSheet } from './BottomSheet'
+import i18n from '@/i18n'
 
 afterEach(() => cleanup())
+
+beforeAll(async () => {
+  await i18n.changeLanguage('en')
+})
 
 describe('BottomSheet', () => {
   it('renders title and children when isOpen is true', () => {

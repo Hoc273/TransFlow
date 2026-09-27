@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { MobileMembersPage } from './MobileMembersPage'
 import { MobilePresetSettingsPage } from './MobilePresetSettingsPage'
+import i18n from '@/i18n'
 
 interface CustomMatchers<R = unknown> {
   toBeInTheDocument(): R
@@ -29,25 +30,25 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const mockInviteMember = vi.fn()
-const mockRemoveMember = vi.fn()
 const mockAddMutation = vi.fn()
 const mockRemoveMutation = vi.fn()
+let mockCanManage = true
 
-let mockMembersHookData: any = {
-  members: [
-    { id: 'm1', name: 'John Doe', email: 'john@example.com', role: 'OWNER' },
-  ],
-  isLoading: false,
-  inviteMember: mockInviteMember,
-  removeMember: mockRemoveMember,
-}
+const lead = { memberId: 'm1', userId: 'u1', fullName: 'John Doe', email: 'john@example.com', role: 'LEAD' }
+const member = { memberId: 'm2', userId: 'u2', fullName: 'Sarah Connor', email: 'sarah@example.com', role: 'MEMBER' }
+const client = { memberId: 'm3', userId: 'u3', fullName: 'Bob Client', email: 'bob@example.com', role: 'CLIENT' }
+
+let mockMembersHookData: any = { data: [lead], isLoading: false, isError: false, refetch: vi.fn() }
 
 vi.mock('@/hooks/useMembers', () => ({
   useMembers: () => mockMembersHookData,
   useAddMember: () => ({ mutate: mockAddMutation, isPending: false }),
   useRemoveMember: () => ({ mutate: mockRemoveMutation, isPending: false }),
   useUpdateMemberRole: () => ({ mutate: vi.fn(), isPending: false }),
+}))
+
+vi.mock('@/hooks/usePermission', () => ({
+  usePermission: () => mockCanManage,
 }))
 
 let mockPresetsHookData: any = {
@@ -77,241 +78,119 @@ vi.mock('@/hooks/useWorkflowPresets', () => ({
   useDeleteWorkflowPreset: () => ({ mutate: vi.fn() }),
 }))
 
-describe('MobileMembersPage', () => {
-  it('renders member cards with roles (mock shape)', () => {
-    mockMembersHookData = {
-      members: [
-        { id: 'm1', name: 'John Doe', email: 'john@example.com', role: 'OWNER' },
-      ],
-      isLoading: false,
-      inviteMember: mockInviteMember,
-      removeMember: mockRemoveMember,
-    }
+beforeAll(async () => {
+  await i18n.changeLanguage('vi')
+})
 
+describe('MobileMembersPage', () => {
+  const renderPage = () =>
     render(
       <MemoryRouter>
         <MobileMembersPage />
       </MemoryRouter>
     )
+  const setMembers = (data: any[], extra: any = {}) => {
+    mockMembersHookData = { data, isLoading: false, isError: false, refetch: vi.fn(), ...extra }
+  }
+
+  beforeEach(() => {
+    mockCanManage = true
+  })
+
+  it('renders member cards with translated 3-role labels', () => {
+    setMembers([lead, member, client])
+    renderPage()
 
     expect(screen.getByText('Thành viên Workspace')).toBeInTheDocument()
     expect(screen.getByText('John Doe')).toBeInTheDocument()
     expect(screen.getByText('john@example.com')).toBeInTheDocument()
-    expect(screen.getByText('OWNER')).toBeInTheDocument()
-  })
-
-  it('renders member cards with real hook shape ({ data: [...] })', () => {
-    mockMembersHookData = {
-      data: [
-        {
-          memberId: 'm2',
-          fullName: 'Jane Smith',
-          email: 'jane@example.com',
-          role: 'ADMIN',
-        },
-      ],
-      isLoading: false,
-    }
-
-    render(
-      <MemoryRouter>
-        <MobileMembersPage />
-      </MemoryRouter>
-    )
-
-    expect(screen.getByText('Jane Smith')).toBeInTheDocument()
-    expect(screen.getByText('jane@example.com')).toBeInTheDocument()
-    expect(screen.getByText('ADMIN')).toBeInTheDocument()
+    expect(screen.getAllByText('Trưởng nhóm').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Thành viên').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Khách hàng').length).toBeGreaterThanOrEqual(1)
   })
 
   it('shows loading state when isLoading is true', () => {
-    mockMembersHookData = {
-      isLoading: true,
-      members: [],
-    }
-
-    render(
-      <MemoryRouter>
-        <MobileMembersPage />
-      </MemoryRouter>
-    )
-
+    setMembers([], { isLoading: true })
+    renderPage()
     expect(screen.getByText('Đang tải danh sách thành viên...')).toBeInTheDocument()
   })
 
   it('shows empty state when members list is empty', () => {
-    mockMembersHookData = {
-      isLoading: false,
-      members: [],
-    }
-
-    render(
-      <MemoryRouter>
-        <MobileMembersPage />
-      </MemoryRouter>
-    )
-
+    setMembers([])
+    renderPage()
     expect(screen.getByText('Chưa có thành viên nào')).toBeInTheDocument()
   })
 
-  it('opens invite BottomSheet and invites member on submit', () => {
-    mockMembersHookData = {
-      members: [
-        { id: 'm1', name: 'John Doe', email: 'john@example.com', role: 'OWNER' },
-      ],
-      isLoading: false,
-      inviteMember: mockInviteMember,
-    }
+  it('invite sheet only offers MEMBER and CLIENT, and submits via useAddMember', () => {
+    setMembers([lead])
+    renderPage()
 
-    render(
-      <MemoryRouter>
-        <MobileMembersPage />
-      </MemoryRouter>
-    )
-
-    // Click invite button
-    const inviteBtn = screen.getByRole('button', { name: /mời/i })
-    fireEvent.click(inviteBtn)
-
-    // BottomSheet should be visible
+    fireEvent.click(screen.getByRole('button', { name: /mời/i }))
     expect(screen.getByText('Mời thành viên mới')).toBeInTheDocument()
 
-    // Fill form
-    const emailInput = screen.getByPlaceholderText('user@example.com')
-    fireEvent.change(emailInput, { target: { value: 'alice@transflow.ai' } })
+    const options = Array.from(
+      (screen.getByLabelText('Vai trò') as HTMLSelectElement).options,
+    ).map((o) => o.value)
+    expect(options).toEqual(['MEMBER', 'CLIENT'])
 
-    // Click submit
-    const submitBtn = screen.getByRole('button', { name: 'Gửi lời mời' })
-    fireEvent.click(submitBtn)
-
-    expect(mockInviteMember).toHaveBeenCalledWith({
-      email: 'alice@transflow.ai',
-      role: 'MEMBER',
+    fireEvent.change(screen.getByPlaceholderText('user@example.com'), {
+      target: { value: 'alice@transflow.ai' },
     })
+    fireEvent.click(screen.getByRole('button', { name: 'Gửi lời mời' }))
+
+    expect(mockAddMutation).toHaveBeenCalledWith(
+      { email: 'alice@transflow.ai', role: 'MEMBER' },
+      expect.any(Object),
+    )
   })
 
   it('does not invite if email is empty', () => {
-    mockMembersHookData = {
-      members: [
-        { id: 'm1', name: 'John Doe', email: 'john@example.com', role: 'OWNER' },
-      ],
-      isLoading: false,
-      inviteMember: mockInviteMember,
-    }
-
-    render(
-      <MemoryRouter>
-        <MobileMembersPage />
-      </MemoryRouter>
-    )
+    setMembers([lead])
+    renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: /mời/i }))
-    const submitBtn = screen.getByRole('button', { name: 'Gửi lời mời' })
-    fireEvent.click(submitBtn)
+    fireEvent.click(screen.getByRole('button', { name: 'Gửi lời mời' }))
 
-    expect(mockInviteMember).not.toHaveBeenCalled()
+    expect(mockAddMutation).not.toHaveBeenCalled()
   })
 
-  it('invokes useAddMember mutation when inviteMember is not in useMembers', () => {
-    mockMembersHookData = {
-      data: [
-        { memberId: 'm1', fullName: 'John Doe', email: 'john@example.com', role: 'OWNER' },
-      ],
-      isLoading: false,
-    }
-
-    render(
-      <MemoryRouter>
-        <MobileMembersPage />
-      </MemoryRouter>
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: /mời/i }))
-    const emailInput = screen.getByPlaceholderText('user@example.com')
-    fireEvent.change(emailInput, { target: { value: 'newmember@transflow.ai' } })
-
-    const submitBtn = screen.getByRole('button', { name: 'Gửi lời mời' })
-    fireEvent.click(submitBtn)
-
-    expect(mockAddMutation).toHaveBeenCalledWith({
-      email: 'newmember@transflow.ai',
-      role: 'MEMBER',
-    })
+  it('never offers removal of the Lead', () => {
+    setMembers([lead])
+    renderPage()
+    expect(screen.queryByTestId('remove-member-m1')).toBeNull()
   })
 
-  it('opens remove confirmation and calls removeMember', () => {
-    mockMembersHookData = {
-      members: [
-        { id: 'm1', name: 'John Doe', email: 'john@example.com', role: 'OWNER' },
-      ],
-      isLoading: false,
-      removeMember: mockRemoveMember,
-    }
+  it('opens remove confirmation and calls useRemoveMember', () => {
+    setMembers([lead, member])
+    renderPage()
 
-    render(
-      <MemoryRouter>
-        <MobileMembersPage />
-      </MemoryRouter>
-    )
-
-    // Find and click remove button on John Doe
-    const removeBtn = screen.getByLabelText('Xóa John Doe')
-    fireEvent.click(removeBtn)
-
-    // Confirmation sheet should be visible
+    fireEvent.click(screen.getByLabelText('Xóa Sarah Connor'))
     expect(screen.getByText('Xóa thành viên')).toBeInTheDocument()
     expect(screen.getByText(/Bạn có chắc chắn muốn xóa thành viên/)).toBeInTheDocument()
 
-    // Confirm deletion
-    const confirmBtn = screen.getByRole('button', { name: 'Xác nhận xóa' })
-    fireEvent.click(confirmBtn)
-
-    expect(mockRemoveMember).toHaveBeenCalledWith('m1')
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận xóa' }))
+    expect(mockRemoveMutation).toHaveBeenCalledWith('m2', expect.any(Object))
   })
 
-  it('invokes useRemoveMember mutation when removeMember is not on useMembers', () => {
-    mockMembersHookData = {
-      data: [
-        { memberId: 'm-target', fullName: 'Bob Target', email: 'bob@example.com', role: 'TRANSLATOR' },
-      ],
-      isLoading: false,
-    }
+  it('hides invite and remove actions for non-Lead users', () => {
+    mockCanManage = false
+    setMembers([lead, member])
+    renderPage()
 
-    render(
-      <MemoryRouter>
-        <MobileMembersPage />
-      </MemoryRouter>
-    )
-
-    const removeBtn = screen.getByLabelText('Xóa Bob Target')
-    fireEvent.click(removeBtn)
-
-    const confirmBtn = screen.getByRole('button', { name: 'Xác nhận xóa' })
-    fireEvent.click(confirmBtn)
-
-    expect(mockRemoveMutation).toHaveBeenCalledWith('m-target')
+    expect(screen.queryByRole('button', { name: /mời/i })).toBeNull()
+    expect(screen.queryByTestId('remove-member-m2')).toBeNull()
+    expect(
+      screen.getByText('Chỉ Trưởng nhóm của workspace mới có thể mời hoặc xóa thành viên.'),
+    ).toBeInTheDocument()
   })
 
   it('filters members by search query', () => {
-    mockMembersHookData = {
-      members: [
-        { id: 'm1', name: 'John Doe', email: 'john@example.com', role: 'OWNER' },
-        { id: 'm2', name: 'Sarah Connor', email: 'sarah@example.com', role: 'ADMIN' },
-      ],
-      isLoading: false,
-    }
+    setMembers([lead, member])
+    renderPage()
 
-    render(
-      <MemoryRouter>
-        <MobileMembersPage />
-      </MemoryRouter>
-    )
-
-    expect(screen.getByText('John Doe')).toBeInTheDocument()
-    expect(screen.getByText('Sarah Connor')).toBeInTheDocument()
-
-    const searchInput = screen.getByPlaceholderText('Tìm theo tên hoặc email...')
-    fireEvent.change(searchInput, { target: { value: 'sarah' } })
+    fireEvent.change(screen.getByPlaceholderText('Tìm theo tên hoặc email...'), {
+      target: { value: 'sarah' },
+    })
 
     expect(screen.queryByText('John Doe')).toBeNull()
     expect(screen.getByText('Sarah Connor')).toBeInTheDocument()

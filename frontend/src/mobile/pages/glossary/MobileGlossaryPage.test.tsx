@@ -2,8 +2,9 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, beforeAll } from 'vitest'
 import { MobileGlossaryPage } from './MobileGlossaryPage'
+import i18n from '@/i18n'
 
 const refetchProjects = vi.fn()
 const refetchTerms = vi.fn()
@@ -48,6 +49,10 @@ vi.mock('@/hooks/useGlossary', () => ({
 vi.mock('@/hooks/usePermission', () => ({
   usePermission: vi.fn(() => canEdit),
 }))
+
+beforeAll(async () => {
+  await i18n.changeLanguage('vi')
+})
 
 describe('MobileGlossaryPage', () => {
   const renderPage = () => render(

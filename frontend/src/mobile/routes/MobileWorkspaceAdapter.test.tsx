@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { MobileWorkspaceAdapter } from './MobileWorkspaceAdapter'
@@ -44,11 +44,16 @@ vi.mock('@/hooks/useWorkspaces', () => ({
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useIsMobile } from '../hooks/useIsMobile'
+import i18n from '@/i18n'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: false },
   },
+})
+
+beforeAll(async () => {
+  await i18n.changeLanguage('en')
 })
 
 describe('MobileWorkspaceAdapter', () => {

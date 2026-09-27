@@ -14,7 +14,7 @@ export function MobileCreditPage() {
         className="inline-flex items-center gap-1 text-sm font-medium text-neutral-500"
       >
         <IconChevronLeft size={17} />
-        {t('title')}
+        {t('mobile:account.title')}
       </Link>
       <h1 className="text-xl font-bold text-neutral-900 dark:text-white">{t('nav.credit')}</h1>
       <CreditSection />

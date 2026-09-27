@@ -15,8 +15,10 @@ import { MobileSearchFilter } from '../../components/MobileSearchFilter'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
 import { useProjects, useCreateProject } from '@/hooks/useProjects'
 import { LANG_OPTIONS, getLanguageName } from '@/lib/languages'
+import { useTranslation } from 'react-i18next'
 
 export function MobileProjectListPage() {
+  const { t, i18n } = useTranslation('mobile')
   const { workspaceId = '' } = useParams<{ workspaceId: string }>()
   const navigate = useNavigate()
 
@@ -50,7 +52,7 @@ export function MobileProjectListPage() {
     if (e) e.preventDefault()
     const trimmed = newProjectName.trim()
     if (!trimmed) {
-      setFormError('Vui lòng nhập tên dự án')
+      setFormError(t('mobile:projects.nameRequired'))
       return
     }
 
@@ -67,7 +69,7 @@ export function MobileProjectListPage() {
           }
         },
         onError: (err: any) => {
-          setFormError(err?.message || 'Có lỗi xảy ra khi tạo dự án')
+          setFormError(err?.message || t('mobile:projects.createFailed'))
         },
       }
     )
@@ -78,19 +80,19 @@ export function MobileProjectListPage() {
       {/* Header */}
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">Dự án</h1>
+          <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">{t('mobile:projects.title')}</h1>
           <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
-            {projects ? `${projects.length} dự án` : 'Quản lý dự án'}
+            {projects ? t('mobile:projects.count', { count: projects.length }) : t('mobile:projects.manage')}
           </p>
         </div>
         <button
           type="button"
           onClick={handleOpenCreate}
-          aria-label="Tạo dự án mới"
+          aria-label={t('mobile:projects.createNew')}
           className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-semibold whitespace-nowrap text-white shadow-xs active:scale-95 transition-transform"
         >
           <IconPlus size={16} />
-          <span>Tạo mới</span>
+          <span>{t('mobile:projects.createShort')}</span>
         </button>
       </div>
 
@@ -98,14 +100,14 @@ export function MobileProjectListPage() {
       <MobileSearchFilter
         value={search}
         onChange={setSearch}
-        placeholder="Tìm kiếm dự án..."
+        placeholder={t('mobile:projects.searchPlaceholder')}
       />
 
       {/* Loading State */}
       {isLoading ? (
         <div className="space-y-3 py-2">
           <div className="text-center text-sm text-neutral-400 py-6">
-            Đang tải danh sách dự án...
+            {t('mobile:projects.loading')}
           </div>
           {[1, 2, 3].map((i) => (
             <MobileCard key={i} className="animate-pulse space-y-3 p-4">
@@ -119,10 +121,10 @@ export function MobileProjectListPage() {
         <MobileCard className="flex flex-col items-center justify-center p-6 text-center">
           <IconAlertCircle size={36} className="text-red-500 mb-2" />
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
-            Không thể tải danh sách dự án
+            {t('mobile:projects.loadFailed')}
           </h3>
           <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-            {(error as any)?.message || 'Vui lòng kiểm tra lại kết nối mạng'}
+            {(error as any)?.message || t('mobile:common.networkError')}
           </p>
           <button
             type="button"
@@ -130,36 +132,36 @@ export function MobileProjectListPage() {
             className="mt-3 flex items-center gap-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200"
           >
             <IconRefresh size={14} />
-            <span>Thử lại</span>
+            <span>{t('mobile:common.retry')}</span>
           </button>
         </MobileCard>
       ) : (projects ?? []).length === 0 ? (
         <MobileEmptyState
           icon={<IconFolder size={36} />}
-          title="Chưa có dự án nào"
-          description="Bắt đầu tổ chức các tệp dịch thuật bằng cách tạo dự án đầu tiên."
+          title={t('mobile:projects.emptyTitle')}
+          description={t('mobile:projects.emptyDesc')}
           action={
             <button
               type="button"
               onClick={handleOpenCreate}
               className="rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-white active:scale-95 transition-transform"
             >
-              Tạo dự án
+              {t('mobile:projects.create')}
             </button>
           }
         />
       ) : filtered.length === 0 ? (
         <MobileEmptyState
           icon={<IconFolder size={36} />}
-          title="Không tìm thấy dự án"
-          description="Không có dự án nào khớp với từ khóa tìm kiếm."
+          title={t('mobile:projects.noMatchTitle')}
+          description={t('mobile:projects.noMatchDesc')}
           action={
             <button
               type="button"
               onClick={() => setSearch('')}
               className="rounded-xl bg-neutral-100 dark:bg-neutral-800 px-4 py-2 text-xs font-semibold text-neutral-700 dark:text-neutral-300"
             >
-              Xóa tìm kiếm
+              {t('mobile:common.clearSearch')}
             </button>
           }
         />
@@ -183,7 +185,7 @@ export function MobileProjectListPage() {
                   <button
                     type="button"
                     onClick={() => setSelectedProject({ id: proj.id, name: proj.name })}
-                    aria-label={`Thao tác dự án ${proj.name}`}
+                    aria-label={t('mobile:projects.actions', { name: proj.name })}
                     className="flex h-9 w-9 shrink-0 items-center justify-center -mr-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded-lg active:bg-neutral-100 dark:active:bg-neutral-800"
                   >
                     <IconDotsVertical size={18} />
@@ -197,7 +199,7 @@ export function MobileProjectListPage() {
                   </span>
                   <div className="flex min-w-0 items-center gap-1">
                     <IconVideo size={14} className="shrink-0 text-neutral-400" />
-                    <span className="truncate whitespace-nowrap">{mediaCount} media</span>
+                    <span className="truncate whitespace-nowrap">{t('mobile:projects.mediaCount', { count: mediaCount })}</span>
                   </div>
                   {proj.domain && (
                     <span className="min-w-0 truncate max-w-full rounded bg-neutral-50 dark:bg-neutral-800 px-1.5 py-0.5 text-neutral-400 border border-neutral-100 dark:border-neutral-800 text-[11px]">
@@ -209,7 +211,7 @@ export function MobileProjectListPage() {
                 {/* Progress bar */}
                 <div className="space-y-1">
                   <div className="flex justify-between text-[11px] text-neutral-500 dark:text-neutral-400">
-                    <span>Tiến độ</span>
+                    <span>{t('mobile:projects.progress')}</span>
                     <span className="font-semibold text-neutral-700 dark:text-neutral-300">
                       {progress}%
                     </span>
@@ -235,7 +237,7 @@ export function MobileProjectListPage() {
           title={selectedProject.name}
           actions={[
             {
-              label: 'Xem media / tài liệu',
+              label: t('mobile:projects.viewMedia'),
               icon: <IconVideo size={18} />,
               onClick: () => {
                 navigate(`/w/${workspaceId}/media?projectId=${selectedProject.id}`)
@@ -253,7 +255,7 @@ export function MobileProjectListPage() {
             setCreateSheetOpen(false)
           }
         }}
-        title="Tạo dự án mới"
+        title={t('mobile:projects.createNew')}
       >
         <form onSubmit={handleCreate} className="space-y-4">
           {formError && (
@@ -264,7 +266,7 @@ export function MobileProjectListPage() {
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-              Tên dự án <span className="text-red-500">*</span>
+              {t('mobile:projects.nameLabel')} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -273,7 +275,7 @@ export function MobileProjectListPage() {
                 setNewProjectName(e.target.value)
                 if (formError) setFormError(null)
               }}
-              placeholder="Tên dự án (VD: Video marketing Q4)"
+              placeholder={t('mobile:projects.namePlaceholder')}
               autoFocus
               className="w-full rounded-xl border border-neutral-200 bg-neutral-50/50 p-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-primary focus:bg-white focus:outline-none dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
             />
@@ -281,7 +283,7 @@ export function MobileProjectListPage() {
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-              Ngôn ngữ nguồn
+              {t('mobile:projects.sourceLang')}
             </label>
             <select
               value={newSourceLang}
@@ -290,7 +292,7 @@ export function MobileProjectListPage() {
             >
               {LANG_OPTIONS.map((code) => (
                 <option key={code} value={code}>
-                  {code.toUpperCase()} — {getLanguageName(code, 'vi')}
+                  {code.toUpperCase()} — {getLanguageName(code, i18n.language)}
                 </option>
               ))}
             </select>
@@ -302,7 +304,7 @@ export function MobileProjectListPage() {
               disabled={createMutation.isPending}
               className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white shadow-xs active:scale-[0.98] transition-transform disabled:opacity-50"
             >
-              {createMutation.isPending ? 'Đang tạo...' : 'Tạo dự án'}
+              {createMutation.isPending ? t('mobile:projects.creating') : t('mobile:projects.create')}
             </button>
           </div>
         </form>

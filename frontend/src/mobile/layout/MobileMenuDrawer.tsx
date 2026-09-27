@@ -12,6 +12,7 @@ import {
 import { BottomSheet } from '../components/BottomSheet'
 import { useUiStore } from '@/store/uiStore'
 import { useAuthStore } from '@/store/authStore'
+import { useTranslation } from 'react-i18next'
 
 interface MobileMenuDrawerProps {
   isOpen: boolean
@@ -20,16 +21,17 @@ interface MobileMenuDrawerProps {
 }
 
 export function MobileMenuDrawer({ isOpen, onClose, workspaceId }: MobileMenuDrawerProps) {
+  const { t } = useTranslation('mobile')
   const theme = useUiStore((s) => s.theme)
   const setTheme = useUiStore((s) => s.setTheme)
   const logout = useAuthStore((s) => s.logout)
 
   const links = [
-    { label: 'Glossaries (Từ điển thuật ngữ)', to: `/w/${workspaceId}/glossaries`, icon: <IconBook size={18} /> },
-    { label: 'Workflow Presets (Cấu hình pipeline)', to: `/w/${workspaceId}/media/presets`, icon: <IconAdjustments size={18} /> },
-    { label: 'Members (Quản lý thành viên)', to: `/w/${workspaceId}/settings/members`, icon: <IconUsers size={18} /> },
-    { label: 'Usage & Quotas (Hạn ngạch)', to: `/w/${workspaceId}/dashboard/usage`, icon: <IconChartBar size={18} /> },
-    { label: 'Account & Settings (Tài khoản)', to: `/w/${workspaceId}/account/profile`, icon: <IconUser size={18} /> },
+    { label: t('mobile:menu.glossaries'), to: `/w/${workspaceId}/glossaries`, icon: <IconBook size={18} /> },
+    { label: t('mobile:menu.presets'), to: `/w/${workspaceId}/media/presets`, icon: <IconAdjustments size={18} /> },
+    { label: t('mobile:menu.members'), to: `/w/${workspaceId}/settings/members`, icon: <IconUsers size={18} /> },
+    { label: t('mobile:menu.usage'), to: `/w/${workspaceId}/dashboard/usage`, icon: <IconChartBar size={18} /> },
+    { label: t('mobile:menu.account'), to: `/w/${workspaceId}/account/profile`, icon: <IconUser size={18} /> },
   ]
 
   const toggleTheme = () => {
@@ -37,7 +39,7 @@ export function MobileMenuDrawer({ isOpen, onClose, workspaceId }: MobileMenuDra
   }
 
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose} title="Khám phá Workspace">
+    <BottomSheet isOpen={isOpen} onClose={onClose} title={t('mobile:menu.title')}>
       <div className="flex min-w-0 flex-col gap-1 pb-4">
         {links.map((lnk) => (
           <Link
@@ -60,9 +62,9 @@ export function MobileMenuDrawer({ isOpen, onClose, workspaceId }: MobileMenuDra
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
             {theme === 'dark' ? <IconSun size={18} className="shrink-0 text-yellow-500" /> : <IconMoon size={18} className="shrink-0 text-neutral-500" />}
-            <span className="truncate">Giao diện {theme === 'dark' ? 'Sáng' : 'Tối'}</span>
+            <span className="truncate">{theme === 'dark' ? t('mobile:menu.switchToLight') : t('mobile:menu.switchToDark')}</span>
           </div>
-          <span className="shrink-0 whitespace-nowrap text-xs capitalize text-neutral-400">{theme}</span>
+          <span className="shrink-0 whitespace-nowrap text-xs capitalize text-neutral-400">{theme === 'dark' ? t('mobile:account.dark') : t('mobile:account.light')}</span>
         </button>
 
         <button
@@ -74,7 +76,7 @@ export function MobileMenuDrawer({ isOpen, onClose, workspaceId }: MobileMenuDra
           className="flex min-h-[48px] min-w-0 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-red-600 transition-colors active:bg-red-50 dark:text-red-400 dark:active:bg-neutral-800"
         >
           <IconLogout size={18} className="shrink-0" />
-          <span className="truncate">Đăng xuất</span>
+          <span className="truncate">{t('mobile:account.logout')}</span>
         </button>
       </div>
     </BottomSheet>

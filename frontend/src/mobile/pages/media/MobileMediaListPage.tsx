@@ -12,6 +12,7 @@ import { MobileSearchFilter } from '../../components/MobileSearchFilter'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
 import { useProjects } from '@/hooks/useProjects'
 import { useMediaJobs } from '@/hooks/useMedia'
+import { useTranslation } from 'react-i18next'
 
 function getStatusBadgeStyle(status?: string) {
   switch (status?.toUpperCase()) {
@@ -36,6 +37,7 @@ function formatDuration(seconds: number): string {
 }
 
 export function MobileMediaListPage() {
+  const { t } = useTranslation('mobile')
   const { workspaceId = '' } = useParams<{ workspaceId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const queryProjectId = searchParams.get('projectId') || ''
@@ -65,10 +67,10 @@ export function MobileMediaListPage() {
   const [statusFilter, setStatusFilter] = useState('ALL')
 
   const filterOptions = [
-    { id: 'ALL', label: 'Tất cả' },
-    { id: 'PROCESSING', label: 'Đang xử lý' },
-    { id: 'COMPLETED', label: 'Hoàn thành' },
-    { id: 'FAILED', label: 'Thất bại' },
+    { id: 'ALL', label: t('mobile:media.filterAll') },
+    { id: 'PROCESSING', label: t('mobile:media.filterProcessing') },
+    { id: 'COMPLETED', label: t('mobile:media.filterCompleted') },
+    { id: 'FAILED', label: t('mobile:media.filterFailed') },
   ]
 
   const filtered = jobs.filter((j: any) => {
@@ -85,16 +87,16 @@ export function MobileMediaListPage() {
       {/* Header */}
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">Media Hub</h1>
+          <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">{t('mobile:media.title')}</h1>
           <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
-            {jobs.length > 0 ? `${jobs.length} tệp media` : 'Quản lý phụ đề và video'}
+            {jobs.length > 0 ? t('mobile:media.fileCount', { count: jobs.length }) : t('mobile:media.subtitle')}
           </p>
         </div>
         <Link
           to={`/w/${workspaceId}/media/presets`}
           className="flex h-9 shrink-0 items-center whitespace-nowrap rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-700 dark:text-neutral-300 active:bg-neutral-100 dark:active:bg-neutral-800 transition-colors"
         >
-          Presets
+          {t('mobile:media.presets')}
         </Link>
       </div>
 
@@ -134,7 +136,7 @@ export function MobileMediaListPage() {
       <MobileSearchFilter
         value={search}
         onChange={setSearch}
-        placeholder="Tìm kiếm video/audio..."
+        placeholder={t('mobile:media.searchPlaceholder')}
         filters={filterOptions}
         activeFilter={statusFilter}
         onFilterChange={setStatusFilter}
@@ -144,7 +146,7 @@ export function MobileMediaListPage() {
       {isLoading ? (
         <div className="space-y-3 py-2">
           <div className="py-6 text-center text-sm text-neutral-400">
-            Đang tải danh sách media...
+            {t('mobile:media.loading')}
           </div>
           {[1, 2, 3].map((i) => (
             <MobileCard key={i} className="animate-pulse space-y-3 p-4">
@@ -163,10 +165,10 @@ export function MobileMediaListPage() {
         <MobileCard className="flex flex-col items-center justify-center p-6 text-center">
           <IconAlertCircle size={36} className="text-red-500 mb-2" />
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
-            Không thể tải danh sách media
+            {t('mobile:media.loadFailed')}
           </h3>
           <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-            {error?.message || 'Vui lòng kiểm tra lại kết nối mạng'}
+            {error?.message || t('mobile:common.networkError')}
           </p>
           <button
             type="button"
@@ -174,22 +176,22 @@ export function MobileMediaListPage() {
             className="mt-3 flex items-center gap-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200"
           >
             <IconRefresh size={14} />
-            <span>Thử lại</span>
+            <span>{t('mobile:common.retry')}</span>
           </button>
         </MobileCard>
       ) : jobs.length === 0 ? (
         /* Empty Workspace Jobs */
         <MobileEmptyState
           icon={<IconVideo size={36} />}
-          title="Chưa có tệp Media nào"
-          description="Tải lên tệp video hoặc audio để bắt đầu quy trình phụ đề và lồng tiếng AI."
+          title={t('mobile:media.emptyTitle')}
+          description={t('mobile:media.emptyDesc')}
         />
       ) : filtered.length === 0 ? (
         /* Empty Search Results */
         <MobileEmptyState
           icon={<IconVideo size={36} />}
-          title="Không tìm thấy tệp media"
-          description="Không có tệp media nào khớp với điều kiện tìm kiếm hoặc bộ lọc."
+          title={t('mobile:media.noMatchTitle')}
+          description={t('mobile:media.noMatchDesc')}
           action={
             <button
               type="button"
@@ -199,7 +201,7 @@ export function MobileMediaListPage() {
               }}
               className="rounded-xl bg-neutral-100 dark:bg-neutral-800 px-4 py-2 text-xs font-semibold text-neutral-700 dark:text-neutral-300"
             >
-              Xóa bộ lọc
+              {t('mobile:common.clearFilters')}
             </button>
           }
         />
@@ -211,7 +213,7 @@ export function MobileMediaListPage() {
               item.title ||
               item.fileName ||
               item.name ||
-              `Tệp media ${item.id?.slice(0, 8) ?? ''}`
+              t('mobile:media.fallbackTitle', { id: item.id?.slice(0, 8) ?? '' })
 
             const duration =
               item.duration ||
@@ -277,7 +279,7 @@ export function MobileMediaListPage() {
                         )}
                         {item.keepOriginalAudio && (
                           <span className="shrink-0 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium">
-                            Âm thanh gốc
+                            {t('mobile:media.originalAudio')}
                           </span>
                         )}
                         {(item.aspectRatio || item.outputAspectRatio) && (
@@ -298,7 +300,7 @@ export function MobileMediaListPage() {
                   {isProcessing && (
                     <div className="space-y-1">
                       <div className="flex justify-between text-[10px] text-neutral-500">
-                        <span>Đang xử lý</span>
+                        <span>{t('mobile:media.filterProcessing')}</span>
                         <span>{progress}%</span>
                       </div>
                       <div className="h-1 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
