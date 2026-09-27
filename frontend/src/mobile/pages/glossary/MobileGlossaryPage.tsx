@@ -3,25 +3,33 @@ import { useParams } from 'react-router-dom'
 import {
   IconAlertCircle,
   IconBook,
+  IconPencil,
   IconPlus,
   IconRefresh,
   IconTrash,
+  IconUpload,
 } from '@tabler/icons-react'
 import { MobileCard } from '../../components/MobileCard'
 import { BottomSheet } from '../../components/BottomSheet'
 import { MobileSearchFilter } from '../../components/MobileSearchFilter'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
-import { useAddTerm, useDeleteTerm, useGlossaryTerms } from '@/hooks/useGlossary'
+import {
+  useAddTerm,
+  useDeleteTerm,
+  useGlossaryTerms,
+  useImportGlossaryCsv,
+  useUpdateTerm,
+} from '@/hooks/useGlossary'
 import { usePermission } from '@/hooks/usePermission'
 import { useProjects } from '@/hooks/useProjects'
 import { ApiError } from '@/types/api'
-import type { GlossaryTerm } from '@/types/glossary'
+import type { GlossaryTerm, ImportResult } from '@/types/glossary'
 import { useTranslation } from 'react-i18next'
 
 const EMPTY_TERMS: GlossaryTerm[] = []
 
 export function MobileGlossaryPage() {
-  const { t } = useTranslation('mobile')
+  const { t } = useTranslation(['mobile', 'glossary'])
   const { workspaceId = '' } = useParams<{ workspaceId: string }>()
   const canEdit = usePermission('glossary.crud')
   const projectsQuery = useProjects(workspaceId)
@@ -36,6 +44,8 @@ export function MobileGlossaryPage() {
   const terms = termsQuery.data ?? EMPTY_TERMS
   const addTerm = useAddTerm(workspaceId, activeProjectId)
   const deleteTerm = useDeleteTerm(workspaceId, activeProjectId)
+  const updateTerm = useUpdateTerm(workspaceId, activeProjectId)
+  const importCsv = useImportGlossaryCsv(workspaceId, activeProjectId)
 
   const [search, setSearch] = useState('')
   const [addSheetOpen, setAddSheetOpen] = useState(false)
@@ -43,6 +53,11 @@ export function MobileGlossaryPage() {
   const [target, setTarget] = useState('')
   const [targetLang, setTargetLang] = useState('all')
   const [formError, setFormError] = useState<string | null>(null)
+  const [editingTerm, setEditingTerm] = useState<GlossaryTerm | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const saving = addTerm.isPending || updateTerm.isPending
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -59,6 +74,7 @@ export function MobileGlossaryPage() {
   const error = projectsQuery.error ?? termsQuery.error
 
   const handleOpenAdd = () => {
+    setEditingTerm(null)
     setSource('')
     setTarget('')
     setTargetLang('all')
@@ -77,22 +93,52 @@ export function MobileGlossaryPage() {
     }
 
     setFormError(null)
-    addTerm.mutate(
-      { sourceTerm, targetTerm, targetLang: normalizedTargetLang },
-      {
-        onSuccess: () => {
-          setAddSheetOpen(false)
-          setSource('')
-          setTarget('')
-          setTargetLang('all')
-        },
-        onError: (mutationError) => {
-          setFormError(
-            mutationError instanceof ApiError ? mutationError.message : t('mobile:glossary.addFailed'),
-          )
-        },
+    const body = { sourceTerm, targetTerm, targetLang: normalizedTargetLang }
+    const callbacks = {
+      onSuccess: () => {
+        setAddSheetOpen(false)
+        setEditingTerm(null)
+        setSource('')
+        setTarget('')
+        setTargetLang('all')
       },
-    )
+      onError: (mutationError: Error) => {
+        setFormError(
+          mutationError instanceof ApiError ? mutationError.message : t('mobile:glossary.addFailed'),
+        )
+      },
+    }
+    if (editingTerm) {
+      updateTerm.mutate({ termId: editingTerm.id, body }, callbacks)
+    } else {
+      addTerm.mutate(body, callbacks)
+    }
+  }
+
+  const handleOpenEdit = (term: GlossaryTerm) => {
+    setEditingTerm(term)
+    setSource(term.sourceTerm)
+    setTarget(term.targetTerm)
+    setTargetLang(term.targetLang)
+    setFormError(null)
+    setAddSheetOpen(true)
+  }
+
+  const handleOpenImport = () => {
+    setImportError(null)
+    setImportResult(null)
+    setImportOpen(true)
+  }
+
+  const handleImport = (file: File | null) => {
+    if (!file) return
+    setImportError(null)
+    setImportResult(null)
+    importCsv.mutate(file, {
+      onSuccess: (result) => setImportResult(result),
+      onError: (err) =>
+        setImportError(err instanceof ApiError ? err.message : t('mobile:glossary.importFailed')),
+    })
   }
 
   const handleRetry = () => {
@@ -112,6 +158,16 @@ export function MobileGlossaryPage() {
             {t('mobile:glossary.termCount', { count: terms.length })}
           </p>
         </div>
+        {canEdit && activeProjectId && (
+          <button
+            type="button"
+            onClick={handleOpenImport}
+            aria-label={t('glossary:import.button')}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200 text-neutral-600 active:bg-neutral-100 dark:border-neutral-800 dark:text-neutral-300 dark:active:bg-neutral-800"
+          >
+            <IconUpload size={16} />
+          </button>
+        )}
         {canEdit && activeProjectId && (
           <button
             type="button"
@@ -232,6 +288,16 @@ export function MobileGlossaryPage() {
                 {canEdit && (
                   <button
                     type="button"
+                    onClick={() => handleOpenEdit(term)}
+                    aria-label={t('mobile:glossary.editTerm', { term: term.sourceTerm })}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-all hover:text-primary active:scale-95 active:bg-neutral-100 dark:active:bg-neutral-800"
+                  >
+                    <IconPencil size={16} />
+                  </button>
+                )}
+                {canEdit && (
+                  <button
+                    type="button"
                     onClick={() => deleteTerm.mutate(term.id)}
                     aria-label={t('mobile:glossary.deleteTerm', { term: term.sourceTerm })}
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-all hover:text-red-500 active:scale-95 active:bg-red-50 dark:active:bg-red-950/30"
@@ -247,8 +313,8 @@ export function MobileGlossaryPage() {
 
       <BottomSheet
         isOpen={addSheetOpen}
-        onClose={() => !addTerm.isPending && setAddSheetOpen(false)}
-        title={t('mobile:glossary.newTermTitle')}
+        onClose={() => !saving && setAddSheetOpen(false)}
+        title={editingTerm ? t('mobile:glossary.editTermTitle') : t('mobile:glossary.newTermTitle')}
       >
         <form onSubmit={handleAdd} className="space-y-3">
           {formError && (
@@ -283,12 +349,62 @@ export function MobileGlossaryPage() {
           </label>
           <button
             type="submit"
-            disabled={addTerm.isPending}
+            disabled={saving}
             className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white shadow-xs transition-transform active:scale-[0.98] disabled:opacity-50"
           >
-            {addTerm.isPending ? t('mobile:common.saving') : t('mobile:glossary.save')}
+            {saving ? t('mobile:common.saving') : t('mobile:glossary.save')}
           </button>
         </form>
+      </BottomSheet>
+
+      <BottomSheet
+        isOpen={importOpen}
+        onClose={() => !importCsv.isPending && setImportOpen(false)}
+        title={t('glossary:import.title')}
+      >
+        <div className="space-y-3">
+          {importError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs font-medium text-red-600 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-400">
+              {importError}
+            </div>
+          )}
+          <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-8 text-center dark:border-neutral-700 dark:bg-neutral-900">
+            <IconUpload size={22} className="text-primary" />
+            <span className="text-sm text-neutral-700 dark:text-neutral-300">{t('glossary:import.drop')}</span>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              data-testid="glossary-import-input"
+              disabled={importCsv.isPending}
+              onChange={(e) => {
+                handleImport(e.target.files?.[0] ?? null)
+                e.target.value = ''
+              }}
+            />
+          </label>
+          <p className="text-[11px] text-neutral-500">{t('glossary:import.hint')}</p>
+          {importCsv.isPending && (
+            <p className="text-center text-sm text-neutral-400">{t('glossary:import.importing')}</p>
+          )}
+          {importResult && (
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs dark:border-neutral-800 dark:bg-neutral-900">
+              <div>
+                {t('glossary:import.result', {
+                  added: importResult.imported,
+                  skipped: importResult.skipped,
+                })}
+              </div>
+              {importResult.errors.length > 0 && (
+                <ul className="mt-2 list-inside list-disc text-red-600 dark:text-red-400">
+                  {importResult.errors.map((err, i) => (
+                    <li key={i} className="break-words">{err}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
       </BottomSheet>
     </div>
   )

@@ -1,15 +1,18 @@
 import { useState, useMemo } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import {
   IconAdjustments,
   IconCpu,
+  IconPencil,
   IconSearch,
   IconSubtitles,
 } from '@tabler/icons-react'
 import { MobileCard } from '../../components/MobileCard'
 import { BottomSheet } from '../../components/BottomSheet'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
-import * as presetHooks from '@/hooks/useWorkflowPresets'
+import { useWorkflowPresets } from '@/hooks/useWorkflowPresets'
+import { usePermission } from '@/hooks/usePermission'
+import type { WorkflowPreset } from '@/types/media'
 import { useTranslation } from 'react-i18next'
 
 interface NormalizedPreset {
@@ -22,44 +25,34 @@ interface NormalizedPreset {
   active: boolean
   workflowMode?: string
   subtitleMode?: string
-  raw: any
+  raw: WorkflowPreset
 }
 
 export function MobilePresetSettingsPage() {
   const { t } = useTranslation('mobile')
   const { workspaceId = '' } = useParams<{ workspaceId: string }>()
 
-  // Defensively invoke useWorkflowPresets with or without workspaceId
-  const presetsResult =
-    typeof presetHooks.useWorkflowPresets === 'function'
-      ? (presetHooks.useWorkflowPresets as any)(workspaceId)
-      : undefined
-
-  const rawPresets: any[] = presetsResult?.presets ?? presetsResult?.data ?? []
-  const isLoading = Boolean(presetsResult?.isLoading)
+  // Same permission gate as desktop PresetSettingsPage (create / edit / delete).
+  const canManage = usePermission('project.manage')
+  const { data: rawPresets = [], isLoading } = useWorkflowPresets(workspaceId)
 
   const [search, setSearch] = useState('')
   const [selectedPreset, setSelectedPreset] = useState<NormalizedPreset | null>(null)
 
   // Normalize presets defensively
   const presets: NormalizedPreset[] = useMemo(() => {
-    return rawPresets.map((p, idx): NormalizedPreset => {
-      const isSystem = Boolean(p?.isSystem ?? (p?.scope === 'SYSTEM'))
-      const scope = p?.scope || (isSystem ? 'SYSTEM' : 'WORKSPACE')
-
-      return {
-        id: String(p?.id || `preset-${idx}`),
-        name: p?.name || t('mobile:presets.unnamed'),
-        description: p?.description || t('mobile:presets.noDescription'),
-        scope,
-        isSystem,
-        isDefault: Boolean(p?.isDefault),
-        active: p?.active !== false,
-        workflowMode: p?.config?.workflowMode,
-        subtitleMode: p?.config?.subtitleMode,
-        raw: p,
-      }
-    })
+    return rawPresets.map((p): NormalizedPreset => ({
+      id: p.id,
+      name: p.name || t('mobile:presets.unnamed'),
+      description: p.description || t('mobile:presets.noDescription'),
+      scope: p.scope,
+      isSystem: p.scope === 'SYSTEM',
+      isDefault: p.isDefault,
+      active: p.active,
+      workflowMode: p.config?.workflowMode ?? undefined,
+      subtitleMode: p.config?.subtitleMode ?? undefined,
+      raw: p,
+    }))
   }, [rawPresets, t])
 
   // Filter presets by search term
@@ -77,9 +70,21 @@ export function MobilePresetSettingsPage() {
   return (
     <div className="w-full min-w-0 space-y-4 overflow-x-clip pb-8">
       {/* Header */}
-      <div className="min-w-0">
-        <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">{t('mobile:presets.title')}</h1>
-        <p className="text-xs text-neutral-500 line-clamp-2">{t('mobile:presets.subtitle')}</p>
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">{t('mobile:presets.title')}</h1>
+          <p className="text-xs text-neutral-500 line-clamp-2">{t('mobile:presets.subtitle')}</p>
+        </div>
+        {canManage && (
+          <Link
+            to={`/w/${workspaceId}/media/presets/manage`}
+            data-testid="mobile-presets-manage"
+            className="flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-primary px-3.5 py-2 text-xs font-semibold text-white shadow-xs active:scale-95 transition-transform"
+          >
+            <IconPencil size={16} />
+            <span>{t('mobile:presets.manage')}</span>
+          </Link>
+        )}
       </div>
 
       {/* Search Input */}

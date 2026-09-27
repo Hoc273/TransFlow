@@ -11,7 +11,7 @@ import { MobileCard } from '../../components/MobileCard'
 import { BottomSheet } from '../../components/BottomSheet'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
 import { MobileSearchFilter } from '../../components/MobileSearchFilter'
-import { useAddMember, useMembers, useRemoveMember } from '@/hooks/useMembers'
+import { useAddMember, useMembers, useRemoveMember, useUpdateMemberRole } from '@/hooks/useMembers'
 import { usePermission } from '@/hooks/usePermission'
 import { type Role } from '@/lib/permissions'
 import { useAuthStore } from '@/store/authStore'
@@ -41,6 +41,7 @@ export function MobileMembersPage() {
   const { data: rawMembers = [], isLoading, isError, refetch } = useMembers(workspaceId)
   const addMember = useAddMember(workspaceId)
   const removeMember = useRemoveMember(workspaceId)
+  const updateRole = useUpdateMemberRole(workspaceId)
 
   const [inviteOpen, setInviteOpen] = useState(false)
   const [email, setEmail] = useState('')
@@ -109,6 +110,18 @@ export function MobileMembersPage() {
         setRowError(err instanceof ApiError ? err.message : t('common:error.generic')),
     })
     setMemberToRemove(null)
+  }
+
+  const handleRoleChange = (member: NormalizedMember, next: Role) => {
+    setRowError(null)
+    if (next === member.role) return
+    updateRole.mutate(
+      { memberId: member.id, body: { role: next } },
+      {
+        onError: (err) =>
+          setRowError(err instanceof ApiError ? err.message : t('common:error.generic')),
+      },
+    )
   }
 
   const roleFilterOptions = [
@@ -225,16 +238,33 @@ export function MobileMembersPage() {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <span
-                    className={`max-w-[96px] truncate whitespace-nowrap rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
-                      m.role === 'LEAD'
-                        ? 'bg-primary/10 text-primary'
-                        : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
-                    }`}
-                    title={roleLabel(m.role)}
-                  >
-                    {roleLabel(m.role)}
-                  </span>
+                  {canManage && m.role !== 'LEAD' ? (
+                    <select
+                      value={m.role}
+                      disabled={updateRole.isPending}
+                      onChange={(e) => handleRoleChange(m, e.target.value as Role)}
+                      aria-label={t('mobile:members.changeRole', { name: m.name })}
+                      data-testid={`role-select-${m.id}`}
+                      className="h-9 max-w-[112px] rounded-lg border border-neutral-200 bg-white px-2 text-xs font-semibold text-neutral-700 focus:border-primary focus:outline-none disabled:opacity-60 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300"
+                    >
+                      {INVITE_ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {roleLabel(r)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span
+                      className={`max-w-[96px] truncate whitespace-nowrap rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
+                        m.role === 'LEAD'
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
+                      }`}
+                      title={roleLabel(m.role)}
+                    >
+                      {roleLabel(m.role)}
+                    </span>
+                  )}
                   {canManage && m.role !== 'LEAD' && (
                     <button
                       type="button"

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { MobileMembersPage } from './MobileMembersPage'
 import { MobilePresetSettingsPage } from './MobilePresetSettingsPage'
 import i18n from '@/i18n'
@@ -32,6 +32,7 @@ afterEach(() => {
 
 const mockAddMutation = vi.fn()
 const mockRemoveMutation = vi.fn()
+const mockUpdateRoleMutation = vi.fn()
 let mockCanManage = true
 
 const lead = { memberId: 'm1', userId: 'u1', fullName: 'John Doe', email: 'john@example.com', role: 'LEAD' }
@@ -44,7 +45,7 @@ vi.mock('@/hooks/useMembers', () => ({
   useMembers: () => mockMembersHookData,
   useAddMember: () => ({ mutate: mockAddMutation, isPending: false }),
   useRemoveMember: () => ({ mutate: mockRemoveMutation, isPending: false }),
-  useUpdateMemberRole: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateMemberRole: () => ({ mutate: mockUpdateRoleMutation, isPending: false }),
 }))
 
 vi.mock('@/hooks/usePermission', () => ({
@@ -52,19 +53,17 @@ vi.mock('@/hooks/usePermission', () => ({
 }))
 
 let mockPresetsHookData: any = {
-  presets: [
+  data: [
     {
       id: 'p1',
       name: 'Standard Subtitles',
       description: 'Default subtitle styling with yellow background',
-      isSystem: true,
       scope: 'SYSTEM',
     },
     {
       id: 'p2',
       name: 'Custom Dubbing',
       description: 'Vietnamese female voice with soft background music',
-      isSystem: false,
       scope: 'WORKSPACE',
     },
   ],
@@ -195,24 +194,41 @@ describe('MobileMembersPage', () => {
     expect(screen.queryByText('John Doe')).toBeNull()
     expect(screen.getByText('Sarah Connor')).toBeInTheDocument()
   })
+
+  it('changes a member role via useUpdateMemberRole (never for the Lead)', () => {
+    setMembers([lead, member])
+    renderPage()
+
+    expect(screen.queryByTestId('role-select-m1')).toBeNull()
+    fireEvent.change(screen.getByTestId('role-select-m2'), { target: { value: 'CLIENT' } })
+    expect(mockUpdateRoleMutation).toHaveBeenCalledWith(
+      { memberId: 'm2', body: { role: 'CLIENT' } },
+      expect.any(Object),
+    )
+  })
+
+  it('shows a read-only role badge for non-Lead users', () => {
+    mockCanManage = false
+    setMembers([lead, member])
+    renderPage()
+    expect(screen.queryByTestId('role-select-m2')).toBeNull()
+  })
 })
 
 describe('MobilePresetSettingsPage', () => {
   it('renders presets with system and workspace badges', () => {
     mockPresetsHookData = {
-      presets: [
+      data: [
         {
           id: 'p1',
           name: 'Standard Subtitles',
           description: 'Default subtitle styling with yellow background',
-          isSystem: true,
           scope: 'SYSTEM',
         },
         {
           id: 'p2',
           name: 'Custom Dubbing',
           description: 'Vietnamese female voice with soft background music',
-          isSystem: false,
           scope: 'WORKSPACE',
         },
       ],
@@ -235,6 +251,31 @@ describe('MobilePresetSettingsPage', () => {
     expect(screen.getByText('Tùy chỉnh')).toBeInTheDocument()
   })
 
+  it('links to the full preset editor only for users who can manage presets', () => {
+    mockCanManage = true
+    mockPresetsHookData = { data: [], isLoading: false }
+    render(
+      <MemoryRouter initialEntries={['/w/ws-1/media/presets']}>
+        <Routes>
+          <Route path="/w/:workspaceId/media/presets" element={<MobilePresetSettingsPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    expect(screen.getByTestId('mobile-presets-manage').getAttribute('href')).toBe(
+      '/w/ws-1/media/presets/manage',
+    )
+    cleanup()
+
+    mockCanManage = false
+    render(
+      <MemoryRouter>
+        <MobilePresetSettingsPage />
+      </MemoryRouter>
+    )
+    expect(screen.queryByTestId('mobile-presets-manage')).toBeNull()
+    mockCanManage = true
+  })
+
   it('renders presets from real hook shape ({ data: [...] })', () => {
     mockPresetsHookData = {
       data: [
@@ -242,7 +283,6 @@ describe('MobilePresetSettingsPage', () => {
           id: 'p-real',
           name: 'Real Hook Preset',
           description: 'Preset fetched via real useWorkflowPresets data property',
-          isSystem: false,
           scope: 'WORKSPACE',
         },
       ],
@@ -261,7 +301,7 @@ describe('MobilePresetSettingsPage', () => {
 
   it('shows loading state for presets', () => {
     mockPresetsHookData = {
-      presets: [],
+      data: [],
       isLoading: true,
     }
 
@@ -276,7 +316,7 @@ describe('MobilePresetSettingsPage', () => {
 
   it('shows empty state when presets list is empty', () => {
     mockPresetsHookData = {
-      presets: [],
+      data: [],
       isLoading: false,
     }
 
@@ -291,18 +331,18 @@ describe('MobilePresetSettingsPage', () => {
 
   it('filters presets by search query', () => {
     mockPresetsHookData = {
-      presets: [
+      data: [
         {
           id: 'p1',
           name: 'Subtitle Fast Track',
           description: 'Fast track subtitles without TTS',
-          isSystem: true,
+          scope: 'SYSTEM',
         },
         {
           id: 'p2',
           name: 'Full Studio Dub',
           description: 'Full voice dubbing and sound mixing',
-          isSystem: false,
+          scope: 'WORKSPACE',
         },
       ],
       isLoading: false,
@@ -326,12 +366,12 @@ describe('MobilePresetSettingsPage', () => {
 
   it('opens details BottomSheet when tapping preset card', () => {
     mockPresetsHookData = {
-      presets: [
+      data: [
         {
           id: 'p1',
           name: 'Premium Audio Preset',
           description: 'High quality multi-channel export',
-          isSystem: true,
+          scope: 'SYSTEM',
           config: {
             workflowMode: 'AUTO',
             subtitleMode: 'BURN_IN',

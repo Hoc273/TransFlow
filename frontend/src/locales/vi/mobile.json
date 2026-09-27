@@ -29,7 +29,10 @@
     "sourceTerm": "Thuật ngữ nguồn *",
     "targetTerm": "Thuật ngữ đích *",
     "targetLang": "Ngôn ngữ đích *",
-    "save": "Lưu thuật ngữ"
+    "save": "Lưu thuật ngữ",
+    "editTermTitle": "Sửa thuật ngữ",
+    "editTerm": "Sửa thuật ngữ {{term}}",
+    "importFailed": "Không thể import file CSV"
   },
   "projects": {
     "nameRequired": "Vui lòng nhập tên dự án",
@@ -211,7 +214,8 @@
     "removeTitle": "Xóa thành viên",
     "removeConfirm": "Bạn có chắc chắn muốn xóa thành viên <strong>{{name}}</strong> ({{email}}) khỏi workspace không? Thao tác này sẽ thu hồi mọi quyền truy cập của họ.",
     "cancel": "Hủy",
-    "confirmRemove": "Xác nhận xóa"
+    "confirmRemove": "Xác nhận xóa",
+    "changeRole": "Đổi vai trò của {{name}}"
   },
   "presets": {
     "unnamed": "Preset không tên",
@@ -235,7 +239,10 @@
     "subtitles": "Phụ đề",
     "subtitlePosition": "Vị trí phụ đề",
     "aspectRatio": "Tỷ lệ khung hình",
-    "close": "Đóng"
+    "close": "Đóng",
+    "manage": "Quản lý",
+    "back": "Quay lại Presets",
+    "manageNotice": "Trình chỉnh sửa preset tối ưu cho máy tính. Trên điện thoại bạn vẫn tạo/sửa/xóa được, bảng rộng có thể vuốt ngang."
   },
   "menu": {
     "glossaries": "Glossaries (Từ điển thuật ngữ)",

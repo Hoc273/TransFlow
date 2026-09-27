@@ -31,7 +31,7 @@ export function MobileMenuDrawer({ isOpen, onClose, workspaceId }: MobileMenuDra
     { label: t('mobile:menu.presets'), to: `/w/${workspaceId}/media/presets`, icon: <IconAdjustments size={18} /> },
     { label: t('mobile:menu.members'), to: `/w/${workspaceId}/settings/members`, icon: <IconUsers size={18} /> },
     { label: t('mobile:menu.usage'), to: `/w/${workspaceId}/dashboard/usage`, icon: <IconChartBar size={18} /> },
-    { label: t('mobile:menu.account'), to: `/w/${workspaceId}/account/profile`, icon: <IconUser size={18} /> },
+    { label: t('mobile:menu.account'), to: `/w/${workspaceId}/account`, icon: <IconUser size={18} /> },
   ]
 
   const toggleTheme = () => {

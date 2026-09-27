@@ -1,8 +1,10 @@
 import { Link, useParams } from 'react-router-dom'
 import {
   IconBell,
+  IconBuilding,
   IconChevronRight,
   IconCoins,
+  IconKey,
   IconLock,
   IconLogout,
   IconMoon,
@@ -106,6 +108,34 @@ export function MobileAccountPage() {
               <IconLock size={18} className="text-neutral-500 shrink-0" />
               <span className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-200">
                 {t('mobile:account.security')}
+              </span>
+            </div>
+            <IconChevronRight size={16} className="shrink-0 text-neutral-400" />
+          </Link>
+
+          {/* API keys (BYOK providers) */}
+          <Link
+            to={`${baseAccountPath}/api-keys`}
+            className="flex min-h-[52px] min-w-0 items-center justify-between gap-2 p-3.5 active:bg-neutral-50 dark:active:bg-neutral-800/50 cursor-pointer transition-colors"
+          >
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <IconKey size={18} className="text-neutral-500 shrink-0" />
+              <span className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                {t('nav.apiKeys')}
+              </span>
+            </div>
+            <IconChevronRight size={16} className="shrink-0 text-neutral-400" />
+          </Link>
+
+          {/* My workspaces */}
+          <Link
+            to={`${baseAccountPath}/workspaces`}
+            className="flex min-h-[52px] min-w-0 items-center justify-between gap-2 p-3.5 active:bg-neutral-50 dark:active:bg-neutral-800/50 cursor-pointer transition-colors"
+          >
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <IconBuilding size={18} className="text-neutral-500 shrink-0" />
+              <span className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                {t('nav.myWorkspaces')}
               </span>
             </div>
             <IconChevronRight size={16} className="shrink-0 text-neutral-400" />

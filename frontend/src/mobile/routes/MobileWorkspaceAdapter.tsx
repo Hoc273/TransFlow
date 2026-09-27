@@ -28,7 +28,7 @@ const MobileMediaListPage = lazy(() => import('../pages/media/MobileMediaListPag
 const MobileMembersPage = lazy(() => import('../pages/settings/MobileMembersPage').then(m => ({ default: m.MobileMembersPage })))
 const MobilePresetSettingsPage = lazy(() => import('../pages/settings/MobilePresetSettingsPage').then(m => ({ default: m.MobilePresetSettingsPage })))
 const MobileAccountPage = lazy(() => import('../pages/account/MobileAccountPage').then(m => ({ default: m.MobileAccountPage })))
-const MobileCreditPage = lazy(() => import('../pages/account/MobileCreditPage').then(m => ({ default: m.MobileCreditPage })))
+const MobileAccountSectionPage = lazy(() => import('../pages/account/MobileAccountSectionPage').then(m => ({ default: m.MobileAccountSectionPage })))
 const MobileNotificationPage = lazy(() => import('../pages/notification/MobileNotificationPage').then(m => ({ default: m.MobileNotificationPage })))
 
 export function MobileWorkspaceAdapter() {
@@ -85,6 +85,14 @@ export function MobileWorkspaceAdapter() {
             <Route path="media" element={<MobileMediaListPage />} />
             <Route path="media/presets" element={<MobilePresetSettingsPage />} />
             <Route
+              path="media/presets/manage"
+              element={
+                <MobileMediaJobWrapper backTo="media/presets" backLabelKey="mobile:presets.back" noticeKey="mobile:presets.manageNotice">
+                  <PresetSettingsPage />
+                </MobileMediaJobWrapper>
+              }
+            />
+            <Route
               path="dashboard/usage"
               element={
                 <RoleGuard action="dashboard.usage">
@@ -93,10 +101,10 @@ export function MobileWorkspaceAdapter() {
               }
             />
             <Route path="settings/members" element={<MobileMembersPage />} />
-            <Route path="settings/provider" element={<Navigate to="../account/security" replace />} />
+            <Route path="settings/provider" element={<Navigate to="../account/api-keys" replace />} />
             <Route path="settings/media-presets" element={<Navigate to="../media/presets" replace />} />
-            <Route path="account/credit" element={<MobileCreditPage />} />
-            <Route path="account/*" element={<MobileAccountPage />} />
+            <Route path="account" element={<MobileAccountPage />} />
+            <Route path="account/:section" element={<MobileAccountSectionPage />} />
             {/* Legacy route redirects */}
             <Route path="tm/*" element={<Navigate to="../glossaries" replace />} />
             <Route path="documents/*" element={<Navigate to="../media" replace />} />
@@ -122,6 +130,7 @@ export function MobileWorkspaceAdapter() {
           <Route path="glossaries" element={<GlossaryPage />} />
           <Route path="media" element={<MediaListPage />} />
           <Route path="media/presets" element={<PresetSettingsPage />} />
+          <Route path="media/presets/manage" element={<Navigate to="../media/presets" replace />} />
           <Route path="media/jobs/:jobId" element={<MediaJobPage />} />
           <Route
             path="dashboard/usage"

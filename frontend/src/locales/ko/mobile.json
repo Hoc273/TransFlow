@@ -29,7 +29,10 @@
     "sourceTerm": "원본 용어 *",
     "targetTerm": "대상 용어 *",
     "targetLang": "대상 언어 *",
-    "save": "용어 저장"
+    "save": "용어 저장",
+    "editTermTitle": "용어 편집",
+    "editTerm": "{{term}} 용어 편집",
+    "importFailed": "CSV 파일을 가져올 수 없습니다"
   },
   "projects": {
     "nameRequired": "프로젝트 이름을 입력하세요",
@@ -211,7 +214,8 @@
     "removeTitle": "멤버 삭제",
     "removeConfirm": "<strong>{{name}}</strong>({{email}}) 님을 워크스페이스에서 삭제하시겠습니까? 이 멤버의 모든 접근 권한이 회수됩니다.",
     "cancel": "취소",
-    "confirmRemove": "삭제 확인"
+    "confirmRemove": "삭제 확인",
+    "changeRole": "{{name}}의 역할 변경"
   },
   "presets": {
     "unnamed": "이름 없는 프리셋",
@@ -235,7 +239,10 @@
     "subtitles": "자막",
     "subtitlePosition": "자막 위치",
     "aspectRatio": "화면 비율",
-    "close": "닫기"
+    "close": "닫기",
+    "manage": "관리",
+    "back": "프리셋으로 돌아가기",
+    "manageNotice": "프리셋 편집기는 데스크톱에 최적화되어 있습니다. 모바일에서도 생성·수정·삭제할 수 있으며 넓은 표는 가로로 스크롤됩니다."
   },
   "menu": {
     "glossaries": "용어집",

@@ -29,7 +29,10 @@
     "sourceTerm": "Source term *",
     "targetTerm": "Target term *",
     "targetLang": "Target language *",
-    "save": "Save term"
+    "save": "Save term",
+    "editTermTitle": "Edit term",
+    "editTerm": "Edit term {{term}}",
+    "importFailed": "Could not import the CSV file"
   },
   "projects": {
     "nameRequired": "Please enter a project name",
@@ -211,7 +214,8 @@
     "removeTitle": "Remove member",
     "removeConfirm": "Are you sure you want to remove <strong>{{name}}</strong> ({{email}}) from the workspace? This revokes all of their access.",
     "cancel": "Cancel",
-    "confirmRemove": "Confirm removal"
+    "confirmRemove": "Confirm removal",
+    "changeRole": "Change role of {{name}}"
   },
   "presets": {
     "unnamed": "Untitled preset",
@@ -235,7 +239,10 @@
     "subtitles": "Subtitles",
     "subtitlePosition": "Subtitle position",
     "aspectRatio": "Aspect ratio",
-    "close": "Close"
+    "close": "Close",
+    "manage": "Manage",
+    "back": "Back to Presets",
+    "manageNotice": "The preset editor is optimized for desktop. You can still create, edit and delete presets on mobile; wide tables scroll horizontally."
   },
   "menu": {
     "glossaries": "Glossaries",
