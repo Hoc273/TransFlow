@@ -215,7 +215,6 @@ class MediaJobControllerTest {
 
     private VoiceBinding createVoice(String language) {
         PlatformAiProvider provider = new PlatformAiProvider();
-        provider.setId(UUID.randomUUID());
         provider.setProtocol("test-tts");
         provider.setCapabilities(java.util.List.of("TTS"));
         provider.setBaseUrl("https://tts.example.test");
@@ -224,7 +223,6 @@ class MediaJobControllerTest {
         provider = platformAiProviderRepository.save(provider);
 
         TtsVoice voice = new TtsVoice();
-        voice.setId(UUID.randomUUID());
         voice.setProviderSource("PLATFORM");
         voice.setPlatformProviderId(provider.getId());
         voice.setLanguage(language);
