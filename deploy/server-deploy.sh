@@ -165,8 +165,8 @@ for i in $(seq 1 12); do
   [ "$i" -eq 12 ] && { compose ps; fail "https://$DOMAIN/ is not reachable"; }
   sleep 5
 done
-curl -sS -o /dev/null -w "https://$STORAGE_DOMAIN/minio/health/live -> %{http_code}\n" --max-time 10 \
-  "https://$STORAGE_DOMAIN/minio/health/live" || true
+curl -sS -o /dev/null -w "https://$STORAGE_DOMAIN/healthz -> %{http_code}\n" --max-time 10 \
+  "https://$STORAGE_DOMAIN/healthz" || true
 
 compose ps
 log "Pruning unused images older than 7 days"

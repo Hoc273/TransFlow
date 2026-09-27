@@ -37,7 +37,7 @@ import java.util.zip.ZipOutputStream;
 @Service
 public class MediaBulkDownloadServiceImpl implements MediaBulkDownloadService {
 
-    /** Objects under this prefix are expired by the MinIO lifecycle rule set in docker-compose (minio-init). */
+    /** Objects under this prefix are expired by the 1-day TTL rule set in docker-compose (seaweedfs-init). */
     static final String TMP_PREFIX = "tmp/downloads/";
 
     private final MediaJobService jobService;
