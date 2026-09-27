@@ -141,7 +141,9 @@ INSERT INTO credit_pricing_config (
     (gen_random_uuid(), 'TTS', NULL, 0.000150, 0.000500, now(), NULL, now()),
     (gen_random_uuid(), 'SUMMARIZE_SCRIPT', NULL, 0.000100, 0.000400, now(), NULL, now()),
     (gen_random_uuid(), 'RENDER', NULL, 0.000200, 0.000000, now(), NULL, now()),
-    (gen_random_uuid(), 'VISION', NULL, 0.000200, 0.000600, now(), NULL, now());
+    (gen_random_uuid(), 'VISION', NULL, 0.000200, 0.000600, now(), NULL, now()),
+    -- Demucs chạy local trên GPU: chỉ thu x theo giây audio, y = 0 (Credit_Coefficient_Calculation §7.2).
+    (gen_random_uuid(), 'AUDIO_SEPARATION', NULL, 0.013750, 0.000000, now(), NULL, now());
 
 -- api_key_enc: AES-256-GCM (IV 12 byte + ciphertext + tag 16 byte) của placeholder 'platform-default-key'
 -- theo PROVIDER_KEY_ENC_SECRET hiện hành; key thật do Super Admin cấu hình qua /api/platform.

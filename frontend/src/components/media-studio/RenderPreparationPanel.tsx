@@ -283,10 +283,17 @@ export type AudioPresentationValues = {
   ttsTempo: number
 }
 
-/** Server-side defaults — idempotent with the backend AUDIO_MIX compiler. */
+/** Original-track gain that the media worker renders as silence. */
+export const MUTED_GAIN_DB = -100
+
+/**
+ * Server-side defaults — idempotent with the backend AUDIO_MIX compiler
+ * (MediaStageExecutionService.DEFAULT_DUB_*): with a TTS voice the original
+ * track is lowered by 10 dB and the voice raised by 10 dB.
+ */
 export const DEFAULT_AUDIO_PRESENTATION: AudioPresentationValues = {
-  originalGainDb: 0,
-  ttsGainDb: 0,
+  originalGainDb: -10,
+  ttsGainDb: 10,
   duckingEnabled: true,
   duckingGainDb: -12,
   ttsTempo: 1,
@@ -310,27 +317,47 @@ export function AudioPresentationConfig({
   collapsible?: boolean
 }) {
   const { t } = useTranslation(['media'])
+  const originalMuted = audio.originalGainDb <= MUTED_GAIN_DB
   const content = (
     <>
       <div className="grid gap-3 sm:grid-cols-3">
-        <label className="field-label">
-          <span>{t('media:renderPrep.originalGain')}</span>
-          <input
-            type="number"
-            className="field-input"
-            min={-30}
-            max={12}
-            step={0.5}
-            value={audio.originalGainDb}
-            disabled={locked}
-            onChange={(e) =>
-              onChange({
-                ...audio,
-                originalGainDb: Math.max(-30, Math.min(12, Number(e.target.value))),
-              })
-            }
-          />
-        </label>
+        <div>
+          <label className="field-label">
+            <span>{t('media:renderPrep.originalGain')}</span>
+            <input
+              type="number"
+              className="field-input"
+              min={-30}
+              max={12}
+              step={0.5}
+              value={originalMuted ? '' : audio.originalGainDb}
+              disabled={locked || originalMuted}
+              onChange={(e) =>
+                onChange({
+                  ...audio,
+                  originalGainDb: Math.max(-30, Math.min(12, Number(e.target.value))),
+                })
+              }
+            />
+          </label>
+          <label className="mt-1 flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+            <input
+              type="checkbox"
+              checked={originalMuted}
+              disabled={locked}
+              data-testid="audio-mute-original"
+              onChange={(e) =>
+                onChange({
+                  ...audio,
+                  originalGainDb: e.target.checked
+                    ? MUTED_GAIN_DB
+                    : DEFAULT_AUDIO_PRESENTATION.originalGainDb,
+                })
+              }
+            />
+            {t('media:renderPrep.muteOriginal')}
+          </label>
+        </div>
         <label className="field-label">
           <span>{t('media:renderPrep.ttsGain')}</span>
           <input
@@ -677,8 +704,8 @@ export function RenderPreparationPanel({
   // stored field is cleared on save (explicit null in the typography patch).
   const [outlineWidth, setOutlineWidth] = useState<number | null>(null)
   const [outlineColor, setOutlineColor] = useState<string | null>(null)
-  const [originalGainDb, setOriginalGainDb] = useState(0)
-  const [ttsGainDb, setTtsGainDb] = useState(0)
+  const [originalGainDb, setOriginalGainDb] = useState(DEFAULT_AUDIO_PRESENTATION.originalGainDb)
+  const [ttsGainDb, setTtsGainDb] = useState(DEFAULT_AUDIO_PRESENTATION.ttsGainDb)
   const [duckingEnabled, setDuckingEnabled] = useState(true)
   const [duckingGainDb, setDuckingGainDb] = useState(-12)
   const [ttsTempo, setTtsTempo] = useState(1)
@@ -728,8 +755,8 @@ export function RenderPreparationPanel({
     setCoverEnabled(cover.enabled)
     setCoverLayers(cover.layers)
     setSelectedCoverLayerId(cover.layers[0]?.id ?? null)
-    setOriginalGainDb(aud?.originalGainDb ?? 0)
-    setTtsGainDb(aud?.ttsGainDb ?? 0)
+    setOriginalGainDb(aud?.originalGainDb ?? DEFAULT_AUDIO_PRESENTATION.originalGainDb)
+    setTtsGainDb(aud?.ttsGainDb ?? DEFAULT_AUDIO_PRESENTATION.ttsGainDb)
     setDuckingEnabled(aud?.ducking?.enabled ?? true)
     setDuckingGainDb(aud?.ducking?.gainDb ?? -12)
     setTtsTempo(aud?.ttsTempo ?? 1)
@@ -758,8 +785,8 @@ export function RenderPreparationPanel({
       coverLayers: toWireLayers(cover.layers),
       ...(!embeddedAudioRef.current
         ? {
-            originalGainDb: aud?.originalGainDb ?? 0,
-            ttsGainDb: aud?.ttsGainDb ?? 0,
+            originalGainDb: aud?.originalGainDb ?? DEFAULT_AUDIO_PRESENTATION.originalGainDb,
+            ttsGainDb: aud?.ttsGainDb ?? DEFAULT_AUDIO_PRESENTATION.ttsGainDb,
             duckingEnabled: aud?.ducking?.enabled ?? true,
             duckingGainDb: aud?.ducking?.gainDb ?? -12,
             ttsTempo: aud?.ttsTempo ?? 1,

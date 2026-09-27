@@ -25,7 +25,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * <ul>
  *   <li>{@code FAST} available iff backend-ai AND media-worker are healthy.</li>
  *   <li>{@code STUDIO} available iff FAST is available AND backend-ai reports a configured
- *       source-separation engine ({@code separation.engine} in its /health body).</li>
+ *       source-separation engine ({@code separation.engine}) running on a GPU
+ *       ({@code separation.gpu_available}). Without a GPU Demucs only has a pass-through
+ *       fallback, so STUDIO would not actually remove the original voice.</li>
  *   <li>{@code state}: both up = READY, one up = DEGRADED, none = OFFLINE.</li>
  * </ul>
  * The projection is cached in memory for {@code app.transformation.capabilities-cache-ttl-seconds}
@@ -42,6 +44,7 @@ public class WorkerCapabilityServiceImpl implements WorkerCapabilityService {
     private static final String REASON_AI_GATEWAY_DOWN = "AI_GATEWAY_DOWN";
     private static final String REASON_MEDIA_WORKER_DOWN = "MEDIA_WORKER_DOWN";
     private static final String REASON_SEPARATION_DISABLED = "SEPARATION_DISABLED";
+    private static final String REASON_GPU_UNAVAILABLE = "GPU_UNAVAILABLE";
 
     private final ServiceHealthProbe healthProbe;
     private final String aiBaseUrl;
@@ -87,14 +90,16 @@ public class WorkerCapabilityServiceImpl implements WorkerCapabilityService {
                 : !worker.up() ? REASON_MEDIA_WORKER_DOWN : null;
 
         boolean fastAvailable = infraReason == null;
-        boolean separationEnabled = ai.up() && isSeparationEnabled(ai.body());
+        boolean separationConfigured = ai.up() && isSeparationEnabled(ai.body());
+        boolean separationEnabled = separationConfigured && isGpuAvailable(ai.body());
         boolean studioAvailable = fastAvailable && separationEnabled;
 
         Map<String, ModeAvailability> availability = new LinkedHashMap<>();
         availability.put(MODE_FAST, new ModeAvailability(fastAvailable, infraReason));
         availability.put(MODE_STUDIO, new ModeAvailability(
                 studioAvailable, studioAvailable ? null
-                        : infraReason != null ? infraReason : REASON_SEPARATION_DISABLED));
+                        : infraReason != null ? infraReason
+                        : !separationConfigured ? REASON_SEPARATION_DISABLED : REASON_GPU_UNAVAILABLE));
 
         String state = ai.up() && worker.up() ? "READY"
                 : ai.up() || worker.up() ? "DEGRADED" : "OFFLINE";
@@ -151,6 +156,11 @@ public class WorkerCapabilityServiceImpl implements WorkerCapabilityService {
         return !engineId.isEmpty()
                 && !"none".equalsIgnoreCase(engineId)
                 && !"disabled".equalsIgnoreCase(engineId);
+    }
+
+    private boolean isGpuAvailable(Map<String, Object> aiHealthBody) {
+        return aiHealthBody.get("separation") instanceof Map<?, ?> separationMap
+                && Boolean.TRUE.equals(separationMap.get("gpu_available"));
     }
 
     private record CachedProjection(AvailabilityProjection projection, Instant expiresAt) {

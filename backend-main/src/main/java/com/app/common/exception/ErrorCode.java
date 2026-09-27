@@ -117,6 +117,7 @@ public enum ErrorCode {
     STYLE_NOT_FOUND(2903, "Subtitle style not found", HttpStatus.NOT_FOUND),
     INVALID_STYLE_KEY(2904, "Invalid subtitle style key", HttpStatus.BAD_REQUEST),
     DOWNLOAD_SELECTION_TOO_LARGE(2905, "Too many videos selected for one download", HttpStatus.BAD_REQUEST),
+    STUDIO_MODE_UNAVAILABLE(2906, "Studio audio mode needs a GPU source-separation worker, none is available", HttpStatus.CONFLICT),
 
     // 30xx - summarization (Member B)
     REFINE_LIMIT_REACHED(3000, "Maximum of 5 refine iterations per session reached", HttpStatus.TOO_MANY_REQUESTS),

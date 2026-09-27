@@ -265,7 +265,7 @@ workspace_billing_configs(
 
 credit_pricing_config(
   id UUID PK,
-  capability VARCHAR CHECK (capability IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION')) NOT NULL,
+  capability VARCHAR CHECK (capability IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION','AUDIO_SEPARATION')) NOT NULL,
   provider_scope VARCHAR,
   infra_coefficient_x NUMERIC(10,6) NOT NULL,
   token_coefficient_y NUMERIC(10,6),
@@ -519,7 +519,6 @@ media_jobs(
     (recipe_id = 'localization.full' AND processing_mode IN ('TRANSLATE_ONLY','HYBRID'))
     OR (recipe_id = 'summary.script_match' AND processing_mode IS NULL AND requested_duration_seconds IS NOT NULL)
   ),
-  CONSTRAINT ck_audio_mode_sep CHECK (output_audio_mode <> 'DUB_MIX' OR source_separation_enabled = true),
   CONSTRAINT ck_audio_mode_voice CHECK ((output_audio_mode = 'ORIGINAL_ONLY') = (tts_voice_id IS NULL)),
   CONSTRAINT ck_media_jobs_tts_binding CHECK ((tts_provider_id IS NULL) = (tts_voice_id IS NULL)),
   CONSTRAINT ck_source_summary_job CHECK (
@@ -566,8 +565,10 @@ media_job_stages(
 )
 CREATE INDEX ix_media_job_stages_job ON media_job_stages(media_job_id, stage_name);
 ```
-- Điều kiện kích hoạt: `SOURCE_SEPARATION` khi `source_separation_enabled=true`; `AUDIO_MIX` khi
-  `output_audio_mode='DUB_MIX'`; `SUMMARIZE` khi (`localization.full` + `HYBRID`) hoặc
+- Điều kiện kích hoạt: `SOURCE_SEPARATION` khi `source_separation_enabled=true` (STUDIO); `AUDIO_MIX` khi
+  `output_audio_mode='DUB_MIX'` — nền trộn là stem MUSIC khi tách nguồn COMPLETED, ngược lại là audio gốc đã
+  extract (FAST, voice-over). Đổi giọng trên job có sẵn (`setVoice`) đồng bộ lại SKIPPED/PENDING của
+  TTS/AUDIO_MIX/SOURCE_SEPARATION theo mode mới; `SUMMARIZE` khi (`localization.full` + `HYBRID`) hoặc
   (`summary.script_match` + `source_summary_job_id IS NULL`).
 
 ---
@@ -774,7 +775,7 @@ ai_usage_logs(
   project_id UUID NOT NULL REFERENCES projects(id),
   media_job_id UUID REFERENCES media_jobs(id),
   performed_by_user_id UUID NOT NULL REFERENCES users(id),
-  operation VARCHAR CHECK (operation IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION')) NOT NULL,
+  operation VARCHAR CHECK (operation IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION','AUDIO_SEPARATION')) NOT NULL,
   used_personal_api_key BOOLEAN NOT NULL,
   provider_id UUID,  -- V13: platform hoặc user provider đã phục vụ lượt gọi (không FK — thuộc 1 trong 2 bảng)
   input_tokens INT,
@@ -820,7 +821,7 @@ CREATE INDEX ix_ai_usage_logs_provider ON ai_usage_logs(provider_id, created_at)
 | `localization_batches` | CHECK array_length nguồn≤20; `target_lang` là scalar không phải mảng | Giới hạn lô + đúng bản chất "1 ngôn ngữ/lô" (v1.4) |
 | `media_jobs` | CHECK `ck_job_recipe_mode`, không có `PARTIALLY_FAILED` trong status | "1 yêu cầu không có lỗi một phần" |
 | `media_jobs` | `created_by_user_id NOT NULL`, immutable ở service | Cơ sở duy nhất cho authorization QA/checkpoint (SRS §3.3) |
-| `media_jobs` | CHECK `ck_audio_mode_sep`/`ck_audio_mode_voice`/`ck_media_jobs_tts_binding` | Ràng buộc DUB_MIX cần tách nguồn, mode cần giọng và provider/voice phải luôn đi theo cặp |
+| `media_jobs` | CHECK `ck_audio_mode_voice`/`ck_media_jobs_tts_binding` | Mode lồng tiếng cần giọng và provider/voice phải luôn đi theo cặp (DUB_MIX không bắt buộc tách nguồn: FAST = voice-over) |
 | `summary_proposals` | CHECK `ck_proposal_origin_fields`, UNIQUE partial (stage,round) WHERE AI | Phân biệt AI (có script) vs HUMAN |
 | `qa_issue_overrides.reason` | CHECK char_length ≥ 10 | Bắt buộc lý do override rõ ràng |
 | `credit_accounts.balance` | CHECK ≥ 0 | Không âm — chặn tạo job nếu không đủ |

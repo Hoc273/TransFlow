@@ -729,7 +729,8 @@
     "aspectOriginal": "Gốc",
     "aspectHint": "Video sẽ được đặt vào khung mới với nền mờ phía sau — không bị cắt mất nội dung. Phụ đề và lớp che tự căn theo khung mới.",
     "autoFrozenTitle": "Job chạy tự động",
-    "autoFrozenDesc": "Cấu hình render được áp dụng tự động theo preset và chỉ hiển thị để tham khảo."
+    "autoFrozenDesc": "Cấu hình render được áp dụng tự động theo preset và chỉ hiển thị để tham khảo.",
+    "muteOriginal": "Tắt hẳn audio gốc"
   },
   "workflow": {
     "modeLabel": "Quy trình",
@@ -868,12 +869,12 @@
     "blockedUnavailable": "{{mode}} không khả dụng trên deployment này.",
     "blockedNotHonoured": "Deployment này chưa thể nhận yêu cầu {{mode}}. Việc tạo job bị chặn thay vì âm thầm chạy ở chế độ khác.",
     "mode": {
-      "FAST": "Fast",
-      "STUDIO": "Studio"
+      "FAST": "Fast — Voice-over",
+      "STUDIO": "Studio — Tách nhạc nền"
     },
     "modeDesc": {
-      "FAST": "Pipeline audio tiêu chuẩn.",
-      "STUDIO": "Pipeline audio chất lượng cao hơn."
+      "FAST": "Giọng AI đè lên audio gốc: audio gốc tự giảm 10 dB, giọng AI tăng 10 dB (chỉnh lại được, có thể tắt hẳn audio gốc).",
+      "STUDIO": "Tách giọng người nói khỏi nhạc nền bằng AI, bỏ giọng gốc và giữ nhạc nền/hiệu ứng. Cần máy chủ có GPU, tính thêm phí tách âm."
     },
     "reason": {
       "PRODUCT_UNSUPPORTED": "Không được recipe sản phẩm hỗ trợ.",
@@ -884,7 +885,11 @@
       "WORKER_CAPABILITY_MISMATCH": "Không có worker tương thích cho chế độ này.",
       "NOT_EVALUATED": "Chưa đánh giá readiness của runtime.",
       "RUNTIME_UNAVAILABLE": "Runtime không khả dụng.",
-      "READY": "Sẵn sàng."
+      "READY": "Sẵn sàng.",
+      "GPU_UNAVAILABLE": "Máy chủ hiện không có GPU để tách nhạc nền.",
+      "SEPARATION_DISABLED": "Tính năng tách nhạc nền đang tắt trên máy chủ.",
+      "AI_GATEWAY_DOWN": "Dịch vụ AI đang không phản hồi.",
+      "MEDIA_WORKER_DOWN": "Dịch vụ xử lý media đang không phản hồi."
     }
   },
   "subtitleStyle": {

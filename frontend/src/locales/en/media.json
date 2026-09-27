@@ -729,7 +729,8 @@
     "aspectOriginal": "Original",
     "aspectHint": "The video is placed in the new frame over a blurred background — nothing is cropped. Subtitles and masks follow the new frame.",
     "autoFrozenTitle": "Automatic job",
-    "autoFrozenDesc": "Render settings were applied automatically from the preset and are shown for reference only."
+    "autoFrozenDesc": "Render settings were applied automatically from the preset and are shown for reference only.",
+    "muteOriginal": "Mute the original audio"
   },
   "workflow": {
     "modeLabel": "Workflow",
@@ -868,12 +869,12 @@
     "blockedUnavailable": "{{mode}} is not available on this deployment.",
     "blockedNotHonoured": "{{mode}} cannot be requested on this deployment yet. Job creation is blocked rather than silently run in another mode.",
     "mode": {
-      "FAST": "Fast",
-      "STUDIO": "Studio"
+      "FAST": "Fast — Voice-over",
+      "STUDIO": "Studio — Keep music only"
     },
     "modeDesc": {
-      "FAST": "Baseline audio pipeline.",
-      "STUDIO": "Higher-fidelity audio pipeline."
+      "FAST": "The AI voice plays over the original audio: original lowered by 10 dB, voice raised by 10 dB (adjustable; the original can be muted).",
+      "STUDIO": "AI separates speech from the background, drops the original voice and keeps music/effects. Needs a GPU server; separation is billed."
     },
     "reason": {
       "PRODUCT_UNSUPPORTED": "Not supported by this product recipe.",
@@ -884,7 +885,11 @@
       "WORKER_CAPABILITY_MISMATCH": "No compatible worker for this mode.",
       "NOT_EVALUATED": "Runtime readiness has not been evaluated yet.",
       "RUNTIME_UNAVAILABLE": "Runtime is unavailable.",
-      "READY": "Ready."
+      "READY": "Ready.",
+      "GPU_UNAVAILABLE": "No GPU is available on the server for music separation.",
+      "SEPARATION_DISABLED": "Music separation is disabled on the server.",
+      "AI_GATEWAY_DOWN": "The AI service is not responding.",
+      "MEDIA_WORKER_DOWN": "The media processing service is not responding."
     }
   },
   "subtitleStyle": {

@@ -396,7 +396,8 @@
       "SUMMARIZE_SCRIPT": "SUMMARIZE_SCRIPT — Kịch bản tóm tắt",
       "TTS": "TTS — Lồng tiếng",
       "VISION": "VISION — Phân tích hình ảnh",
-      "RENDER": "RENDER — Xuất video"
+      "RENDER": "RENDER — Xuất video",
+      "AUDIO_SEPARATION": "AUDIO_SEPARATION — Tách nhạc nền (Demucs)"
     },
     "unit": {
       "STT": "Đơn vị: giây audio (token nếu provider trả token)",
@@ -404,12 +405,14 @@
       "SUMMARIZE_SCRIPT": "Đơn vị: token",
       "TTS": "Đơn vị: ký tự",
       "VISION": "Đơn vị: token",
-      "RENDER": "Đơn vị: giây video output"
+      "RENDER": "Đơn vị: giây video output",
+      "AUDIO_SEPARATION": "Đơn vị: giây audio (chạy local, chỉ thu x)"
     },
     "job": {
       "SUBTITLE": "Phụ đề (STT + dịch)",
       "DUB": "Lồng tiếng (STT + dịch + TTS)",
-      "SUMMARY_VLM": "Tóm tắt + hình ảnh"
+      "SUMMARY_VLM": "Tóm tắt + hình ảnh",
+      "DUB_STUDIO": "Lồng tiếng Studio (STT + dịch + TTS + tách nhạc nền)"
     },
     "warning": {
       "DEFAULT_Y_BELOW_SCOPED_MAX": "Giá mặc định đang thấp hơn model đắt nhất — model chưa có giá riêng có thể bị tính quá rẻ.",

@@ -35,7 +35,11 @@ class WorkerCapabilityServiceImplTest {
     }
 
     private static Map<String, Object> aiBodyWithSeparation(String engine) {
-        return Map.of("status", "ok", "separation", Map.of("engine", engine));
+        return aiBodyWithSeparation(engine, true);
+    }
+
+    private static Map<String, Object> aiBodyWithSeparation(String engine, boolean gpuAvailable) {
+        return Map.of("status", "ok", "separation", Map.of("engine", engine, "gpu_available", gpuAvailable));
     }
 
     @BeforeEach
@@ -67,6 +71,20 @@ class WorkerCapabilityServiceImplTest {
         assertEquals("READY", p.readiness().status());
         assertEquals(2, p.readiness().readyExecutionModes().size());
         assertTrue(p.readiness().reasons().isEmpty());
+    }
+
+    @Test
+    void separationWithoutGpu_studioUnavailable_fastStillAvailable() {
+        when(probe.probe(AI_URL)).thenReturn(up(aiBodyWithSeparation("local_demucs", false)));
+        when(probe.probe(WORKER_URL)).thenReturn(up(Map.of("status", "ok")));
+
+        AvailabilityProjection p = service.getCapabilities();
+
+        assertTrue(p.availability().get("FAST").available());
+        assertFalse(p.availability().get("STUDIO").available());
+        assertEquals("GPU_UNAVAILABLE", p.availability().get("STUDIO").unavailableReason());
+        assertEquals(0, p.workerCapability().compatibleStudioWorkers());
+        assertTrue(p.readiness().reasons().contains("GPU_UNAVAILABLE"));
     }
 
     @Test

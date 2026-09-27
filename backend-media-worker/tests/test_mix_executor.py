@@ -305,3 +305,27 @@ def test_execute_fast_whole_mix_duck(tmp_path):
     assert os.path.isfile(out)
     assert duration_ms > 0
     assert isinstance(warnings, list)
+
+
+def test_voice_gain_is_capped_at_peak_ceiling():
+    from pydub.generators import Sine
+
+    from app.services.dub_timeline import VOICE_PEAK_CEILING_DBFS
+    from app.services.mix_executor import _apply_voice_gain
+
+    voice = Sine(440).to_audio_segment(duration=500, volume=-6.0)
+    boosted = _apply_voice_gain(voice, 10.0)
+
+    assert boosted.max_dBFS <= VOICE_PEAK_CEILING_DBFS + 0.1
+    assert boosted.max_dBFS > voice.max_dBFS
+
+
+def test_voice_gain_cut_and_mute_are_not_capped():
+    from pydub.generators import Sine
+
+    from app.services.mix_executor import _apply_voice_gain
+
+    voice = Sine(440).to_audio_segment(duration=500, volume=-6.0)
+
+    assert abs(_apply_voice_gain(voice, -10.0).max_dBFS - (voice.max_dBFS - 10.0)) < 0.2
+    assert _apply_voice_gain(voice, -100.0).max_dBFS == float("-inf")

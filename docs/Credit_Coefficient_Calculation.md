@@ -95,8 +95,9 @@ Job có 3 chế độ âm thanh (`MediaJob.OutputAudioMode`) — quyết định
 | Chế độ | Âm thanh video xuất ra | Stage chạy thêm (ngoài STT, TRANSLATE, RENDER) | Khoản phí phát sinh thêm |
 |---|---|---|---|
 | `ORIGINAL_ONLY` | Giữ nguyên âm thanh gốc, chỉ thêm phụ đề | — | — |
-| `DUB_REPLACE` | **Thay toàn bộ** âm thanh gốc bằng giọng AI — nhạc nền, tiếng động mất theo | TTS, AUDIO_MIX | TTS |
-| `DUB_MIX` | Tách giọng người nói khỏi nhạc nền, bỏ giọng gốc, **trộn giọng AI với nhạc nền gốc** | SOURCE_SEPARATION, TTS, AUDIO_MIX | TTS + AUDIO_SEPARATION |
+| `DUB_REPLACE` | **Thay toàn bộ** âm thanh gốc bằng giọng AI — nhạc nền, tiếng động mất theo (tóm tắt có giọng đọc) | TTS | TTS |
+| `DUB_MIX` — FAST | **Voice-over**: giọng AI đè lên toàn bộ audio gốc (gốc −10 dB, giọng +10 dB mặc định) | TTS, AUDIO_MIX | TTS |
+| `DUB_MIX` — STUDIO | Tách giọng người nói khỏi nhạc nền, bỏ giọng gốc, **trộn giọng AI với nhạc nền gốc** (cần GPU) | SOURCE_SEPARATION, TTS, AUDIO_MIX | TTS + AUDIO_SEPARATION |
 
 **`AUDIO_SEPARATION`** là tên *capability tính phí* đề xuất cho stage pipeline `SOURCE_SEPARATION`: dùng **Demucs chạy local** để tách audio thành giọng nói (vocals) và nhạc nền (accompaniment). Không gọi API ngoài → y = 0; nhưng rất nặng CPU/GPU → chỉ thu x. Đây là lý do `DUB_MIX` đắt hơn `DUB_REPLACE` ~0,8 Credit/phút.
 
@@ -448,7 +449,9 @@ Request tạo version (ví dụ):
 
 ## 11. Thay đổi cần làm trong code / DB / docs
 
-> **Đã làm (2026-09-26):** C8 (truyền `protocol/model` vào `chargeUsage`), C13 (cột `created_by_user_id`/`change_reason` + index `ux_credit_pricing_open`, nay nằm trong baseline `V1`/`V2`), C14, C15, C16, C18, một phần C5 (resolver `protocol/model` → `protocol` → `NULL`; **vẫn giữ** fallback hard-code, hiện ở `/coverage` là `MISSING`), D3/D4 (mã 2305, 2306; 2304 để dành), D5, T2. Chưa làm: C1–C4, C6, C7, C9–C12, C17.
+> **Đã làm (2026-09-26):** C8 (truyền `protocol/model` vào `chargeUsage`), C13 (cột `created_by_user_id`/`change_reason` + index `ux_credit_pricing_open`, nay nằm trong baseline `V1`/`V2`), C14, C15, C16, C18, một phần C5 (resolver `protocol/model` → `protocol` → `NULL`; **vẫn giữ** fallback hard-code, hiện ở `/coverage` là `MISSING`), D3/D4 (mã 2305, 2306; 2304 để dành), D5, T2. Chưa làm: C1–C4, C6, C9–C12, C17.
+>
+> **Đã làm (2026-09-27):** một phần C1 + C7 cho `AUDIO_SEPARATION` — CHECK `capability`/`operation` có `AUDIO_SEPARATION`, seed row mặc định x = 0.013750, y = 0 (§7.2); `MediaStageExecutionService` kiểm tra đủ credit trước và trừ sau khi Demucs trả kết quả, đơn vị = giây audio nguồn, luôn x-only (`hasPersonalApiKey=false`); **không** thu khi backend-ai chạy fallback CPU (`engine.engineVersion = cpu-fallback`). Job type `DUB_STUDIO` trong bảng xem trước giá. `RENDER` vẫn chưa thu; cột `billing_unit` chưa thêm.
 
 | # | Hạng mục | Thay đổi | Liên quan |
 |---|---|---|---|

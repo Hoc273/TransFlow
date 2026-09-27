@@ -34,8 +34,9 @@ public record RenderPresentation(@Valid Subtitle subtitle, @Valid Audio audio) {
             @DecimalMin("0") @DecimalMax("1") Double opacity) {
     }
 
+    /** Gains in dB for AUDIO_MIX; {@code originalGainDb = -100} mutes the original bed entirely. */
     public record Audio(
-            @DecimalMin("-30") @DecimalMax("12") Double originalGainDb,
+            @DecimalMin("-100") @DecimalMax("12") Double originalGainDb,
             @DecimalMin("-30") @DecimalMax("12") Double ttsGainDb,
             @Valid Ducking ducking) {
     }

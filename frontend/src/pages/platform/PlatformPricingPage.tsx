@@ -21,7 +21,9 @@ import type {
   PricingWarning,
 } from '@/types/platform'
 
-const CAPABILITIES: PricingCapability[] = ['STT', 'TRANSLATE', 'SUMMARIZE_SCRIPT', 'TTS', 'VISION', 'RENDER']
+const CAPABILITIES: PricingCapability[] = [
+  'STT', 'TRANSLATE', 'SUMMARIZE_SCRIPT', 'TTS', 'VISION', 'RENDER', 'AUDIO_SEPARATION',
+]
 
 /** Billing units per video minute — mirrors CreditPricingServiceImpl.UNITS_PER_MINUTE (docs §6.3). */
 const UNITS_PER_MINUTE: Record<PricingCapability, number> = {
@@ -31,6 +33,7 @@ const UNITS_PER_MINUTE: Record<PricingCapability, number> = {
   TTS: 1000,
   VISION: 1000,
   RENDER: 60,
+  AUDIO_SEPARATION: 60,
 }
 
 const LARGE_CHANGE_CODE = '2306'

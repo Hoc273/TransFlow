@@ -396,7 +396,8 @@
       "SUMMARIZE_SCRIPT": "SUMMARIZE_SCRIPT — Summary script",
       "TTS": "TTS — Dubbing voice",
       "VISION": "VISION — Visual analysis",
-      "RENDER": "RENDER — Video export"
+      "RENDER": "RENDER — Video export",
+      "AUDIO_SEPARATION": "AUDIO_SEPARATION — Music separation (Demucs)"
     },
     "unit": {
       "STT": "Unit: audio second (token when the provider reports tokens)",
@@ -404,12 +405,14 @@
       "SUMMARIZE_SCRIPT": "Unit: token",
       "TTS": "Unit: character",
       "VISION": "Unit: token",
-      "RENDER": "Unit: output video second"
+      "RENDER": "Unit: output video second",
+      "AUDIO_SEPARATION": "Unit: audio second (runs locally, x only)"
     },
     "job": {
       "SUBTITLE": "Subtitles (STT + translate)",
       "DUB": "Dubbing (STT + translate + TTS)",
-      "SUMMARY_VLM": "Summary + visuals"
+      "SUMMARY_VLM": "Summary + visuals",
+      "DUB_STUDIO": "Studio dubbing (STT + translate + TTS + music separation)"
     },
     "warning": {
       "DEFAULT_Y_BELOW_SCOPED_MAX": "The default price is below the most expensive model — models without their own price may be undercharged.",

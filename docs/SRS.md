@@ -376,9 +376,11 @@ chọn hiện tại sẽ tự động được bỏ qua và không hiển thị.
   lại — giúp tiết kiệm chi phí và thời gian xử lý với video dài.
 
 **Lựa chọn về giọng lồng tiếng và âm thanh đầu ra**
-- Giữ nguyên âm thanh gốc, không lồng tiếng.
-- Thay thế hoàn toàn bằng giọng lồng tiếng mới.
-- Trộn giọng lồng tiếng mới với nhạc nền/hiệu ứng âm thanh gốc.
+- Giữ nguyên âm thanh gốc, không lồng tiếng (chỉ thêm phụ đề, âm lượng gốc giữ nguyên).
+- Lồng tiếng chế độ **Fast (voice-over)**: giọng lồng tiếng mới phát đè lên âm thanh gốc; mặc định âm thanh
+  gốc giảm 10 dB và giọng mới tăng 10 dB, người dùng chỉnh lại được hoặc tắt hẳn âm thanh gốc.
+- Lồng tiếng chế độ **Studio**: AI tách giọng người nói khỏi nhạc nền/hiệu ứng, bỏ giọng gốc và trộn giọng
+  mới với phần nhạc nền còn lại. Chỉ khả dụng khi máy chủ có GPU; tính thêm phí tách âm.
 
 Giọng đọc được chọn phải cùng ngôn ngữ với ngôn ngữ đích của video — hệ thống sẽ từ chối rõ ràng nếu lựa
 chọn không phù hợp.

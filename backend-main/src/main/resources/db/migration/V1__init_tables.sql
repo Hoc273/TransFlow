@@ -137,7 +137,9 @@ CREATE TABLE workspace_billing_configs (
 
 CREATE TABLE credit_pricing_config (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    capability              VARCHAR NOT NULL CHECK (capability IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION')),
+    capability              VARCHAR NOT NULL CHECK (capability IN (
+        'STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION','AUDIO_SEPARATION'
+    )),
     provider_scope          VARCHAR,
     infra_coefficient_x     NUMERIC(10,6) NOT NULL,
     token_coefficient_y     NUMERIC(10,6),
@@ -310,6 +312,8 @@ CREATE TABLE media_jobs (
 
     subtitle_mode                   VARCHAR NOT NULL DEFAULT 'SOFT_SUB' CHECK (subtitle_mode IN ('HARD_SUB','SOFT_SUB')),
 
+    -- DUB_MIX: giọng AI trộn lên nền audio; source_separation_enabled=false (FAST) nền = toàn bộ audio gốc
+    -- (voice-over), =true (STUDIO, cần GPU) nền = stem nhạc nền đã bỏ giọng gốc.
     output_audio_mode               VARCHAR NOT NULL DEFAULT 'ORIGINAL_ONLY' CHECK (output_audio_mode IN (
         'ORIGINAL_ONLY','DUB_REPLACE','DUB_MIX'
     )),
@@ -337,7 +341,6 @@ CREATE TABLE media_jobs (
         (recipe_id = 'localization.full' AND processing_mode IN ('TRANSLATE_ONLY','HYBRID')) OR
         (recipe_id = 'summary.script_match' AND processing_mode IS NULL AND requested_duration_seconds IS NOT NULL)
     ),
-    CONSTRAINT ck_audio_mode_sep CHECK (output_audio_mode <> 'DUB_MIX' OR source_separation_enabled = true),
     CONSTRAINT ck_audio_mode_voice CHECK ((output_audio_mode = 'ORIGINAL_ONLY') = (tts_voice_id IS NULL)),
     CONSTRAINT fk_media_jobs_tts_voice FOREIGN KEY (tts_voice_id) REFERENCES tts_voices(id) ON DELETE SET NULL,
     CONSTRAINT ck_media_jobs_tts_binding CHECK ((tts_provider_id IS NULL) = (tts_voice_id IS NULL)),
@@ -507,7 +510,9 @@ CREATE TABLE ai_usage_logs (
     project_id              UUID NOT NULL REFERENCES projects(id),
     media_job_id            UUID REFERENCES media_jobs(id),
     performed_by_user_id    UUID NOT NULL REFERENCES users(id),
-    operation               VARCHAR NOT NULL CHECK (operation IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION')),
+    operation               VARCHAR NOT NULL CHECK (operation IN (
+        'STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION','AUDIO_SEPARATION'
+    )),
     used_personal_api_key   BOOLEAN NOT NULL,
     input_tokens            INT,
     output_tokens           INT,

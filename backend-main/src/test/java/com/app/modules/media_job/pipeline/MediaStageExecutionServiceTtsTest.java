@@ -171,7 +171,9 @@ class MediaStageExecutionServiceTtsTest {
         asset.setObjectStorageKey("source.mp4");
         asset.setDurationMs(4_000L);
         when(assetRepository.findById(assetId)).thenReturn(Optional.of(asset));
+        // STUDIO: separation COMPLETED -> the voice goes over the MUSIC stem.
         MediaJobStage separation = new MediaJobStage();
+        separation.setStatus(MediaJobStage.StageStatus.COMPLETED);
         separation.setOutputRef("{\"stems\":[{\"role\":\"MUSIC\",\"objectRef\":\"transflow-media/music.wav\"}]}");
         when(stageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.SOURCE_SEPARATION))
                 .thenReturn(Optional.of(separation));
@@ -184,6 +186,11 @@ class MediaStageExecutionServiceTtsTest {
         MockRestServiceServer worker = MockRestServiceServer.bindTo(workerBuilder).build();
         worker.expect(requestTo("http://worker.test/internal/media/audio-mix"))
                 .andExpect(jsonPath("$.mix_plan.inputs.length()").value(3))
+                .andExpect(jsonPath("$.mix_plan.inputs[0].role").value("STEM_MUSIC"))
+                .andExpect(jsonPath("$.mix_plan.inputs[0].audio_ref").value("transflow-media/music.wav"))
+                // No user audio settings -> dub defaults: original -10 dB, voice +10 dB.
+                .andExpect(jsonPath("$.mix_plan.inputs[0].gain_db").value(-10.0))
+                .andExpect(jsonPath("$.mix_plan.inputs[1].gain_db").value(10.0))
                 .andExpect(jsonPath("$.mix_plan.inputs[1].segment_id").value(first.getId().toString()))
                 .andExpect(jsonPath("$.mix_plan.inputs[1].tempo").doesNotExist())
                 .andExpect(jsonPath("$.mix_plan.inputs[2].start_ms").value(2_000))
@@ -200,6 +207,47 @@ class MediaStageExecutionServiceTtsTest {
 
         worker.verify();
         verify(callbackService, never()).completeStage(any(), any(), any(), eq(false), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void fastAudioMixLaysTheVoiceOverTheWholeExtractedTrack() {
+        stage(MediaJobStage.StageName.AUDIO_MIX);
+        first.setTtsAudioRef("transflow-media/dubbed/a.wav");
+        second.setTtsAudioRef("transflow-media/dubbed/b.wav");
+        MediaAsset asset = new MediaAsset();
+        asset.setBucketName("transflow-media");
+        asset.setObjectStorageKey("source.mp4");
+        asset.setDurationMs(4_000L);
+        when(assetRepository.findById(assetId)).thenReturn(Optional.of(asset));
+        // FAST: separation SKIPPED -> the bed is the extracted original audio (voice-over).
+        MediaJobStage separation = new MediaJobStage();
+        separation.setStatus(MediaJobStage.StageStatus.SKIPPED);
+        when(stageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.SOURCE_SEPARATION))
+                .thenReturn(Optional.of(separation));
+        MediaJobStage extract = new MediaJobStage();
+        extract.setOutputRef("{\"objectRef\":\"transflow-media/extracted.wav\"}");
+        when(stageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.EXTRACT_AUDIO))
+                .thenReturn(Optional.of(extract));
+        when(stageRepository.findByMediaJobIdAndStageName(jobId, MediaJobStage.StageName.TTS))
+                .thenReturn(Optional.of(new MediaJobStage()));
+
+        RestClient.Builder workerBuilder = RestClient.builder().baseUrl("http://worker.test");
+        MockRestServiceServer worker = MockRestServiceServer.bindTo(workerBuilder).build();
+        worker.expect(requestTo("http://worker.test/internal/media/audio-mix"))
+                .andExpect(jsonPath("$.mix_plan.inputs[0].input_id").value("original"))
+                .andExpect(jsonPath("$.mix_plan.inputs[0].role").value("ORIGINAL_MIX"))
+                .andExpect(jsonPath("$.mix_plan.inputs[0].audio_ref").value("transflow-media/extracted.wav"))
+                .andExpect(jsonPath("$.mix_plan.inputs[0].gain_db").value(-10.0))
+                .andExpect(jsonPath("$.mix_plan.ducking.target_input_id").value("original"))
+                .andRespond(withSuccess());
+
+        new MediaStageExecutionService(jobRepository, stageRepository, assetRepository, storage,
+                providerResolver, summaryAiClient, summarizationService, callbackService, objectMapper,
+                new AppProperties(null, null, null, null, null, null),
+                RestClient.builder().baseUrl("http://ai.test").build(), workerBuilder.build(),
+                subtitleSegmentRepository, null, null, null, null).execute(message("AUDIO_MIX"));
+
+        worker.verify();
     }
 
     @Test

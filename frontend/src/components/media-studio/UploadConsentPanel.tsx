@@ -1624,9 +1624,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 </span>
                 <span className="media-advanced-summary">
                   {t('media:createForm.audioModeLabel')}:{' '}
-                  {effectiveSelection === 'STUDIO'
-                    ? (language === 'vi' ? 'Cân bằng (Studio)' : 'Balanced (Studio)')
-                    : (language === 'vi' ? 'Tốc độ cao (Fast)' : 'Fast')}
+                  {t(`media:executionMode.mode.${effectiveSelection === 'STUDIO' ? 'STUDIO' : 'FAST'}`)}
                 </span>
                 <IconChevronDown
                   size={15}

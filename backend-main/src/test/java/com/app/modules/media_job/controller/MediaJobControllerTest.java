@@ -312,7 +312,7 @@ class MediaJobControllerTest {
     }
 
     @Test
-    void createJob_dubMixWithoutSourceSeparation_returnsValidationError() throws Exception {
+    void createJob_dubMixWithoutSourceSeparation_createsFastVoiceOverJob() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-dubmix@transflow.com");
         UUID assetId = uploadAndConsentAsset(lead, lead.accessToken());
         VoiceBinding voice = createVoice("en");
@@ -332,8 +332,9 @@ class MediaJobControllerTest {
                         .header("Authorization", "Bearer " + lead.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_ERROR.getCode()));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.outputAudioMode").value("DUB_MIX"))
+                .andExpect(jsonPath("$.data.sourceSeparationEnabled").value(false));
     }
 
     @Test

@@ -62,6 +62,14 @@ import java.util.UUID;
 public class MediaStageExecutionService {
 
     private static final Logger log = LoggerFactory.getLogger(MediaStageExecutionService.class);
+
+    /** Credit capability of the SOURCE_SEPARATION stage (Demucs). */
+    static final String AUDIO_SEPARATION = "AUDIO_SEPARATION";
+    /** engine.engineVersion that backend-ai reports for its non-separating CPU fallback. */
+    static final String CPU_FALLBACK_ENGINE_VERSION = "cpu-fallback";
+    /** AUDIO_MIX gains when the user has not set any: original track lowered, voice raised. */
+    static final double DEFAULT_DUB_ORIGINAL_GAIN_DB = -10.0;
+    static final double DEFAULT_DUB_TTS_GAIN_DB = 10.0;
     private static final int TTS_BATCH_SIZE = 8;
     /** Same budget as the original pipeline: 3 retry rounds, 10s apart, failed segments only. */
     private static final int MAX_TTS_SEGMENT_RETRIES = 3;
@@ -497,29 +505,46 @@ public class MediaStageExecutionService {
         return safe;
     }
 
+    /**
+     * Bed + voice MixPlan. STUDIO (separation COMPLETED) lays the voice over the MUSIC stem, so the
+     * original speech is gone; FAST (separation SKIPPED) lays it over the whole extracted track as a
+     * voice-over — the original stays audible, lowered by the original gain and ducking.
+     */
     private Map<String, Object> defaultMixPlan(MediaJob job) {
-        String musicRef = objectRef(findStage(job.getId(), MediaJobStage.StageName.SOURCE_SEPARATION) == null
-                ? null : findStage(job.getId(), MediaJobStage.StageName.SOURCE_SEPARATION).getOutputRef());
-        JsonNode separation = parseJson(findStage(job.getId(), MediaJobStage.StageName.SOURCE_SEPARATION) == null
-                ? null : findStage(job.getId(), MediaJobStage.StageName.SOURCE_SEPARATION).getOutputRef());
-        if (separation != null && separation.path("stems").isArray()) {
-            for (JsonNode stem : separation.path("stems")) {
-                if ("MUSIC".equalsIgnoreCase(stem.path("role").asText())) {
-                    musicRef = stem.path("objectRef").asText(musicRef);
-                    break;
+        MediaJobStage separationStage = findStage(job.getId(), MediaJobStage.StageName.SOURCE_SEPARATION);
+        boolean separated = separationStage != null
+                && separationStage.getStatus() == MediaJobStage.StageStatus.COMPLETED;
+        String bedId;
+        String bedRole;
+        String bedRef;
+        if (separated) {
+            bedId = "music";
+            bedRole = "STEM_MUSIC";
+            bedRef = objectRef(separationStage.getOutputRef());
+            JsonNode separation = parseJson(separationStage.getOutputRef());
+            if (separation != null && separation.path("stems").isArray()) {
+                for (JsonNode stem : separation.path("stems")) {
+                    if ("MUSIC".equalsIgnoreCase(stem.path("role").asText())) {
+                        bedRef = stem.path("objectRef").asText(bedRef);
+                        break;
+                    }
                 }
             }
+        } else {
+            bedId = "original";
+            bedRole = "ORIGINAL_MIX";
+            bedRef = objectRef(output(job.getId(), MediaJobStage.StageName.EXTRACT_AUDIO));
         }
         long duration = assetRepository.findById(job.getRootAssetId()).map(MediaAsset::getDurationMs)
                 .orElse(60_000L);
         List<TtsPlacement> placements = ttsPlacements(job, duration);
-        if (musicRef == null || placements.isEmpty()) {
-            throw new IllegalArgumentException("AUDIO_MIX requires MUSIC and TTS outputs");
+        if (bedRef == null || placements.isEmpty()) {
+            throw new IllegalArgumentException("AUDIO_MIX requires a bed (MUSIC stem or extracted audio) and TTS outputs");
         }
         Map<String, Object> bed = new LinkedHashMap<>();
-        bed.put("input_id", "music");
-        bed.put("role", "STEM_MUSIC");
-        bed.put("audio_ref", musicRef);
+        bed.put("input_id", bedId);
+        bed.put("role", bedRole);
+        bed.put("audio_ref", bedRef);
         List<Object> inputs = new ArrayList<>();
         inputs.add(bed);
         List<String> speechIds = new ArrayList<>();
@@ -541,7 +566,7 @@ public class MediaStageExecutionService {
                 "plan_version", 1,
                 "inputs", inputs,
                 "ducking", Map.of("kind", "WHOLE_MIX", "speech_input_ids", speechIds,
-                        "target_input_id", "music", "duck_gain_db", -12),
+                        "target_input_id", bedId, "duck_gain_db", -12),
                 "output", Map.of("asset_type", "MIXED_AUDIO", "format", "wav")));
     }
 
@@ -560,15 +585,17 @@ public class MediaStageExecutionService {
         Map<String, Object> config = jsonObject(job.getRenderConfig());
         Map<String, Object> presentation = mapValue(config.get("presentation"));
         Map<String, Object> audio = mapValue(presentation.get("audio"));
+        // Unset = dub defaults: original down, voice up (the worker caps voice peaks so it never clips).
         Double originalGain = doubleOrNull(audio.get("originalGainDb"));
         Double ttsGain = doubleOrNull(audio.get("ttsGainDb"));
+        double effectiveOriginalGain = originalGain != null ? originalGain : DEFAULT_DUB_ORIGINAL_GAIN_DB;
+        double effectiveTtsGain = ttsGain != null ? ttsGain : DEFAULT_DUB_TTS_GAIN_DB;
         for (Map<String, Object> input : inputs) {
             String role = stringValue(input.get("role"), "");
-            if (originalGain != null && !"TTS_SEGMENT".equals(role)) {
-                input.put("gain_db", originalGain);
-            }
-            if (ttsGain != null && "TTS_SEGMENT".equals(role)) {
-                input.put("gain_db", ttsGain);
+            if (!"TTS_SEGMENT".equals(role)) {
+                input.put("gain_db", effectiveOriginalGain);
+            } else {
+                input.put("gain_db", effectiveTtsGain);
             }
         }
 
@@ -892,18 +919,30 @@ public class MediaStageExecutionService {
         return stage == null ? null : stage.getOutputRef();
     }
 
+    /**
+     * Demucs runs locally on our GPU worker: no provider token cost, so AUDIO_SEPARATION is billed
+     * x-only per second of source audio (Credit_Coefficient_Calculation §4.2/§7.2), never on a
+     * personal key. The CPU pass-through fallback does not separate anything and is not billed.
+     */
     private void executeSourceSeparation(MediaJob job, MediaJobStage stage, MediaStageMessage message) {
         MediaJobStage extract = findStage(job.getId(), MediaJobStage.StageName.EXTRACT_AUDIO);
         String audioRef = objectRef(extract == null ? null : extract.getOutputRef());
         if (audioRef == null) {
             throw new IllegalArgumentException("SOURCE_SEPARATION requires EXTRACT_AUDIO output");
         }
+        Long durationMs = assetRepository.findById(job.getRootAssetId()).map(MediaAsset::getDurationMs).orElse(null);
+        long audioSeconds = durationMs == null ? 1L : Math.max(1L, Math.round(durationMs / 1000.0d));
+        requireCredit(job, AUDIO_SEPARATION, audioSeconds, false);
         Map<String, Object> body = Map.of(
                 "runId", message.correlationId().toString(),
                 "sourceAudioRef", audioRef,
                 "profile", "VOCAL_MUSIC");
         JsonNode result = sourceSeparationAiClient.post().uri("/media/source-separate")
                 .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(JsonNode.class);
+        String engineVersion = result == null ? "" : result.path("engine").path("engineVersion").asText("");
+        if (!CPU_FALLBACK_ENGINE_VERSION.equals(engineVersion)) {
+            chargeAiUsage(job, AUDIO_SEPARATION, audioSeconds, false);
+        }
         completeSuccess(job, stage, message, result);
     }
 

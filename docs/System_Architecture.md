@@ -164,9 +164,15 @@ EXTRACT_AUDIO → [SOURCE_SEPARATION → SKIPPED nếu không tách nguồn]
 ### 5.3 Giọng lồng tiếng & đầu ra âm thanh (`output_audio_mode`)
 | Giá trị | Ý nghĩa | Bắt buộc chọn giọng? |
 |---|---|---|
-| `ORIGINAL_ONLY` | Giữ nguyên âm thanh gốc | Không |
-| `DUB_REPLACE` | Thay thế hoàn toàn bằng giọng mới | Có |
-| `DUB_MIX` | Trộn giọng mới với nhạc nền/hiệu ứng gốc đã tách | Có, bắt buộc `source_separation_enabled=true` |
+| `ORIGINAL_ONLY` | Giữ nguyên âm thanh gốc (0 dB), chỉ thêm phụ đề — không TTS, không AUDIO_MIX | Không |
+| `DUB_REPLACE` | Chỉ còn giọng mới trên nền im lặng. Dùng cho tóm tắt có giọng đọc (`summary.script_match`) và client API gửi tường minh | Có |
+| `DUB_MIX` | Giọng mới trộn lên nền âm thanh qua AUDIO_MIX (gain + ducking). `source_separation_enabled=false` (**FAST**): nền = toàn bộ audio gốc (voice-over). `=true` (**STUDIO**, cần GPU): nền = stem nhạc nền/hiệu ứng, giọng gốc bị loại | Có |
+
+Chế độ FAST/STUDIO (`requestedMode` khi tạo job, API_Contract §5.2): job localization có giọng → `DUB_MIX`;
+STUDIO bật tách nguồn và chỉ khả dụng khi backend-ai báo `separation.gpu_available=true` (nếu không → `2906
+STUDIO_MODE_UNAVAILABLE`, không âm thầm chạy fallback CPU). Gain mặc định của AUDIO_MIX khi người dùng chưa
+chỉnh: audio gốc **−10 dB**, giọng TTS **+10 dB** (worker chặn đỉnh giọng ở −1 dBFS để không vỡ tiếng);
+`originalGainDb = −100` tắt hẳn audio gốc.
 
 Giọng chọn phải cùng ngôn ngữ với `target_lang` — từ chối rõ ràng nếu không khớp, không fallback ngầm.
 
