@@ -44,7 +44,7 @@ jobs:
           echo "## Failure summary — backend-main" >> $GITHUB_STEP_SUMMARY
           grep -A2 "FAILURE\|ERROR" ../backend-main.log | head -n 100 >> $GITHUB_STEP_SUMMARY || true
           cat target/surefire-reports/*.txt 2>/dev/null | grep -E "Tests run|FAILURE|ERROR" | head -n 30 >> $GITHUB_STEP_SUMMARY || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: backend-main-surefire-reports
@@ -96,7 +96,7 @@ jobs:
         run: |
           echo "## Failure summary — backend-ai" >> $GITHUB_STEP_SUMMARY
           grep -E "FAILED|ERROR" ../backend-ai.log | head -n 50 >> $GITHUB_STEP_SUMMARY || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: backend-ai-pytest-report
@@ -144,7 +144,7 @@ jobs:
         run: |
           echo "## Failure summary — media-worker" >> $GITHUB_STEP_SUMMARY
           grep -E "FAILED|ERROR" ../media-worker.log | head -n 50 >> $GITHUB_STEP_SUMMARY || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: media-worker-pytest-report
@@ -192,7 +192,7 @@ jobs:
         run: |
           echo "## Failure summary — frontend" >> $GITHUB_STEP_SUMMARY
           grep -E "FAILED|ERROR" ../frontend-test.log ../frontend-tsc.log | head -n 50 >> $GITHUB_STEP_SUMMARY || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: frontend-reports
