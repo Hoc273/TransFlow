@@ -83,5 +83,9 @@
     "contentViPlaceholder": "# 게시글 제목\n\n베트남어 Markdown 본문...",
     "noViContent": "*아직 베트남어 본문이 없습니다*",
     "noEnContent": "*아직 영어 본문이 없습니다*"
-  }
+  },
+  "legalSection": "법률",
+  "terms": "이용약관",
+  "privacy": "개인정보 처리방침",
+  "legalLoadFailed": "문서를 불러올 수 없습니다."
 }

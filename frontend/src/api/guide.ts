@@ -7,6 +7,9 @@ import type {
   GuideCategory,
   GuideCategoryRequest,
   GuideMoveRequest,
+  LegalDocument,
+  LegalDocumentRequest,
+  LegalDocumentType,
 } from '@/types/guide'
 
 function qs(params: Record<string, string | number | boolean | undefined | null>): string {
@@ -128,4 +131,25 @@ export function setGuideArticlePublishApi(id: string, status: GuideArticleStatus
 
 export function previewGuideArticleApi(id: string, lang = 'vi') {
   return apiRequest<GuideArticle>(`/platform/guides/articles/${id}/preview${qs({ lang })}`)
+}
+
+// =============================================================================
+// Legal documents (Terms / Privacy)
+// =============================================================================
+
+export function getLegalDocumentApi(type: LegalDocumentType, lang = 'vi') {
+  return apiRequest<LegalDocument>(`/legal/${type.toLowerCase()}${qs({ lang })}`, {
+    skipAuth: true,
+  })
+}
+
+export function getAdminLegalDocumentsApi() {
+  return apiRequest<LegalDocument[]>('/platform/legal')
+}
+
+export function updateLegalDocumentApi(type: LegalDocumentType, body: LegalDocumentRequest) {
+  return apiRequest<LegalDocument>(`/platform/legal/${type.toLowerCase()}`, {
+    method: 'PUT',
+    body,
+  })
 }

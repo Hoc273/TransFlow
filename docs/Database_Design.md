@@ -231,6 +231,27 @@ CREATE INDEX ix_guide_articles_status         ON guide_articles(status);
 - `ON DELETE RESTRICT` + kiểm tra ở service (`GUIDE_CATEGORY_HAS_ARTICLES`) — không xoá Category còn Article.
 - V5 seed sẵn vài Category và Article `PUBLISHED` mẫu.
 
+### 3.3 `legal_documents` — Điều khoản sử dụng & Chính sách bảo mật
+
+Hiển thị công khai dưới trang Hướng dẫn (`/guide/legal/terms`, `/guide/legal/privacy`), Platform Super Admin
+chỉnh sửa tại `/platform/legal`. Mỗi loại đúng 1 dòng (PK = `doc_type`), nội dung Markdown song ngữ vi/en.
+
+```sql
+legal_documents(
+  doc_type    VARCHAR(20) PRIMARY KEY CHECK (doc_type IN ('TERMS','PRIVACY')),
+  title_vi    VARCHAR(300) NOT NULL,
+  title_en    VARCHAR(300) NOT NULL,
+  content_vi  TEXT NOT NULL,
+  content_en  TEXT NOT NULL,
+  updated_by  UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+```
+
+- Bảng tạo trong `V1__init_tables.sql`, nội dung mặc định seed trong `V2__init_indexes.sql`.
+- Cập nhật dùng `SELECT ... FOR UPDATE` (khóa bi quan) theo `doc_type`.
+
 ## 4. Credit & Thanh toán (không đổi so với thiết kế trước)
 
 ```sql

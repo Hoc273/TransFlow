@@ -25,7 +25,8 @@
     "audit": "Nhật ký audit",
     "guides": "Hướng dẫn",
     "providers": "AI providers",
-    "pricing": "Bảng giá Credit"
+    "pricing": "Bảng giá Credit",
+    "legal": "Điều khoản & Bảo mật"
   },
   "menu": {
     "console": "Bảng điều khiển Platform"
@@ -502,5 +503,22 @@
     "onlineSubtitle": "User có tín hiệu trong 2 phút qua · Tự động làm mới mỗi 3 giây",
     "online": "Đang online",
     "onlineUsers": "Đang online"
+  },
+  "legal": {
+    "navLegal": "Điều khoản & Bảo mật",
+    "title": "Điều khoản & Chính sách bảo mật",
+    "subtitle": "Nội dung hiển thị công khai dưới trang Hướng dẫn (Markdown, song ngữ vi/en).",
+    "terms": "Điều khoản sử dụng",
+    "privacy": "Chính sách bảo mật",
+    "titleVi": "Tiêu đề (Tiếng Việt)",
+    "titleEn": "Tiêu đề (English)",
+    "contentVi": "Nội dung (Tiếng Việt, Markdown)",
+    "contentEn": "Nội dung (English, Markdown)",
+    "save": "Lưu thay đổi",
+    "saving": "Đang lưu…",
+    "saved": "Đã lưu",
+    "viewPublic": "Xem trang công khai",
+    "updatedAt": "Cập nhật lần cuối",
+    "required": "Tiêu đề và nội dung bắt buộc"
   }
 }

@@ -83,5 +83,9 @@
     "contentViPlaceholder": "# Article title\n\nVietnamese Markdown content...",
     "noViContent": "*No Vietnamese content yet*",
     "noEnContent": "*No English content yet*"
-  }
+  },
+  "legalSection": "Legal",
+  "terms": "Terms of Service",
+  "privacy": "Privacy Policy",
+  "legalLoadFailed": "Could not load this document."
 }

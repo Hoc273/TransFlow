@@ -15,7 +15,7 @@ import {
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
 import { MobileCard } from '../../components/MobileCard'
-import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
+import { MobileLanguagePicker } from '../../components/MobileLanguagePicker'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 
@@ -163,7 +163,7 @@ export function MobileAccountPage() {
                 {t('mobile:account.language')}
               </span>
             </div>
-            <LanguageSwitcher menuAlign="right" />
+            <MobileLanguagePicker />
           </div>
 
           {/* Theme Toggle (Sáng / Tối) */}

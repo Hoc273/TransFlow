@@ -140,6 +140,7 @@ public enum ErrorCode {
     GUIDE_SLUG_ALREADY_EXISTS(3402, "Guide slug already exists", HttpStatus.CONFLICT),
     GUIDE_ARTICLE_NOT_FOUND(3403, "Guide article not found", HttpStatus.NOT_FOUND),
     INVALID_SLUG_FORMAT(3404, "Invalid slug format. Must contain only lowercase letters, numbers, and hyphens", HttpStatus.BAD_REQUEST),
+    LEGAL_DOCUMENT_NOT_FOUND(3405, "Legal document not found", HttpStatus.NOT_FOUND),
     ;
 
     private final Integer code;

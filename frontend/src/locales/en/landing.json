@@ -400,34 +400,6 @@
     "login": "Sign In",
     "privacy": "Privacy & Security",
     "terms": "Terms of Service",
-    "copyright": "© 2026 TransFlow Media. All rights reserved.",
-    "privacyModal": {
-      "title": "Privacy Policy & Data Protection",
-      "desc": "Our commitment to data privacy and security on TransFlow Media Platform",
-      "badge": "Enterprise-Grade Security Architecture",
-      "badgeDesc": "TransFlow is designed with data minimization and multi-layered protection from infrastructure to application.",
-      "p1Title": "1. Files Deleted After 3 Days",
-      "p1Desc": "Source videos, extracted audio, voice-overs and rendered videos are kept for at most 3 days after upload, then deleted automatically. Download your results before then; subtitles and translations stay in your workspace.",
-      "p2Title": "2. No AI Training on Your Data",
-      "p2Desc": "TransFlow never uses your content to train AI models. When you use platform AI sources, content is sent to third-party AI providers (possibly on free tiers) under their data policies; use your own API key (BYOK) for full control.",
-      "p3Title": "3. Secure API Key Management (BYOK)",
-      "p3Desc": "Personal API keys (OpenAI, Gemini, Claude, ElevenLabs) are encrypted with AES-256 and never exposed on the Platform Console.",
-      "p4Title": "4. Role-Based Access Control (RBAC)",
-      "p4Desc": "Workspace isolation and 3-tier role permissions (Lead, Member, Client) ensure only authorized team members can access project data.",
-      "p5Title": "5. End-to-End Encryption",
-      "p5Desc": "100% of network traffic between clients, backend services, and processing workers is encrypted using TLS 1.3."
-    },
-    "termsModal": {
-      "title": "Terms of Service",
-      "desc": "Terms and conditions for using the TransFlow Media Platform",
-      "t1Title": "1. Intellectual Property Ownership",
-      "t1Desc": "You retain 100% ownership of your original video, translations, subtitles, and exported media productions.",
-      "t2Title": "2. Transparent Credit Consumption",
-      "t2Desc": "Credits are deducted based on actual processing duration and pipeline stages. Stage rerun allows saving costs by skipping completed work.",
-      "t3Title": "3. Content Compliance",
-      "t3Desc": "Users are responsible for ensuring uploaded content complies with copyright laws and applicable regulations.",
-      "t4Title": "4. Human-in-the-Loop Quality Control",
-      "t4Desc": "The system provides automated QA checks for timeline collisions and reading speed (CPS). Users retain final publishing approval."
-    }
+    "copyright": "© 2026 TransFlow Media. All rights reserved."
   }
 }

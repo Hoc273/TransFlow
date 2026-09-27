@@ -25,7 +25,8 @@
     "audit": "감사 로그",
     "guides": "가이드",
     "providers": "AI 제공업체",
-    "pricing": "크레딧 요금"
+    "pricing": "크레딧 요금",
+    "legal": "약관 및 개인정보"
   },
   "menu": {
     "console": "플랫폼 콘솔"
@@ -502,5 +503,22 @@
     "onlineSubtitle": "최근 2분 내 신호가 있는 사용자 · 3초마다 자동 새로고침",
     "online": "온라인",
     "onlineUsers": "온라인 사용자"
+  },
+  "legal": {
+    "navLegal": "약관 및 개인정보",
+    "title": "이용약관 및 개인정보 처리방침",
+    "subtitle": "가이드 페이지 하단에 공개되는 내용 (Markdown, vi/en).",
+    "terms": "이용약관",
+    "privacy": "개인정보 처리방침",
+    "titleVi": "제목 (베트남어)",
+    "titleEn": "제목 (영어)",
+    "contentVi": "내용 (베트남어, Markdown)",
+    "contentEn": "내용 (영어, Markdown)",
+    "save": "변경 사항 저장",
+    "saving": "저장 중…",
+    "saved": "저장됨",
+    "viewPublic": "공개 페이지 보기",
+    "updatedAt": "마지막 업데이트",
+    "required": "제목과 내용은 필수입니다"
   }
 }

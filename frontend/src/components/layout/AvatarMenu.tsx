@@ -6,7 +6,8 @@ import { useAuthStore, getLastWorkspaceId } from '@/store/authStore'
 import { useLogout } from '@/hooks/useAuth'
 import { initialsFromName } from '@/lib/format'
 
-export function AvatarMenu() {
+/** `guideInNewTab=false` keeps the Guide in the same tab (mobile shell). */
+export function AvatarMenu({ guideInNewTab = true }: { guideInNewTab?: boolean } = {}) {
   const { t } = useTranslation('common')
   const { workspaceId } = useParams()
   const [open, setOpen] = useState(false)
@@ -32,6 +33,7 @@ export function AvatarMenu() {
   const initials = user ? initialsFromName(user.fullName) : t('user.demoInitials')
 
   const close = () => setOpen(false)
+  const guideLinkProps = guideInNewTab ? { target: '_blank', rel: 'noreferrer' } : {}
 
   return (
     <div className="app-dropdown" ref={ref}>
@@ -73,8 +75,7 @@ export function AvatarMenu() {
               </Link>
               <Link
                 to="/guide"
-                target="_blank"
-                rel="noreferrer"
+                {...guideLinkProps}
                 className="app-dropdown-item"
                 role="menuitem"
                 onClick={close}
@@ -100,8 +101,7 @@ export function AvatarMenu() {
               </button>
               <Link
                 to="/guide"
-                target="_blank"
-                rel="noreferrer"
+                {...guideLinkProps}
                 className="app-dropdown-item"
                 role="menuitem"
                 onClick={close}

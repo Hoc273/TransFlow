@@ -23,6 +23,7 @@ const PlatformAuditPage = lazy(() => import('@/pages/platform/PlatformAuditPage'
 const PlatformProvidersPage = lazy(() => import('@/pages/platform/PlatformProvidersPage').then(m => ({ default: m.PlatformProvidersPage })))
 const PlatformPricingPage = lazy(() => import('@/pages/platform/PlatformPricingPage').then(m => ({ default: m.PlatformPricingPage })))
 const GuideAdminPage = lazy(() => import('@/pages/platform/GuideAdminPage').then(m => ({ default: m.GuideAdminPage })))
+const PlatformLegalPage = lazy(() => import('@/pages/platform/PlatformLegalPage').then(m => ({ default: m.PlatformLegalPage })))
 
 function DashboardRedirect() {
   const current = useAuthStore((s) => s.currentWorkspace?.id)
@@ -51,6 +52,7 @@ export function AppRouter() {
         <Route path="/qwencloud" element={<Navigate to="/" replace />} />
         <Route path="/legacy-landing" element={<LegacyLandingPage />} />
         <Route path="/guide" element={<GuidePage />} />
+        <Route path="/guide/legal/:legalType" element={<GuidePage />} />
         <Route path="/guide/:slug" element={<GuidePage />} />
 
         <Route element={<GuestGuard />}>
@@ -90,6 +92,7 @@ export function AppRouter() {
             <Route path="pricing" element={<PlatformPricingPage />} />
             <Route path="audit" element={<PlatformAuditPage />} />
             <Route path="guides" element={<GuideAdminPage />} />
+            <Route path="legal" element={<PlatformLegalPage />} />
           </Route>
         </Route>
 

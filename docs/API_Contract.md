@@ -17,7 +17,8 @@
 > `GET /api/platform/realtime` và điều chỉnh Credit của user `GET|POST /api/platform/users/{userId}/credit/*`
 > (§13.1 — nhóm Platform không còn read-only hoàn toàn); presence heartbeat `POST /api/presence/heartbeat`
 > (§13.1); module Hướng dẫn — public `/api/guides/*` và quản trị `/api/platform/guides/*` (§13.2); mã lỗi
-> Guide 3400–3404 (§15).
+> Guide 3400–3404 (§15); Điều khoản & Chính sách bảo mật — public `/api/legal/*` và quản trị
+> `/api/platform/legal/*` (§13.2.1), mã lỗi `LEGAL_DOCUMENT_NOT_FOUND` = 3405.
 
 ---
 
@@ -26,7 +27,7 @@
 - **Base path**: mọi API người dùng nằm dưới `/api/...`; callback nội bộ từ Worker nằm dưới `/internal/...`
   (không đi qua JWT, xác thực bằng HMAC — xem §14).
 - **Auth**: Bearer JWT (`Authorization: Bearer <accessToken>`) cho toàn bộ `/api/...`, trừ
-  `/api/auth/register/**|login|refresh|forgot-password/**|google/*` và `/api/guides/**` (trang Hướng dẫn
+  `/api/auth/register/**|login|refresh|forgot-password/**|google/*`, `/api/guides/**` và `/api/legal/**` (trang Hướng dẫn
   công khai, §13.2).
 - **Định dạng**: JSON, field JSON dùng `camelCase`. UUID dạng string chuẩn. Thời gian ISO-8601 UTC
   (`instant`, ví dụ `2026-09-15T08:00:00Z`).
@@ -675,6 +676,16 @@ Nội dung song ngữ vi/en gồm 2 cấp: **Category** → **Article**. Không 
 | PATCH | `/api/platform/guides/articles/{id}/publish` | `{status: "DRAFT"\|"PUBLISHED"}` (bắt buộc). |
 | GET | `/api/platform/guides/articles/{id}/preview?lang=vi` | Xem trước Article theo `lang` bất kể trạng thái. |
 
+#### 13.2.1 Điều khoản sử dụng & Chính sách bảo mật (DB §3.3)
+
+`{type}` = `terms` | `privacy` (không phân biệt hoa thường); giá trị khác → `LEGAL_DOCUMENT_NOT_FOUND` (404).
+
+| Method | Path | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/api/legal/{type}?lang=vi` | Public (`/api/legal/**` trong `PUBLIC_PATHS`) | Trả `{type, title, content, updatedAt}` theo `lang` (vi mặc định, `en` rỗng → fallback vi). Các field `*Vi`/`*En` = `null`. |
+| GET | `/api/platform/legal` | Super Admin | List cả 2 tài liệu kèm `titleVi/titleEn/contentVi/contentEn`. |
+| PUT | `/api/platform/legal/{type}` | Super Admin | Body `{titleVi, titleEn, contentVi, contentEn}` (đều bắt buộc, title ≤ 300, content Markdown). Ghi `updated_by`. |
+
 `GuideCategoryRequest`:
 
 ```json
@@ -812,7 +823,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100, `BATCH_RATE_LIMIT_EXCEEDED` = 3101 |
 | `glossary` | 3200–3299 | `GLOSSARY_IMPORT_TOO_LARGE` = 3200 |
 | `qa` | 3300–3399 | `QA_BLOCKED` = 3300, `OVERRIDE_NOT_ALLOWED` = 3301 |
-| `platform` (gồm `guide`) | 3400–3499 | `GUIDE_CATEGORY_NOT_FOUND` = 3400, `GUIDE_CATEGORY_HAS_ARTICLES` = 3401, `GUIDE_SLUG_ALREADY_EXISTS` = 3402, `GUIDE_ARTICLE_NOT_FOUND` = 3403, `INVALID_SLUG_FORMAT` = 3404 (các API Platform khác vẫn dùng mã chung `VALIDATION_ERROR`/`UNAUTHORIZED`/`RESOURCE_NOT_FOUND`/`INSUFFICIENT_CREDIT`) |
+| `platform` (gồm `guide`) | 3400–3499 | `GUIDE_CATEGORY_NOT_FOUND` = 3400, `GUIDE_CATEGORY_HAS_ARTICLES` = 3401, `GUIDE_SLUG_ALREADY_EXISTS` = 3402, `GUIDE_ARTICLE_NOT_FOUND` = 3403, `INVALID_SLUG_FORMAT` = 3404, `LEGAL_DOCUMENT_NOT_FOUND` = 3405 (các API Platform khác vẫn dùng mã chung `VALIDATION_ERROR`/`UNAUTHORIZED`/`RESOURCE_NOT_FOUND`/`INSUFFICIENT_CREDIT`) |
 
 ### 15.3 Mã nghiệp vụ đã xác định (đối chiếu 1:1 với bản `code` string cũ trước bản 1.1)
 
@@ -899,6 +910,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `GUIDE_SLUG_ALREADY_EXISTS` | 3402 | 409 | Slug Category/Article đã tồn tại. |
 | `GUIDE_ARTICLE_NOT_FOUND` | 3403 | 404 | Không tìm thấy Article, hoặc (API public) Article chưa `PUBLISHED`/Category chưa publish. |
 | `INVALID_SLUG_FORMAT` | 3404 | 400 | Slug sau khi chuẩn hoá không khớp `^[a-z0-9-]+$` (ví dụ tiêu đề không sinh được slug hợp lệ). |
+| `LEGAL_DOCUMENT_NOT_FOUND` | 3405 | 404 | `{type}` không phải `terms`/`privacy` hoặc tài liệu chưa có trong `legal_documents`. |
 
 Thêm mã mới: phụ trách module nào tự thêm `ErrorCode` trong đúng dải của mình (§15.2), cập nhật bảng §15.3
 trong cùng PR — không để `ErrorCode` trong code lệch với bảng ở đây.

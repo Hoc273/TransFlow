@@ -252,7 +252,9 @@
     "account": "계정 및 설정",
     "title": "워크스페이스 둘러보기",
     "switchToLight": "라이트 모드로 전환",
-    "switchToDark": "다크 모드로 전환"
+    "switchToDark": "다크 모드로 전환",
+    "guide": "가이드",
+    "language": "언어"
   },
   "jobWrapper": {
     "back": "Media Hub로 돌아가기",
@@ -267,7 +269,8 @@
   "header": {
     "home": "TransFlow 홈",
     "search": "검색",
-    "notifications": "알림"
+    "notifications": "알림",
+    "credit": "크레딧 잔액: {{value}}"
   },
   "sheet": {
     "closeBackdrop": "배경 닫기",

@@ -83,5 +83,9 @@
     "contentViPlaceholder": "# Tiêu đề bài viết\n\nNội dung Markdown tiếng Việt...",
     "noViContent": "*Chưa có nội dung Tiếng Việt*",
     "noEnContent": "*Chưa có nội dung Tiếng Anh*"
-  }
+  },
+  "legalSection": "Pháp lý",
+  "terms": "Điều khoản sử dụng",
+  "privacy": "Chính sách bảo mật",
+  "legalLoadFailed": "Không tải được nội dung."
 }

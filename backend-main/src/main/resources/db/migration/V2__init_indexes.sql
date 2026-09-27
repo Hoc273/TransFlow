@@ -346,3 +346,91 @@ TransFlow processing pipeline is built on an asynchronous, latency-optimized arc
         now(),
         now()
     );
+
+-- Điều khoản sử dụng & Chính sách bảo mật mặc định (Super Admin chỉnh tại /platform/legal).
+INSERT INTO legal_documents (doc_type, title_vi, title_en, content_vi, content_en, created_at, updated_at)
+VALUES
+    ('TERMS', $legal$Điều khoản Dịch vụ$legal$, $legal$Terms of Service$legal$,
+     $legal$Quy định sử dụng dịch vụ trên nền tảng TransFlow Media Platform
+
+## 1. Quyền sở hữu trí tuệ
+
+Bạn giữ trọn vẹn 100% quyền sở hữu đối với video gốc, bản dịch, phụ đề và các video lồng tiếng sau khi render.
+
+## 2. Cơ chế Credits minh bạch
+
+Credits được trừ chính xác theo thời lượng và công đoạn xử lý thực tế. Hỗ trợ chạy lại (Rerun) từng công đoạn để tiết kiệm tối đa chi phí.
+
+## 3. Trách nhiệm tuân thủ nội dung
+
+Người dùng chịu trách nhiệm đảm bảo video và dữ liệu tải lên tuân thủ quy định bản quyền và pháp luật hiện hành.
+
+## 4. Kiểm định chất lượng (Human-in-the-Loop)
+
+Hệ thống cung cấp cảnh báo QA tự động chống đè timeline và kiểm soát tốc độ đọc (CPS). Người dùng giữ quyền phê duyệt cuối cùng trước khi xuất bản.$legal$,
+     $legal$Terms and conditions for using the TransFlow Media Platform
+
+## 1. Intellectual Property Ownership
+
+You retain 100% ownership of your original video, translations, subtitles, and exported media productions.
+
+## 2. Transparent Credit Consumption
+
+Credits are deducted based on actual processing duration and pipeline stages. Stage rerun allows saving costs by skipping completed work.
+
+## 3. Content Compliance
+
+Users are responsible for ensuring uploaded content complies with copyright laws and applicable regulations.
+
+## 4. Human-in-the-Loop Quality Control
+
+The system provides automated QA checks for timeline collisions and reading speed (CPS). Users retain final publishing approval.$legal$,
+     now(), now()),
+    ('PRIVACY', $legal$Chính sách Bảo mật & Quyền riêng tư$legal$, $legal$Privacy Policy & Data Protection$legal$,
+     $legal$Cam kết bảo vệ dữ liệu và quyền riêng tư tuyệt đối tại TransFlow Media Platform
+
+> **Kiến trúc bảo mật cấp doanh nghiệp** — TransFlow được thiết kế theo nguyên tắc tối thiểu hóa dữ liệu và bảo vệ đa lớp từ hạ tầng đến ứng dụng.
+
+## 1. Tự động xoá tệp sau 3 ngày
+
+Video gốc, âm thanh trích xuất, giọng đọc và video render chỉ được lưu tối đa 3 ngày kể từ khi tải lên, sau đó hệ thống tự động xoá. Hãy tải kết quả về trước thời hạn này; phụ đề và bản dịch vẫn được giữ trong workspace.
+
+## 2. Không dùng dữ liệu để huấn luyện AI
+
+TransFlow không dùng nội dung của bạn để huấn luyện mô hình AI. Khi dùng nguồn AI của nền tảng, nội dung được gửi tới nhà cung cấp AI bên thứ ba (có thể gồm gói miễn phí) và chịu chính sách dữ liệu của họ; muốn tự kiểm soát, hãy dùng khoá API cá nhân (BYOK).
+
+## 3. Bảo mật khóa API (BYOK — Bring Your Own Key)
+
+Khóa API cá nhân (OpenAI, Gemini, Claude, ElevenLabs) được mã hóa AES-256 an toàn và không bao giờ hiển thị trên Platform Console.
+
+## 4. Phân quyền & Cô lập Workspace (RBAC)
+
+Mô hình phân quyền 3 vai trò (Lead, Member, Client) đảm bảo dữ liệu trong Workspace chỉ thành viên được phân công mới có quyền truy cập.
+
+## 5. Mã hóa dữ liệu truyền tải
+
+100% dữ liệu truyền tải giữa người dùng, hệ thống và worker xử lý đều được mã hóa bằng giao thức TLS 1.3 bảo mật cao.$legal$,
+     $legal$Our commitment to data privacy and security on TransFlow Media Platform
+
+> **Enterprise-Grade Security Architecture** — TransFlow is designed with data minimization and multi-layered protection from infrastructure to application.
+
+## 1. Files Deleted After 3 Days
+
+Source videos, extracted audio, voice-overs and rendered videos are kept for at most 3 days after upload, then deleted automatically. Download your results before then; subtitles and translations stay in your workspace.
+
+## 2. No AI Training on Your Data
+
+TransFlow never uses your content to train AI models. When you use platform AI sources, content is sent to third-party AI providers (possibly on free tiers) under their data policies; use your own API key (BYOK) for full control.
+
+## 3. Secure API Key Management (BYOK)
+
+Personal API keys (OpenAI, Gemini, Claude, ElevenLabs) are encrypted with AES-256 and never exposed on the Platform Console.
+
+## 4. Role-Based Access Control (RBAC)
+
+Workspace isolation and 3-tier role permissions (Lead, Member, Client) ensure only authorized team members can access project data.
+
+## 5. End-to-End Encryption
+
+100% of network traffic between clients, backend services, and processing workers is encrypted using TLS 1.3.$legal$,
+     now(), now());

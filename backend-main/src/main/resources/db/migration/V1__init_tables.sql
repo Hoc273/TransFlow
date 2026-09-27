@@ -585,3 +585,15 @@ CREATE TABLE guide_articles (
     created_at      TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
+
+-- Điều khoản sử dụng & Chính sách bảo mật (hiển thị dưới trang Guide, Super Admin chỉnh sửa).
+CREATE TABLE legal_documents (
+    doc_type    VARCHAR(20)  PRIMARY KEY CHECK (doc_type IN ('TERMS', 'PRIVACY')),
+    title_vi    VARCHAR(300) NOT NULL,
+    title_en    VARCHAR(300) NOT NULL,
+    content_vi  TEXT         NOT NULL,
+    content_en  TEXT         NOT NULL,
+    updated_by  UUID         NULL REFERENCES users (id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);

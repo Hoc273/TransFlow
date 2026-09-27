@@ -252,7 +252,9 @@
     "account": "Account & settings",
     "title": "Explore workspace",
     "switchToLight": "Switch to light mode",
-    "switchToDark": "Switch to dark mode"
+    "switchToDark": "Switch to dark mode",
+    "guide": "Guide",
+    "language": "Language"
   },
   "jobWrapper": {
     "back": "Back to Media Hub",
@@ -267,7 +269,8 @@
   "header": {
     "home": "TransFlow home",
     "search": "Search",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "credit": "Credit balance: {{value}}"
   },
   "sheet": {
     "closeBackdrop": "Close backdrop",

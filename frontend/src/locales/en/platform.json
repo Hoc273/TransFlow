@@ -25,7 +25,8 @@
     "audit": "Audit Log",
     "guides": "Guides",
     "providers": "AI providers",
-    "pricing": "Credit pricing"
+    "pricing": "Credit pricing",
+    "legal": "Terms & Privacy"
   },
   "menu": {
     "console": "Platform console"
@@ -502,5 +503,22 @@
     "onlineSubtitle": "Users with a heartbeat in the last 2 minutes · Auto-refreshes every 3 seconds",
     "online": "Online",
     "onlineUsers": "Online users"
+  },
+  "legal": {
+    "navLegal": "Terms & Privacy",
+    "title": "Terms & Privacy Policy",
+    "subtitle": "Public content shown under the Guide page (Markdown, vi/en).",
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy",
+    "titleVi": "Title (Vietnamese)",
+    "titleEn": "Title (English)",
+    "contentVi": "Content (Vietnamese, Markdown)",
+    "contentEn": "Content (English, Markdown)",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "viewPublic": "View public page",
+    "updatedAt": "Last updated",
+    "required": "Title and content are required"
   }
 }

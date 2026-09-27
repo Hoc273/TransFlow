@@ -245,14 +245,16 @@
     "manageNotice": "Trình chỉnh sửa preset tối ưu cho máy tính. Trên điện thoại bạn vẫn tạo/sửa/xóa được, bảng rộng có thể vuốt ngang."
   },
   "menu": {
-    "glossaries": "Glossaries (Từ điển thuật ngữ)",
-    "presets": "Workflow Presets (Cấu hình pipeline)",
-    "members": "Members (Quản lý thành viên)",
-    "usage": "Usage & Quotas (Hạn ngạch)",
-    "account": "Account & Settings (Tài khoản)",
+    "glossaries": "Từ điển thuật ngữ",
+    "presets": "Cấu hình quy trình",
+    "members": "Thành viên",
+    "usage": "Mức sử dụng & hạn ngạch",
+    "account": "Tài khoản & cài đặt",
     "title": "Khám phá Workspace",
     "switchToLight": "Giao diện Sáng",
-    "switchToDark": "Giao diện Tối"
+    "switchToDark": "Giao diện Tối",
+    "guide": "Hướng dẫn",
+    "language": "Ngôn ngữ"
   },
   "jobWrapper": {
     "back": "Quay lại Media Hub",
@@ -267,7 +269,8 @@
   "header": {
     "home": "Trang chủ TransFlow",
     "search": "Tìm kiếm",
-    "notifications": "Thông báo"
+    "notifications": "Thông báo",
+    "credit": "Số dư credit: {{value}}"
   },
   "sheet": {
     "closeBackdrop": "Đóng lớp phủ",
