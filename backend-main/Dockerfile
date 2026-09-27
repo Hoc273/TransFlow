@@ -1,6 +1,6 @@
 # TransFlow backend-main (Spring Boot 3.3 / Java 21) — multi-stage build.
 # Stage 1: build jar bằng Maven (cache dependency trước để rebuild nhanh).
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3-eclipse-temurin-24 AS build
 WORKDIR /app
 COPY pom.xml .
 RUN mvn -q -DskipTests dependency:go-offline
