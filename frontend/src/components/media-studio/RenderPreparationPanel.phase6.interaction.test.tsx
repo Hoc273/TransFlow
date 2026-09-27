@@ -313,8 +313,9 @@ describe('Phase 6 — Cover layers editor (V2 §B exposure, user decision 2026-0
       .toBe('9:16')
     expect((screen.getByTestId('render-prep-preview-canvas') as HTMLElement).dataset.ratio)
       .toBe(String(9 / 16))
+    // CSSOM serializes a bare <number> ratio as `<n> / 1` (jsdom >= 30, browsers).
     expect((screen.getByTestId('render-prep-preview-canvas') as HTMLElement).style.aspectRatio)
-      .toBe(String(9 / 16))
+      .toMatch(new RegExp(`^${String(9 / 16)}( / 1)?$`))
     // Reframed preview mirrors the worker blur-pad: blurred cover backdrop +
     // undistorted fit foreground, with overlays/subtitle above.
     expect(screen.getByTestId('render-prep-preview-blur-bg')).toBeTruthy()
