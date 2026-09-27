@@ -830,20 +830,15 @@ CREATE INDEX ix_ai_usage_logs_provider ON ai_usage_logs(provider_id, created_at)
 
 ## 13. Ghi chú migration
 - Schema **mới hoàn toàn** — không migrate dữ liệu từ base gốc.
-- Flyway được squash còn đúng 2 baseline: `V1__init_tables.sql` tạo schema/constraint và
-  `V2__init_indexes.sql` tạo index + seed dữ liệu nền. Database đã chạy chuỗi V1–V12 cũ phải reset schema
-  và `flyway_schema_history` trước khi dùng baseline này; không chồng baseline mới lên history cũ.
-- Migration kể từ baseline: `V3__user_avatar.sql` (cột avatar user),
-  `V4__platform_admin_audit_logs.sql` (bảng audit Super Admin ở §3.1 — `users.is_platform_admin` đã có
-  trong V1 nên V4 không `ALTER users`), `V5__reencrypt_platform_provider_key.sql` (re-encrypt platform seed API key),
-  `V6__user_ai_provider_defaults.sql` (bảng `user_ai_provider_defaults`),
-  `V7__media_stage_structured_errors.sql` (cột error structured cho `media_job_stages`),
-  `V8__system_presets_render_ready.sql`, `V9__shorts_preset_typography.sql`, `V10__system_presets_phrase_colors.sql` (cập nhật render presets),
-  `V11__guide.sql` (bảng Hướng dẫn ở §3.2 + seed nội dung mẫu), `V12__notification_qa_blocked.sql`,
-  `V13__provider_pool_and_retention.sql` (pool key nền tảng §5, health BYOK, `ai_usage_logs.provider_id`,
-  `media_assets.purged_at` retention 3 ngày, notification `PROVIDER_KEY_INVALID`, index cho cronjob),
-  `V14__tts_clip_key.sql` (`subtitle_segments.tts_clip_key`, `tts_duration_ms` — TTS resume),
-  `V15__tts_voice_display_status.sql` (`tts_voices.display_name`, `status` — catalog N giọng/ngôn ngữ).
+- Flyway được squash còn đúng 2 baseline: `V1__init_tables.sql` tạo toàn bộ bảng/constraint và
+  `V2__init_indexes.sql` tạo index + seed dữ liệu nền (terms, gói credit, bảng giá, platform provider mẫu,
+  TTS voice mẫu, 2 system preset render-ready, nội dung Hướng dẫn). Hai file đã gộp chuỗi V1–V17 cũ
+  (avatar, audit Super Admin §3.1, `user_ai_provider_defaults`, lỗi structured của stage, Guide §3.2,
+  pool key nền tảng §5 + health BYOK + `ai_usage_logs.provider_id` + retention `media_assets.purged_at`,
+  `JOB_QA_BLOCKED`/`PROVIDER_KEY_INVALID`, TTS resume `tts_clip_key`/`tts_duration_ms`,
+  `tts_voices.display_name`/`status`, lịch sử bảng giá credit, `users.email_canonical`).
+- Database đã chạy chuỗi migration cũ phải **reset schema và `flyway_schema_history`** trước khi dùng
+  baseline này; không chồng baseline mới lên history cũ. Thay đổi schema tiếp theo bắt đầu từ `V3__...`.
 - **Đồng bộ `tts_voices` (BYOK refresh & platform sync):** upsert theo `voice_id`, **không bao giờ xoá** —
   job DUB có thể còn tham chiếu (FK `ON DELETE SET NULL` sẽ vi phạm `ck_audio_mode_voice`). Voice provider
   gỡ hoặc `status=DEPRECATED` → `is_active=false`. Danh sách rỗng từ provider → lỗi, giữ nguyên catalog.

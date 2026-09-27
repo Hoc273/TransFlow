@@ -100,7 +100,7 @@ class MediaAssetControllerTest {
         userRepository.deleteAll();
 
         // Tests run with flyway disabled (ddl-auto=create-drop) — seed the current
-        // terms version normally provided by V3__seed_terms_version.sql in real environments.
+        // terms version normally seeded by V2__init_indexes.sql in real environments.
         termsVersionRepository.deleteAll();
         TermsVersion terms = new TermsVersion();
         terms.setVersion("v1");

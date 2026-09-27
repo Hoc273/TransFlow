@@ -448,11 +448,11 @@ Request tạo version (ví dụ):
 
 ## 11. Thay đổi cần làm trong code / DB / docs
 
-> **Đã làm (2026-09-26):** C8 (truyền `protocol/model` vào `chargeUsage`), C13 (`V16__credit_pricing_admin.sql`), C14, C15, C16, C18, một phần C5 (resolver `protocol/model` → `protocol` → `NULL`; **vẫn giữ** fallback hard-code, hiện ở `/coverage` là `MISSING`), D3/D4 (mã 2305, 2306; 2304 để dành), D5, T2. Chưa làm: C1–C4, C6, C7, C9–C12, C17.
+> **Đã làm (2026-09-26):** C8 (truyền `protocol/model` vào `chargeUsage`), C13 (cột `created_by_user_id`/`change_reason` + index `ux_credit_pricing_open`, nay nằm trong baseline `V1`/`V2`), C14, C15, C16, C18, một phần C5 (resolver `protocol/model` → `protocol` → `NULL`; **vẫn giữ** fallback hard-code, hiện ở `/coverage` là `MISSING`), D3/D4 (mã 2305, 2306; 2304 để dành), D5, T2. Chưa làm: C1–C4, C6, C7, C9–C12, C17.
 
 | # | Hạng mục | Thay đổi | Liên quan |
 |---|---|---|---|
-| C1 | DB — migration mới `V11__credit_pricing_v2.sql` | `ADD COLUMN billing_unit VARCHAR NOT NULL` (CHECK `AUDIO_SECOND, VIDEO_SECOND, TOKEN, CHARACTER`); mở CHECK `capability` thêm `AUDIO_SEPARATION`; đóng row cũ (`effective_to = now()`); insert row §7.2 | P1–P4 |
+| C1 | DB — migration mới `V3__credit_pricing_v2.sql` | `ADD COLUMN billing_unit VARCHAR NOT NULL` (CHECK `AUDIO_SECOND, VIDEO_SECOND, TOKEN, CHARACTER`); mở CHECK `capability` thêm `AUDIO_SEPARATION`; đóng row cũ (`effective_to = now()`); insert row §7.2 | P1–P4 |
 | C2 | DB | Unique partial index `credit_transactions(ref_type, ref_id) WHERE type = 'AI_USAGE'` với `ref_id` = stage id + lần chạy → chống trừ trùng khi callback lặp | Rule 5 (idempotent) |
 | C3 | DB | Cập nhật giá `credit_packages` Creator/Business | P7 |
 | C4 | DB | Đổi `default_model` provider nền tảng seed theo Q2 (ví dụ `gpt-4o` → `gpt-4o-mini` cho dịch) hoặc tách model theo capability | Q2 |
