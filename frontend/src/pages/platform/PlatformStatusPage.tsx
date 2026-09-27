@@ -22,13 +22,13 @@ import {
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { usePlatformStatus } from '@/hooks/usePlatform'
 import { formatDateTime } from '@/lib/format'
+import i18n from '@/i18n'
 import { useUiStore } from '@/store/uiStore'
 import type { ServiceStatus } from '@/types/platform'
 
 type ServiceMeta = {
   icon: typeof IconServer
-  categoryVi: string
-  categoryEn: string
+  categoryKey: string
   accentColor: string
   accentBg: string
 }
@@ -36,78 +36,67 @@ type ServiceMeta = {
 const SERVICE_CONFIG: Record<string, ServiceMeta> = {
   db: {
     icon: IconDatabase,
-    categoryVi: 'Cơ sở dữ liệu chính',
-    categoryEn: 'Primary Database',
+    categoryKey: 'status.categories.primaryDatabase',
     accentColor: '#3b82f6',
     accentBg: 'rgba(59, 130, 246, 0.12)',
   },
   postgresql: {
     icon: IconDatabase,
-    categoryVi: 'Cơ sở dữ liệu chính',
-    categoryEn: 'Primary Database',
+    categoryKey: 'status.categories.primaryDatabase',
     accentColor: '#3b82f6',
     accentBg: 'rgba(59, 130, 246, 0.12)',
   },
   redis: {
     icon: IconBolt,
-    categoryVi: 'Bộ nhớ đệm & Hàng đợi',
-    categoryEn: 'Cache & Message Queue',
+    categoryKey: 'status.categories.cacheQueue',
     accentColor: '#ef4444',
     accentBg: 'rgba(239, 68, 68, 0.12)',
   },
   worker: {
     icon: IconVideo,
-    categoryVi: 'Worker xử lý video / âm thanh',
-    categoryEn: 'Media Processing Cluster',
+    categoryKey: 'status.categories.mediaCluster',
     accentColor: '#8b5cf6',
     accentBg: 'rgba(139, 92, 246, 0.12)',
   },
   comp_worker: {
     icon: IconMovie,
-    categoryVi: 'Worker dựng hình & Render GPU',
-    categoryEn: 'Composition & GPU Render',
+    categoryKey: 'status.categories.gpuRender',
     accentColor: '#ec4899',
     accentBg: 'rgba(236, 72, 153, 0.12)',
   },
   storage: {
     icon: IconCloud,
-    categoryVi: 'Lưu trữ tệp & Object Store',
-    categoryEn: 'Object & File Storage',
+    categoryKey: 'status.categories.objectStorage',
     accentColor: '#06b6d4',
     accentBg: 'rgba(6, 182, 212, 0.12)',
   },
   minio: {
     icon: IconBox,
-    categoryVi: 'Lưu trữ tệp & Object Store',
-    categoryEn: 'Object & File Storage',
+    categoryKey: 'status.categories.objectStorage',
     accentColor: '#06b6d4',
     accentBg: 'rgba(6, 182, 212, 0.12)',
   },
   ai_gateway: {
     icon: IconSparkles,
-    categoryVi: 'Cổng điều phối AI Inference',
-    categoryEn: 'AI Inference Gateway',
+    categoryKey: 'status.categories.aiGateway',
     accentColor: '#10b981',
     accentBg: 'rgba(16, 185, 129, 0.12)',
   },
   rabbitmq: {
     icon: IconActivity,
-    categoryVi: 'Hàng đợi tin nhắn',
-    categoryEn: 'Message Broker',
+    categoryKey: 'status.categories.messageBroker',
     accentColor: '#f97316',
     accentBg: 'rgba(249, 115, 22, 0.12)',
   },
   fastapi: {
     icon: IconStack2,
-    categoryVi: 'Dịch vụ API backend',
-    categoryEn: 'Backend API Service',
+    categoryKey: 'status.categories.backendApi',
     accentColor: '#059669',
     accentBg: 'rgba(5, 150, 105, 0.12)',
   },
   spring_boot: {
     icon: IconServer,
-    categoryVi: 'Dịch vụ Core platform',
-    categoryEn: 'Core Platform Service',
+    categoryKey: 'status.categories.corePlatform',
     accentColor: '#6366f1',
     accentBg: 'rgba(99, 102, 241, 0.12)',
   },
@@ -115,8 +104,7 @@ const SERVICE_CONFIG: Record<string, ServiceMeta> = {
 
 const DEFAULT_SERVICE_META: ServiceMeta = {
   icon: IconServer,
-  categoryVi: 'Dịch vụ hệ thống',
-  categoryEn: 'System Service',
+  categoryKey: 'status.categories.systemService',
   accentColor: '#6366f1',
   accentBg: 'rgba(99, 102, 241, 0.12)',
 }
@@ -429,10 +417,10 @@ export function PlatformStatusPage() {
               <div className="col-span-full platform-card flex flex-col items-center justify-center p-12 text-center">
                 <IconSearch size={32} className="text-[var(--color-text-tertiary)] mb-2" />
                 <div className="font-medium text-sm text-[var(--color-text-primary)]">
-                  {language === 'vi' ? 'Không tìm thấy service phù hợp' : 'No matching services found'}
+                  {t('status.noMatchTitle')}
                 </div>
                 <p className="mt-1 text-xs text-[var(--color-text-tertiary)]">
-                  {language === 'vi' ? 'Hãy thử xoá bộ lọc tìm kiếm' : 'Try clearing your search query'}
+                  {t('status.noMatchHint')}
                 </p>
                 <button
                   type="button"
@@ -442,12 +430,12 @@ export function PlatformStatusPage() {
                     setFilter('all')
                   }}
                 >
-                  {language === 'vi' ? 'Xoá bộ lọc' : 'Reset filters'}
+                  {t('status.resetFilters')}
                 </button>
               </div>
             ) : (
               filteredServices.map((svc) => (
-                <ServiceCard key={svc.id} svc={svc} language={language} t={t} />
+                <ServiceCard key={svc.id} svc={svc} t={t} />
               ))
             )}
       </div>
@@ -457,16 +445,14 @@ export function PlatformStatusPage() {
 
 function ServiceCard({
   svc,
-  language,
   t,
 }: {
   svc: ServiceStatus
-  language: string
   t: (k: string) => string
 }) {
   const meta = SERVICE_CONFIG[svc.id] ?? DEFAULT_SERVICE_META
   const Icon = meta.icon
-  const category = language === 'vi' ? meta.categoryVi : meta.categoryEn
+  const category = t(meta.categoryKey)
   const latencyGrade = getLatencyGrade(svc.latencyMs, t)
   const isUp = svc.status === 'UP'
 
@@ -613,10 +599,10 @@ function getLatencyGrade(latencyMs: number | null, t: (k: string) => string) {
 function formatRelativeTime(dateStr: string, language: string) {
   try {
     const diff = Math.max(0, Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000))
-    if (diff < 15) return language === 'vi' ? 'Vừa xong' : 'Just now'
-    if (diff < 60) return language === 'vi' ? `${diff} giây trước` : `${diff}s ago`
+    if (diff < 15) return i18n.t('platform:status.justNow')
+    if (diff < 60) return i18n.t('platform:status.secondsAgo', { count: diff })
     const mins = Math.floor(diff / 60)
-    if (mins < 60) return language === 'vi' ? `${mins} phút trước` : `${mins}m ago`
+    if (mins < 60) return i18n.t('platform:status.minutesAgo', { count: mins })
     return formatDateTime(dateStr, language)
   } catch {
     return dateStr

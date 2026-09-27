@@ -215,7 +215,6 @@ class MediaJobControllerTest {
 
     private VoiceBinding createVoice(String language) {
         PlatformAiProvider provider = new PlatformAiProvider();
-        provider.setId(UUID.randomUUID());
         provider.setProtocol("test-tts");
         provider.setCapabilities(java.util.List.of("TTS"));
         provider.setBaseUrl("https://tts.example.test");
@@ -224,7 +223,6 @@ class MediaJobControllerTest {
         provider = platformAiProviderRepository.save(provider);
 
         TtsVoice voice = new TtsVoice();
-        voice.setId(UUID.randomUUID());
         voice.setProviderSource("PLATFORM");
         voice.setPlatformProviderId(provider.getId());
         voice.setLanguage(language);
@@ -314,7 +312,7 @@ class MediaJobControllerTest {
     }
 
     @Test
-    void createJob_dubMixWithoutSourceSeparation_returnsValidationError() throws Exception {
+    void createJob_dubMixWithoutSourceSeparation_createsFastVoiceOverJob() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-dubmix@transflow.com");
         UUID assetId = uploadAndConsentAsset(lead, lead.accessToken());
         VoiceBinding voice = createVoice("en");
@@ -334,8 +332,9 @@ class MediaJobControllerTest {
                         .header("Authorization", "Bearer " + lead.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_ERROR.getCode()));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.outputAudioMode").value("DUB_MIX"))
+                .andExpect(jsonPath("$.data.sourceSeparationEnabled").value(false));
     }
 
     @Test

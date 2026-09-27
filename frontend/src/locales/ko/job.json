@@ -1,0 +1,160 @@
+{
+  "list": {
+    "title": "번역 작업",
+    "subtitle": "대상 언어당 작업 1개 · 행을 클릭하면 편집기가 열립니다",
+    "create": "새 작업",
+    "emptyTitle": "아직 작업이 없습니다",
+    "emptyDesc": "번역 작업을 만들어 이 문서를 대상 언어로 번역하세요.",
+    "col": {
+      "targetLang": "대상",
+      "provider": "제공업체",
+      "model": "모델"
+    }
+  },
+  "create": {
+    "title": "번역 작업 만들기",
+    "subtitle": "대상 언어 하나에 대해 AI 파이프라인을 실행합니다 (잠시 걸릴 수 있습니다).",
+    "targetLang": "대상 언어",
+    "langRequired": "대상 언어를 선택하세요",
+    "duplicateActive": "이 대상 언어로 진행 중인 작업이 이미 있습니다",
+    "active": "진행 중",
+    "hint": "같은 대상 언어로 진행 중인 작업을 두 개 시작할 수 없습니다.",
+    "submit": "번역 시작",
+    "submitting": "번역 중…",
+    "streamFailed": "실시간 번역 스트림을 시작할 수 없습니다.",
+    "streamInterrupted": "실시간 연결이 끊어졌습니다. 작업은 서버에서 계속 진행됩니다.",
+    "openJob": "작업 열기",
+    "pipelineStage": "파이프라인",
+    "completedSegments": "완료",
+    "currentSegment": "현재",
+    "liveOutput": "실시간 출력",
+    "waitingTokens": "번역된 텍스트를 기다리는 중…",
+    "streamStatus": {
+      "idle": "준비됨",
+      "connecting": "연결 중",
+      "open": "스트리밍 중",
+      "reconnecting": "다시 연결 중 ({{attempt}}번째 시도)",
+      "done": "완료",
+      "error": "연결 끊김"
+    }
+  },
+  "qa": {
+    "title": "QA 이슈",
+    "emptyTitle": "QA 이슈 없음",
+    "emptyDesc": "이 세그먼트의 열린 이슈가 여기에 표시됩니다.",
+    "showResolved": "해결된 이슈 표시",
+    "hideResolved": "해결된 이슈 숨기기",
+    "suggestion": "제안",
+    "resolved": "해결됨",
+    "open": "열림",
+    "resolve": "해결",
+    "apply": "적용",
+    "applyAndResolve": "제안 적용 후 해결",
+    "override": "무시하고 진행",
+    "overrideSoon": "무시 기능은 백엔드가 필요합니다 (기능 플래그 꺼짐)",
+    "overridden": "이 차단 조치는 무시 처리되었습니다",
+    "overriddenShort": "무시됨",
+    "overrideModal": {
+      "title": "이 QA 검사 건너뛰기",
+      "description": "이슈가 처리된 것으로 표시되어 더 이상 이 작업을 차단하지 않습니다. 입력한 사유는 감사 로그에 보관됩니다.",
+      "cancel": "취소",
+      "submit": "검사 건너뛰기",
+      "submitting": "건너뛰는 중…",
+      "actionLabel": "무시할 차단 조치",
+      "reasonLabel": "사유",
+      "reasonPlaceholder": "이 검사를 건너뛰어도 안전한 이유는 무엇인가요?",
+      "reasonHint": "최소 {{min}}자 이상 입력하세요",
+      "reasonOk": "사유가 최소 길이를 충족합니다",
+      "allOverridden": "이 이슈의 모든 차단 조치가 이미 무시 처리되었습니다.",
+      "liftsLabel": "차단 해제 대상",
+      "presetsLabel": "자주 쓰는 사유",
+      "presets": {
+        "falseAlarm": "오탐: 텍스트가 작성된 그대로 올바릅니다.",
+        "authored": "스크립트가 대상 언어로 직접 작성되어 번역할 내용이 없습니다.",
+        "checked": "직접 확인함: 내용과 타이밍에 문제가 없습니다."
+      }
+    },
+    "criticalMediaOnly": "CRITICAL은 런타임에서 미디어 파이프라인에만 적용됩니다",
+    "severity": {
+      "low": "낮음",
+      "medium": "보통",
+      "high": "높음",
+      "critical": "심각"
+    },
+    "col": {
+      "type": "유형",
+      "severity": "심각도",
+      "message": "메시지",
+      "blocking": "차단",
+      "state": "상태"
+    }
+  },
+  "history": {
+    "pickSegment": "기록을 보려면 세그먼트를 선택하세요",
+    "emptyTitle": "기록 없음",
+    "emptyDesc": "편집, QA, 승인 내역이 여기에 표시됩니다. MVP에서는 롤백을 지원하지 않습니다.",
+    "actorAi": "AI",
+    "actorHuman": "사용자"
+  },
+  "editor": {
+    "title": "번역 편집기",
+    "mobileBanner": "편집기를 온전히 사용하려면 데스크톱 컴퓨터를 이용하세요.",
+    "shortcuts": "단축키",
+    "shortcutsTitle": "키보드 단축키",
+    "shortcutsDesc": "단축키는 역할에 따라 적용됩니다. 클라이언트는 보기 전용입니다.",
+    "pipeline": "파이프라인",
+    "searchPlaceholder": "세그먼트 검색… (/)",
+    "filterAll": "모든 상태",
+    "filterHasQa": "열린 QA 있음",
+    "segments": "세그먼트",
+    "noSegments": "이 작업에 세그먼트가 없습니다",
+    "noMatch": "일치하는 세그먼트가 없습니다",
+    "noMatchDesc": "검색어나 필터를 지워 보세요.",
+    "clearFilters": "필터 지우기",
+    "source": "원본",
+    "target": "대상",
+    "targetPlaceholder": "번역을 수정하세요…",
+    "pickSegment": "세그먼트를 선택하세요",
+    "hasQa": "열린 QA 이슈",
+    "unsaved": "저장되지 않은 변경사항",
+    "saving": "저장 중…",
+    "saved": "{{relative}} 저장됨",
+    "ready": "준비됨",
+    "roleHint": "편집 모드",
+    "applyQa": "QA 제안 적용",
+    "next": "다음 세그먼트",
+    "approve": "승인",
+    "approveBlocked": "해결되지 않은 HIGH QA 이슈로 인해 승인이 차단되었습니다",
+    "discardConfirm": "이 세그먼트의 저장되지 않은 변경사항을 버릴까요?",
+    "leaveConfirm": "저장되지 않은 변경사항이 있습니다. 이 페이지를 나갈까요?",
+    "versionPreview": "버전 패널",
+    "versionPreviewDesc": "미리보기 — 2단계. MVP에서는 전체 비교/롤백을 사용할 수 없습니다.",
+    "commentPreview": "댓글",
+    "commentPreviewDesc": "미리보기 — 2단계. 텍스트 MVP에는 댓글 API가 없습니다.",
+    "tab": {
+      "qa": "QA",
+      "history": "기록",
+      "version": "버전",
+      "comment": "댓글"
+    }
+  },
+  "pipeline": {
+    "queued": "대기 중",
+    "tm": "TM",
+    "translating": "번역 중",
+    "qa": "QA",
+    "autoFix": "자동 수정",
+    "awaitingReview": "검토",
+    "approved": "승인됨"
+  },
+  "shortcuts": {
+    "prevNext": "이전 / 다음 세그먼트",
+    "edit": "대상 편집기에 포커스",
+    "escape": "편집 종료 / 저장하지 않은 변경 취소",
+    "save": "지금 저장",
+    "approve": "세그먼트 승인",
+    "applyQa": "첫 번째 QA 제안 적용",
+    "search": "검색에 포커스",
+    "help": "이 도움말 표시"
+  }
+}

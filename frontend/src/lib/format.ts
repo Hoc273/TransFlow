@@ -1,11 +1,18 @@
 /** Locale-aware number/date helpers (09b A.0). */
 
+const INTL_LOCALES: Record<string, string> = { vi: 'vi-VN', ko: 'ko-KR', en: 'en-US' }
+
+/** Intl locale tag for a UI language ("ko" → "ko-KR"); English (US) otherwise. */
+export function intlLocale(language: string | undefined): string {
+  return INTL_LOCALES[(language ?? '').toLowerCase().split(/[-_]/)[0]] ?? 'en-US'
+}
+
 export function formatNumber(value: number, language: string): string {
-  return new Intl.NumberFormat(language === 'vi' ? 'vi-VN' : 'en-US').format(value)
+  return new Intl.NumberFormat(intlLocale(language)).format(value)
 }
 
 export function formatCompactNumber(value: number, language: string): string {
-  return new Intl.NumberFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
+  return new Intl.NumberFormat(intlLocale(language), {
     notation: value >= 10_000 ? 'compact' : 'standard',
     maximumFractionDigits: 1,
   }).format(value)
@@ -13,7 +20,7 @@ export function formatCompactNumber(value: number, language: string): string {
 
 export function formatDateTime(iso: string, language: string): string {
   try {
-    return new Intl.DateTimeFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
+    return new Intl.DateTimeFormat(intlLocale(language), {
       dateStyle: 'medium',
       timeStyle: 'short',
     }).format(new Date(iso))
@@ -25,7 +32,7 @@ export function formatDateTime(iso: string, language: string): string {
 /** Full date + time down to the second, e.g. "15:42:10 25/09/2026" (vi). */
 export function formatDateTimeDetailed(iso: string, language: string): string {
   try {
-    return new Intl.DateTimeFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
+    return new Intl.DateTimeFormat(intlLocale(language), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -44,7 +51,7 @@ export function formatRelativeTime(iso: string, language: string): string {
     const then = new Date(iso).getTime()
     const now = Date.now()
     const diffSec = Math.round((then - now) / 1000)
-    const rtf = new Intl.RelativeTimeFormat(language === 'vi' ? 'vi' : 'en', { numeric: 'auto' })
+    const rtf = new Intl.RelativeTimeFormat(intlLocale(language), { numeric: 'auto' })
     const abs = Math.abs(diffSec)
     if (abs < 60) return rtf.format(diffSec, 'second')
     const diffMin = Math.round(diffSec / 60)

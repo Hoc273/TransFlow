@@ -41,7 +41,8 @@ public class CreditPricingServiceImpl implements CreditPricingService {
     private static final Logger log = LoggerFactory.getLogger(CreditPricingServiceImpl.class);
 
     /** Capabilities allowed by the credit_pricing_config CHECK constraint (V1). */
-    static final Set<String> CAPABILITIES = Set.of("STT", "TRANSLATE", "TTS", "SUMMARIZE_SCRIPT", "RENDER", "VISION");
+    static final Set<String> CAPABILITIES = Set.of(
+            "STT", "TRANSLATE", "TTS", "SUMMARIZE_SCRIPT", "RENDER", "VISION", "AUDIO_SEPARATION");
 
     /** Billing units per minute of video (Credit_Coefficient_Calculation §6.3) — preview only. */
     static final Map<String, Long> UNITS_PER_MINUTE = Map.of(
@@ -50,9 +51,10 @@ public class CreditPricingServiceImpl implements CreditPricingService {
             "SUMMARIZE_SCRIPT", 500L,
             "TTS", 1000L,
             "VISION", 1000L,
-            "RENDER", 60L);
+            "RENDER", 60L,
+            "AUDIO_SEPARATION", 60L);
 
-    /** Capabilities the pipeline charges per job type (RENDER is not charged yet). */
+    /** Capabilities the pipeline charges per job type. */
     private static final Map<String, List<String>> JOB_TYPES = jobTypes();
 
     /** ±50% vs the version being replaced requires explicit confirmation (§10.3). */
@@ -355,9 +357,10 @@ public class CreditPricingServiceImpl implements CreditPricingService {
 
     private static Map<String, List<String>> jobTypes() {
         Map<String, List<String>> jobs = new LinkedHashMap<>();
-        jobs.put("SUBTITLE", List.of("STT", "TRANSLATE"));
-        jobs.put("DUB", List.of("STT", "TRANSLATE", "TTS"));
-        jobs.put("SUMMARY_VLM", List.of("STT", "SUMMARIZE_SCRIPT", "VISION"));
+        jobs.put("SUBTITLE", List.of("STT", "TRANSLATE", "RENDER"));
+        jobs.put("DUB", List.of("STT", "TRANSLATE", "TTS", "RENDER"));
+        jobs.put("DUB_STUDIO", List.of("STT", "TRANSLATE", "TTS", "AUDIO_SEPARATION", "RENDER"));
+        jobs.put("SUMMARY_VLM", List.of("STT", "SUMMARIZE_SCRIPT", "VISION", "RENDER"));
         return jobs;
     }
 }

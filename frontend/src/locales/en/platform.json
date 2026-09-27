@@ -25,7 +25,8 @@
     "audit": "Audit Log",
     "guides": "Guides",
     "providers": "AI providers",
-    "pricing": "Credit pricing"
+    "pricing": "Credit pricing",
+    "legal": "Terms & Privacy"
   },
   "menu": {
     "console": "Platform console"
@@ -133,7 +134,25 @@
     "speedFast": "Very fast",
     "speedGood": "Good",
     "speedModerate": "Normal",
-    "speedSlow": "Slow"
+    "speedSlow": "Slow",
+    "categories": {
+      "primaryDatabase": "Primary Database",
+      "cacheQueue": "Cache & Message Queue",
+      "mediaCluster": "Media Processing Cluster",
+      "gpuRender": "Composition & GPU Render",
+      "objectStorage": "Object & File Storage",
+      "aiGateway": "AI Inference Gateway",
+      "messageBroker": "Message Broker",
+      "backendApi": "Backend API Service",
+      "corePlatform": "Core Platform Service",
+      "systemService": "System Service"
+    },
+    "noMatchTitle": "No matching services found",
+    "noMatchHint": "Try clearing your search query",
+    "resetFilters": "Reset filters",
+    "justNow": "Just now",
+    "secondsAgo": "{{count}}s ago",
+    "minutesAgo": "{{count}}m ago"
   },
   "users": {
     "title": "Users Directory",
@@ -211,7 +230,8 @@
       "perWorkspacePage": "on current page",
       "pageMembers": "Members (page)",
       "onThisPage": "sum of this page"
-    }
+    },
+    "goToWorkspace": "Go to this workspace"
   },
   "audit": {
     "title": "Platform Audit Log",
@@ -354,7 +374,7 @@
     "defaultScope": "Default",
     "noRow": "No price yet — billing uses the hard-coded fallback coefficients.",
     "unitsPerMinute": "~{{count}} units / video minute",
-    "renderHint": "RENDER is not charged by the pipeline yet; its price only applies once that stage is billed.",
+    "renderHint": "RENDER and AUDIO_SEPARATION run locally, so only x applies (y = 0): RENDER per second of output video, charged when the worker reports the render finished.",
     "history": "History",
     "change": "Change price",
     "historyTitle": "Price history · {{capability}} · {{scope}}",
@@ -396,7 +416,8 @@
       "SUMMARIZE_SCRIPT": "SUMMARIZE_SCRIPT — Summary script",
       "TTS": "TTS — Dubbing voice",
       "VISION": "VISION — Visual analysis",
-      "RENDER": "RENDER — Video export"
+      "RENDER": "RENDER — Video export",
+      "AUDIO_SEPARATION": "AUDIO_SEPARATION — Music separation (Demucs)"
     },
     "unit": {
       "STT": "Unit: audio second (token when the provider reports tokens)",
@@ -404,12 +425,14 @@
       "SUMMARIZE_SCRIPT": "Unit: token",
       "TTS": "Unit: character",
       "VISION": "Unit: token",
-      "RENDER": "Unit: output video second"
+      "RENDER": "Unit: output video second",
+      "AUDIO_SEPARATION": "Unit: audio second (runs locally, x only)"
     },
     "job": {
       "SUBTITLE": "Subtitles (STT + translate)",
       "DUB": "Dubbing (STT + translate + TTS)",
-      "SUMMARY_VLM": "Summary + visuals"
+      "SUMMARY_VLM": "Summary + visuals",
+      "DUB_STUDIO": "Studio dubbing (STT + translate + TTS + music separation)"
     },
     "warning": {
       "DEFAULT_Y_BELOW_SCOPED_MAX": "The default price is below the most expensive model — models without their own price may be undercharged.",
@@ -463,5 +486,39 @@
       "confirmLargeChange": "I confirm this price change above ±50%.",
       "saveError": "Could not save the price version."
     }
+  },
+  "realtime": {
+    "activityTitle": "Real-time System Activity",
+    "activitySubtitle": "Active processing jobs across all workspaces · Auto-refreshes every 3 seconds",
+    "processing": "Processing",
+    "processingJobs": "Processing jobs",
+    "doneToday": "Done Today",
+    "tokensLastHour": "Tokens/last hr",
+    "collecting": "Collecting data…",
+    "jobUnit_one": "job",
+    "jobUnit_other": "jobs",
+    "userUnit_one": "user",
+    "userUnit_other": "users",
+    "onlineTitle": "Online users",
+    "onlineSubtitle": "Users with a heartbeat in the last 2 minutes · Auto-refreshes every 3 seconds",
+    "online": "Online",
+    "onlineUsers": "Online users"
+  },
+  "legal": {
+    "navLegal": "Terms & Privacy",
+    "title": "Terms & Privacy Policy",
+    "subtitle": "Public content shown under the Guide page (Markdown, vi/en).",
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy",
+    "titleVi": "Title (Vietnamese)",
+    "titleEn": "Title (English)",
+    "contentVi": "Content (Vietnamese, Markdown)",
+    "contentEn": "Content (English, Markdown)",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "viewPublic": "View public page",
+    "updatedAt": "Last updated",
+    "required": "Title and content are required"
   }
 }

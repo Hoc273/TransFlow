@@ -6,6 +6,7 @@ const OPERATION_COLORS: Record<string, string> = {
   TTS: '#f59e0b',
   STT: '#38bdf8',
   VISION: '#ec4899',
+  AUDIO_SEPARATION: '#84cc16',
   QA: '#6366f1',
 }
 

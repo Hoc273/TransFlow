@@ -15,6 +15,9 @@ import com.app.modules.media_job.repository.SubtitleSegmentRepository;
 import com.app.modules.notification.service.NotificationService;
 import com.app.modules.preset.service.PresetResolverService;
 import com.app.modules.provider.service.ProviderResolverService;
+import com.app.modules.transformation.dto.AvailabilityProjection;
+import com.app.modules.transformation.dto.ModeAvailability;
+import com.app.modules.transformation.service.WorkerCapabilityService;
 import com.app.modules.workspace.entity.Role;
 import com.app.modules.workspace.service.WorkspaceAccessService;
 import org.junit.jupiter.api.BeforeEach;
@@ -247,14 +250,137 @@ class MediaJobServiceImplTest {
     }
 
     @Test
-    void createJob_dubMixWithoutSourceSeparation_throwsValidationError() {
+    void createJob_dubMixWithoutSourceSeparation_isFastVoiceOver() {
+        stubHappyPathUpToCreditCheck();
+        UUID voiceId = UUID.randomUUID();
+        when(providerResolver.isVoiceLanguageCompatible(userId, providerId, voiceId, "en")).thenReturn(true);
+
+        MediaJob job = service.createJob(workspaceId, userId, localizationRequest("DUB_MIX", false, voiceId));
+
+        assertEquals(MediaJob.OutputAudioMode.DUB_MIX, job.getOutputAudioMode());
+        assertFalse(job.isSourceSeparationEnabled());
+        var byName = savedStagesByName();
+        assertEquals(MediaJobStage.StageStatus.SKIPPED, byName.get(MediaJobStage.StageName.SOURCE_SEPARATION).getStatus());
+        assertEquals(MediaJobStage.StageStatus.PENDING, byName.get(MediaJobStage.StageName.TTS).getStatus());
+        assertEquals(MediaJobStage.StageStatus.PENDING, byName.get(MediaJobStage.StageName.AUDIO_MIX).getStatus());
+    }
+
+    @Test
+    void createJob_voiceWithoutAudioMode_fastRequest_resolvesToVoiceOver() {
+        stubHappyPathUpToCreditCheck();
+        UUID voiceId = UUID.randomUUID();
+        when(providerResolver.isVoiceLanguageCompatible(userId, providerId, voiceId, "en")).thenReturn(true);
+
+        MediaJob job = service.createJob(workspaceId, userId, formRequest(MediaJob.RECIPE_LOCALIZATION_FULL, "FAST", voiceId));
+
+        assertEquals(MediaJob.OutputAudioMode.DUB_MIX, job.getOutputAudioMode());
+        assertFalse(job.isSourceSeparationEnabled());
+    }
+
+    @Test
+    void createJob_voiceWithoutAudioMode_studioRequest_enablesSeparationWhenGpuAvailable() {
+        stubHappyPathUpToCreditCheck();
+        UUID voiceId = UUID.randomUUID();
+        when(providerResolver.isVoiceLanguageCompatible(userId, providerId, voiceId, "en")).thenReturn(true);
+        withStudioAvailable(true);
+
+        MediaJob job = service.createJob(workspaceId, userId, formRequest(MediaJob.RECIPE_LOCALIZATION_FULL, "STUDIO", voiceId));
+
+        assertEquals(MediaJob.OutputAudioMode.DUB_MIX, job.getOutputAudioMode());
+        assertTrue(job.isSourceSeparationEnabled());
+        assertEquals(MediaJobStage.StageStatus.PENDING,
+                savedStagesByName().get(MediaJobStage.StageName.SOURCE_SEPARATION).getStatus());
+    }
+
+    @Test
+    void createJob_studioRequest_withoutGpu_throwsStudioModeUnavailable() {
         when(mediaAssetService.getAsset(workspaceId, userId, rootAssetId)).thenReturn(rootVideoAsset());
         when(mediaAssetService.hasCurrentConsent(rootAssetId)).thenReturn(true);
-        UUID voiceId = UUID.randomUUID();
+        withStudioAvailable(false);
 
-        AppException ex = assertThrows(AppException.class, () ->
-                service.createJob(workspaceId, userId, localizationRequest("DUB_MIX", false, voiceId)));
+        AppException ex = assertThrows(AppException.class, () -> service.createJob(workspaceId, userId,
+                formRequest(MediaJob.RECIPE_LOCALIZATION_FULL, "STUDIO", UUID.randomUUID())));
+        assertEquals(ErrorCode.STUDIO_MODE_UNAVAILABLE, ex.getErrorCode());
+        verifyNoInteractions(mediaJobRepository);
+    }
+
+    @Test
+    void createJob_keepOriginalAudio_staysSubtitleOnlyEvenInStudio() {
+        stubHappyPathUpToCreditCheck();
+
+        MediaJob job = service.createJob(workspaceId, userId, formRequest(MediaJob.RECIPE_LOCALIZATION_FULL, "STUDIO", null));
+
+        assertEquals(MediaJob.OutputAudioMode.ORIGINAL_ONLY, job.getOutputAudioMode());
+        assertFalse(job.isSourceSeparationEnabled());
+    }
+
+    @Test
+    void createJob_unknownRequestedMode_throwsValidationError() {
+        when(mediaAssetService.getAsset(workspaceId, userId, rootAssetId)).thenReturn(rootVideoAsset());
+        when(mediaAssetService.hasCurrentConsent(rootAssetId)).thenReturn(true);
+
+        AppException ex = assertThrows(AppException.class, () -> service.createJob(workspaceId, userId,
+                formRequest(MediaJob.RECIPE_LOCALIZATION_FULL, "TURBO", null)));
         assertEquals(ErrorCode.VALIDATION_ERROR, ex.getErrorCode());
+    }
+
+    @Test
+    void setVoice_onSubtitleOnlyLocalization_switchesToVoiceOverAndActivatesAudioStages() {
+        UUID jobId = UUID.randomUUID();
+        UUID voiceId = UUID.randomUUID();
+        MediaJob job = new MediaJob();
+        job.setId(jobId);
+        job.setWorkspaceId(workspaceId);
+        job.setProjectId(projectId);
+        job.setRecipeId(MediaJob.RECIPE_LOCALIZATION_FULL);
+        job.setTargetLang("en");
+        job.setOutputAudioMode(MediaJob.OutputAudioMode.ORIGINAL_ONLY);
+        when(mediaJobRepository.findByIdAndWorkspaceId(jobId, workspaceId)).thenReturn(Optional.of(job));
+        when(mediaJobRepository.findWithLockById(jobId)).thenReturn(Optional.of(job));
+        when(mediaJobRepository.save(any(MediaJob.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(providerResolver.isVoiceLanguageCompatible(userId, providerId, voiceId, "en")).thenReturn(true);
+        MediaJobStage separation = stageWith(MediaJobStage.StageName.SOURCE_SEPARATION, MediaJobStage.StageStatus.SKIPPED);
+        MediaJobStage tts = stageWith(MediaJobStage.StageName.TTS, MediaJobStage.StageStatus.SKIPPED);
+        MediaJobStage mix = stageWith(MediaJobStage.StageName.AUDIO_MIX, MediaJobStage.StageStatus.SKIPPED);
+        MediaJobStage render = stageWith(MediaJobStage.StageName.RENDER, MediaJobStage.StageStatus.COMPLETED);
+        when(mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(jobId))
+                .thenReturn(List.of(separation, tts, mix, render));
+
+        MediaJob updated = service.setVoice(workspaceId, userId, jobId, providerId, voiceId);
+
+        assertEquals(MediaJob.OutputAudioMode.DUB_MIX, updated.getOutputAudioMode());
+        assertEquals(MediaJobStage.StageStatus.SKIPPED, separation.getStatus());
+        assertEquals(MediaJobStage.StageStatus.PENDING, tts.getStatus());
+        assertEquals(MediaJobStage.StageStatus.PENDING, mix.getStatus());
+        assertEquals(MediaJobStage.StageStatus.COMPLETED, render.getStatus());
+    }
+
+    private CreateMediaJobRequest formRequest(String recipeId, String requestedMode, UUID voiceId) {
+        return new CreateMediaJobRequest(projectId, rootAssetId, recipeId, "TRANSLATE_ONLY", null, "en",
+                null, null, null, null, voiceId != null ? providerId : null, voiceId, null, null, null,
+                requestedMode, null);
+    }
+
+    private void withStudioAvailable(boolean available) {
+        WorkerCapabilityService capabilities = mock(WorkerCapabilityService.class);
+        when(capabilities.getCapabilities()).thenReturn(new AvailabilityProjection("1.0", List.of("FAST", "STUDIO"),
+                "FAST", java.util.Map.of("STUDIO", new ModeAvailability(available, available ? null : "GPU_UNAVAILABLE")),
+                null, null));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "workerCapabilities", capabilities);
+    }
+
+    private java.util.Map<MediaJobStage.StageName, MediaJobStage> savedStagesByName() {
+        var captor = org.mockito.ArgumentCaptor.forClass(MediaJobStage.class);
+        verify(mediaJobStageRepository, times(8)).save(captor.capture());
+        return captor.getAllValues().stream()
+                .collect(java.util.stream.Collectors.toMap(MediaJobStage::getStageName, st -> st));
+    }
+
+    private static MediaJobStage stageWith(MediaJobStage.StageName name, MediaJobStage.StageStatus status) {
+        MediaJobStage stage = new MediaJobStage();
+        stage.setStageName(name);
+        stage.setStatus(status);
+        return stage;
     }
 
     @Test

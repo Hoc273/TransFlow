@@ -90,6 +90,17 @@ vi.mock('@/hooks/useGuide', () => ({
     data: mockArticles,
     isLoading: false,
   }),
+  useLegalDocument: (type: string, _lang: string, enabled: boolean) => ({
+    data: enabled
+      ? {
+          type,
+          title: type === 'TERMS' ? 'Điều khoản Dịch vụ' : 'Chính sách bảo mật',
+          content: ['## 1. Quyền sở hữu trí tuệ', '', 'Bạn giữ quyền sở hữu nội dung.'].join('\n'),
+          updatedAt: '2026-09-01T00:00:00Z',
+        }
+      : undefined,
+    isLoading: false,
+  }),
 }))
 
 describe('GuidePage', () => {
@@ -146,5 +157,24 @@ describe('GuidePage', () => {
     const buttons = screen.getAllByRole('button')
     const hasTongQuanButton = buttons.some((b) => b.textContent?.includes('Tổng quan TransFlow'))
     expect(hasTongQuanButton).toBe(false)
+  })
+
+  it('lists Terms & Privacy under the guide and renders the legal document route', () => {
+    render(
+      <MemoryRouter initialEntries={['/guide/legal/terms']}>
+        <Routes>
+          <Route path="/guide" element={<GuidePage />} />
+          <Route path="/guide/legal/:legalType" element={<GuidePage />} />
+          <Route path="/guide/:slug" element={<GuidePage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getAllByRole('link', { name: 'terms' })[0].getAttribute('href')).toBe('/guide/legal/terms')
+    expect(screen.getAllByRole('link', { name: 'privacy' })[0].getAttribute('href')).toBe('/guide/legal/privacy')
+    expect(screen.getByRole('heading', { level: 1, name: 'Điều khoản Dịch vụ' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: '1. Quyền sở hữu trí tuệ' })).toBeInTheDocument()
+    // Guide article body is not shown on a legal route
+    expect(screen.queryByText('Tóm tắt bài viết tổng quan.')).toBeNull()
   })
 })

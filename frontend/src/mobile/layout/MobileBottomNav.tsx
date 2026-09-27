@@ -6,6 +6,7 @@ import {
   IconVideo,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
+import { useTranslation } from 'react-i18next'
 
 interface MobileBottomNavProps {
   workspaceId?: string
@@ -13,12 +14,13 @@ interface MobileBottomNavProps {
 }
 
 export function MobileBottomNav({ workspaceId, onOpenMenu }: MobileBottomNavProps) {
+  const { t } = useTranslation('mobile')
   const base = workspaceId ? `/w/${workspaceId}` : ''
 
   const navItems = [
-    { label: 'Dashboard', to: base, icon: <IconLayoutDashboard size={20} />, end: true },
-    { label: 'Projects', to: `${base}/projects`, icon: <IconFolder size={20} /> },
-    { label: 'Media', to: `${base}/media`, icon: <IconVideo size={20} /> },
+    { label: t('mobile:nav.dashboard'), to: base, icon: <IconLayoutDashboard size={20} />, end: true },
+    { label: t('mobile:nav.projects'), to: `${base}/projects`, icon: <IconFolder size={20} /> },
+    { label: t('mobile:nav.media'), to: `${base}/media`, icon: <IconVideo size={20} /> },
   ]
 
   return (
@@ -48,7 +50,7 @@ export function MobileBottomNav({ workspaceId, onOpenMenu }: MobileBottomNavProp
         className="flex min-h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 text-[11px] font-medium text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white transition-colors active:bg-neutral-100 dark:active:bg-neutral-800"
       >
         <IconMenu2 size={20} />
-        <span className="truncate leading-tight">Menu</span>
+        <span className="truncate leading-tight">{t('mobile:nav.menu')}</span>
       </button>
       </div>
     </nav>

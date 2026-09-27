@@ -1,9 +1,10 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { normalizeLanguage, type Language } from '@/lib/uiLanguage'
 
 /** Light / dark only — system mode removed per product request. */
 export type ThemeMode = 'light' | 'dark'
-export type Language = 'en' | 'vi'
+export type { Language } from '@/lib/uiLanguage'
 
 interface UiState {
   theme: ThemeMode
@@ -54,6 +55,7 @@ export const useUiStore = create<UiState>()(
           ...current,
           ...p,
           theme: normalizeTheme(p.theme),
+          language: normalizeLanguage(p.language, current.language),
         }
       },
     },

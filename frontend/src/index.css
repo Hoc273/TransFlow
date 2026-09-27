@@ -3,7 +3,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
   --color-brand-50: #eef2ff;
@@ -259,6 +259,12 @@ body {
   transition: background 0.25s ease, color 0.25s ease;
 }
 
+/* Korean wraps at word (eojeol) boundaries, not mid-syllable-block. */
+:lang(ko) body {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
 #root {
   min-height: 100vh;
   min-height: 100dvh;
@@ -280,6 +286,15 @@ body {
   input,
   select {
     min-height: 0;
+  }
+}
+
+/* iOS Safari zooms the page when focusing a field below 16px. */
+@media (max-width: 767px) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    font-size: 16px;
   }
 }
 

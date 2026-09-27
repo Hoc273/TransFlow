@@ -105,6 +105,8 @@ export const queryKeys = {
   guideArticles: (params?: Record<string, string | number | undefined>) =>
     ['guide', 'articles', params ?? {}] as const,
   guideArticle: (slug?: string, lang?: string) => ['guide', 'article', slug ?? '', lang ?? 'vi'] as const,
+  legalDocument: (type: string, lang: string) => ['legal', type, lang] as const,
+  adminLegalDocuments: ['admin', 'legal'] as const,
   adminGuideCategories: ['admin', 'guide', 'categories'] as const,
   adminGuideCategory: (id?: string) => ['admin', 'guide', 'category', id ?? ''] as const,
   adminGuideArticles: (params?: Record<string, string | number | undefined>) =>

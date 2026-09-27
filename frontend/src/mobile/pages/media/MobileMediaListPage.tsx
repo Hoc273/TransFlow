@@ -1,8 +1,10 @@
-import { useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   IconAlertCircle,
+  IconChevronLeft,
   IconFolder,
+  IconPlus,
   IconRefresh,
   IconVideo,
 } from '@tabler/icons-react'
@@ -10,8 +12,13 @@ import clsx from 'clsx'
 import { MobileCard } from '../../components/MobileCard'
 import { MobileSearchFilter } from '../../components/MobileSearchFilter'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
+import { UploadConsentPanel } from '@/components/media-studio/UploadConsentPanel'
 import { useProjects } from '@/hooks/useProjects'
-import { useMediaJobs } from '@/hooks/useMedia'
+import { useMediaJobs, useProjectMediaAssets } from '@/hooks/useMedia'
+import { usePermission } from '@/hooks/usePermission'
+import { isActiveMediaJobStatus, overallProgress } from '@/lib/media'
+import type { MediaAsset } from '@/types/media'
+import { useTranslation } from 'react-i18next'
 
 function getStatusBadgeStyle(status?: string) {
   switch (status?.toUpperCase()) {
@@ -35,68 +42,138 @@ function formatDuration(seconds: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
+/**
+ * Mobile Media Hub — same data and actions as desktop MediaListPage:
+ * job list per project (#overview) and the create-job flow (#upload).
+ */
 export function MobileMediaListPage() {
+  const { t } = useTranslation(['mobile', 'media'])
   const { workspaceId = '' } = useParams<{ workspaceId: string }>()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
-  const queryProjectId = searchParams.get('projectId') || ''
+  const canUpload = usePermission('document.upload')
 
-  // 1. Projects hook
-  const projectsQuery = (useProjects as any)(workspaceId)
-  const projects: Array<{ id: string; name: string }> =
-    projectsQuery?.data ?? projectsQuery?.projects ?? []
-
-  // Default to query param or first project id
+  const { data: projects = [] } = useProjects(workspaceId)
+  // Accept both ?project= (canonical, desktop) and ?projectId= (dashboard / project list links).
+  const queryProjectId = searchParams.get('project') || searchParams.get('projectId') || ''
   const selectedProjectId = queryProjectId || projects[0]?.id
 
-  // 2. Media Jobs hook (supports both real signature and parameterless mock)
-  const mediaJobsQuery = (useMediaJobs as any)(workspaceId, selectedProjectId)
+  const {
+    data: jobs = [],
+    isLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useMediaJobs(workspaceId, selectedProjectId)
+  const { data: assets = [] } = useProjectMediaAssets(workspaceId, selectedProjectId)
+  const assetById = useMemo(
+    () => new Map<string, MediaAsset>(assets.map((a) => [a.id, a])),
+    [assets],
+  )
 
-  // Defensive normalization
-  const jobs: any[] =
-    mediaJobsQuery?.jobs ??
-    (Array.isArray(mediaJobsQuery?.data) ? mediaJobsQuery.data : null) ??
-    (Array.isArray(mediaJobsQuery) ? mediaJobsQuery : [])
-
-  const isLoading = Boolean(mediaJobsQuery?.isLoading)
-  const error = mediaJobsQuery?.error
-  const refetch = mediaJobsQuery?.refetch
+  const showUpload = location.hash === '#upload' && Boolean(selectedProjectId)
+  const setPanel = (panel: 'overview' | 'upload') =>
+    navigate({ pathname: location.pathname, search: location.search, hash: `#${panel}` }, { replace: true })
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
 
   const filterOptions = [
-    { id: 'ALL', label: 'Tất cả' },
-    { id: 'PROCESSING', label: 'Đang xử lý' },
-    { id: 'COMPLETED', label: 'Hoàn thành' },
-    { id: 'FAILED', label: 'Thất bại' },
+    { id: 'ALL', label: t('mobile:media.filterAll') },
+    { id: 'PROCESSING', label: t('mobile:media.filterProcessing') },
+    { id: 'COMPLETED', label: t('mobile:media.filterCompleted') },
+    { id: 'FAILED', label: t('mobile:media.filterFailed') },
   ]
 
-  const filtered = jobs.filter((j: any) => {
-    const title = (j.title || j.fileName || j.name || j.id || '').toLowerCase()
-    const matchSearch = title.includes(search.toLowerCase())
+  const titleOf = (jobId: string, rootAssetId: string) =>
+    assetById.get(rootAssetId)?.fileName ||
+    t('mobile:media.fallbackTitle', { id: jobId.slice(0, 8) })
+
+  const filtered = jobs.filter((j) => {
+    const matchSearch = titleOf(j.id, j.rootAssetId).toLowerCase().includes(search.toLowerCase())
+    const status = String(j.status ?? '').toUpperCase()
     const matchStatus =
       statusFilter === 'ALL' ||
-      j.status?.toUpperCase() === statusFilter.toUpperCase()
+      (statusFilter === 'PROCESSING' ? isActiveMediaJobStatus(status) : status === statusFilter)
     return matchSearch && matchStatus
   })
+
+  const selectProject = (projectId: string) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('project', projectId)
+        next.delete('projectId')
+        return next
+      },
+      { replace: true },
+    )
+  }
+
+  if (showUpload && selectedProjectId) {
+    return (
+      <div className="w-full min-w-0 space-y-3 overflow-x-clip pb-8">
+        <button
+          type="button"
+          onClick={() => setPanel('overview')}
+          className="inline-flex items-center gap-1 text-sm font-medium text-neutral-500"
+        >
+          <IconChevronLeft size={17} />
+          {t('media:backToList')}
+        </button>
+        <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">{t('media:newJob')}</h1>
+        <div className="min-w-0 overflow-x-clip">
+          <UploadConsentPanel
+            workspaceId={workspaceId}
+            projectId={selectedProjectId}
+            onCreated={() => setPanel('overview')}
+          />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full min-w-0 space-y-4 overflow-x-clip pb-8">
       {/* Header */}
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">Media Hub</h1>
+          <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">{t('mobile:media.title')}</h1>
           <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
-            {jobs.length > 0 ? `${jobs.length} tệp media` : 'Quản lý phụ đề và video'}
+            {jobs.length > 0 ? t('mobile:media.fileCount', { count: jobs.length }) : t('mobile:media.subtitle')}
           </p>
         </div>
+        {selectedProjectId && (
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            aria-label={t('mobile:common.retry')}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-neutral-200 text-neutral-600 active:bg-neutral-100 dark:border-neutral-800 dark:text-neutral-300 dark:active:bg-neutral-800"
+          >
+            <IconRefresh size={16} className={isFetching ? 'animate-spin' : ''} />
+          </button>
+        )}
         <Link
           to={`/w/${workspaceId}/media/presets`}
           className="flex h-9 shrink-0 items-center whitespace-nowrap rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 text-xs font-semibold text-neutral-700 dark:text-neutral-300 active:bg-neutral-100 dark:active:bg-neutral-800 transition-colors"
         >
-          Presets
+          {t('mobile:media.presets')}
         </Link>
       </div>
+
+      {canUpload && selectedProjectId && (
+        <button
+          type="button"
+          data-testid="mobile-media-new-job"
+          onClick={() => setPanel('upload')}
+          className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-primary text-sm font-semibold text-white shadow-xs active:scale-[0.98] transition-transform"
+        >
+          <IconPlus size={17} />
+          {t('media:newJob')}
+        </button>
+      )}
 
       {/* Project Switcher if multiple projects */}
       {projects.length > 1 && (
@@ -108,13 +185,7 @@ export function MobileMediaListPage() {
               <button
                 key={p.id}
                 type="button"
-                onClick={() => {
-                  setSearchParams((prev) => {
-                    const next = new URLSearchParams(prev)
-                    next.set('projectId', p.id)
-                    return next
-                  })
-                }}
+                onClick={() => selectProject(p.id)}
                 className={clsx(
                   'max-w-[160px] shrink-0 truncate min-h-[32px] rounded-lg px-2.5 py-1 text-xs font-medium transition-colors border',
                   isCurrent
@@ -134,17 +205,22 @@ export function MobileMediaListPage() {
       <MobileSearchFilter
         value={search}
         onChange={setSearch}
-        placeholder="Tìm kiếm video/audio..."
+        placeholder={t('mobile:media.searchPlaceholder')}
         filters={filterOptions}
         activeFilter={statusFilter}
         onFilterChange={setStatusFilter}
       />
 
-      {/* Loading State */}
-      {isLoading ? (
+      {!selectedProjectId ? (
+        <MobileEmptyState
+          icon={<IconFolder size={36} />}
+          title={t('media:noProjectTitle')}
+          description={t('media:noProjectDesc')}
+        />
+      ) : isLoading ? (
         <div className="space-y-3 py-2">
           <div className="py-6 text-center text-sm text-neutral-400">
-            Đang tải danh sách media...
+            {t('mobile:media.loading')}
           </div>
           {[1, 2, 3].map((i) => (
             <MobileCard key={i} className="animate-pulse space-y-3 p-4">
@@ -159,37 +235,34 @@ export function MobileMediaListPage() {
           ))}
         </div>
       ) : error ? (
-        /* Error State */
         <MobileCard className="flex flex-col items-center justify-center p-6 text-center">
           <IconAlertCircle size={36} className="text-red-500 mb-2" />
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
-            Không thể tải danh sách media
+            {t('mobile:media.loadFailed')}
           </h3>
           <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-            {error?.message || 'Vui lòng kiểm tra lại kết nối mạng'}
+            {error.message || t('mobile:common.networkError')}
           </p>
           <button
             type="button"
-            onClick={() => void refetch?.()}
+            onClick={() => void refetch()}
             className="mt-3 flex items-center gap-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200"
           >
             <IconRefresh size={14} />
-            <span>Thử lại</span>
+            <span>{t('mobile:common.retry')}</span>
           </button>
         </MobileCard>
       ) : jobs.length === 0 ? (
-        /* Empty Workspace Jobs */
         <MobileEmptyState
           icon={<IconVideo size={36} />}
-          title="Chưa có tệp Media nào"
-          description="Tải lên tệp video hoặc audio để bắt đầu quy trình phụ đề và lồng tiếng AI."
+          title={t('mobile:media.emptyTitle')}
+          description={t('mobile:media.emptyDesc')}
         />
       ) : filtered.length === 0 ? (
-        /* Empty Search Results */
         <MobileEmptyState
           icon={<IconVideo size={36} />}
-          title="Không tìm thấy tệp media"
-          description="Không có tệp media nào khớp với điều kiện tìm kiếm hoặc bộ lọc."
+          title={t('mobile:media.noMatchTitle')}
+          description={t('mobile:media.noMatchDesc')}
           action={
             <button
               type="button"
@@ -199,49 +272,29 @@ export function MobileMediaListPage() {
               }}
               className="rounded-xl bg-neutral-100 dark:bg-neutral-800 px-4 py-2 text-xs font-semibold text-neutral-700 dark:text-neutral-300"
             >
-              Xóa bộ lọc
+              {t('mobile:common.clearFilters')}
             </button>
           }
         />
       ) : (
-        /* Media Item Cards */
         <div className="space-y-3">
-          {filtered.map((item: any) => {
-            const itemTitle =
-              item.title ||
-              item.fileName ||
-              item.name ||
-              `Tệp media ${item.id?.slice(0, 8) ?? ''}`
-
+          {filtered.map((job) => {
+            const asset = assetById.get(job.rootAssetId)
+            const itemTitle = titleOf(job.id, job.rootAssetId)
             const duration =
-              item.duration ||
-              (typeof item.durationSeconds === 'number'
-                ? formatDuration(item.durationSeconds)
-                : typeof item.requestedDurationSeconds === 'number'
-                ? formatDuration(item.requestedDurationSeconds)
-                : null)
-
-            const progress =
-              typeof item.progress === 'number'
-                ? item.progress
-                : typeof item.progressPercent === 'number'
-                ? item.progressPercent
-                : item.status === 'COMPLETED'
-                ? 100
-                : 0
-
+              typeof asset?.durationMs === 'number'
+                ? formatDuration(asset.durationMs / 1000)
+                : typeof job.requestedDurationSeconds === 'number'
+                  ? formatDuration(job.requestedDurationSeconds)
+                  : null
+            const progress = overallProgress(job)
             const isProcessing =
-              item.status === 'PROCESSING' ||
-              item.status === 'PENDING' ||
-              item.status === 'CANCEL_REQUESTED'
-
-            const detailUrl = `/w/${workspaceId}/media/jobs/${item.id}`
+              isActiveMediaJobStatus(job.status) || String(job.status).toUpperCase() === 'CANCEL_REQUESTED'
 
             return (
-              <Link key={item.id} to={detailUrl} className="block min-w-0">
+              <Link key={job.id} to={`/w/${workspaceId}/media/jobs/${job.id}`} className="block min-w-0">
                 <MobileCard interactive className="min-w-0 space-y-3">
                   <div className="flex min-w-0 gap-3">
-                    {/* Thumbnail / Duration */}
                     <div className="relative flex h-16 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-200 dark:bg-neutral-800">
                       <IconVideo size={24} className="text-neutral-400" />
                       {duration && (
@@ -251,54 +304,37 @@ export function MobileMediaListPage() {
                       )}
                     </div>
 
-                    {/* Metadata */}
                     <div className="flex-1 min-w-0">
                       <h3 className="truncate text-sm font-semibold text-neutral-900 dark:text-white" title={itemTitle}>
                         {itemTitle}
                       </h3>
-                      {item.fileName && item.fileName !== itemTitle && (
-                        <p className="truncate text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5" title={item.fileName}>
-                          {item.fileName}
-                        </p>
-                      )}
                       <div className="mt-1.5 flex min-w-0 items-center flex-wrap gap-1.5">
                         <span
                           className={clsx(
                             'shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold border',
-                            getStatusBadgeStyle(item.status)
+                            getStatusBadgeStyle(job.status)
                           )}
                         >
-                          {item.status}
+                          {job.status}
                         </span>
-                        {item.targetLang && (
+                        {job.targetLang && (
                           <span className="shrink-0 rounded bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 dark:text-neutral-400 uppercase">
-                            {String(item.targetLang).toUpperCase()}
+                            {job.targetLang.toUpperCase()}
                           </span>
                         )}
-                        {item.keepOriginalAudio && (
-                          <span className="shrink-0 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium">
-                            Âm thanh gốc
-                          </span>
-                        )}
-                        {(item.aspectRatio || item.outputAspectRatio) && (
-                          <span className="shrink-0 rounded bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
-                            {item.aspectRatio || item.outputAspectRatio}
-                          </span>
-                        )}
-                        {(item.type || item.processingMode || item.recipeId) && (
+                        {(job.recipeId || job.processingMode) && (
                           <span className="min-w-0 truncate text-[10px] text-neutral-400 max-w-[120px]">
-                            {item.recipeId || item.type || item.processingMode}
+                            {job.recipeId || job.processingMode}
                           </span>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Progress bar for active / processing jobs */}
                   {isProcessing && (
                     <div className="space-y-1">
                       <div className="flex justify-between text-[10px] text-neutral-500">
-                        <span>Đang xử lý</span>
+                        <span>{t('mobile:media.filterProcessing')}</span>
                         <span>{progress}%</span>
                       </div>
                       <div className="h-1 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">

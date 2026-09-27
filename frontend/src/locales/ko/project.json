@@ -1,0 +1,50 @@
+{
+  "list": {
+    "title": "프로젝트",
+    "create": "새 프로젝트",
+    "emptyTitle": "아직 프로젝트가 없습니다",
+    "emptyDesc": "첫 프로젝트를 만들어 영상을 정리하세요.",
+    "searchPlaceholder": "프로젝트 검색...",
+    "noMatchTitle": "프로젝트를 찾을 수 없습니다",
+    "noMatchDesc": "검색어와 일치하는 프로젝트가 없습니다.",
+    "clearSearch": "검색어 지우기",
+    "projectCount_one": "프로젝트 {{count}}개",
+    "projectCount_other": "프로젝트 {{count}}개",
+    "docsCount_one": "문서 {{count}}개",
+    "docsCount_other": "문서 {{count}}개",
+    "videoCount_one": "영상 {{count}}개",
+    "videoCount_other": "영상 {{count}}개",
+    "stats": {
+      "projects": "프로젝트",
+      "documents": "문서 및 미디어",
+      "languages": "원본 언어",
+      "tm": "TM 적용률"
+    },
+    "col": {
+      "name": "이름",
+      "sourceLang": "원본",
+      "domain": "도메인",
+      "documents": "문서",
+      "media": "영상",
+      "actions": ""
+    },
+    "open": "열기"
+  },
+  "create": {
+    "title": "프로젝트 만들기",
+    "subtitle": "원본 언어는 새 영상의 기본값으로 사용됩니다",
+    "name": "프로젝트 이름",
+    "namePlaceholder": "제품 영상 · EN→KO",
+    "nameRequired": "이름을 입력하세요",
+    "sourceLang": "원본 언어",
+    "glossary": "기본 용어집",
+    "glossaryNone": "없음",
+    "tmEnabled": "이 프로젝트에 번역 메모리 사용",
+    "domain": "도메인 (선택)",
+    "domainPlaceholder": "법률 / 마케팅 / 기술",
+    "tone": "어조 (선택)",
+    "tonePlaceholder": "격식체 / 비격식체",
+    "submit": "프로젝트 만들기",
+    "submitting": "만드는 중…"
+  }
+}

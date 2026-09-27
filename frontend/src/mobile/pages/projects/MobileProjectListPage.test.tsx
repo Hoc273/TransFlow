@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { MobileProjectListPage } from './MobileProjectListPage'
+import i18n from '@/i18n'
 
 interface CustomMatchers<R = unknown> {
   toBeInTheDocument(): R
@@ -61,6 +62,10 @@ vi.mock('@/hooks/useProjects', () => ({
     isPending: false,
   })),
 }))
+
+beforeAll(async () => {
+  await i18n.changeLanguage('vi')
+})
 
 describe('MobileProjectListPage', () => {
   const renderPage = (initialRoute = '/w/ws-123/projects') => {

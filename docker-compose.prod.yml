@@ -305,7 +305,7 @@ services:
       backend-main:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-8081}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-8081}:8080"
 
 volumes:
   pgdata:

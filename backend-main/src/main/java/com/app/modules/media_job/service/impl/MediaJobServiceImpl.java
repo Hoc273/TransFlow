@@ -25,6 +25,8 @@ import com.app.modules.preset.service.PresetResolverService;
 import com.app.modules.provider.service.ProviderResolverService;
 import com.app.modules.qa.entity.QaIssue;
 import com.app.modules.qa.repository.QaIssueRepository;
+import com.app.modules.transformation.dto.ModeAvailability;
+import com.app.modules.transformation.service.WorkerCapabilityService;
 import com.app.modules.workspace.entity.Role;
 import com.app.modules.workspace.service.WorkspaceAccessService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,6 +68,14 @@ public class MediaJobServiceImpl implements MediaJobService {
     private static final Set<String> TIMING_QA_TYPES = Set.of("subtitle_overlap", "invalid_timing");
     /** AI findings about timing/length also go stale when only the cue timing is edited. */
     private static final Set<String> TIMING_SENSITIVE_AI_TYPES = Set.of("timing", "length");
+
+    /** Execution modes of the create form (API_Contract §5.2): FAST = voice-over, STUDIO = source separation. */
+    static final String MODE_FAST = "FAST";
+    static final String MODE_STUDIO = "STUDIO";
+
+    // field-injected so the focused unit-test constructors stay valid; null there = no GPU gate
+    @Autowired(required = false)
+    private WorkerCapabilityService workerCapabilities;
 
     // field-injected (not via constructor) so unit tests keep the default
     @Value("${app.media-job.max-batch-subtitle-updates:200}")
@@ -170,25 +180,33 @@ public class MediaJobServiceImpl implements MediaJobService {
         // SOFT_SUB unless requested; a resolved preset may still choose it below.
         MediaJob.SubtitleMode subtitleMode = req.subtitleMode() != null
                 ? parseEnum(MediaJob.SubtitleMode.class, req.subtitleMode()) : MediaJob.SubtitleMode.SOFT_SUB;
+        String requestedMode = req.requestedMode() == null ? null : req.requestedMode().trim().toUpperCase(Locale.ROOT);
+        if (requestedMode != null && !MODE_FAST.equals(requestedMode) && !MODE_STUDIO.equals(requestedMode)) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
+        boolean sourceSeparationEnabled = Boolean.TRUE.equals(req.sourceSeparationEnabled());
         MediaJob.OutputAudioMode outputAudioMode;
         if (req.outputAudioMode() != null) {
             outputAudioMode = parseEnum(MediaJob.OutputAudioMode.class, req.outputAudioMode());
-        } else if (Boolean.TRUE.equals(req.keepOriginalAudio())) {
+        } else if (Boolean.TRUE.equals(req.keepOriginalAudio()) || req.ttsVoiceId() == null) {
+            // Subtitles only: the original track is rendered untouched (0 dB), no TTS/mix.
             outputAudioMode = MediaJob.OutputAudioMode.ORIGINAL_ONLY;
         } else {
-            outputAudioMode = MediaJob.OutputAudioMode.ORIGINAL_ONLY;
+            outputAudioMode = voicedAudioMode(isSummary);
+            // FAST = voice-over on the whole original track; STUDIO = Demucs removes the original voice first.
+            sourceSeparationEnabled = sourceSeparationEnabled
+                    || (outputAudioMode == MediaJob.OutputAudioMode.DUB_MIX && MODE_STUDIO.equals(requestedMode));
         }
         MediaJob.WorkflowMode workflowMode = req.workflowMode() != null
                 ? parseEnum(MediaJob.WorkflowMode.class, req.workflowMode()) : MediaJob.WorkflowMode.MANUAL;
         if (subtitleMode == null || outputAudioMode == null || workflowMode == null) {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
-        boolean sourceSeparationEnabled = Boolean.TRUE.equals(req.sourceSeparationEnabled());
         boolean visualContextEnabled = Boolean.TRUE.equals(req.visualContextEnabled());
 
-        // ck_audio_mode_sep
-        if (outputAudioMode == MediaJob.OutputAudioMode.DUB_MIX && !sourceSeparationEnabled) {
-            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        // Real separation needs a GPU worker; refuse instead of silently running the pass-through fallback.
+        if (sourceSeparationEnabled && workerCapabilities != null && !studioAvailable()) {
+            throw new AppException(ErrorCode.STUDIO_MODE_UNAVAILABLE);
         }
         // ck_audio_mode_voice
         boolean voiceRequired = outputAudioMode != MediaJob.OutputAudioMode.ORIGINAL_ONLY;
@@ -291,6 +309,50 @@ public class MediaJobServiceImpl implements MediaJobService {
             case AUDIO_MIX -> !audioMix;
             default -> false;
         };
+    }
+
+    /**
+     * Audio mode of a job that gets a TTS voice. Localization mixes the voice over the original
+     * track (DUB_MIX: gain/ducking apply, optional STUDIO separation); a script summary is narrated
+     * over retimed footage, so its voice replaces the original audio (DUB_REPLACE).
+     */
+    private static MediaJob.OutputAudioMode voicedAudioMode(boolean summary) {
+        return summary ? MediaJob.OutputAudioMode.DUB_REPLACE : MediaJob.OutputAudioMode.DUB_MIX;
+    }
+
+    private boolean studioAvailable() {
+        ModeAvailability studio = workerCapabilities.getCapabilities().availability().get(MODE_STUDIO);
+        return studio != null && studio.available();
+    }
+
+    /**
+     * Keep the audio stages in line with the job's (possibly changed) audio mode: a stage the mode
+     * no longer needs becomes SKIPPED, a newly needed one PENDING so a rerun picks it up.
+     */
+    private void syncAudioStages(MediaJob job) {
+        if (job.getSourceSummaryJobId() != null) {
+            return;
+        }
+        boolean tts = job.getOutputAudioMode() != MediaJob.OutputAudioMode.ORIGINAL_ONLY;
+        boolean audioMix = job.getOutputAudioMode() == MediaJob.OutputAudioMode.DUB_MIX;
+        for (MediaJobStage stage : mediaJobStageRepository.findByMediaJobIdOrderByStageOrder(job.getId())) {
+            boolean needed = switch (stage.getStageName()) {
+                case TTS -> tts;
+                case AUDIO_MIX -> audioMix;
+                case SOURCE_SEPARATION -> job.isSourceSeparationEnabled();
+                default -> true;
+            };
+            MediaJobStage.StageStatus status = stage.getStatus();
+            if (!needed && status != MediaJobStage.StageStatus.SKIPPED
+                    && status != MediaJobStage.StageStatus.PROCESSING
+                    && status != MediaJobStage.StageStatus.CANCEL_REQUESTED) {
+                stage.setStatus(MediaJobStage.StageStatus.SKIPPED);
+                mediaJobStageRepository.save(stage);
+            } else if (needed && status == MediaJobStage.StageStatus.SKIPPED) {
+                stage.setStatus(MediaJobStage.StageStatus.PENDING);
+                mediaJobStageRepository.save(stage);
+            }
+        }
     }
 
     private void requireVoiceLanguageMatches(UUID userId, UUID ttsProviderId, UUID ttsVoiceId, String targetLang) {
@@ -416,6 +478,7 @@ public class MediaJobServiceImpl implements MediaJobService {
 
         if (request == null || request.isDeselect()) {
             job.setOutputAudioMode(MediaJob.OutputAudioMode.ORIGINAL_ONLY);
+            job.setSourceSeparationEnabled(false);
             job.setTtsProviderId(null);
             job.setTtsVoiceId(null);
         } else {
@@ -434,12 +497,14 @@ public class MediaJobServiceImpl implements MediaJobService {
                 throw new AppException(ErrorCode.VALIDATION_ERROR);
             }
             if (job.getOutputAudioMode() == MediaJob.OutputAudioMode.ORIGINAL_ONLY) {
-                job.setOutputAudioMode(MediaJob.OutputAudioMode.DUB_REPLACE);
+                job.setOutputAudioMode(voicedAudioMode(MediaJob.RECIPE_SUMMARY_SCRIPT_MATCH.equals(job.getRecipeId())));
             }
             job.setTtsProviderId(resolvedProviderId);
             job.setTtsVoiceId(resolvedVoiceId);
         }
-        return mediaJobRepository.save(job);
+        job = mediaJobRepository.save(job);
+        syncAudioStages(job);
+        return job;
     }
 
     // ---- checkpoint ----

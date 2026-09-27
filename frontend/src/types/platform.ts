@@ -233,7 +233,14 @@ export type ProviderTestResult = {
 }
 
 /** Credit price table x, y (Credit_Coefficient_Calculation §10). */
-export type PricingCapability = 'STT' | 'TRANSLATE' | 'TTS' | 'SUMMARIZE_SCRIPT' | 'RENDER' | 'VISION'
+export type PricingCapability =
+  | 'STT'
+  | 'TRANSLATE'
+  | 'TTS'
+  | 'SUMMARIZE_SCRIPT'
+  | 'RENDER'
+  | 'VISION'
+  | 'AUDIO_SEPARATION'
 
 export type PricingVersionStatus = 'ACTIVE' | 'SCHEDULED' | 'EXPIRED'
 

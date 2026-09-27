@@ -1,11 +1,9 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { IconBrandGithub, IconBrandDiscord, IconBrandX, IconShieldCheck } from '@tabler/icons-react'
+import { IconBrandGithub, IconBrandDiscord, IconBrandX } from '@tabler/icons-react'
 import { Logo } from '@/components/shared/Logo'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
-import { Modal } from '@/components/shared/Modal'
 import { useAuthStore } from '@/store/authStore'
 
 export function LandingFooter() {
@@ -13,8 +11,6 @@ export function LandingFooter() {
   const accessToken = useAuthStore((s) => s.accessToken)
   const currentWorkspace = useAuthStore((s) => s.currentWorkspace)
 
-  const [privacyOpen, setPrivacyOpen] = useState(false)
-  const [termsOpen, setTermsOpen] = useState(false)
 
   const mediaTarget = accessToken
     ? currentWorkspace?.id
@@ -184,13 +180,9 @@ export function LandingFooter() {
                   </Link>
                 </li>
                 <li>
-                  <button
-                    type="button"
-                    onClick={() => setPrivacyOpen(true)}
-                    className="text-left hover:text-neutral-900 dark:hover:text-white transition-colors cursor-pointer"
-                  >
+                  <Link to="/guide/legal/privacy" className="hover:text-neutral-900 dark:hover:text-white transition-colors">
                     {t('footer.privacy')}
-                  </button>
+                  </Link>
                 </li>
               </ul>
             </div>
@@ -204,20 +196,18 @@ export function LandingFooter() {
           </div>
 
           <div className="order-1 sm:order-2 flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-neutral-500 dark:text-neutral-400">
-            <button
-              type="button"
-              onClick={() => setPrivacyOpen(true)}
-              className="hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+            <Link
+              to="/guide/legal/privacy"
+              className="hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
             >
               {t('footer.privacy')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setTermsOpen(true)}
-              className="hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+            </Link>
+            <Link
+              to="/guide/legal/terms"
+              className="hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
             >
               {t('footer.terms')}
-            </button>
+            </Link>
             <div className="flex items-center gap-2">
               <LanguageSwitcher menuPlacement="top" className="h-8 px-2.5 rounded-lg border border-neutral-200/90 dark:border-white/10 bg-neutral-100/90 dark:bg-white/[0.08] text-xs font-semibold" />
               <ThemeToggle className="h-8 w-8 rounded-lg border border-neutral-200/90 dark:border-white/10 bg-neutral-100/90 dark:bg-white/[0.08]" />
@@ -225,144 +215,6 @@ export function LandingFooter() {
           </div>
         </div>
       </div>
-
-      {/* Privacy Policy Modal */}
-      <Modal
-        open={privacyOpen}
-        onClose={() => setPrivacyOpen(false)}
-        title={t('footer.privacyModal.title')}
-        description={t('footer.privacyModal.desc')}
-        size="lg"
-      >
-        <div className="space-y-4 text-xs sm:text-sm text-neutral-600 dark:text-neutral-300 leading-relaxed max-h-[60vh] overflow-y-auto pr-1">
-          <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 flex items-start gap-3">
-            <IconShieldCheck size={22} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-            <div>
-              <h5 className="font-semibold text-neutral-900 dark:text-white">
-                {t('footer.privacyModal.badge')}
-              </h5>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                {t('footer.privacyModal.badgeDesc')}
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="rounded-xl border border-neutral-200 dark:border-white/10 p-3.5 space-y-1">
-              <h5 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                {t('footer.privacyModal.p1Title')}
-              </h5>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 pl-3.5">
-                {t('footer.privacyModal.p1Desc')}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-neutral-200 dark:border-white/10 p-3.5 space-y-1">
-              <h5 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                {t('footer.privacyModal.p2Title')}
-              </h5>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 pl-3.5">
-                {t('footer.privacyModal.p2Desc')}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-neutral-200 dark:border-white/10 p-3.5 space-y-1">
-              <h5 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                {t('footer.privacyModal.p3Title')}
-              </h5>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 pl-3.5">
-                {t('footer.privacyModal.p3Desc')}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-neutral-200 dark:border-white/10 p-3.5 space-y-1">
-              <h5 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                {t('footer.privacyModal.p4Title')}
-              </h5>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 pl-3.5">
-                {t('footer.privacyModal.p4Desc')}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-neutral-200 dark:border-white/10 p-3.5 space-y-1">
-              <h5 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                {t('footer.privacyModal.p5Title')}
-              </h5>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 pl-3.5">
-                {t('footer.privacyModal.p5Desc')}
-              </p>
-            </div>
-          </div>
-
-          <div className="pt-2 flex justify-end">
-            <a
-              href="#privacy"
-              onClick={() => setPrivacyOpen(false)}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#714ffc] dark:text-[#a78bff] hover:underline"
-            >
-              <span>{t('footer.privacy')} ({t('nav.pipeline')}) →</span>
-            </a>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Terms of Service Modal */}
-      <Modal
-        open={termsOpen}
-        onClose={() => setTermsOpen(false)}
-        title={t('footer.termsModal.title')}
-        description={t('footer.termsModal.desc')}
-        size="lg"
-      >
-        <div className="space-y-4 text-xs sm:text-sm text-neutral-600 dark:text-neutral-300 leading-relaxed max-h-[60vh] overflow-y-auto pr-1">
-          <div className="space-y-3">
-            <div className="rounded-xl border border-neutral-200 dark:border-white/10 p-3.5 space-y-1">
-              <h5 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                {t('footer.termsModal.t1Title')}
-              </h5>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 pl-3.5">
-                {t('footer.termsModal.t1Desc')}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-neutral-200 dark:border-white/10 p-3.5 space-y-1">
-              <h5 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                {t('footer.termsModal.t2Title')}
-              </h5>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 pl-3.5">
-                {t('footer.termsModal.t2Desc')}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-neutral-200 dark:border-white/10 p-3.5 space-y-1">
-              <h5 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                {t('footer.termsModal.t3Title')}
-              </h5>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 pl-3.5">
-                {t('footer.termsModal.t3Desc')}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-neutral-200 dark:border-white/10 p-3.5 space-y-1">
-              <h5 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                {t('footer.termsModal.t4Title')}
-              </h5>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 pl-3.5">
-                {t('footer.termsModal.t4Desc')}
-              </p>
-            </div>
-          </div>
-        </div>
-      </Modal>
     </footer>
   )
 }

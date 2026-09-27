@@ -1,5 +1,6 @@
 import { IconSearch } from '@tabler/icons-react'
 import clsx from 'clsx'
+import { useTranslation } from 'react-i18next'
 
 interface FilterOption {
   id: string
@@ -18,11 +19,12 @@ interface MobileSearchFilterProps {
 export function MobileSearchFilter({
   value,
   onChange,
-  placeholder = 'Tìm kiếm...',
+  placeholder,
   filters,
   activeFilter,
   onFilterChange,
 }: MobileSearchFilterProps) {
+  const { t } = useTranslation('mobile')
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
       <div className="relative min-w-0">
@@ -31,7 +33,7 @@ export function MobileSearchFilter({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t('mobile:search.placeholder')}
           className="h-10 w-full min-w-0 rounded-xl border border-neutral-200 bg-neutral-50/50 py-2.5 pl-9 pr-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-primary focus:bg-white focus:outline-none dark:border-neutral-800 dark:bg-neutral-900 dark:text-white dark:focus:bg-neutral-900"
         />
       </div>

@@ -1,0 +1,405 @@
+{
+  "pageTitle": "TransFlow – 영상 글로벌화 | AI 번역 및 더빙 플랫폼",
+  "nav": {
+    "pipeline": "파이프라인",
+    "productivity": "생산성 및 QA",
+    "customers": "크리에이터 이야기",
+    "pricing": "요금 및 크레딧",
+    "guide": "가이드",
+    "studio": "Studio 열기",
+    "login": "로그인",
+    "startFree": "무료로 시작하기"
+  },
+  "hero": {
+    "flagship": "대표 멀티모달 파이프라인",
+    "engine": "차세대 비전 및 MoE 엔진",
+    "title": "TransFlow Video Intelligence",
+    "subtitle": "정확하고 빠른 자동 다국어 영상 번역 및 요약 플랫폼.",
+    "translateBtn": "영상 번역하기",
+    "summarizeBtn": "요약하기"
+  },
+  "pipeline": {
+    "badge": "TransFlow 비동기 파이프라인 아키텍처",
+    "title": "AI 영상 번역 및 더빙 파이프라인",
+    "subtitle": "음성 분리, STT 전사, TM을 활용한 문맥 번역부터 다중 음성 AI 더빙과 3방향 QA 검수까지 이어지는 엔드투엔드 5단계 자동 파이프라인.",
+    "tabLocalization": "번역 및 더빙 (5단계)",
+    "tabSummarization": "하이라이트 요약 (3단계)",
+    "ctaStudio": "Studio 열기",
+    "ctaDocs": "아키텍처 문서",
+    "runningStatus": "순차 자동 재생: {{total}}단계 중 {{current}}단계 • 마우스를 올리면 일시 정지",
+    "bottomCta": "TransFlow Studio로 번역 시작하기",
+    "stepExtract": {
+      "tab": "음성 및 오디오 분리",
+      "headline": "오디오 추출 및 원본 음성 분리",
+      "details": "원본 영상에서 오디오 스트림을 자동으로 분리합니다. 음원 분리 알고리즘이 오디오를 보컬과 배경 음악/효과음(BGM) 두 개의 독립 채널로 나누어, 이후 더빙을 위해 원본 사운드를 100% 보존합니다.",
+      "metricPrimary": "500MB / 30분",
+      "metricPrimaryLabel": "최대 파일 크기",
+      "metricSecondary": "약 3-5초",
+      "metricSecondaryLabel": "오디오 분리 시간"
+    },
+    "stepStt": {
+      "tab": "음성 인식",
+      "headline": "정밀한 타임스탬프를 갖춘 음성-텍스트 전사",
+      "details": "원본 언어를 자동으로 감지하고 대사를 전사하며 밀리초 단위(start_ms, end_ms)로 타임스탬프를 맞춥니다. 심층 검증 메커니즘이 타이밍 어긋남과 비정상적인 공백을 자동으로 찾아냅니다.",
+      "metricPrimary": "> 98.6%",
+      "metricPrimaryLabel": "단어 정확도",
+      "metricSecondary": "50개 이상 언어",
+      "metricSecondaryLabel": "언어 자동 감지"
+    },
+    "stepTranslate": {
+      "tab": "번역",
+      "headline": "TM 및 프로젝트 용어집을 활용한 스마트 현지화",
+      "details": "번역은 LLM 문맥 처리를 거치며, pgvector 번역 메모리를 참조해 과거 일치 항목을 재사용하고 프로젝트 용어집으로 도메인 용어의 일관성을 유지합니다.",
+      "metricPrimary": "최대 40% 절감",
+      "metricPrimaryLabel": "TM 캐시로 토큰 비용 절감",
+      "metricSecondary": "100% 실시간",
+      "metricSecondaryLabel": "프로젝트 용어 관리"
+    },
+    "stepDubbing": {
+      "tab": "AI 음성 더빙",
+      "headline": "자연스러운 AI 더빙 및 말하기 속도 정렬",
+      "details": "고품질 내장 음성 엔진(CosyVoice, ElevenLabs, Azure Speech)으로 대상 언어의 자연스러운 AI 음성을 생성합니다. 말하기 속도를 자동으로 조절해 왜곡 없이 영상 프레임과 매끄럽게 맞춥니다.",
+      "metricPrimary": "100개 이상 음성",
+      "metricPrimaryLabel": "표현력 있는 다국어 라이브러리",
+      "metricSecondary": "프레임 동기화",
+      "metricSecondaryLabel": "자동 속도 조절 0.9x-1.2x"
+    },
+    "stepRender": {
+      "tab": "QA 검수 및 내보내기",
+      "headline": "3방향 품질 보증 및 고해상도 내보내기",
+      "details": "자동 QA가 겹치는 자막, 읽기 속도(CPS) 위반, 화면 경계 초과를 감지합니다. 자막을 입힌 고화질 영상 또는 별도 자막 파일(.srt, .vtt)로 내보낼 수 있습니다.",
+      "metricPrimary": "단계별 재실행",
+      "metricPrimaryLabel": "다시 번역하지 않고 음성 스타일 변경",
+      "metricSecondary": "충돌 제로",
+      "metricSecondaryLabel": "자막 가독성 보장"
+    },
+    "stepSumChunk": {
+      "tab": "의미 단위 분할",
+      "headline": "대사 인식 및 의미 기반 그룹화",
+      "details": "전체 대사 스크립트를 추출하고 자연스러운 쉼과 벡터 의미 유사도를 기준으로 내용을 일관된 주제 단위로 자동 묶습니다.",
+      "metricPrimary": "밀리초",
+      "metricPrimaryLabel": "타임스탬프 정밀도",
+      "metricSecondary": "100% 문맥 유지",
+      "metricSecondaryLabel": "문장 중간에서 자르지 않음"
+    },
+    "stepSumCutplan": {
+      "tab": "스마트 컷 플랜",
+      "headline": "핵심 내용 추출 및 자동 컷 계획",
+      "details": "AI 모델이 정보 밀도와 몰입도를 분석해 핵심 순간의 순위를 매기고, 요약 영상 제작을 위한 초 단위 컷 계획을 만듭니다.",
+      "metricPrimary": "상위 20%",
+      "metricPrimaryLabel": "가장 가치 있는 하이라이트",
+      "metricSecondary": "자동 편집",
+      "metricSecondaryLabel": "매끄러운 화면 전환"
+    },
+    "stepSumExport": {
+      "tab": "요약 영상 및 요약문",
+      "headline": "하이라이트 영상 렌더링 및 핵심 요약",
+      "details": "하이라이트 순간을 60~180초 분량의 간결한 요약 영상으로 자동 편집하고, 핵심 키워드를 강조한 자막과 요점 정리 노트를 함께 제공합니다.",
+      "metricPrimary": "10배 빠름",
+      "metricPrimaryLabel": "정보 파악 속도",
+      "metricSecondary": "다양한 형식",
+      "metricSecondaryLabel": "숏폼 영상 + 요약문"
+    },
+    "pillarBatchTitle": "고처리량 멀티스레드 일괄 처리",
+    "pillarBatchDesc": "RabbitMQ 대기열 워커를 통해 수백 개의 영상 파이프라인을 동시에 처리합니다. 실패한 단계만 자동으로 격리하고 재시도하므로 전체 파이프라인을 다시 실행할 필요가 없습니다.",
+    "pillarBatchCapacityLabel": "처리 용량:",
+    "pillarBatchCapacityValue": "동시 작업 100개 이상",
+    "pillarBatchDuration": "최대 길이: 120분",
+    "pillarBatchRetry": "자동 재시도: 3회",
+    "pillarTmTitle": "번역 메모리 및 용어 관리",
+    "pillarTmDesc": "벡터 검색으로 유사한 세그먼트를 자동으로 찾아 과거 번역을 재사용해 토큰 비용을 줄이고, 도메인 용어집을 적용합니다.",
+    "pillarTmSavingsLabel": "토큰 절감:",
+    "pillarTmSavingsValue": "최대 40% 절감",
+    "pillarTmSimilarity": "유사도: 94% 이상",
+    "pillarTmTermLock": "용어집 적용률: 100%",
+    "pillarSecurityTitle": "엔터프라이즈 보안 및 데이터 보호",
+    "pillarSecurityDesc": "엔드투엔드 AES-256 및 TLS 1.3 암호화로 엔터프라이즈급 데이터 보호를 제공합니다. 무보존 보장 — 미디어는 영구 저장되거나 AI 모델 학습에 사용되지 않습니다.",
+    "pillarSecurityEncryptionLabel": "암호화:",
+    "pillarSecurityEncryptionValue": "AES-256 / TLS 1.3",
+    "pillarSecurityRetention": "데이터 보존: 0일",
+    "pillarSecurityTraining": "AI 학습: 학습 미사용 (옵트아웃)",
+    "interactivePreview": "인터랙티브 미리보기",
+    "sim": {
+      "extract": {
+        "title": "오디오 분리 (Neural Demucs v4)",
+        "all": "전체",
+        "vocalOnly": "보컬만",
+        "bgmOnly": "BGM만",
+        "vocalTrack": "원본 보컬",
+        "vocalClean": "깨끗하게 분리됨",
+        "vocalClarity": "선명도 99.4%",
+        "muted": "[음소거]",
+        "bgmTrack": "배경 음악 및 효과음",
+        "bgmClean": "보컬 유입 없음",
+        "bgmClarity": "100% 분리",
+        "timbrePreserved": "원본 음향 100% 보존"
+      },
+      "stt": {
+        "title": "음성 인식 (Whisper Turbo)",
+        "detectedLang": "영어 (99.8%) ✓",
+        "wordAlignment": "단어 단위 정렬",
+        "pending": "대기 중",
+        "pause": "일시 정지",
+        "play": "재개",
+        "syncDelta": "타임스탬프 동기화: ±2ms"
+      },
+      "trans": {
+        "title": "문맥 번역 및 TM",
+        "tmMatch": "TM 메모리 일치: {{rate}}",
+        "toggleTitle": "클릭하여 용어집 잠금 테스트 전환",
+        "tmLocked": "TM 잠금",
+        "tmFree": "자유 번역",
+        "shieldTitle": "잠긴 도메인 용어",
+        "accurate100": "100% 정확",
+        "unprotected": "보호되지 않음",
+        "srcTerm": "high-concurrency batch processing",
+        "srcTermSub": "글로벌 기술 용어집",
+        "targetLockedLabel": "KO (대상 잠금)",
+        "targetRawLabel": "KO (기계 번역 원문)",
+        "exactMatch": "정확히 일치",
+        "warnMt": "기계 번역 경고",
+        "lockedVI": "\"고동시성 일괄 처리\"",
+        "rawVI": "\"높은 동시성 묶음 가공\"",
+        "srcSentenceLabel": "원문 (영어)",
+        "tgtSentenceLabel": "번역문 (한국어)",
+        "translatedLockedPrefix": "당사는 클라우드 워크플로에 ",
+        "translatedLockedHighlight": "고동시성 일괄 처리",
+        "translatedLockedSuffix": " 기능을 직접 통합했습니다.",
+        "translatedRawHighlight": "높은 동시성 묶음 가공",
+        "srcTermLabel": "EN (원본 용어)"
+      },
+      "dub": {
+        "title": "AI 음성 더빙 (Neural TTS)",
+        "pacingStatus": "속도: 프레임 정렬됨",
+        "selectActor": "AI 성우 선택:",
+        "banMaiName": "서연",
+        "banMaiAccent": "여성 (표현력 풍부)",
+        "banMaiDesc": "표현력 있고 자연스러운 음성, 뉴스 및 다큐멘터리용.",
+        "minhQuangName": "민준",
+        "minhQuangAccent": "남성 (따뜻한 음색)",
+        "minhQuangDesc": "따뜻하고 신뢰감 있는 음성, 내레이션 및 프레젠테이션용.",
+        "videoPaceLabel": "영상 읽기 속도:",
+        "videoPaceValue": "프레임 단위 정확한 동기화",
+        "duckingLabel": "스마트 자동 더킹:",
+        "duckingValue": "대사 구간 -14 dB",
+        "sampleReady": "샘플 음성: 준비됨"
+      },
+      "qa": {
+        "title": "3방향 QA 검사 및 내보내기",
+        "passedCriteria": "3/3 기준 통과 ✓",
+        "previewLabel": "영상 자막 미리보기:",
+        "subtitleSample": "영상 번역 및 더빙 파이프라인이 100% 완료되었습니다.",
+        "downloadingMp4": "4K 영상 다운로드 중...",
+        "downloadMp4": "최종 4K 영상 다운로드 (.MP4)"
+      },
+      "sum1": {
+        "title": "의미 기반 주제 분할",
+        "detecting": "주제 감지 중 {{count}}/3...",
+        "done": "✓ 주제 3개 추출됨",
+        "scanning": "주제 0{{id}} 구간 분석 중...",
+        "topic1Title": "AI 클라우드 아키텍처 소개",
+        "topic2Title": "pgvector 캐시를 활용한 지연 시간 최적화",
+        "topic3Title": "성능 벤치마크 및 결론"
+      },
+      "sum2": {
+        "title": "AI 하이라이트 순위 및 컷 플랜",
+        "cutPlanStatus": "컷 플랜: {{count}}/3 장면 ({{duration}})",
+        "durationLabel": "길이:",
+        "extracting": "하이라이트 {{rank}} 추출 중...",
+        "compressionRatio": "압축 비율: 18분 ➔ 2분",
+        "densityStat": "정보 밀도 92%",
+        "highlight1Title": "추론 속도의 혁신",
+        "highlight2Title": "인프라 비용 60% 절감",
+        "highlight3Title": "자동화 워크플로 라이브 데모"
+      },
+      "sum3": {
+        "title": "요약 영상 및 핵심 요약",
+        "renderComplete": "렌더링 완료 ✓",
+        "takeawayCaption": "TransFlow는 가장 가치 있는 3개 장면을 120초 요약 영상으로 자동 편집합니다.",
+        "bullet1": "핵심 인사이트를 놓치지 않고 시청 시간을 80% 단축",
+        "bullet2": "핵심 논점마다 동기화된 키워드 강조 자막 자동 생성",
+        "downloadingRecap": "요약 영상 다운로드 중...",
+        "downloadRecapBtn": "요약 영상 다운로드 (.MP4)",
+        "downloadReportBtn": "보고서 다운로드 (.PDF / .MD)"
+      }
+    },
+    "collapseDetails": "접기",
+    "expandDetails": "알고리즘 상세 보기 ▾"
+  },
+  "productivity": {
+    "titlePrefix": "생산성을 극대화하고 ",
+    "titleHighlight": "편집 품질을 표준화하세요",
+    "subtitle": "대량 일괄 처리와 3방향 자막 QA 검사로 영상 제작 규모를 빠르게 키우세요.",
+    "batchBadge": "확장 (일괄 현지화)",
+    "batchTitle": "일괄 현지화 및 다국어 매트릭스",
+    "batchDesc": "한 번의 배치 설정으로 영상 20개 × 대상 언어 10개를 동시에 제작합니다. 오디오를 자동으로 분리하고 원본 BGM을 보존하여 다국어 더빙 패키지 전체를 내보냅니다.",
+    "batchCta": "일괄 처리 워크플로 살펴보기",
+    "qaBadge": "품질 (QA 및 번역 메모리)",
+    "qaTitle": "번역 메모리 및 3방향 QA 검수",
+    "qaDesc": "번역 메모리(TM)와 용어집으로 토큰 비용과 용어 일관성을 최적화합니다. 3방향 QA가 타임라인 겹침과 읽기 속도(CPS) 위반을 자동으로 표시합니다.",
+    "qaCta": "QA 기준 살펴보기"
+  },
+  "stories": {
+    "badge": "실제 사용 사례",
+    "title": "프리랜서와 글로벌 크리에이터를 위한 힘",
+    "subtitle": "매일 영상 제작을 효율화하는 독립 크리에이터와 프리랜서 영상 편집자의 이야기를 들어보세요.",
+    "prev": "이전",
+    "next": "다음",
+    "goToStory": "{{index}}번째 이야기로 이동",
+    "items": {
+      "freelancer1": {
+        "group": "프리랜서",
+        "category": "번역 및 자막",
+        "title": "“밀리초 단위로 자막 타임스탬프를 맞추느라 밤새우는 일이 사라졌어요”",
+        "content": "예전에는 15분짜리 영상을 번역하려면 반나절 동안 듣고 한 구절씩 직접 입력해야 했어요. TransFlow에서는 AI가 정확한 타임스탬프와 초안을 미리 만들어 줍니다. 저는 용어만 검토하면 되니, 지치지 않고도 처리할 수 있는 프로젝트가 세 배로 늘었어요.",
+        "author": "Hoang Nam",
+        "role": "프리랜서 자막 번역가",
+        "metric": "3배 물량",
+        "metricLabel": "처리한 고객 프로젝트"
+      },
+      "freelancer2": {
+        "group": "프리랜서",
+        "category": "영상 편집 및 납기",
+        "title": "“고객이 목소리 톤을 바꿔 달라고 했는데, TTS 단계만 다시 렌더링하는 데 1분이면 충분했어요”",
+        "content": "프리랜서 편집에서 가장 골치 아픈 건 고객이 승인한 뒤에 '좀 더 젊은 목소리로 바꿀 수 있을까요?'라고 할 때예요. 단계별 재실행 덕분에 새 음성을 고르고 TTS 단계만 다시 렌더링하면 됩니다. 맞춰 둔 자막과 배경 트랙은 그대로 유지돼요.",
+        "author": "Minh Trang",
+        "role": "프리랜서 영상 편집자",
+        "metric": "1분",
+        "metricLabel": "음성 재렌더링 소요 시간"
+      },
+      "freelancer3": {
+        "group": "프리랜서",
+        "category": "다국어 현지화",
+        "title": "“추가 인력 없이 오전 한나절 만에 영상 1개를 4개 언어로 번역해 납품했어요”",
+        "content": "고객이 태국어, 일본어, 한국어로 현지화된 영상을 원했어요. 혼자 작업했지만 일괄 현지화 덕분에 프로젝트 전체를 순조롭게 처리했고, 오전 한나절 만에 .srt 패키지와 더빙된 고화질 영상을 모두 납품했어요.",
+        "author": "Tuan Anh",
+        "role": "콘텐츠 현지화 전문가",
+        "metric": "4개 언어",
+        "metricLabel": "오전 한나절 만에 내보냄"
+      },
+      "freelancer4": {
+        "group": "프리랜서",
+        "category": "3방향 QA 검수",
+        "title": "“자동 QA 덕분에 까다로운 기업 고객에게도 자신 있게 납품해요”",
+        "content": "처음 시작할 때 가장 두려웠던 건 자막이 겹치거나 시청자가 빠른 자막을 읽지 못하는 것이었어요. TransFlow의 3방향 QA가 CPS 위반과 타임라인 충돌을 자동으로 잡아내서 매번 방송 수준의 품질을 보장해 줍니다.",
+        "author": "Thuy Dung",
+        "role": "주니어 영상 자막 작업자",
+        "metric": "100% 통과",
+        "metricLabel": "CPS 읽기 속도 점수"
+      },
+      "creator1": {
+        "group": "크리에이터",
+        "category": "테크 리뷰 및 요약",
+        "title": "“간단한 채팅 명령으로 30분짜리 심층 영상을 바이럴 쇼츠 3개로 만들었어요”",
+        "content": "쇼츠 채널을 시작할 때는 어떤 구간이 시청자를 사로잡을지 전혀 몰랐어요. AI가 문장 경계를 깔끔하게 지키는 스마트 컷 플랜을 자동으로 만들어 줬고, '인트로 훅을 줄여줘'라고 입력하자 컷 목록이 바로 업데이트됐어요. 정말 쉬워요.",
+        "author": "Duc Huy",
+        "role": "테크 리뷰어 (팔로워 5만 명)",
+        "metric": "30분 ➔ 쇼츠 3개",
+        "metricLabel": "즉각적인 하이라이트 컷"
+      },
+      "creator2": {
+        "group": "크리에이터",
+        "category": "라이프스타일 및 브이로그",
+        "title": "“자동 음악 분리 덕분에 더빙한 영상도 다큐멘터리처럼 영화 같은 느낌이 나요”",
+        "content": "보이스오버를 할 때 기계적인 TTS가 주변 음향과 음악을 지워버리는 게 가장 걱정이었어요. 음원 분리가 배경 오디오를 100% 보존하고 대사 구간에서 자동으로 볼륨을 낮춰 줘서, 완성된 영상이 자연스럽고 몰입감 있게 들려요.",
+        "author": "Bao Ngoc",
+        "role": "라이프스타일 크리에이터 및 브이로거",
+        "metric": "BGM 100%",
+        "metricLabel": "원본 사운드 보존"
+      },
+      "creator3": {
+        "group": "크리에이터",
+        "category": "1인 크리에이터",
+        "title": "“비싼 편집 비용을 줄이고 매일 여러 플랫폼에 영상을 올리고 있어요”",
+        "content": "예산이 빠듯한 1인 크리에이터라 전담 편집자를 고용할 수 없었어요. TransFlow Media는 24시간 후반 작업 어시스턴트 같아요. 영상을 올리고 대상 언어를 고르면 완벽한 자막과 보이스오버가 나와서 매일 업로드 일정을 지킬 수 있어요.",
+        "author": "Hai Dang",
+        "role": "1인 교육 크리에이터",
+        "metric": "매일 영상",
+        "metricLabel": "꾸준한 매일 업로드"
+      }
+    }
+  },
+  "pricing": {
+    "title": "종량제 크레딧 요금 — 사용한 만큼만 지불하세요",
+    "starter": {
+      "name": "Starter",
+      "desc": "실제 영상으로 체험해 보려는 크리에이터를 위한 입문 패키지",
+      "price": "50,000 ₫",
+      "credits": "/ 500 크레딧 (100 ₫/크레딧)",
+      "cta": "Starter 시작하기",
+      "featuresTitle": "포함 내용:",
+      "features": [
+        "번역 자막 약 75분, 또는 배경 음악을 유지하는 더빙 약 37분",
+        "숏폼 클립(Shorts, Reels, TikTok)에 적합",
+        "최대 5회 수정 가능한 AI 영상 요약",
+        "자막을 입힌 영상 및 별도 자막 파일(.srt, .vtt) 내보내기"
+      ]
+    },
+    "freelancer": {
+      "bonusBadge": "5% 할인",
+      "badge": "인기",
+      "name": "Creator",
+      "desc": "정기적으로 콘텐츠를 발행하는 크리에이터와 편집자용",
+      "price": "190,000 ₫",
+      "credits": "2,000 크레딧",
+      "bonus": "95 ₫/크레딧",
+      "cta": "190,000 VND 구매",
+      "featuresTitle": "Starter의 모든 기능 포함, 추가로:",
+      "features": [
+        "번역 자막 약 300분, 또는 배경 음악을 유지하는 더빙 약 150분",
+        "배치당 최대 20개 영상 일괄 처리",
+        "더빙용 음성/음악 분리 (Studio 모드)",
+        "용어집으로 브랜드명 일관성 유지",
+        "게시 전 자막 품질 검사"
+      ]
+    },
+    "proStudio": {
+      "bonusBadge": "10% 할인",
+      "name": "Business",
+      "desc": "스튜디오, 미디어 팀, 대규모 프로젝트용",
+      "price": "900,000 ₫",
+      "credits": "10,000 크레딧",
+      "bonus": "90 ₫/크레딧",
+      "cta": "900,000 VND 구매",
+      "featuresTitle": "Creator의 모든 기능 포함, 추가로:",
+      "features": [
+        "번역 자막 약 1,500분, 또는 배경 음악을 유지하는 더빙 약 750분",
+        "파일당 최대 500MB, 30분 영상",
+        "요약을 위한 AI 시각 맥락 분석",
+        "리드가 워크스페이스 전체를 결제하거나 멤버별로 각자 결제",
+        "프로젝트 및 멤버별 크레딧 사용량 추적"
+      ]
+    }
+  },
+  "ctaBanner": {
+    "pill": "가입하고 무료 체험 크레딧 받기",
+    "pillCta": "시작하기 →",
+    "headline": "지금 바로 경험해 보세요.",
+    "desc": "몇 분 만에 번역하고, 자막을 다듬고, 원어민처럼 자연스럽게 더빙하세요. 기술 지식이 필요 없습니다 — 오늘 무료 체험을 시작하세요.",
+    "btnFree": "지금 무료 체험 시작",
+    "btnPricing": "크레딧 요금 보기"
+  },
+  "footer": {
+    "tagline": "전문 AI 다국어 영상 번역 및 콘텐츠 편집 플랫폼. 크리에이터와 프리랜서가 즉시 글로벌 시청자에게 다가갈 수 있도록 돕습니다.",
+    "systemStatus": "모든 시스템 정상 운영 중",
+    "colProduct": "제품",
+    "mediaStudio": "영상 현지화 (Media Studio)",
+    "aiSummary": "AI 영상 요약",
+    "batchMatrix": "일괄 처리",
+    "projects": "프로젝트 관리",
+    "glossary": "용어집 및 TM",
+    "tm": "번역 메모리 (TM)",
+    "colFeatures": "기능",
+    "pipelineSteps": "5단계 비동기 파이프라인",
+    "voiceSeparation": "보컬 및 BGM 분리",
+    "qaAudit": "3방향 QA 및 CPS 검수",
+    "pricingTable": "크레딧 요금",
+    "colCompany": "TransFlow",
+    "creatorStories": "크리에이터 이야기",
+    "register": "계정 만들기",
+    "login": "로그인",
+    "privacy": "개인정보 보호 및 보안",
+    "terms": "서비스 이용약관",
+    "copyright": "© 2026 TransFlow Media. All rights reserved."
+  }
+}

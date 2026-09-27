@@ -10,6 +10,10 @@ RUN node /tmp/patch-speech.mjs /app/server/dist \
     && node --check /app/server/dist/routes/proxy.js \
     && rm /tmp/patch-speech.mjs
 
+# Base chạy root rồi entrypoint hạ quyền sang node; chạy thẳng node cũng được (entrypoint bỏ qua
+# bước chown). /app/server/data đã thuộc node:node trong base, volume mới kế thừa quyền đó.
+USER node
+
 LABEL org.opencontainers.image.title="freellmapi (TransFlow speech patch)" \
       org.opencontainers.image.base.name="ghcr.io/tashfeenahmed/freellmapi" \
       org.opencontainers.image.description="Cloudflare Deepgram Aura TTS body, speech language routing, TTS key rotation"

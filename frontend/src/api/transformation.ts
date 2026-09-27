@@ -13,11 +13,12 @@
  * Create-job contract (BE `CreateMediaJobRequest` + `MediaJobServiceImpl`):
  * callers must send `recipeId` (`localization.full` | `summary.script_match`).
  * `processingMode` is REQUIRED by the backend for localization
- * (`TRANSLATE_ONLY`), and `outputAudioMode` must stay consistent with
- * `ttsVoiceId` (`ORIGINAL_ONLY <=> ttsVoiceId == null`) — so the
- * normalization below is intentional, not legacy dual-send.
- * FE-only fields (`ttsProviderId`, `requestedMode`, `sourceLang`,
- * `keepOriginalAudio`, `workflowPresetId`, `skipPresetResolution`,
+ * (`TRANSLATE_ONLY`). The audio mode is resolved by the backend from the
+ * voice and `requestedMode` (API_Contract §5.2): no voice / `keepOriginalAudio`
+ * = ORIGINAL_ONLY; a voice = DUB_MIX, FAST as a voice-over on the original
+ * track, STUDIO with source separation (GPU only). Only an explicit
+ * `outputAudioMode` from the caller is forwarded.
+ * FE-only fields (`sourceLang`, `workflowPresetId`, `skipPresetResolution`,
  * `enableVlm`) are currently ignored by the backend — see
  * `docs/PHASE3_BACKEND_GAPS_NOTE.md`.
  */
@@ -116,8 +117,8 @@ export function createTransformationJobApi(workspaceId: string, body: CreateMedi
   // Normalize payload to satisfy BE validation (MediaJobServiceImpl):
   // - `rootAssetId` required — accept legacy `documentId` alias from the FE.
   // - `processingMode` required for `localization.full` — default TRANSLATE_ONLY.
-  // - `outputAudioMode` must match `ttsVoiceId` (ORIGINAL_ONLY <=> null) — derive
-  //   from `keepOriginalAudio` / `ttsVoiceId` when the caller omits it.
+  // - `outputAudioMode` — ORIGINAL_ONLY when keeping the original audio; with a
+  //   voice it is left to the backend, which picks DUB_MIX from `requestedMode`.
   // - `presetId` — accept `workflowPresetId` alias from the create form.
   const normalizedBody = {
     ...body,
@@ -129,8 +130,7 @@ export function createTransformationJobApi(workspaceId: string, body: CreateMedi
       body.processingMode ??
       (body.recipeId === 'localization.full' ? 'TRANSLATE_ONLY' : undefined),
     outputAudioMode:
-      body.outputAudioMode ??
-      (body.keepOriginalAudio ? 'ORIGINAL_ONLY' : body.ttsVoiceId ? 'DUB_REPLACE' : undefined),
+      body.outputAudioMode ?? (body.keepOriginalAudio ? 'ORIGINAL_ONLY' : undefined),
     presetId: body.presetId ?? body.workflowPresetId ?? undefined,
   }
   return apiRequest<MediaJob>(buildWorkspacePath(workspaceId, '/media/jobs'), {

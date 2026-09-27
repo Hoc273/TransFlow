@@ -3,23 +3,33 @@ import { useParams } from 'react-router-dom'
 import {
   IconAlertCircle,
   IconBook,
+  IconPencil,
   IconPlus,
   IconRefresh,
   IconTrash,
+  IconUpload,
 } from '@tabler/icons-react'
 import { MobileCard } from '../../components/MobileCard'
 import { BottomSheet } from '../../components/BottomSheet'
 import { MobileSearchFilter } from '../../components/MobileSearchFilter'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
-import { useAddTerm, useDeleteTerm, useGlossaryTerms } from '@/hooks/useGlossary'
+import {
+  useAddTerm,
+  useDeleteTerm,
+  useGlossaryTerms,
+  useImportGlossaryCsv,
+  useUpdateTerm,
+} from '@/hooks/useGlossary'
 import { usePermission } from '@/hooks/usePermission'
 import { useProjects } from '@/hooks/useProjects'
 import { ApiError } from '@/types/api'
-import type { GlossaryTerm } from '@/types/glossary'
+import type { GlossaryTerm, ImportResult } from '@/types/glossary'
+import { useTranslation } from 'react-i18next'
 
 const EMPTY_TERMS: GlossaryTerm[] = []
 
 export function MobileGlossaryPage() {
+  const { t } = useTranslation(['mobile', 'glossary'])
   const { workspaceId = '' } = useParams<{ workspaceId: string }>()
   const canEdit = usePermission('glossary.crud')
   const projectsQuery = useProjects(workspaceId)
@@ -34,6 +44,8 @@ export function MobileGlossaryPage() {
   const terms = termsQuery.data ?? EMPTY_TERMS
   const addTerm = useAddTerm(workspaceId, activeProjectId)
   const deleteTerm = useDeleteTerm(workspaceId, activeProjectId)
+  const updateTerm = useUpdateTerm(workspaceId, activeProjectId)
+  const importCsv = useImportGlossaryCsv(workspaceId, activeProjectId)
 
   const [search, setSearch] = useState('')
   const [addSheetOpen, setAddSheetOpen] = useState(false)
@@ -41,6 +53,11 @@ export function MobileGlossaryPage() {
   const [target, setTarget] = useState('')
   const [targetLang, setTargetLang] = useState('all')
   const [formError, setFormError] = useState<string | null>(null)
+  const [editingTerm, setEditingTerm] = useState<GlossaryTerm | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const saving = addTerm.isPending || updateTerm.isPending
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -57,6 +74,7 @@ export function MobileGlossaryPage() {
   const error = projectsQuery.error ?? termsQuery.error
 
   const handleOpenAdd = () => {
+    setEditingTerm(null)
     setSource('')
     setTarget('')
     setTargetLang('all')
@@ -70,27 +88,57 @@ export function MobileGlossaryPage() {
     const targetTerm = target.trim()
     const normalizedTargetLang = targetLang.trim()
     if (!sourceTerm || !targetTerm || !normalizedTargetLang) {
-      setFormError('Vui lòng nhập đầy đủ thuật ngữ nguồn, đích và ngôn ngữ đích')
+      setFormError(t('mobile:glossary.formRequired'))
       return
     }
 
     setFormError(null)
-    addTerm.mutate(
-      { sourceTerm, targetTerm, targetLang: normalizedTargetLang },
-      {
-        onSuccess: () => {
-          setAddSheetOpen(false)
-          setSource('')
-          setTarget('')
-          setTargetLang('all')
-        },
-        onError: (mutationError) => {
-          setFormError(
-            mutationError instanceof ApiError ? mutationError.message : 'Không thể thêm thuật ngữ',
-          )
-        },
+    const body = { sourceTerm, targetTerm, targetLang: normalizedTargetLang }
+    const callbacks = {
+      onSuccess: () => {
+        setAddSheetOpen(false)
+        setEditingTerm(null)
+        setSource('')
+        setTarget('')
+        setTargetLang('all')
       },
-    )
+      onError: (mutationError: Error) => {
+        setFormError(
+          mutationError instanceof ApiError ? mutationError.message : t('mobile:glossary.addFailed'),
+        )
+      },
+    }
+    if (editingTerm) {
+      updateTerm.mutate({ termId: editingTerm.id, body }, callbacks)
+    } else {
+      addTerm.mutate(body, callbacks)
+    }
+  }
+
+  const handleOpenEdit = (term: GlossaryTerm) => {
+    setEditingTerm(term)
+    setSource(term.sourceTerm)
+    setTarget(term.targetTerm)
+    setTargetLang(term.targetLang)
+    setFormError(null)
+    setAddSheetOpen(true)
+  }
+
+  const handleOpenImport = () => {
+    setImportError(null)
+    setImportResult(null)
+    setImportOpen(true)
+  }
+
+  const handleImport = (file: File | null) => {
+    if (!file) return
+    setImportError(null)
+    setImportResult(null)
+    importCsv.mutate(file, {
+      onSuccess: (result) => setImportResult(result),
+      onError: (err) =>
+        setImportError(err instanceof ApiError ? err.message : t('mobile:glossary.importFailed')),
+    })
   }
 
   const handleRetry = () => {
@@ -103,29 +151,39 @@ export function MobileGlossaryPage() {
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-bold text-neutral-900 dark:text-white">
-            Từ điển thuật ngữ
+            {t('mobile:glossary.title')}
           </h1>
           <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
             {activeProject ? `${activeProject.name} • ` : ''}
-            {terms.length} thuật ngữ
+            {t('mobile:glossary.termCount', { count: terms.length })}
           </p>
         </div>
         {canEdit && activeProjectId && (
           <button
             type="button"
+            onClick={handleOpenImport}
+            aria-label={t('glossary:import.button')}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200 text-neutral-600 active:bg-neutral-100 dark:border-neutral-800 dark:text-neutral-300 dark:active:bg-neutral-800"
+          >
+            <IconUpload size={16} />
+          </button>
+        )}
+        {canEdit && activeProjectId && (
+          <button
+            type="button"
             onClick={handleOpenAdd}
-            aria-label="Thêm từ"
+            aria-label={t('mobile:glossary.addShort')}
             className="flex h-10 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-white shadow-xs active:scale-95 transition-transform"
           >
             <IconPlus size={16} />
-            <span>Thêm từ</span>
+            <span>{t('mobile:glossary.addShort')}</span>
           </button>
         )}
       </div>
 
       {projects.length > 0 && (
         <select
-          aria-label="Chọn dự án"
+          aria-label={t('mobile:glossary.selectProject')}
           value={activeProjectId ?? ''}
           onChange={(event) => setSelectedProjectId(event.target.value)}
           className="h-10 w-full min-w-0 truncate rounded-xl border border-neutral-200 bg-neutral-50/50 p-2.5 text-xs font-medium text-neutral-900 focus:border-primary focus:bg-white focus:outline-none dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
@@ -141,12 +199,12 @@ export function MobileGlossaryPage() {
       <MobileSearchFilter
         value={search}
         onChange={setSearch}
-        placeholder="Tìm thuật ngữ..."
+        placeholder={t('mobile:glossary.searchPlaceholder')}
       />
 
       {isLoading ? (
         <div className="space-y-3 py-2">
-          <div className="py-6 text-center text-sm text-neutral-400">Đang tải thuật ngữ...</div>
+          <div className="py-6 text-center text-sm text-neutral-400">{t('mobile:glossary.loading')}</div>
           {[1, 2, 3].map((item) => (
             <MobileCard key={item} className="animate-pulse space-y-2 p-3">
               <div className="h-4 w-1/2 rounded bg-neutral-200 dark:bg-neutral-800" />
@@ -158,10 +216,10 @@ export function MobileGlossaryPage() {
         <MobileCard className="flex flex-col items-center justify-center p-6 text-center">
           <IconAlertCircle size={36} className="mb-2 text-red-500" />
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
-            Không thể tải thuật ngữ
+            {t('mobile:glossary.loadFailed')}
           </h3>
           <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-            {error instanceof Error ? error.message : 'Vui lòng kiểm tra lại kết nối mạng'}
+            {error instanceof Error ? error.message : t('mobile:common.networkError')}
           </p>
           <button
             type="button"
@@ -169,42 +227,42 @@ export function MobileGlossaryPage() {
             className="mt-3 flex items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300"
           >
             <IconRefresh size={14} />
-            <span>Thử lại</span>
+            <span>{t('mobile:common.retry')}</span>
           </button>
         </MobileCard>
       ) : projects.length === 0 ? (
         <MobileEmptyState
           icon={<IconBook size={36} />}
-          title="Chưa có dự án"
-          description="Tạo dự án trước để quản lý bảng thuật ngữ riêng của dự án."
+          title={t('mobile:glossary.noProjectTitle')}
+          description={t('mobile:glossary.noProjectDesc')}
         />
       ) : terms.length === 0 ? (
         <MobileEmptyState
           icon={<IconBook size={36} />}
-          title="Chưa có thuật ngữ nào"
-          description="Thêm cặp thuật ngữ chuyên ngành để chuẩn hóa bản dịch tự động."
+          title={t('mobile:glossary.emptyTitle')}
+          description={t('mobile:glossary.emptyDesc')}
           action={canEdit ? (
             <button
               type="button"
               onClick={handleOpenAdd}
               className="rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-white active:scale-95 transition-transform"
             >
-              Thêm thuật ngữ
+              {t('mobile:glossary.addTerm')}
             </button>
           ) : undefined}
         />
       ) : filtered.length === 0 ? (
         <MobileEmptyState
           icon={<IconBook size={36} />}
-          title="Không tìm thấy thuật ngữ"
-          description="Không có thuật ngữ nào khớp với từ khóa tìm kiếm."
+          title={t('mobile:glossary.noMatchTitle')}
+          description={t('mobile:glossary.noMatchDesc')}
           action={
             <button
               type="button"
               onClick={() => setSearch('')}
               className="rounded-xl bg-neutral-100 px-4 py-2 text-xs font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
             >
-              Xóa tìm kiếm
+              {t('mobile:common.clearSearch')}
             </button>
           }
         />
@@ -230,8 +288,18 @@ export function MobileGlossaryPage() {
                 {canEdit && (
                   <button
                     type="button"
+                    onClick={() => handleOpenEdit(term)}
+                    aria-label={t('mobile:glossary.editTerm', { term: term.sourceTerm })}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-all hover:text-primary active:scale-95 active:bg-neutral-100 dark:active:bg-neutral-800"
+                  >
+                    <IconPencil size={16} />
+                  </button>
+                )}
+                {canEdit && (
+                  <button
+                    type="button"
                     onClick={() => deleteTerm.mutate(term.id)}
-                    aria-label={`Xóa thuật ngữ ${term.sourceTerm}`}
+                    aria-label={t('mobile:glossary.deleteTerm', { term: term.sourceTerm })}
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-all hover:text-red-500 active:scale-95 active:bg-red-50 dark:active:bg-red-950/30"
                   >
                     <IconTrash size={16} />
@@ -245,8 +313,8 @@ export function MobileGlossaryPage() {
 
       <BottomSheet
         isOpen={addSheetOpen}
-        onClose={() => !addTerm.isPending && setAddSheetOpen(false)}
-        title="Thêm thuật ngữ mới"
+        onClose={() => !saving && setAddSheetOpen(false)}
+        title={editingTerm ? t('mobile:glossary.editTermTitle') : t('mobile:glossary.newTermTitle')}
       >
         <form onSubmit={handleAdd} className="space-y-3">
           {formError && (
@@ -255,7 +323,7 @@ export function MobileGlossaryPage() {
             </div>
           )}
           <label className="block space-y-1 text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-            <span>Thuật ngữ nguồn *</span>
+            <span>{t('mobile:glossary.sourceTerm')}</span>
             <input
               value={source}
               onChange={(event) => setSource(event.target.value)}
@@ -263,7 +331,7 @@ export function MobileGlossaryPage() {
             />
           </label>
           <label className="block space-y-1 text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-            <span>Thuật ngữ đích *</span>
+            <span>{t('mobile:glossary.targetTerm')}</span>
             <input
               value={target}
               onChange={(event) => setTarget(event.target.value)}
@@ -271,22 +339,72 @@ export function MobileGlossaryPage() {
             />
           </label>
           <label className="block space-y-1 text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-            <span>Ngôn ngữ đích *</span>
+            <span>{t('mobile:glossary.targetLang')}</span>
             <input
               value={targetLang}
               onChange={(event) => setTargetLang(event.target.value)}
-              placeholder="vi / en / all"
+              placeholder="vi / en / ko / all"
               className="w-full rounded-xl border border-neutral-200 p-3 text-sm font-normal focus:border-primary focus:outline-none dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
             />
           </label>
           <button
             type="submit"
-            disabled={addTerm.isPending}
+            disabled={saving}
             className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white shadow-xs transition-transform active:scale-[0.98] disabled:opacity-50"
           >
-            {addTerm.isPending ? 'Đang lưu...' : 'Lưu thuật ngữ'}
+            {saving ? t('mobile:common.saving') : t('mobile:glossary.save')}
           </button>
         </form>
+      </BottomSheet>
+
+      <BottomSheet
+        isOpen={importOpen}
+        onClose={() => !importCsv.isPending && setImportOpen(false)}
+        title={t('glossary:import.title')}
+      >
+        <div className="space-y-3">
+          {importError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs font-medium text-red-600 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-400">
+              {importError}
+            </div>
+          )}
+          <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-8 text-center dark:border-neutral-700 dark:bg-neutral-900">
+            <IconUpload size={22} className="text-primary" />
+            <span className="text-sm text-neutral-700 dark:text-neutral-300">{t('glossary:import.drop')}</span>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              data-testid="glossary-import-input"
+              disabled={importCsv.isPending}
+              onChange={(e) => {
+                handleImport(e.target.files?.[0] ?? null)
+                e.target.value = ''
+              }}
+            />
+          </label>
+          <p className="text-[11px] text-neutral-500">{t('glossary:import.hint')}</p>
+          {importCsv.isPending && (
+            <p className="text-center text-sm text-neutral-400">{t('glossary:import.importing')}</p>
+          )}
+          {importResult && (
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs dark:border-neutral-800 dark:bg-neutral-900">
+              <div>
+                {t('glossary:import.result', {
+                  added: importResult.imported,
+                  skipped: importResult.skipped,
+                })}
+              </div>
+              {importResult.errors.length > 0 && (
+                <ul className="mt-2 list-inside list-disc text-red-600 dark:text-red-400">
+                  {importResult.errors.map((err, i) => (
+                    <li key={i} className="break-words">{err}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
       </BottomSheet>
     </div>
   )

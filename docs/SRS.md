@@ -376,9 +376,11 @@ chọn hiện tại sẽ tự động được bỏ qua và không hiển thị.
   lại — giúp tiết kiệm chi phí và thời gian xử lý với video dài.
 
 **Lựa chọn về giọng lồng tiếng và âm thanh đầu ra**
-- Giữ nguyên âm thanh gốc, không lồng tiếng.
-- Thay thế hoàn toàn bằng giọng lồng tiếng mới.
-- Trộn giọng lồng tiếng mới với nhạc nền/hiệu ứng âm thanh gốc.
+- Giữ nguyên âm thanh gốc, không lồng tiếng (chỉ thêm phụ đề, âm lượng gốc giữ nguyên).
+- Lồng tiếng chế độ **Fast (voice-over)**: giọng lồng tiếng mới phát đè lên âm thanh gốc; mặc định âm thanh
+  gốc giảm 10 dB và giọng mới tăng 10 dB, người dùng chỉnh lại được hoặc tắt hẳn âm thanh gốc.
+- Lồng tiếng chế độ **Studio**: AI tách giọng người nói khỏi nhạc nền/hiệu ứng, bỏ giọng gốc và trộn giọng
+  mới với phần nhạc nền còn lại. Chỉ khả dụng khi máy chủ có GPU; tính thêm phí tách âm.
 
 Giọng đọc được chọn phải cùng ngôn ngữ với ngôn ngữ đích của video — hệ thống sẽ từ chối rõ ràng nếu lựa
 chọn không phù hợp.
@@ -531,8 +533,15 @@ nhất, áp dụng thống nhất cho mọi Workspace.
 **Mua gói Credit**
 Người dùng có thể mua các gói Credit bổ sung bất kỳ lúc nào để nạp thêm vào số dư cá nhân.
 
-**Cần xác nhận thêm:** Chi tiết các mức gói, đơn giá, và hình thức thanh toán chưa được mô tả — cần bổ sung
-ở giai đoạn thiết kế chi tiết sau.
+**Các gói Credit (đã chốt 2026-09-27, xem `Credit_Coefficient_Calculation.md` §9):**
+
+| Gói | Số Credit | Giá | Đơn giá |
+|---|---|---|---|
+| Starter | 500 | 50.000đ | 100đ/Credit |
+| Creator | 2.000 | 190.000đ | 95đ/Credit |
+| Business | 10.000 | 900.000đ | 90đ/Credit |
+
+Credit khởi tạo: 100 Credit/tài khoản. Hình thức thanh toán (cổng thanh toán) vẫn cần bổ sung ở giai đoạn sau.
 
 **Cấu hình nguồn AI cá nhân**
 - Mỗi người dùng có thể tự cấu hình API key của nhà cung cấp AI riêng (BYOK) trong phần Cài đặt cá nhân.
@@ -558,9 +567,14 @@ hình API key cá nhân hay không. Điều này hoàn toàn độc lập với 
 Trong đó: `x` = hệ số phí hạ tầng (áp dụng mọi trường hợp), `y` = hệ số quy đổi chi phí token thực tế sang
 Credit (chỉ áp dụng ở Trường hợp 2).
 
-**Cần xác nhận thêm:** Công thức ở Trường hợp 2 hiện là công thức tạm/dự kiến. Hệ số "y" cần được xác định
-chính thức ở giai đoạn sau. Ngoài ra, hành vi hệ thống khi số dư Credit không đủ để thực hiện một thao tác
-(chặn tạo job ngay từ đầu, hay cho phép xử lý rồi báo nợ) cũng cần được xác nhận thêm.
+**Hệ số x, y (đã chốt 2026-09-27):** "Số token" được hiểu là **số đơn vị sử dụng của từng thao tác**: STT và tách
+âm tính theo giây audio nguồn, dịch/tóm tắt/phân tích hình ảnh theo token, TTS theo ký tự, xuất video (RENDER) theo
+giây video output. Giá trị x, y theo từng thao tác và từng model nằm ở `Credit_Coefficient_Calculation.md` §7.2,
+lưu trong `credit_pricing_config` và chỉ Super Admin đổi được (có version, không hồi tố). Tách âm và xuất video chạy
+trên hạ tầng của nền tảng nên chỉ tính x.
+
+**Cần xác nhận thêm:** Hành vi khi số dư Credit không đủ. Hiện hệ thống kiểm tra trước mỗi công đoạn và chặn khi
+không đủ, không cho nợ (đề xuất chốt: `Credit_Coefficient_Calculation.md` §12.2 Q10).
 
 **Ví dụ minh hoạ cách áp dụng** (Member A và Lead B trong cùng 1 Workspace):
 

@@ -223,7 +223,8 @@
       "deferred": "Nhà cung cấp AI tạm thời gặp sự cố — tự động thử lại lúc {{time}}.",
       "failover": "Khóa AI vừa dùng bị lỗi — đang chuyển sang khóa khác."
     },
-    "ttsPartial": "Còn {{missing}}/{{total}} câu chưa có giọng đọc. Các câu đã tạo được giữ lại; chạy lại chỉ tạo và tính phí phần còn thiếu."
+    "ttsPartial": "Còn {{missing}}/{{total}} câu chưa có giọng đọc. Các câu đã tạo được giữ lại; chạy lại chỉ tạo và tính phí phần còn thiếu.",
+    "rerunProcessingBlocked": "Đang có bước xử lý, không thể chạy lại"
   },
   "upload": {
     "stepTitle": "Tải video",
@@ -333,7 +334,13 @@
     "focusVisual": "Ưu tiên hành động & thị giác",
     "focusDialogue": "Ưu tiên lời thoại & nhân vật",
     "quickTags": "Gợi ý nhanh",
-    "reviewOnlyNotice": "Kế hoạch tường thuật do AI tạo tự động. Bạn có thể xem lại bên dưới hoặc điều chỉnh lại kịch bản bất kỳ lúc nào."
+    "reviewOnlyNotice": "Kế hoạch tường thuật do AI tạo tự động. Bạn có thể xem lại bên dưới hoặc điều chỉnh lại kịch bản bất kỳ lúc nào.",
+    "quickTagList": [
+      "Ưu tiên phân cảnh hành động kịch tính",
+      "Rút ngắn phần mở đầu, vào thẳng nội dung",
+      "Giữ chi tiết giới thiệu sản phẩm / món ăn",
+      "Tăng nhịp điệu kể chuyện sôi động hơn"
+    ]
   },
   "narrative": {
     "section": "Phần {{n}}",
@@ -434,7 +441,8 @@
     "dubbedAudio": "Lồng tiếng AI (TTS)",
     "originalAudio": "Audio gốc",
     "toggleDetails": "Chi tiết (2 cột)",
-    "quickDownload": "Tải nhanh"
+    "quickDownload": "Tải nhanh",
+    "hideDetails": "Ẩn chi tiết"
   },
   "qa": {
     "waitTitle": "Chưa có QA",
@@ -729,7 +737,8 @@
     "aspectOriginal": "Gốc",
     "aspectHint": "Video sẽ được đặt vào khung mới với nền mờ phía sau — không bị cắt mất nội dung. Phụ đề và lớp che tự căn theo khung mới.",
     "autoFrozenTitle": "Job chạy tự động",
-    "autoFrozenDesc": "Cấu hình render được áp dụng tự động theo preset và chỉ hiển thị để tham khảo."
+    "autoFrozenDesc": "Cấu hình render được áp dụng tự động theo preset và chỉ hiển thị để tham khảo.",
+    "muteOriginal": "Tắt hẳn audio gốc"
   },
   "workflow": {
     "modeLabel": "Quy trình",
@@ -868,12 +877,12 @@
     "blockedUnavailable": "{{mode}} không khả dụng trên deployment này.",
     "blockedNotHonoured": "Deployment này chưa thể nhận yêu cầu {{mode}}. Việc tạo job bị chặn thay vì âm thầm chạy ở chế độ khác.",
     "mode": {
-      "FAST": "Fast",
-      "STUDIO": "Studio"
+      "FAST": "Fast — Voice-over",
+      "STUDIO": "Studio — Tách nhạc nền"
     },
     "modeDesc": {
-      "FAST": "Pipeline audio tiêu chuẩn.",
-      "STUDIO": "Pipeline audio chất lượng cao hơn."
+      "FAST": "Giọng AI đè lên audio gốc: audio gốc tự giảm 10 dB, giọng AI tăng 10 dB (chỉnh lại được, có thể tắt hẳn audio gốc).",
+      "STUDIO": "Tách giọng người nói khỏi nhạc nền bằng AI, bỏ giọng gốc và giữ nhạc nền/hiệu ứng. Cần máy chủ có GPU, tính thêm phí tách âm."
     },
     "reason": {
       "PRODUCT_UNSUPPORTED": "Không được recipe sản phẩm hỗ trợ.",
@@ -884,7 +893,11 @@
       "WORKER_CAPABILITY_MISMATCH": "Không có worker tương thích cho chế độ này.",
       "NOT_EVALUATED": "Chưa đánh giá readiness của runtime.",
       "RUNTIME_UNAVAILABLE": "Runtime không khả dụng.",
-      "READY": "Sẵn sàng."
+      "READY": "Sẵn sàng.",
+      "GPU_UNAVAILABLE": "Máy chủ hiện không có GPU để tách nhạc nền.",
+      "SEPARATION_DISABLED": "Tính năng tách nhạc nền đang tắt trên máy chủ.",
+      "AI_GATEWAY_DOWN": "Dịch vụ AI đang không phản hồi.",
+      "MEDIA_WORKER_DOWN": "Dịch vụ xử lý media đang không phản hồi."
     }
   },
   "subtitleStyle": {
@@ -1008,5 +1021,25 @@
     "expiredHint": "Tệp video và kết quả đã bị xoá sau 3 ngày lưu trữ. Hãy tải video lên lại để xử lý tiếp.",
     "expiresIn": "Hết hạn sau {{count}} giờ",
     "expiringHint": "Tệp chỉ được lưu 3 ngày. Hãy tải kết quả về trước khi hết hạn."
+  },
+  "createPanel": {
+    "uploaded": "Đã tải lên",
+    "confirmed": "Đã xác nhận",
+    "videoCount_one": "{{count}} video",
+    "videoCount_other": "{{count}} video",
+    "subtitle": "Thiết lập công thức xử lý, ngôn ngữ, giọng đọc AI và quy trình tự động",
+    "customDuration": "Hoặc nhập tuỳ chỉnh:",
+    "languageCount_one": "{{count}} ngôn ngữ",
+    "languageCount_other": "{{count}} ngôn ngữ",
+    "selectTargets": "Chọn ngôn ngữ đích",
+    "minOneTarget": "Phải giữ lại tối thiểu 1 ngôn ngữ đích",
+    "selected": "Đã chọn",
+    "targetHelp": "Ngôn ngữ đích cho phụ đề và lồng tiếng",
+    "configSummary": "Tóm tắt cấu hình:",
+    "autoDetect": "Tự nhận diện",
+    "jobsCreated": "{{created}}/{{total}} jobs thành công",
+    "jobsFailed": "{{count}} jobs thất bại",
+    "redirecting": "Đang chuyển hướng ({{seconds}}s)...",
+    "noTtsProviders": "Chưa có nhà cung cấp TTS nào khả dụng trong workspace."
   }
 }

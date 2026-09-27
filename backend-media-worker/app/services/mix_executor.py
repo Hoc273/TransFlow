@@ -19,7 +19,7 @@ from typing import Any
 
 from pydub import AudioSegment
 
-from app.services.dub_timeline import VoiceClip, prepare_voice, schedule
+from app.services.dub_timeline import VOICE_PEAK_CEILING_DBFS, VoiceClip, prepare_voice, schedule
 from app.services.ffmpeg import FFmpegError, _local_tts_path, _run, get_duration
 from app.services.storage import get_storage
 
@@ -63,7 +63,9 @@ def execute_mix_plan(mix_plan: dict[str, Any], temp_dir: str) -> tuple[str, int,
         if role == "TTS_SEGMENT":
             # One speech level for every provider clip; the user's TTS gain applies on top.
             segment = prepare_voice(segment)
-        segment = _apply_gain(segment, float(raw.get("gain_db") or 0.0))
+            segment = _apply_voice_gain(segment, float(raw.get("gain_db") or 0.0))
+        else:
+            segment = _apply_gain(segment, float(raw.get("gain_db") or 0.0))
         fade_in = int(raw.get("fade_in_ms") or 0)
         fade_out = int(raw.get("fade_out_ms") or 0)
         if fade_in > 0:
@@ -222,6 +224,18 @@ def _validate_plan(mix_plan: dict[str, Any]) -> None:
     output = mix_plan.get("output") or {}
     if output.get("asset_type") not in (None, "MIXED_AUDIO"):
         raise FFmpegError("output.asset_type must be MIXED_AUDIO", "INVALID_INPUT", retryable=False)
+
+
+def _apply_voice_gain(segment: AudioSegment, gain_db: float) -> AudioSegment:
+    """TTS gain without clipping: a boost stops where the clip's peak reaches the voice ceiling.
+
+    16-bit samples saturate, so an uncapped +10 dB on a levelled clip (peaks near -5 dBFS)
+    would square off the waveform. The bed is attenuated separately, so the voice/bed balance
+    still moves by the full original-gain amount.
+    """
+    if gain_db > 0 and len(segment) > 0 and segment.max_dBFS != float("-inf"):
+        gain_db = max(0.0, min(gain_db, VOICE_PEAK_CEILING_DBFS - segment.max_dBFS))
+    return _apply_gain(segment, gain_db)
 
 
 def _apply_gain(segment: AudioSegment, gain_db: float) -> AudioSegment:

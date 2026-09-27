@@ -1,0 +1,25 @@
+{
+  "title": "알림",
+  "emptyTitle": "알림이 없습니다",
+  "loadMore": "더 보기",
+  "loadingMore": "불러오는 중…",
+  "markAllRead": "모두 읽음으로 표시",
+  "markRead": "읽음으로 표시",
+  "unread": "읽지 않음",
+  "unreadCount": "읽지 않은 알림 {{count}}개",
+  "filter": {
+    "all": "전체",
+    "unread": "읽지 않음"
+  },
+  "emptyUnread": "모든 알림을 확인했습니다",
+  "types": {
+    "JOB_COMPLETED": "미디어 작업 완료",
+    "JOB_FAILED": "미디어 작업 실패",
+    "JOB_NEEDS_RERUN": "미디어 작업 재실행 필요",
+    "JOB_QA_BLOCKED": "렌더링이 QA 검토를 기다리는 중",
+    "BATCH_COMPLETED": "배치 완료",
+    "BATCH_PARTIALLY_FAILED": "배치 일부 실패",
+    "BATCH_FAILED": "배치 실패",
+    "PROVIDER_KEY_INVALID": "AI 제공업체 키가 거부됨"
+  }
+}

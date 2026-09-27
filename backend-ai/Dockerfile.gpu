@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \n    && useradd --create-home --uid 10001 --user-group app
 
 WORKDIR /app
 COPY requirements.txt .
@@ -15,6 +15,9 @@ RUN python3 -m pip install -r requirements.txt \
     && python3 -m pip install torch demucs
 
 COPY app ./app
+
+# Non-root: model Demucs cache ở ~/.cache/torch của user app.
+USER app
 
 EXPOSE 8000
 CMD ["python3", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

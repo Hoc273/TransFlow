@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { MobileMediaListPage } from './MobileMediaListPage'
+import i18n from '@/i18n'
 
 interface CustomMatchers<R = unknown> {
   toBeInTheDocument(): R
@@ -33,63 +34,74 @@ const sampleProjects = [
   { id: 'proj-2', name: 'Dự án Beta' },
 ]
 
+const stage = (stageName: string, status: string) => ({ stageName, status })
+
 const sampleJobs = [
   {
     id: 'job-123',
-    title: 'Product Launch Video',
-    fileName: 'product_launch_2026.mp4',
+    rootAssetId: 'asset-1',
     recipeId: 'localization.full',
-    keepOriginalAudio: false,
-    aspectRatio: '16:9',
     status: 'COMPLETED',
-    duration: '02:45',
-    progress: 100,
     targetLang: 'vi',
+    requestedDurationSeconds: null,
+    stages: [stage('STT', 'COMPLETED')],
   },
   {
     id: 'job-456',
-    title: 'Interview Audio',
-    fileName: 'podcast_interview_hq.mp4',
+    rootAssetId: 'asset-2',
     recipeId: 'summary.generative',
-    keepOriginalAudio: true,
-    aspectRatio: '9:16',
     status: 'PROCESSING',
-    duration: '05:10',
-    progress: 45,
     targetLang: 'en',
+    requestedDurationSeconds: null,
+    stages: [stage('EXTRACT_AUDIO', 'COMPLETED'), stage('STT', 'PENDING')],
   },
   {
     id: 'job-789',
-    title: 'Failed Presentation',
-    fileName: 'quarterly_financial_report.mp4',
+    rootAssetId: 'asset-3',
     recipeId: 'localization.full',
-    keepOriginalAudio: false,
-    aspectRatio: '16:9',
     status: 'FAILED',
-    duration: '01:15',
-    progress: 10,
     targetLang: 'ja',
+    requestedDurationSeconds: null,
+    stages: [stage('STT', 'FAILED')],
   },
 ]
 
+const sampleAssets = [
+  { id: 'asset-1', fileName: 'Product Launch Video.mp4', durationMs: 165_000 },
+  { id: 'asset-2', fileName: 'Interview Audio.mp4', durationMs: 310_000 },
+  { id: 'asset-3', fileName: 'Failed Presentation.mp4', durationMs: 75_000 },
+]
+
 vi.mock('@/hooks/useProjects', () => ({
-  useProjects: vi.fn((_workspaceId?: string) => ({
-    data: sampleProjects,
-    isLoading: false,
-    error: null,
-  })),
+  useProjects: vi.fn(() => ({ data: sampleProjects, isLoading: false, error: null })),
+}))
+
+vi.mock('@/hooks/usePermission', () => ({
+  usePermission: vi.fn(() => true),
+}))
+
+vi.mock('@/components/media-studio/UploadConsentPanel', () => ({
+  UploadConsentPanel: ({ projectId }: { projectId: string }) => (
+    <div data-testid="upload-panel">{projectId}</div>
+  ),
 }))
 
 const mockRefetch = vi.fn()
 
 vi.mock('@/hooks/useMedia', () => ({
-  useMediaJobs: vi.fn((_workspaceId?: string, _projectId?: string) => ({
-    jobs: sampleJobs,
+  useMediaJobs: vi.fn(() => ({
+    data: sampleJobs,
     isLoading: false,
+    isFetching: false,
     error: null,
     refetch: mockRefetch,
   })),
+  useProjectMediaAssets: vi.fn(() => ({ data: sampleAssets })),
 }))
+
+beforeAll(async () => {
+  await i18n.changeLanguage('vi')
+})
 
 describe('MobileMediaListPage', () => {
   const renderPage = (initialRoute = '/w/ws-123/media') => {
@@ -104,25 +116,29 @@ describe('MobileMediaListPage', () => {
     )
   }
 
-  it('renders media card with direct link to Media Studio', () => {
-    render(
-      <MemoryRouter>
-        <MobileMediaListPage />
-      </MemoryRouter>
-    )
+  it('renders job cards titled by their root asset file name and duration', () => {
+    renderPage()
     expect(screen.getByText('Media Hub')).toBeInTheDocument()
-    expect(screen.getByText('Product Launch Video')).toBeInTheDocument()
+    expect(screen.getByText('Product Launch Video.mp4')).toBeInTheDocument()
     expect(screen.getByText('02:45')).toBeInTheDocument()
+    expect(screen.getByText('VI')).toBeInTheDocument()
+  })
+
+  it('falls back to a short job id title when the asset is unknown', async () => {
+    const { useProjectMediaAssets } = await import('@/hooks/useMedia')
+    vi.mocked(useProjectMediaAssets).mockReturnValue({ data: [] } as any)
+    renderPage()
+    expect(screen.getByText('Tệp media job-123')).toBeInTheDocument()
+    vi.mocked(useProjectMediaAssets).mockReturnValue({ data: sampleAssets } as any)
   })
 
   it('navigates to media studio when clicking a media item card', () => {
     renderPage()
 
-    const itemLink = screen.getByText('Product Launch Video').closest('a')
-    expect(itemLink).toBeInTheDocument()
+    const itemLink = screen.getByText('Product Launch Video.mp4').closest('a')
     expect(itemLink?.getAttribute('href')).toBe('/w/ws-123/media/jobs/job-123')
 
-    fireEvent.click(screen.getByText('Product Launch Video'))
+    fireEvent.click(screen.getByText('Product Launch Video.mp4'))
     expect(screen.getByTestId('media-studio-page')).toBeInTheDocument()
   })
 
@@ -130,201 +146,119 @@ describe('MobileMediaListPage', () => {
     renderPage()
 
     const presetsLink = screen.getByRole('link', { name: 'Presets' })
-    expect(presetsLink).toBeInTheDocument()
     expect(presetsLink.getAttribute('href')).toBe('/w/ws-123/media/presets')
 
     fireEvent.click(presetsLink)
     expect(screen.getByTestId('media-presets-page')).toBeInTheDocument()
   })
 
-  it('renders status filter tabs and filters items by status', () => {
+  it('filters items by status', () => {
     renderPage()
 
-    expect(screen.getByRole('button', { name: 'Tất cả' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Đang xử lý' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Hoàn thành' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Thất bại' })).toBeInTheDocument()
-
-    // Initially all 3 jobs are visible
-    expect(screen.getByText('Product Launch Video')).toBeInTheDocument()
-    expect(screen.getByText('Interview Audio')).toBeInTheDocument()
-    expect(screen.getByText('Failed Presentation')).toBeInTheDocument()
-
-    // Filter by Hoàn thành
     fireEvent.click(screen.getByRole('button', { name: 'Hoàn thành' }))
-    expect(screen.getByText('Product Launch Video')).toBeInTheDocument()
-    expect(screen.queryByText('Interview Audio')).toBeNull()
-    expect(screen.queryByText('Failed Presentation')).toBeNull()
+    expect(screen.getByText('Product Launch Video.mp4')).toBeInTheDocument()
+    expect(screen.queryByText('Interview Audio.mp4')).toBeNull()
 
-    // Filter by Đang xử lý
     fireEvent.click(screen.getByRole('button', { name: 'Đang xử lý' }))
-    expect(screen.queryByText('Product Launch Video')).toBeNull()
-    expect(screen.getByText('Interview Audio')).toBeInTheDocument()
-    expect(screen.queryByText('Failed Presentation')).toBeNull()
+    expect(screen.queryByText('Product Launch Video.mp4')).toBeNull()
+    expect(screen.getByText('Interview Audio.mp4')).toBeInTheDocument()
 
-    // Filter by Thất bại
     fireEvent.click(screen.getByRole('button', { name: 'Thất bại' }))
-    expect(screen.queryByText('Product Launch Video')).toBeNull()
-    expect(screen.queryByText('Interview Audio')).toBeNull()
-    expect(screen.getByText('Failed Presentation')).toBeInTheDocument()
+    expect(screen.getByText('Failed Presentation.mp4')).toBeInTheDocument()
+    expect(screen.queryByText('Interview Audio.mp4')).toBeNull()
 
-    // Return to Tất cả
     fireEvent.click(screen.getByRole('button', { name: 'Tất cả' }))
-    expect(screen.getByText('Product Launch Video')).toBeInTheDocument()
-    expect(screen.getByText('Interview Audio')).toBeInTheDocument()
-    expect(screen.getByText('Failed Presentation')).toBeInTheDocument()
+    expect(screen.getByText('Product Launch Video.mp4')).toBeInTheDocument()
+    expect(screen.getByText('Interview Audio.mp4')).toBeInTheDocument()
+    expect(screen.getByText('Failed Presentation.mp4')).toBeInTheDocument()
   })
 
-  it('filters media items using search input', () => {
+  it('filters media items using search input and clears the filter', () => {
     renderPage()
 
     const searchInput = screen.getByPlaceholderText('Tìm kiếm video/audio...')
-    expect(searchInput).toBeInTheDocument()
-
     fireEvent.change(searchInput, { target: { value: 'Interview' } })
-    expect(screen.getByText('Interview Audio')).toBeInTheDocument()
-    expect(screen.queryByText('Product Launch Video')).toBeNull()
-    expect(screen.queryByText('Failed Presentation')).toBeNull()
-  })
+    expect(screen.getByText('Interview Audio.mp4')).toBeInTheDocument()
+    expect(screen.queryByText('Product Launch Video.mp4')).toBeNull()
 
-  it('shows empty search state when no items match and clears filter on action', () => {
-    renderPage()
-
-    const searchInput = screen.getByPlaceholderText('Tìm kiếm video/audio...')
     fireEvent.change(searchInput, { target: { value: 'Nonexistent video' } })
-
     expect(screen.getByText('Không tìm thấy tệp media')).toBeInTheDocument()
-
-    const clearButton = screen.getByRole('button', { name: /Xóa bộ lọc/i })
-    fireEvent.click(clearButton)
-
-    expect(screen.getByText('Product Launch Video')).toBeInTheDocument()
-    expect(screen.getByText('Interview Audio')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Xóa bộ lọc/i }))
+    expect(screen.getByText('Product Launch Video.mp4')).toBeInTheDocument()
   })
 
-  it('renders progress bar for PROCESSING job', () => {
+  it('renders stage-based progress for a PROCESSING job', () => {
     renderPage()
-
-    expect(screen.getByText('45%')).toBeInTheDocument()
-    expect(screen.getAllByText('Đang xử lý').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('50%')).toBeInTheDocument()
   })
 
-  it('renders loading state when media jobs are loading', async () => {
+  it('renders loading, empty and error states', async () => {
     const { useMediaJobs } = await import('@/hooks/useMedia')
-    vi.mocked(useMediaJobs).mockReturnValueOnce({
-      jobs: [],
-      isLoading: true,
-      error: null,
-    } as any)
 
+    vi.mocked(useMediaJobs).mockReturnValueOnce({ data: [], isLoading: true, error: null } as any)
     renderPage()
     expect(screen.getByText('Đang tải danh sách media...')).toBeInTheDocument()
-  })
+    cleanup()
 
-  it('renders empty state when there are no media items', async () => {
-    const { useMediaJobs } = await import('@/hooks/useMedia')
-    vi.mocked(useMediaJobs).mockReturnValueOnce({
-      jobs: [],
-      isLoading: false,
-      error: null,
-    } as any)
-
+    vi.mocked(useMediaJobs).mockReturnValueOnce({ data: [], isLoading: false, error: null } as any)
     renderPage()
     expect(screen.getByText('Chưa có tệp Media nào')).toBeInTheDocument()
-    expect(screen.getByText('Tải lên tệp video hoặc audio để bắt đầu quy trình phụ đề và lồng tiếng AI.')).toBeInTheDocument()
-  })
+    cleanup()
 
-  it('renders error state and retries on button click', async () => {
-    const { useMediaJobs } = await import('@/hooks/useMedia')
     vi.mocked(useMediaJobs).mockReturnValueOnce({
-      jobs: [],
+      data: [],
       isLoading: false,
       error: new Error('Failed to load media jobs'),
       refetch: mockRefetch,
     } as any)
-
     renderPage()
     expect(screen.getByText('Không thể tải danh sách media')).toBeInTheDocument()
-
-    const retryBtn = screen.getByRole('button', { name: /Thử lại/i })
-    fireEvent.click(retryBtn)
-    expect(mockRefetch).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getAllByRole('button', { name: /^Thử lại$/i }).at(-1)!)
+    expect(mockRefetch).toHaveBeenCalled()
   })
 
-  it('uses projectId from URL searchParams or defaults to first project id', async () => {
+  it('uses ?project= / ?projectId= or defaults to the first project', async () => {
     const { useMediaJobs } = await import('@/hooks/useMedia')
 
-    // 1. Without search param -> defaults to sampleProjects[0].id ('proj-1')
     renderPage('/w/ws-123/media')
     expect(useMediaJobs).toHaveBeenCalledWith('ws-123', 'proj-1')
-
-    // 2. With search param ?projectId=proj-custom -> uses 'proj-custom'
     cleanup()
+
     renderPage('/w/ws-123/media?projectId=proj-custom')
     expect(useMediaJobs).toHaveBeenCalledWith('ws-123', 'proj-custom')
-  })
+    cleanup()
 
-  it('supports TanStack query return shape with data array instead of jobs', async () => {
-    const { useMediaJobs } = await import('@/hooks/useMedia')
-    vi.mocked(useMediaJobs).mockReturnValueOnce({
-      data: [
-        {
-          id: 'job-tanstack',
-          fileName: 'TanStack Video.mp4',
-          status: 'COMPLETED',
-          duration: '03:30',
-        },
-      ],
-      isLoading: false,
-      error: null,
-    } as any)
-
-    renderPage()
-    expect(screen.getByText('TanStack Video.mp4')).toBeInTheDocument()
-    expect(screen.getByText('03:30')).toBeInTheDocument()
-  })
-
-  it('supports direct array return shape and formats numeric durationSeconds', async () => {
-    const { useMediaJobs } = await import('@/hooks/useMedia')
-    vi.mocked(useMediaJobs).mockReturnValueOnce([
-      {
-        id: 'job-direct-array',
-        title: 'Direct Array Video',
-        status: 'COMPLETED',
-        durationSeconds: 150, // 02:30
-        targetLang: 'ko',
-        recipeId: 'localization.full',
-      },
-    ] as any)
-
-    renderPage()
-    expect(screen.getByText('Direct Array Video')).toBeInTheDocument()
-    expect(screen.getByText('02:30')).toBeInTheDocument()
-    expect(screen.getByText('KO')).toBeInTheDocument()
-    expect(screen.getByText('localization.full')).toBeInTheDocument()
+    renderPage('/w/ws-123/media?project=proj-2')
+    expect(useMediaJobs).toHaveBeenCalledWith('ws-123', 'proj-2')
   })
 
   it('switches active project when clicking project button in selector', () => {
     renderPage()
-
     const projectBetaBtn = screen.getByRole('button', { name: 'Dự án Beta' })
-    expect(projectBetaBtn).toBeInTheDocument()
-
     fireEvent.click(projectBetaBtn)
-    // The button should now have active styles
     expect(projectBetaBtn.className).toContain('border-primary')
   })
 
-  it('handles empty projects list gracefully', async () => {
-    const { useProjects } = await import('@/hooks/useProjects')
-    vi.mocked(useProjects).mockReturnValueOnce({
-      data: [],
-      isLoading: false,
-      error: null,
-    } as any)
-
+  it('opens the create-job upload panel for the selected project', () => {
     renderPage()
-    expect(screen.getByText('Product Launch Video')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('mobile-media-new-job'))
+    expect(screen.getByTestId('upload-panel').textContent).toBe('proj-1')
+    fireEvent.click(screen.getByRole('button', { name: /Quay lại danh sách/i }))
+    expect(screen.queryByTestId('upload-panel')).toBeNull()
+  })
+
+  it('hides the create-job button without upload permission', async () => {
+    const { usePermission } = await import('@/hooks/usePermission')
+    vi.mocked(usePermission).mockReturnValue(false)
+    renderPage()
+    expect(screen.queryByTestId('mobile-media-new-job')).toBeNull()
+    vi.mocked(usePermission).mockReturnValue(true)
+  })
+
+  it('shows the no-project state when the workspace has no project', async () => {
+    const { useProjects } = await import('@/hooks/useProjects')
+    vi.mocked(useProjects).mockReturnValueOnce({ data: [], isLoading: false, error: null } as any)
+    renderPage()
+    expect(screen.getByText('Chưa chọn dự án')).toBeInTheDocument()
   })
 })
-

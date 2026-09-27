@@ -231,6 +231,27 @@ CREATE INDEX ix_guide_articles_status         ON guide_articles(status);
 - `ON DELETE RESTRICT` + kiểm tra ở service (`GUIDE_CATEGORY_HAS_ARTICLES`) — không xoá Category còn Article.
 - V5 seed sẵn vài Category và Article `PUBLISHED` mẫu.
 
+### 3.3 `legal_documents` — Điều khoản sử dụng & Chính sách bảo mật
+
+Hiển thị công khai dưới trang Hướng dẫn (`/guide/legal/terms`, `/guide/legal/privacy`), Platform Super Admin
+chỉnh sửa tại `/platform/legal`. Mỗi loại đúng 1 dòng (PK = `doc_type`), nội dung Markdown song ngữ vi/en.
+
+```sql
+legal_documents(
+  doc_type    VARCHAR(20) PRIMARY KEY CHECK (doc_type IN ('TERMS','PRIVACY')),
+  title_vi    VARCHAR(300) NOT NULL,
+  title_en    VARCHAR(300) NOT NULL,
+  content_vi  TEXT NOT NULL,
+  content_en  TEXT NOT NULL,
+  updated_by  UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+```
+
+- Bảng tạo trong `V1__init_tables.sql`, nội dung mặc định seed trong `V2__init_indexes.sql`.
+- Cập nhật dùng `SELECT ... FOR UPDATE` (khóa bi quan) theo `doc_type`.
+
 ## 4. Credit & Thanh toán (không đổi so với thiết kế trước)
 
 ```sql
@@ -265,7 +286,7 @@ workspace_billing_configs(
 
 credit_pricing_config(
   id UUID PK,
-  capability VARCHAR CHECK (capability IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION')) NOT NULL,
+  capability VARCHAR CHECK (capability IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION','AUDIO_SEPARATION')) NOT NULL,
   provider_scope VARCHAR,
   infra_coefficient_x NUMERIC(10,6) NOT NULL,
   token_coefficient_y NUMERIC(10,6),
@@ -519,7 +540,6 @@ media_jobs(
     (recipe_id = 'localization.full' AND processing_mode IN ('TRANSLATE_ONLY','HYBRID'))
     OR (recipe_id = 'summary.script_match' AND processing_mode IS NULL AND requested_duration_seconds IS NOT NULL)
   ),
-  CONSTRAINT ck_audio_mode_sep CHECK (output_audio_mode <> 'DUB_MIX' OR source_separation_enabled = true),
   CONSTRAINT ck_audio_mode_voice CHECK ((output_audio_mode = 'ORIGINAL_ONLY') = (tts_voice_id IS NULL)),
   CONSTRAINT ck_media_jobs_tts_binding CHECK ((tts_provider_id IS NULL) = (tts_voice_id IS NULL)),
   CONSTRAINT ck_source_summary_job CHECK (
@@ -566,8 +586,10 @@ media_job_stages(
 )
 CREATE INDEX ix_media_job_stages_job ON media_job_stages(media_job_id, stage_name);
 ```
-- Điều kiện kích hoạt: `SOURCE_SEPARATION` khi `source_separation_enabled=true`; `AUDIO_MIX` khi
-  `output_audio_mode='DUB_MIX'`; `SUMMARIZE` khi (`localization.full` + `HYBRID`) hoặc
+- Điều kiện kích hoạt: `SOURCE_SEPARATION` khi `source_separation_enabled=true` (STUDIO); `AUDIO_MIX` khi
+  `output_audio_mode='DUB_MIX'` — nền trộn là stem MUSIC khi tách nguồn COMPLETED, ngược lại là audio gốc đã
+  extract (FAST, voice-over). Đổi giọng trên job có sẵn (`setVoice`) đồng bộ lại SKIPPED/PENDING của
+  TTS/AUDIO_MIX/SOURCE_SEPARATION theo mode mới; `SUMMARIZE` khi (`localization.full` + `HYBRID`) hoặc
   (`summary.script_match` + `source_summary_job_id IS NULL`).
 
 ---
@@ -774,7 +796,7 @@ ai_usage_logs(
   project_id UUID NOT NULL REFERENCES projects(id),
   media_job_id UUID REFERENCES media_jobs(id),
   performed_by_user_id UUID NOT NULL REFERENCES users(id),
-  operation VARCHAR CHECK (operation IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION')) NOT NULL,
+  operation VARCHAR CHECK (operation IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION','AUDIO_SEPARATION')) NOT NULL,
   used_personal_api_key BOOLEAN NOT NULL,
   provider_id UUID,  -- V13: platform hoặc user provider đã phục vụ lượt gọi (không FK — thuộc 1 trong 2 bảng)
   input_tokens INT,
@@ -820,7 +842,7 @@ CREATE INDEX ix_ai_usage_logs_provider ON ai_usage_logs(provider_id, created_at)
 | `localization_batches` | CHECK array_length nguồn≤20; `target_lang` là scalar không phải mảng | Giới hạn lô + đúng bản chất "1 ngôn ngữ/lô" (v1.4) |
 | `media_jobs` | CHECK `ck_job_recipe_mode`, không có `PARTIALLY_FAILED` trong status | "1 yêu cầu không có lỗi một phần" |
 | `media_jobs` | `created_by_user_id NOT NULL`, immutable ở service | Cơ sở duy nhất cho authorization QA/checkpoint (SRS §3.3) |
-| `media_jobs` | CHECK `ck_audio_mode_sep`/`ck_audio_mode_voice`/`ck_media_jobs_tts_binding` | Ràng buộc DUB_MIX cần tách nguồn, mode cần giọng và provider/voice phải luôn đi theo cặp |
+| `media_jobs` | CHECK `ck_audio_mode_voice`/`ck_media_jobs_tts_binding` | Mode lồng tiếng cần giọng và provider/voice phải luôn đi theo cặp (DUB_MIX không bắt buộc tách nguồn: FAST = voice-over) |
 | `summary_proposals` | CHECK `ck_proposal_origin_fields`, UNIQUE partial (stage,round) WHERE AI | Phân biệt AI (có script) vs HUMAN |
 | `qa_issue_overrides.reason` | CHECK char_length ≥ 10 | Bắt buộc lý do override rõ ràng |
 | `credit_accounts.balance` | CHECK ≥ 0 | Không âm — chặn tạo job nếu không đủ |
@@ -830,20 +852,15 @@ CREATE INDEX ix_ai_usage_logs_provider ON ai_usage_logs(provider_id, created_at)
 
 ## 13. Ghi chú migration
 - Schema **mới hoàn toàn** — không migrate dữ liệu từ base gốc.
-- Flyway được squash còn đúng 2 baseline: `V1__init_tables.sql` tạo schema/constraint và
-  `V2__init_indexes.sql` tạo index + seed dữ liệu nền. Database đã chạy chuỗi V1–V12 cũ phải reset schema
-  và `flyway_schema_history` trước khi dùng baseline này; không chồng baseline mới lên history cũ.
-- Migration kể từ baseline: `V3__user_avatar.sql` (cột avatar user),
-  `V4__platform_admin_audit_logs.sql` (bảng audit Super Admin ở §3.1 — `users.is_platform_admin` đã có
-  trong V1 nên V4 không `ALTER users`), `V5__reencrypt_platform_provider_key.sql` (re-encrypt platform seed API key),
-  `V6__user_ai_provider_defaults.sql` (bảng `user_ai_provider_defaults`),
-  `V7__media_stage_structured_errors.sql` (cột error structured cho `media_job_stages`),
-  `V8__system_presets_render_ready.sql`, `V9__shorts_preset_typography.sql`, `V10__system_presets_phrase_colors.sql` (cập nhật render presets),
-  `V11__guide.sql` (bảng Hướng dẫn ở §3.2 + seed nội dung mẫu), `V12__notification_qa_blocked.sql`,
-  `V13__provider_pool_and_retention.sql` (pool key nền tảng §5, health BYOK, `ai_usage_logs.provider_id`,
-  `media_assets.purged_at` retention 3 ngày, notification `PROVIDER_KEY_INVALID`, index cho cronjob),
-  `V14__tts_clip_key.sql` (`subtitle_segments.tts_clip_key`, `tts_duration_ms` — TTS resume),
-  `V15__tts_voice_display_status.sql` (`tts_voices.display_name`, `status` — catalog N giọng/ngôn ngữ).
+- Flyway được squash còn đúng 2 baseline: `V1__init_tables.sql` tạo toàn bộ bảng/constraint và
+  `V2__init_indexes.sql` tạo index + seed dữ liệu nền (terms, gói credit, bảng giá, platform provider mẫu,
+  TTS voice mẫu, 2 system preset render-ready, nội dung Hướng dẫn). Hai file đã gộp chuỗi V1–V17 cũ
+  (avatar, audit Super Admin §3.1, `user_ai_provider_defaults`, lỗi structured của stage, Guide §3.2,
+  pool key nền tảng §5 + health BYOK + `ai_usage_logs.provider_id` + retention `media_assets.purged_at`,
+  `JOB_QA_BLOCKED`/`PROVIDER_KEY_INVALID`, TTS resume `tts_clip_key`/`tts_duration_ms`,
+  `tts_voices.display_name`/`status`, lịch sử bảng giá credit, `users.email_canonical`).
+- Database đã chạy chuỗi migration cũ phải **reset schema và `flyway_schema_history`** trước khi dùng
+  baseline này; không chồng baseline mới lên history cũ. Thay đổi schema tiếp theo bắt đầu từ `V3__...`.
 - **Đồng bộ `tts_voices` (BYOK refresh & platform sync):** upsert theo `voice_id`, **không bao giờ xoá** —
   job DUB có thể còn tham chiếu (FK `ON DELETE SET NULL` sẽ vi phạm `ck_audio_mode_voice`). Voice provider
   gỡ hoặc `status=DEPRECATED` → `is_active=false`. Danh sách rỗng từ provider → lỗi, giữ nguyên catalog.

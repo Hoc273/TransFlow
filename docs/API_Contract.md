@@ -17,7 +17,8 @@
 > `GET /api/platform/realtime` và điều chỉnh Credit của user `GET|POST /api/platform/users/{userId}/credit/*`
 > (§13.1 — nhóm Platform không còn read-only hoàn toàn); presence heartbeat `POST /api/presence/heartbeat`
 > (§13.1); module Hướng dẫn — public `/api/guides/*` và quản trị `/api/platform/guides/*` (§13.2); mã lỗi
-> Guide 3400–3404 (§15).
+> Guide 3400–3404 (§15); Điều khoản & Chính sách bảo mật — public `/api/legal/*` và quản trị
+> `/api/platform/legal/*` (§13.2.1), mã lỗi `LEGAL_DOCUMENT_NOT_FOUND` = 3405.
 
 ---
 
@@ -26,7 +27,7 @@
 - **Base path**: mọi API người dùng nằm dưới `/api/...`; callback nội bộ từ Worker nằm dưới `/internal/...`
   (không đi qua JWT, xác thực bằng HMAC — xem §14).
 - **Auth**: Bearer JWT (`Authorization: Bearer <accessToken>`) cho toàn bộ `/api/...`, trừ
-  `/api/auth/register/**|login|refresh|forgot-password/**|google/*` và `/api/guides/**` (trang Hướng dẫn
+  `/api/auth/register/**|login|refresh|forgot-password/**|google/*`, `/api/guides/**` và `/api/legal/**` (trang Hướng dẫn
   công khai, §13.2).
 - **Định dạng**: JSON, field JSON dùng `camelCase`. UUID dạng string chuẩn. Thời gian ISO-8601 UTC
   (`instant`, ví dụ `2026-09-15T08:00:00Z`).
@@ -267,17 +268,29 @@ timeout `app.health-probe.timeout-ms` mặc định 2000ms; kết quả cache in
 
 - `FAST` available ⇔ backend-ai **và** media-worker đều healthy (2xx + `status="ok"`). Nếu không:
   `unavailableReason` = `AI_GATEWAY_DOWN` hoặc `MEDIA_WORKER_DOWN` (cả hai down → `AI_GATEWAY_DOWN`).
-- `STUDIO` available ⇔ `FAST` available **và** backend-ai báo `separation.engine` hợp lệ trong `/health`
-  (tức `SEPARATION_ENGINE_ID` được cấu hình; rỗng/`none`/`disabled` → `unavailableReason` = `SEPARATION_DISABLED`).
+- `STUDIO` available ⇔ `FAST` available **và** backend-ai báo `separation.engine` hợp lệ **và**
+  `separation.gpu_available=true` trong `/health` (engine rỗng/`none`/`disabled` → `unavailableReason` =
+  `SEPARATION_DISABLED`; có engine nhưng không GPU → `GPU_UNAVAILABLE`, vì fallback CPU không tách thật).
   Khi `FAST` down, `STUDIO` kế thừa reason hạ tầng của `FAST`.
 - `workerCapability.state`: cả hai service healthy → `READY`; chỉ một → `DEGRADED`; không có → `OFFLINE`.
   `workerCount` = số media-worker healthy (hiện tối đa 1); `compatibleFastWorkers` = `workerCount` khi worker
-  healthy; `compatibleStudioWorkers` = `workerCount` khi worker healthy **và** separation bật.
+  healthy; `compatibleStudioWorkers` = `workerCount` khi worker healthy **và** separation chạy được trên GPU.
 - `readiness.status`: `READY` khi mọi `supportedExecutionModes` đều available, ngược lại `DRAINING`;
   `readyExecutionModes` = các mode đang available; `reasons` = tập `unavailableReason` không trùng.
 
-> Backend **không** validate `requestedMode` khi tạo job — chống job chết là trách nhiệm của FE
-> (revalidate bằng endpoint này ngay trước khi gọi `POST .../media/jobs`).
+**`requestedMode` khi tạo job** (`FAST` | `STUDIO`, giá trị khác → `VALIDATION_ERROR`) quyết định âm thanh
+khi client **không** gửi `outputAudioMode`:
+
+| Giọng | Recipe | Kết quả |
+|---|---|---|
+| Không có / `keepOriginalAudio=true` | mọi recipe | `ORIGINAL_ONLY` (bỏ qua `requestedMode`) |
+| Có | `localization.full` | `DUB_MIX`; `STUDIO` → `sourceSeparationEnabled=true` |
+| Có | `summary.script_match` | `DUB_REPLACE` (giọng đọc kịch bản trên footage đã retime) |
+
+Hễ job bật tách nguồn (từ `STUDIO` hoặc `sourceSeparationEnabled=true` tường minh) mà deployment không có
+STUDIO khả dụng → `2906 STUDIO_MODE_UNAVAILABLE`. `outputAudioMode` tường minh vẫn được tôn trọng;
+`DUB_MIX` + `sourceSeparationEnabled=false` hợp lệ (FAST voice-over). FE vẫn nên revalidate bằng endpoint
+này ngay trước khi gọi `POST .../media/jobs`.
 
 ---
 
@@ -663,6 +676,16 @@ Nội dung song ngữ vi/en gồm 2 cấp: **Category** → **Article**. Không 
 | PATCH | `/api/platform/guides/articles/{id}/publish` | `{status: "DRAFT"\|"PUBLISHED"}` (bắt buộc). |
 | GET | `/api/platform/guides/articles/{id}/preview?lang=vi` | Xem trước Article theo `lang` bất kể trạng thái. |
 
+#### 13.2.1 Điều khoản sử dụng & Chính sách bảo mật (DB §3.3)
+
+`{type}` = `terms` | `privacy` (không phân biệt hoa thường); giá trị khác → `LEGAL_DOCUMENT_NOT_FOUND` (404).
+
+| Method | Path | Quyền | Mô tả |
+|---|---|---|---|
+| GET | `/api/legal/{type}?lang=vi` | Public (`/api/legal/**` trong `PUBLIC_PATHS`) | Trả `{type, title, content, updatedAt}` theo `lang` (vi mặc định, `en` rỗng → fallback vi). Các field `*Vi`/`*En` = `null`. |
+| GET | `/api/platform/legal` | Super Admin | List cả 2 tài liệu kèm `titleVi/titleEn/contentVi/contentEn`. |
+| PUT | `/api/platform/legal/{type}` | Super Admin | Body `{titleVi, titleEn, contentVi, contentEn}` (đều bắt buộc, title ≤ 300, content Markdown). Ghi `updated_by`. |
+
 `GuideCategoryRequest`:
 
 ```json
@@ -795,12 +818,12 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `notification` | 2600–2699 | `NOTIFICATION_NOT_FOUND` = 2600, `NOTIFICATION_TYPE_INVALID` = 2601 |
 | `dashboard` | 2700–2799 | `DASHBOARD_DATE_RANGE_INVALID` = 2700, `DASHBOARD_GROUP_BY_INVALID` = 2701 |
 | `media_asset` | 2800–2899 | `TERMS_NOT_ACCEPTED` = 2800, `MEDIA_FILE_TOO_LARGE` = 2801, `MEDIA_DURATION_EXCEEDED` = 2802, `TERMS_VERSION_MISMATCH` = 2803, `MEDIA_FILE_EXPIRED` = 2804, `MEDIA_INVALID_FILE` = 2805 |
-| `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902, `STYLE_NOT_FOUND` = 2903, `INVALID_STYLE_KEY` = 2904, `DOWNLOAD_SELECTION_TOO_LARGE` = 2905 |
+| `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902, `STYLE_NOT_FOUND` = 2903, `INVALID_STYLE_KEY` = 2904, `DOWNLOAD_SELECTION_TOO_LARGE` = 2905, `STUDIO_MODE_UNAVAILABLE` = 2906 |
 | `summarization` | 3000–3099 | `REFINE_LIMIT_REACHED` = 3000, `PROPOSAL_ALREADY_TRANSLATED` = 3001 |
 | `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100, `BATCH_RATE_LIMIT_EXCEEDED` = 3101 |
 | `glossary` | 3200–3299 | `GLOSSARY_IMPORT_TOO_LARGE` = 3200 |
 | `qa` | 3300–3399 | `QA_BLOCKED` = 3300, `OVERRIDE_NOT_ALLOWED` = 3301 |
-| `platform` (gồm `guide`) | 3400–3499 | `GUIDE_CATEGORY_NOT_FOUND` = 3400, `GUIDE_CATEGORY_HAS_ARTICLES` = 3401, `GUIDE_SLUG_ALREADY_EXISTS` = 3402, `GUIDE_ARTICLE_NOT_FOUND` = 3403, `INVALID_SLUG_FORMAT` = 3404 (các API Platform khác vẫn dùng mã chung `VALIDATION_ERROR`/`UNAUTHORIZED`/`RESOURCE_NOT_FOUND`/`INSUFFICIENT_CREDIT`) |
+| `platform` (gồm `guide`) | 3400–3499 | `GUIDE_CATEGORY_NOT_FOUND` = 3400, `GUIDE_CATEGORY_HAS_ARTICLES` = 3401, `GUIDE_SLUG_ALREADY_EXISTS` = 3402, `GUIDE_ARTICLE_NOT_FOUND` = 3403, `INVALID_SLUG_FORMAT` = 3404, `LEGAL_DOCUMENT_NOT_FOUND` = 3405 (các API Platform khác vẫn dùng mã chung `VALIDATION_ERROR`/`UNAUTHORIZED`/`RESOURCE_NOT_FOUND`/`INSUFFICIENT_CREDIT`) |
 
 ### 15.3 Mã nghiệp vụ đã xác định (đối chiếu 1:1 với bản `code` string cũ trước bản 1.1)
 
@@ -840,6 +863,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `STYLE_NOT_FOUND` | 2903 | 404 | Key style hệ thống không tồn tại, hoặc job chưa được gán style. |
 | `INVALID_STYLE_KEY` | 2904 | 400 | Key style sai định dạng (`^[a-z0-9][a-z0-9-]{0,63}$`). |
 | `DOWNLOAD_SELECTION_TOO_LARGE` | 2905 | 400 | Chọn quá số video tối đa cho 1 lần tải zip (mặc định 20). |
+| `STUDIO_MODE_UNAVAILABLE` | 2906 | 409 | Tạo job bật tách nguồn (STUDIO) trong khi deployment không có GPU cho Demucs. |
 | `TERMS_NOT_ACCEPTED` | 2800 | 403 | Tạo job từ asset chưa có `media_consents` khớp `terms_version` hiện hành. |
 | `MEDIA_FILE_TOO_LARGE` | 2801 | 400 | Upload video vượt 500MB (SRS §6), enforce ở service layer. |
 | `MEDIA_DURATION_EXCEEDED` | 2802 | 400 | Video vượt 30 phút (SRS §6), enforce ở service layer sau khi ffprobe. |
@@ -886,6 +910,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `GUIDE_SLUG_ALREADY_EXISTS` | 3402 | 409 | Slug Category/Article đã tồn tại. |
 | `GUIDE_ARTICLE_NOT_FOUND` | 3403 | 404 | Không tìm thấy Article, hoặc (API public) Article chưa `PUBLISHED`/Category chưa publish. |
 | `INVALID_SLUG_FORMAT` | 3404 | 400 | Slug sau khi chuẩn hoá không khớp `^[a-z0-9-]+$` (ví dụ tiêu đề không sinh được slug hợp lệ). |
+| `LEGAL_DOCUMENT_NOT_FOUND` | 3405 | 404 | `{type}` không phải `terms`/`privacy` hoặc tài liệu chưa có trong `legal_documents`. |
 
 Thêm mã mới: phụ trách module nào tự thêm `ErrorCode` trong đúng dải của mình (§15.2), cập nhật bảng §15.3
 trong cùng PR — không để `ErrorCode` trong code lệch với bảng ở đây.

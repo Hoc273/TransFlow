@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   IconArrowRight,
@@ -10,19 +10,109 @@ import {
   IconChevronRight,
   IconFileText,
   IconMenu2,
+  IconScale,
   IconSearch,
+  IconShieldLock,
   IconX,
 } from '@tabler/icons-react'
 import { Logo } from '@/components/shared/Logo'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
-import { useGuideArticles, useGuideCategories } from '@/hooks/useGuide'
+import { useGuideArticles, useGuideCategories, useLegalDocument } from '@/hooks/useGuide'
 import { getLastWorkspaceId, useAuthStore } from '@/store/authStore'
-import type { GuideArticle } from '@/types/guide'
+import type { GuideArticle, LegalDocumentType } from '@/types/guide'
+
+const LEGAL_LINKS: Array<{ type: LegalDocumentType; path: string; labelKey: string; Icon: typeof IconScale }> = [
+  { type: 'TERMS', path: '/guide/legal/terms', labelKey: 'terms', Icon: IconScale },
+  { type: 'PRIVACY', path: '/guide/legal/privacy', labelKey: 'privacy', Icon: IconShieldLock },
+]
+
+function legalTypeFromParam(param: string | undefined): LegalDocumentType | null {
+  if (param === 'terms') return 'TERMS'
+  if (param === 'privacy') return 'PRIVACY'
+  return null
+}
+
+const MARKDOWN_COMPONENTS: Components = {
+  h1: ({ children }) => (
+    <h1 className="text-2xl sm:text-3xl font-bold mt-8 mb-4 border-b border-neutral-200 dark:border-neutral-800 pb-2">
+      {children}
+    </h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="text-xl sm:text-2xl font-bold mt-6 mb-3 text-neutral-900 dark:text-white">
+      {children}
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="text-lg font-semibold mt-4 mb-2 text-neutral-900 dark:text-white">
+      {children}
+    </h3>
+  ),
+  p: ({ children }) => <p className="mb-4 leading-7">{children}</p>,
+  ul: ({ children }) => (
+    <ul className="list-disc list-inside mb-4 space-y-1.5 pl-2">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="list-decimal list-inside mb-4 space-y-1.5 pl-2">{children}</ol>
+  ),
+  li: ({ children }) => <li className="leading-7">{children}</li>,
+  code: ({ children, className }) => {
+    const isInline = !className
+    return isInline ? (
+      <code className="px-1.5 py-0.5 rounded-md bg-neutral-200/70 dark:bg-neutral-800 font-mono text-xs text-primary font-medium">
+        {children}
+      </code>
+    ) : (
+      <code className="block p-4 rounded-xl bg-neutral-900 text-neutral-100 dark:bg-neutral-950 font-mono text-xs overflow-x-auto border border-neutral-800 my-4">
+        {children}
+      </code>
+    )
+  },
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-4 border-primary pl-4 py-1 italic my-4 text-neutral-600 dark:text-neutral-300 bg-neutral-100/50 dark:bg-neutral-900/50 rounded-r-lg">
+      {children}
+    </blockquote>
+  ),
+  img: ({ src, alt }) => (
+    <img
+      src={src}
+      alt={alt ?? ''}
+      loading="lazy"
+      className="rounded-xl border border-neutral-200 dark:border-neutral-800 max-w-full my-6 shadow-md"
+    />
+  ),
+  table: ({ children }) => (
+    <div className="overflow-x-auto my-6 rounded-xl border border-neutral-200 dark:border-neutral-800">
+      <table className="w-full text-left text-xs border-collapse">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => (
+    <th className="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-3 font-semibold">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td className="border-b border-neutral-200/60 dark:border-neutral-800/60 p-3">
+      {children}
+    </td>
+  ),
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="text-primary hover:underline font-medium"
+    >
+      {children}
+    </a>
+  ),
+}
 
 export function GuidePage() {
   const { t, i18n } = useTranslation('guide')
-  const { slug } = useParams<{ slug?: string }>()
+  const { slug, legalType } = useParams<{ slug?: string; legalType?: string }>()
+  const activeLegal = legalTypeFromParam(legalType)
   const navigate = useNavigate()
 
   const accessToken = useAuthStore((s) => s.accessToken)
@@ -36,9 +126,11 @@ export function GuidePage() {
         : '/dashboard'
     : '/login'
 
-  const lang = i18n.language === 'en' ? 'en' : 'vi'
+  // Guide articles exist in vi/en only; Korean readers get the English version.
+  const lang = i18n.language === 'vi' ? 'vi' : 'en'
   const { data: categories = [], isLoading: catsLoading } = useGuideCategories(lang)
   const { data: articles = [], isLoading: articlesLoading } = useGuideArticles({ lang })
+  const legalQuery = useLegalDocument(activeLegal ?? 'TERMS', lang, activeLegal !== null)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -46,12 +138,12 @@ export function GuidePage() {
 
   // Determine active article
   const activeArticle: GuideArticle | undefined = useMemo(() => {
-    if (articles.length === 0) return undefined
+    if (activeLegal || articles.length === 0) return undefined
     if (slug) {
       return articles.find((a) => a.slug === slug)
     }
     return articles[0]
-  }, [articles, slug])
+  }, [articles, slug, activeLegal])
 
   // Filter articles based on search query
   const filteredArticles = useMemo(() => {
@@ -105,6 +197,29 @@ export function GuidePage() {
   }
 
   const isLoading = catsLoading || articlesLoading
+
+  const legalNav = (
+    <div className="mt-6 space-y-1 border-t border-neutral-200 pt-4 dark:border-neutral-800">
+      <div className="px-2 py-1.5 text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+        {t('legalSection')}
+      </div>
+      {LEGAL_LINKS.map(({ type, path, labelKey, Icon }) => (
+        <Link
+          key={type}
+          to={path}
+          onClick={() => setMobileSidebarOpen(false)}
+          className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium transition-all ${
+            activeLegal === type
+              ? 'bg-neutral-200/80 font-semibold text-neutral-950 shadow-xs dark:bg-white/10 dark:text-white'
+              : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-900 dark:hover:text-neutral-200'
+          }`}
+        >
+          <Icon size={15} className="shrink-0 opacity-70" />
+          <span className="truncate">{t(labelKey)}</span>
+        </Link>
+      ))}
+    </div>
+  )
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-[#0a0a0c] text-neutral-900 dark:text-neutral-100">
@@ -237,6 +352,7 @@ export function GuidePage() {
               })}
             </nav>
           )}
+          {legalNav}
         </aside>
 
         {/* Mobile Sidebar Drawer */}
@@ -293,6 +409,7 @@ export function GuidePage() {
                     </div>
                   </div>
                 ))}
+                {legalNav}
               </div>
             </div>
             <div className="flex-1" onClick={() => setMobileSidebarOpen(false)} />
@@ -301,7 +418,40 @@ export function GuidePage() {
 
         {/* Article Reader Area */}
         <main className="flex-1 min-w-0 px-4 sm:px-8 lg:px-12 py-8 max-w-4xl">
-          {isLoading ? (
+          {activeLegal ? (
+            legalQuery.isLoading ? (
+              <div className="space-y-6 animate-pulse">
+                <div className="h-10 bg-neutral-200 dark:bg-neutral-800 rounded-sm w-3/4" />
+                <div className="h-4 bg-neutral-200 dark:bg-neutral-800 rounded-sm w-full" />
+                <div className="h-4 bg-neutral-200 dark:bg-neutral-800 rounded-sm w-5/6" />
+              </div>
+            ) : !legalQuery.data ? (
+              <div className="py-16 text-center text-sm text-neutral-500">{t('legalLoadFailed')}</div>
+            ) : (
+              <article className="space-y-8" data-testid="guide-legal-document">
+                <div className="space-y-2 border-b border-neutral-200 dark:border-neutral-800 pb-6">
+                  <div className="flex items-center gap-2 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                    <Link to="/guide" className="hover:text-neutral-900 dark:hover:text-white">
+                      {t('title')}
+                    </Link>
+                    <span>/</span>
+                    <span>{t('legalSection')}</span>
+                  </div>
+                  <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-neutral-950 dark:text-white pt-2">
+                    {legalQuery.data.title}
+                  </h1>
+                  <div className="text-xs text-neutral-400 pt-2">
+                    {t('updatedAt')}: {new Date(legalQuery.data.updatedAt).toLocaleDateString()}
+                  </div>
+                </div>
+                <div className="prose prose-neutral dark:prose-invert max-w-none text-neutral-800 dark:text-neutral-200 text-sm sm:text-base leading-relaxed space-y-4">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                    {legalQuery.data.content}
+                  </ReactMarkdown>
+                </div>
+              </article>
+            )
+          ) : isLoading ? (
             <div className="space-y-6 animate-pulse">
               <div className="h-6 bg-neutral-200 dark:bg-neutral-800 rounded-sm w-1/4" />
               <div className="h-10 bg-neutral-200 dark:bg-neutral-800 rounded-sm w-3/4" />
@@ -370,81 +520,7 @@ export function GuidePage() {
               <div className="prose prose-neutral dark:prose-invert max-w-none text-neutral-800 dark:text-neutral-200 text-sm sm:text-base leading-relaxed space-y-4">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
-                  components={{
-                    h1: ({ children }) => (
-                      <h1 className="text-2xl sm:text-3xl font-bold mt-8 mb-4 border-b border-neutral-200 dark:border-neutral-800 pb-2">
-                        {children}
-                      </h1>
-                    ),
-                    h2: ({ children }) => (
-                      <h2 className="text-xl sm:text-2xl font-bold mt-6 mb-3 text-neutral-900 dark:text-white">
-                        {children}
-                      </h2>
-                    ),
-                    h3: ({ children }) => (
-                      <h3 className="text-lg font-semibold mt-4 mb-2 text-neutral-900 dark:text-white">
-                        {children}
-                      </h3>
-                    ),
-                    p: ({ children }) => <p className="mb-4 leading-7">{children}</p>,
-                    ul: ({ children }) => (
-                      <ul className="list-disc list-inside mb-4 space-y-1.5 pl-2">{children}</ul>
-                    ),
-                    ol: ({ children }) => (
-                      <ol className="list-decimal list-inside mb-4 space-y-1.5 pl-2">{children}</ol>
-                    ),
-                    li: ({ children }) => <li className="leading-7">{children}</li>,
-                    code: ({ children, className }) => {
-                      const isInline = !className
-                      return isInline ? (
-                        <code className="px-1.5 py-0.5 rounded-md bg-neutral-200/70 dark:bg-neutral-800 font-mono text-xs text-primary font-medium">
-                          {children}
-                        </code>
-                      ) : (
-                        <code className="block p-4 rounded-xl bg-neutral-900 text-neutral-100 dark:bg-neutral-950 font-mono text-xs overflow-x-auto border border-neutral-800 my-4">
-                          {children}
-                        </code>
-                      )
-                    },
-                    blockquote: ({ children }) => (
-                      <blockquote className="border-l-4 border-primary pl-4 py-1 italic my-4 text-neutral-600 dark:text-neutral-300 bg-neutral-100/50 dark:bg-neutral-900/50 rounded-r-lg">
-                        {children}
-                      </blockquote>
-                    ),
-                    img: ({ src, alt }) => (
-                      <img
-                        src={src}
-                        alt={alt ?? ''}
-                        loading="lazy"
-                        className="rounded-xl border border-neutral-200 dark:border-neutral-800 max-w-full my-6 shadow-md"
-                      />
-                    ),
-                    table: ({ children }) => (
-                      <div className="overflow-x-auto my-6 rounded-xl border border-neutral-200 dark:border-neutral-800">
-                        <table className="w-full text-left text-xs border-collapse">{children}</table>
-                      </div>
-                    ),
-                    th: ({ children }) => (
-                      <th className="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-3 font-semibold">
-                        {children}
-                      </th>
-                    ),
-                    td: ({ children }) => (
-                      <td className="border-b border-neutral-200/60 dark:border-neutral-800/60 p-3">
-                        {children}
-                      </td>
-                    ),
-                    a: ({ href, children }) => (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="text-primary hover:underline font-medium"
-                      >
-                        {children}
-                      </a>
-                    ),
-                  }}
+                  components={MARKDOWN_COMPONENTS}
                 >
                   {activeArticle.content}
                 </ReactMarkdown>

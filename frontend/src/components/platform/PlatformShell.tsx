@@ -11,6 +11,7 @@ import {
   IconUsers,
   IconArrowLeft,
   IconBook2,
+  IconScale,
   IconKey,
   IconCoins,
 } from '@tabler/icons-react'
@@ -31,6 +32,7 @@ const NAV = [
   { to: '/platform/pricing', end: false, icon: IconCoins, key: 'pricing' as const },
   { to: '/platform/audit', end: false, icon: IconClipboardList, key: 'audit' as const },
   { to: '/platform/guides', end: false, icon: IconBook2, key: 'guides' as const },
+  { to: '/platform/legal', end: false, icon: IconScale, key: 'legal' as const },
 ]
 
 /** Separate shell for Super Admin — no workspace switcher (09b P.0 / docs/34 §5.3).

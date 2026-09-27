@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { MobileNotificationPage } from './MobileNotificationPage'
+import i18n from '@/i18n'
 
 interface CustomMatchers<R = unknown> {
   toBeInTheDocument(): R
@@ -90,6 +91,10 @@ const renderPage = () =>
       <MobileNotificationPage />
     </MemoryRouter>,
   )
+
+beforeAll(async () => {
+  await i18n.changeLanguage('vi')
+})
 
 describe('MobileNotificationPage', () => {
   it('renders header and mark-all button', () => {

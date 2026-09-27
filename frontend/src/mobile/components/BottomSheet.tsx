@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 import { IconX } from '@tabler/icons-react'
 import clsx from 'clsx'
+import { useTranslation } from 'react-i18next'
 
 interface BottomSheetProps {
   isOpen: boolean
@@ -11,6 +12,7 @@ interface BottomSheetProps {
 }
 
 export function BottomSheet({ isOpen, onClose, title, children, className }: BottomSheetProps) {
+  const { t } = useTranslation('mobile')
   useEffect(() => {
     if (!isOpen) return
     const prevBody = document.body.style.overflow
@@ -45,7 +47,7 @@ export function BottomSheet({ isOpen, onClose, title, children, className }: Bot
       <button
         type="button"
         className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
-        aria-label="Close backdrop"
+        aria-label={t('mobile:sheet.closeBackdrop')}
         onClick={onClose}
       />
       <div
@@ -62,7 +64,7 @@ export function BottomSheet({ isOpen, onClose, title, children, className }: Bot
           <button
             type="button"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-500 active:bg-neutral-100 dark:active:bg-neutral-800"
-            aria-label="Close sheet"
+            aria-label={t('mobile:sheet.close')}
             onClick={onClose}
           >
             <IconX size={20} />

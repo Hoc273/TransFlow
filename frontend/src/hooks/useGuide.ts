@@ -11,6 +11,9 @@ import {
   getGuideArticleApi,
   getGuideArticlesApi,
   getGuideCategoriesApi,
+  getAdminLegalDocumentsApi,
+  getLegalDocumentApi,
+  updateLegalDocumentApi,
   moveGuideCategoryApi,
   previewGuideArticleApi,
   setGuideArticlePublishApi,
@@ -24,6 +27,8 @@ import type {
   GuideArticlesQuery,
   GuideCategoryRequest,
   GuideMoveRequest,
+  LegalDocumentRequest,
+  LegalDocumentType,
 } from '@/types/guide'
 
 // =============================================================================
@@ -209,5 +214,37 @@ export function usePreviewGuideArticle(id?: string, lang = 'vi', enabled = true)
     queryKey: ['admin', 'guide', 'preview', id, lang],
     queryFn: () => previewGuideArticleApi(id!, lang),
     enabled: enabled && Boolean(id),
+  })
+}
+
+// =============================================================================
+// Legal documents (Terms / Privacy)
+// =============================================================================
+
+export function useLegalDocument(type: LegalDocumentType, lang = 'vi', enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.legalDocument(type, lang),
+    queryFn: () => getLegalDocumentApi(type, lang),
+    enabled,
+    staleTime: 60_000,
+  })
+}
+
+export function useAdminLegalDocuments() {
+  return useQuery({
+    queryKey: queryKeys.adminLegalDocuments,
+    queryFn: getAdminLegalDocumentsApi,
+  })
+}
+
+export function useUpdateLegalDocument() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ type, body }: { type: LegalDocumentType; body: LegalDocumentRequest }) =>
+      updateLegalDocumentApi(type, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.adminLegalDocuments })
+      void qc.invalidateQueries({ queryKey: ['legal'] })
+    },
   })
 }

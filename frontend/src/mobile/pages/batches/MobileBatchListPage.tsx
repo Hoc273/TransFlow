@@ -7,6 +7,7 @@ import { MobileSearchFilter } from '../../components/MobileSearchFilter'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
 import { useBatches } from '@/hooks/useBatches'
 import type { BatchSummary } from '@/types/batch'
+import { useTranslation } from 'react-i18next'
 
 function getStatusBadgeStyle(status?: string) {
   switch (status?.toUpperCase()) {
@@ -25,6 +26,7 @@ function getStatusBadgeStyle(status?: string) {
 }
 
 export function MobileBatchListPage() {
+  const { t } = useTranslation('mobile')
   const { workspaceId = '' } = useParams<{ workspaceId: string }>()
   const result = useBatches(workspaceId) as any
   const batches: BatchSummary[] = result.data ?? result.batches ?? []
@@ -49,11 +51,13 @@ export function MobileBatchListPage() {
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
           <h1 className="flex min-w-0 items-baseline gap-1.5 text-xl font-bold text-neutral-900 dark:text-white">
-            <span className="truncate">Lô xử lý</span>
-            <span className="shrink-0 text-xs font-normal text-neutral-400 dark:text-neutral-500">(Batches)</span>
+            <span className="truncate">{t('mobile:batches.title')}</span>
+            {t('mobile:batches.titleHint') && (
+              <span className="shrink-0 text-xs font-normal text-neutral-400 dark:text-neutral-500">{t('mobile:batches.titleHint')}</span>
+            )}
           </h1>
           <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
-            {batches.length > 0 ? `${batches.length} đợt xử lý hàng loạt` : 'Theo dõi tiến độ dịch theo lô'}
+            {batches.length > 0 ? t('mobile:batches.count', { count: batches.length }) : t('mobile:batches.subtitle')}
           </p>
         </div>
       </div>
@@ -62,14 +66,14 @@ export function MobileBatchListPage() {
       <MobileSearchFilter
         value={search}
         onChange={setSearch}
-        placeholder="Tìm kiếm lô xử lý..."
+        placeholder={t('mobile:batches.searchPlaceholder')}
       />
 
       {/* Loading State */}
       {isLoading ? (
         <div className="space-y-3 py-2">
           <div className="py-6 text-center text-sm text-neutral-400">
-            Đang tải lô xử lý...
+            {t('mobile:batches.loading')}
           </div>
           {[1, 2, 3].map((i) => (
             <MobileCard key={i} className="animate-pulse space-y-3 p-4">
@@ -87,10 +91,10 @@ export function MobileBatchListPage() {
         <MobileCard className="flex flex-col items-center justify-center p-6 text-center">
           <IconAlertCircle size={36} className="text-red-500 mb-2" />
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
-            Không thể tải danh sách lô xử lý
+            {t('mobile:batches.loadFailed')}
           </h3>
           <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-            {error?.message || 'Vui lòng kiểm tra lại kết nối mạng'}
+            {error?.message || t('mobile:common.networkError')}
           </p>
           <button
             type="button"
@@ -98,29 +102,29 @@ export function MobileBatchListPage() {
             className="mt-3 flex items-center gap-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200"
           >
             <IconRefresh size={14} />
-            <span>Thử lại</span>
+            <span>{t('mobile:common.retry')}</span>
           </button>
         </MobileCard>
       ) : batches.length === 0 ? (
         /* Empty Workspace Batches */
         <MobileEmptyState
           icon={<IconLayersLinked size={36} />}
-          title="Chưa có lô xử lý nào"
-          description="Các tệp được xử lý đồng thời sẽ hiển thị tại đây."
+          title={t('mobile:batches.emptyTitle')}
+          description={t('mobile:batches.emptyDesc')}
         />
       ) : filtered.length === 0 ? (
         /* Empty Search Results */
         <MobileEmptyState
           icon={<IconLayersLinked size={36} />}
-          title="Không tìm thấy lô xử lý"
-          description="Không có lô xử lý nào khớp với từ khóa tìm kiếm."
+          title={t('mobile:batches.noMatchTitle')}
+          description={t('mobile:batches.noMatchDesc')}
           action={
             <button
               type="button"
               onClick={() => setSearch('')}
               className="rounded-xl bg-neutral-100 dark:bg-neutral-800 px-4 py-2 text-xs font-semibold text-neutral-700 dark:text-neutral-300"
             >
-              Xóa tìm kiếm
+              {t('mobile:common.clearSearch')}
             </button>
           }
         />
@@ -161,9 +165,9 @@ export function MobileBatchListPage() {
 
                 <div className="flex min-w-0 flex-wrap justify-between items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400">
                   <span>
-                    Số tệp: {completedDocs}/{totalDocs}
+                    {t('mobile:batches.files', { completed: completedDocs, total: totalDocs })}
                     {failedDocs > 0 && (
-                      <span className="ml-1 text-red-500 font-medium">({failedDocs} lỗi)</span>
+                      <span className="ml-1 text-red-500 font-medium">{t('mobile:batches.failedCount', { count: failedDocs })}</span>
                     )}
                   </span>
                   <span className="font-semibold text-neutral-700 dark:text-neutral-300">

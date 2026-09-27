@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { MobileBottomNav } from './MobileBottomNav'
+import i18n from '@/i18n'
 
 interface CustomMatchers<R = unknown> {
   toBeInTheDocument(): R
@@ -24,6 +25,10 @@ expect.extend({
 })
 
 afterEach(() => cleanup())
+
+beforeAll(async () => {
+  await i18n.changeLanguage('en')
+})
 
 describe('MobileBottomNav', () => {
   it('renders primary navigation tabs', () => {

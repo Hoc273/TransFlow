@@ -28,7 +28,15 @@
     "navigateHint": "Navigate",
     "openHint": "Open",
     "closeHint": "Close",
-    "shortcutHint": "ESC to close"
+    "shortcutHint": "ESC to close",
+    "pageDesc": {
+      "dashboard": "Workspace activity overview and statistics",
+      "projects": "Manage localization projects",
+      "glossaries": "Standardize terminology by domain",
+      "media": "Video translation, AI voice dubbing & subtitles",
+      "usage": "Token usage, cost and quota statistics",
+      "members": "Manage workspace members and permissions"
+    }
   },
   "profile": "Profile",
   "guide": "Guide",
@@ -120,5 +128,16 @@
     "activityPhase2": "Phase 2 — awaiting BE",
     "qaInEditor": "QA is available in the Editor — open a translation job",
     "mediaDocs": "Media Studio M8 shipped → docs/19"
+  },
+  "characters": "characters",
+  "saving": "Saving…",
+  "errorBoundary": {
+    "globalTitle": "Something went wrong",
+    "globalDesc": "An unexpected error occurred. Reload the page to continue.",
+    "reload": "Reload page",
+    "routeTitle": "This screen failed to load",
+    "routeDesc": "The rest of the app is still available.",
+    "tryAgain": "Try again",
+    "dashboard": "Dashboard"
   }
 }

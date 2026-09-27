@@ -46,6 +46,8 @@ vi.mock('@/components/media-studio/MediaSubtitleEditor', () => ({
 const { renderToStaticMarkup } = await import('react-dom/server')
 const {
   AudioPresentationConfig,
+  DEFAULT_AUDIO_PRESENTATION,
+  MUTED_GAIN_DB,
   RenderPreparationPanel,
   buildPresentationPayload,
   typographyMaskBlockClass,
@@ -449,6 +451,29 @@ describe('AudioPresentationConfig — PRESET-VIZ FE follow-up (docs/97 §19.16)'
     )
     expect(html).toContain('<details')
     expect(html).toContain('<summary>')
+  })
+
+  it('offers a mute switch for the original track and shows it checked at -100 dB', () => {
+    const live = renderToStaticMarkup(
+      <AudioPresentationConfig audio={audio} locked={false} onChange={() => {}} />,
+    )
+    expect(live).toContain('data-testid="audio-mute-original"')
+    expect(live).toContain('media:renderPrep.muteOriginal')
+
+    const muted = renderToStaticMarkup(
+      <AudioPresentationConfig
+        audio={{ ...audio, originalGainDb: MUTED_GAIN_DB }}
+        locked={false}
+        onChange={() => {}}
+      />,
+    )
+    const toggle = /<input[^>]*data-testid="audio-mute-original"[^>]*>/.exec(muted)![0]
+    expect(toggle).toContain('checked')
+  })
+
+  it('defaults a dub mix to original -10 dB and voice +10 dB', () => {
+    expect(DEFAULT_AUDIO_PRESENTATION.originalGainDb).toBe(-10)
+    expect(DEFAULT_AUDIO_PRESENTATION.ttsGainDb).toBe(10)
   })
 
   it('renders always-expanded without details/summary when collapsible=false', () => {

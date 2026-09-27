@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { MobileAccountPage } from './MobileAccountPage'
+import i18n from '@/i18n'
 
 interface CustomMatchers<R = unknown> {
   toBeInTheDocument(): R
@@ -57,6 +58,10 @@ vi.mock('@/store/uiStore', () => ({
       setLanguage: vi.fn(),
     }),
 }))
+
+beforeAll(async () => {
+  await i18n.changeLanguage('vi')
+})
 
 describe('MobileAccountPage', () => {
   it('renders user account sections', () => {

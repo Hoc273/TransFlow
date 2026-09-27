@@ -165,7 +165,8 @@
         "translatedLockedPrefix": "Chúng tôi đã tích hợp trực tiếp khả năng ",
         "translatedLockedHighlight": "xử lý hàng loạt đồng thời cao",
         "translatedLockedSuffix": " vào quy trình đám mây của mình.",
-        "translatedRawHighlight": "xử lý mẻ đồng thời cao"
+        "translatedRawHighlight": "xử lý mẻ đồng thời cao",
+        "srcTermLabel": "EN (Source Term)"
       },
       "dub": {
         "title": "AI Voice Dubbing (Neural TTS)",
@@ -221,7 +222,9 @@
         "downloadRecapBtn": "Download Recap Video (.MP4)",
         "downloadReportBtn": "Download Report (.PDF / .MD)"
       }
-    }
+    },
+    "collapseDetails": "Collapse",
+    "expandDetails": "View algorithm details ▾"
   },
   "productivity": {
     "titlePrefix": "Supercharge Productivity & ",
@@ -320,51 +323,51 @@
     "title": "Pay-as-you-go Credit Pricing — Only Pay for What You Use",
     "starter": {
       "name": "Starter",
-      "desc": "Starter pack for creators exploring AI video & short-form content",
+      "desc": "Starter pack for creators to try on real videos",
       "price": "50,000 ₫",
-      "credits": "/ 50,000 Credits",
+      "credits": "/ 500 Credits (100 ₫/Credit)",
       "cta": "Get Starter",
       "featuresTitle": "What's included:",
       "features": [
-        "~15–20 mins completed video (STT + Translate + TTS)",
+        "~75 mins of translated subtitles, or ~37 mins of dubbing that keeps the background music",
         "Ideal for short-form clips (Shorts, Reels, TikTok)",
-        "AI Summarizer: 1 Cut-plan proposal & 5 Refine rounds",
-        "Export hardcoded and standalone soft subtitles (.srt, .vtt)"
+        "AI video summaries with up to 5 refine rounds",
+        "Export hard-subbed video and standalone subtitles (.srt, .vtt)"
       ]
     },
     "freelancer": {
-      "bonusBadge": "Bonus +10% Credits",
+      "bonusBadge": "Save 5%",
       "badge": "Popular",
-      "name": "Freelancer",
-      "desc": "Most popular tier for independent subtitlers & regular video publishers",
-      "price": "200,000 ₫",
-      "credits": "220,000 Credits",
-      "bonus": "+20,000 Bonus Credits",
-      "cta": "Purchase 200,000 VND",
+      "name": "Creator",
+      "desc": "For creators and editors publishing regularly",
+      "price": "190,000 ₫",
+      "credits": "2,000 Credits",
+      "bonus": "95 ₫/Credit",
+      "cta": "Purchase 190,000 VND",
       "featuresTitle": "Everything in Starter, plus:",
       "features": [
-        "~80–100 mins completed video (10–15 clips)",
-        "High-throughput Batch processing (up to 20 videos)",
-        "Audio separation preserving original background music",
-        "Project Glossaries & Translation Memory (TM) sync",
-        "3-way automated QA shield for timeline collisions & CPS"
+        "~300 mins of translated subtitles, or ~150 mins of dubbing that keeps the background music",
+        "Batch processing up to 20 videos per batch",
+        "Voice/music separation for dubbing (Studio mode)",
+        "Glossaries keep brand names consistent",
+        "Subtitle quality checks before publishing"
       ]
     },
     "proStudio": {
-      "bonusBadge": "Bonus +20% Credits",
-      "name": "Pro Studio",
-      "desc": "Maximum savings for professional creators & large-scale production",
-      "price": "500,000 ₫",
-      "credits": "600,000 Credits",
-      "bonus": "+100,000 Bonus Credits",
-      "cta": "Purchase 500,000 VND",
+      "bonusBadge": "Save 10%",
+      "name": "Business",
+      "desc": "For studios, media teams and large projects",
+      "price": "900,000 ₫",
+      "credits": "10,000 Credits",
+      "bonus": "90 ₫/Credit",
+      "cta": "Purchase 900,000 VND",
       "featuresTitle": "Everything in Freelancer, plus:",
       "features": [
-        "~250–300 mins completed video or long-form projects",
-        "Max file limit: 500MB & 30 mins per file",
-        "AI Multimodal Vision context comprehension",
-        "Priority worker queues for rendering & audio mixing",
-        "Unlimited custom subtitle presets"
+        "~1,500 mins of translated subtitles, or ~750 mins of dubbing that keeps the background music",
+        "Videos up to 500MB and 30 mins per file",
+        "AI visual context analysis for summaries",
+        "Lead pays for the whole Workspace, or each member pays their own",
+        "Track Credit spend per project and member"
       ]
     }
   },
@@ -397,34 +400,6 @@
     "login": "Sign In",
     "privacy": "Privacy & Security",
     "terms": "Terms of Service",
-    "copyright": "© 2026 TransFlow Media. All rights reserved.",
-    "privacyModal": {
-      "title": "Privacy Policy & Data Protection",
-      "desc": "Our commitment to data privacy and security on TransFlow Media Platform",
-      "badge": "Enterprise-Grade Security Architecture",
-      "badgeDesc": "TransFlow is designed with data minimization and multi-layered protection from infrastructure to application.",
-      "p1Title": "1. Files Deleted After 3 Days",
-      "p1Desc": "Source videos, extracted audio, voice-overs and rendered videos are kept for at most 3 days after upload, then deleted automatically. Download your results before then; subtitles and translations stay in your workspace.",
-      "p2Title": "2. No AI Training on Your Data",
-      "p2Desc": "TransFlow never uses your content to train AI models. When you use platform AI sources, content is sent to third-party AI providers (possibly on free tiers) under their data policies; use your own API key (BYOK) for full control.",
-      "p3Title": "3. Secure API Key Management (BYOK)",
-      "p3Desc": "Personal API keys (OpenAI, Gemini, Claude, ElevenLabs) are encrypted with AES-256 and never exposed on the Platform Console.",
-      "p4Title": "4. Role-Based Access Control (RBAC)",
-      "p4Desc": "Workspace isolation and 3-tier role permissions (Lead, Member, Client) ensure only authorized team members can access project data.",
-      "p5Title": "5. End-to-End Encryption",
-      "p5Desc": "100% of network traffic between clients, backend services, and processing workers is encrypted using TLS 1.3."
-    },
-    "termsModal": {
-      "title": "Terms of Service",
-      "desc": "Terms and conditions for using the TransFlow Media Platform",
-      "t1Title": "1. Intellectual Property Ownership",
-      "t1Desc": "You retain 100% ownership of your original video, translations, subtitles, and exported media productions.",
-      "t2Title": "2. Transparent Credit Consumption",
-      "t2Desc": "Credits are deducted based on actual processing duration and pipeline stages. Stage rerun allows saving costs by skipping completed work.",
-      "t3Title": "3. Content Compliance",
-      "t3Desc": "Users are responsible for ensuring uploaded content complies with copyright laws and applicable regulations.",
-      "t4Title": "4. Human-in-the-Loop Quality Control",
-      "t4Desc": "The system provides automated QA checks for timeline collisions and reading speed (CPS). Users retain final publishing approval."
-    }
+    "copyright": "© 2026 TransFlow Media. All rights reserved."
   }
 }

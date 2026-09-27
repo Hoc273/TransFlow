@@ -21,8 +21,9 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
     VITE_ENABLE_NARRATIVE_REVIEW_AI=$VITE_ENABLE_NARRATIVE_REVIEW_AI
 RUN npm run build
 
-# Stage 2: serve dist bằng nginx, proxy /api/* sang backend-main.
-FROM nginx:alpine
+# Stage 2: serve dist bằng nginx (non-root, uid 101, nghe 8080), proxy /api/* sang backend-main.
+FROM nginxinc/nginx-unprivileged:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+EXPOSE 8080
+USER nginx

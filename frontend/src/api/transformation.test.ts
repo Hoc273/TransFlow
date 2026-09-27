@@ -80,6 +80,34 @@ describe('createTransformationJobApi', () => {
     expect(body.requestedMode).toBeUndefined()
     expect(body).not.toHaveProperty('effectiveMode')
   })
+
+  it('leaves the audio mode of a voiced job to the backend (FAST/STUDIO -> DUB_MIX)', async () => {
+    await createTransformationJobApi('ws-1', {
+      documentId: 'doc-1',
+      recipeId: 'localization.full',
+      targetLang: 'vi',
+      requestedMode: 'FAST',
+      ttsProviderId: 'p-1',
+      ttsVoiceId: 'v-1',
+    })
+
+    const [, options] = apiRequest.mock.calls[0]
+    const body = options.body as Record<string, unknown>
+    expect(body.outputAudioMode).toBeUndefined()
+    expect(body.requestedMode).toBe('FAST')
+  })
+
+  it('keeps the original audio as ORIGINAL_ONLY (subtitles only)', async () => {
+    await createTransformationJobApi('ws-1', {
+      documentId: 'doc-1',
+      recipeId: 'localization.full',
+      targetLang: 'vi',
+      keepOriginalAudio: true,
+    })
+
+    const [, options] = apiRequest.mock.calls[0]
+    expect((options.body as Record<string, unknown>).outputAudioMode).toBe('ORIGINAL_ONLY')
+  })
 })
 
 describe('rerunTransformationRenderApi', () => {

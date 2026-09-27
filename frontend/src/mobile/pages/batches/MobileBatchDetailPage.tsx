@@ -13,6 +13,7 @@ import { MobileCard } from '../../components/MobileCard'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
 import { useBatchDetail, useRetryBatchDocument } from '@/hooks/useBatches'
 import type { BatchDetail, BatchDocument } from '@/types/batch'
+import { useTranslation } from 'react-i18next'
 
 function getStatusBadgeStyle(status?: string) {
   switch (status?.toUpperCase()) {
@@ -31,6 +32,7 @@ function getStatusBadgeStyle(status?: string) {
 }
 
 export function MobileBatchDetailPage() {
+  const { t } = useTranslation('mobile')
   const { workspaceId = '', batchId = '' } = useParams<{ workspaceId: string; batchId: string }>()
 
   const detailResult = useBatchDetail(workspaceId, batchId) as any
@@ -74,14 +76,14 @@ export function MobileBatchDetailPage() {
       <div className="flex min-w-0 items-center gap-2">
         <Link
           to={backUrl}
-          aria-label="Quay lại danh sách lô"
+          aria-label={t('mobile:batchDetail.back')}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-500 active:bg-neutral-100 dark:active:bg-neutral-800 transition-colors"
         >
           <IconArrowLeft size={20} />
         </Link>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-lg font-bold text-neutral-900 dark:text-white" title={batch?.name || undefined}>
-            {batch?.name || 'Chi tiết lô'}
+            {batch?.name || t('mobile:batchDetail.fallbackTitle')}
           </h1>
           <span className="block truncate text-[11px] font-mono text-neutral-400" title={batchId}>
             ID: {batchId.length > 12 ? `${batchId.slice(0, 12)}…` : batchId}
@@ -93,7 +95,7 @@ export function MobileBatchDetailPage() {
       {isLoading ? (
         <div className="space-y-3 py-2">
           <div className="py-6 text-center text-sm text-neutral-400">
-            Đang tải chi tiết lô...
+            {t('mobile:batchDetail.loading')}
           </div>
           <MobileCard className="animate-pulse space-y-3 p-4">
             <div className="h-4 w-1/3 rounded bg-neutral-200 dark:bg-neutral-800" />
@@ -112,10 +114,10 @@ export function MobileBatchDetailPage() {
         <MobileCard className="flex flex-col items-center justify-center p-6 text-center">
           <IconAlertCircle size={36} className="text-red-500 mb-2" />
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
-            Không thể tải chi tiết lô
+            {t('mobile:batchDetail.loadFailed')}
           </h3>
           <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-            {error?.message || 'Vui lòng kiểm tra lại kết nối mạng'}
+            {error?.message || t('mobile:common.networkError')}
           </p>
           <button
             type="button"
@@ -123,7 +125,7 @@ export function MobileBatchDetailPage() {
             className="mt-3 flex items-center gap-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200"
           >
             <IconRefresh size={14} />
-            <span>Thử lại</span>
+            <span>{t('mobile:common.retry')}</span>
           </button>
         </MobileCard>
       ) : (
@@ -132,7 +134,7 @@ export function MobileBatchDetailPage() {
           <MobileCard className="space-y-3 bg-gradient-to-br from-white to-primary/5 dark:from-neutral-900 dark:to-primary/10 border-primary/20 p-4">
             <div className="flex justify-between items-center text-xs">
               <span className="font-medium text-neutral-600 dark:text-neutral-400">
-                Trạng thái
+                {t('mobile:batchDetail.status')}
               </span>
               <span
                 className={clsx(
@@ -147,7 +149,7 @@ export function MobileBatchDetailPage() {
             <div className="space-y-1.5 pt-1">
               <div className="flex justify-between items-center text-xs">
                 <span className="font-medium text-neutral-600 dark:text-neutral-400">
-                  Tiến độ tổng thể
+                  {t('mobile:batchDetail.overallProgress')}
                 </span>
                 <span className="font-bold text-neutral-900 dark:text-white">
                   {progress}%
@@ -163,11 +165,11 @@ export function MobileBatchDetailPage() {
 
             <div className="flex justify-between items-center text-[11px] text-neutral-500 dark:text-neutral-400 pt-1 border-t border-neutral-100 dark:border-neutral-800">
               <span>
-                Tài liệu: {completedDocs}/{totalDocs} hoàn thành
+                {t('mobile:batchDetail.filesCompleted', { completed: completedDocs, total: totalDocs })}
               </span>
               {failedDocs > 0 && (
                 <span className="text-red-500 font-medium">
-                  {failedDocs} tài liệu lỗi
+                  {t('mobile:batchDetail.filesFailed', { count: failedDocs })}
                 </span>
               )}
             </div>
@@ -178,10 +180,9 @@ export function MobileBatchDetailPage() {
             <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200">
               <IconAlertTriangle size={18} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
               <div>
-                <span className="font-bold block">Thành công một phần</span>
+                <span className="font-bold block">{t('mobile:batchDetail.partialTitle')}</span>
                 <span className="text-[11px] text-amber-800 dark:text-amber-300">
-                  {completedDocs}/{totalDocs} tài liệu hoàn thành, {failedDocs} tài liệu lỗi.
-                  Bạn có thể bấm Thử lại cho từng tệp bên dưới.
+                  {t('mobile:batchDetail.partialDesc', { completed: completedDocs, total: totalDocs, failed: failedDocs })}
                 </span>
               </div>
             </div>
@@ -191,18 +192,18 @@ export function MobileBatchDetailPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-                Danh sách tệp trong lô
+                {t('mobile:batchDetail.filesTitle')}
               </h2>
               <span className="text-xs text-neutral-400">
-                {documents.length} tệp
+                {t('mobile:batchDetail.fileCount', { count: documents.length })}
               </span>
             </div>
 
             {documents.length === 0 ? (
               <MobileEmptyState
                 icon={<IconFileText size={32} />}
-                title="Chưa có tài liệu nào"
-                description="Lô xử lý này hiện chưa chứa tài liệu."
+                title={t('mobile:batchDetail.emptyTitle')}
+                description={t('mobile:batchDetail.emptyDesc')}
               />
             ) : (
               <div className="space-y-2">
@@ -276,7 +277,7 @@ export function MobileBatchDetailPage() {
                               size={14}
                               className={clsx(isRetrying && 'animate-spin')}
                             />
-                            <span>{isRetrying ? 'Đang thử…' : 'Thử lại'}</span>
+                            <span>{isRetrying ? t('mobile:batchDetail.retrying') : t('mobile:common.retry')}</span>
                           </button>
                         ) : String(doc.status).toUpperCase() === 'COMPLETED' ? (
                           <div className="p-1 text-emerald-500">

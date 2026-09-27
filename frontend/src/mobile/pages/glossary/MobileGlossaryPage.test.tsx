@@ -2,13 +2,16 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, beforeAll } from 'vitest'
 import { MobileGlossaryPage } from './MobileGlossaryPage'
+import i18n from '@/i18n'
 
 const refetchProjects = vi.fn()
 const refetchTerms = vi.fn()
 const addTermMutate = vi.fn()
 const deleteTermMutate = vi.fn()
+const updateTermMutate = vi.fn()
+const importCsvMutate = vi.fn()
 let canEdit = true
 
 const projects = [
@@ -43,11 +46,17 @@ vi.mock('@/hooks/useGlossary', () => ({
   })),
   useAddTerm: vi.fn(() => ({ mutate: addTermMutate, isPending: false })),
   useDeleteTerm: vi.fn(() => ({ mutate: deleteTermMutate, isPending: false })),
+  useUpdateTerm: vi.fn(() => ({ mutate: updateTermMutate, isPending: false })),
+  useImportGlossaryCsv: vi.fn(() => ({ mutate: importCsvMutate, isPending: false })),
 }))
 
 vi.mock('@/hooks/usePermission', () => ({
   usePermission: vi.fn(() => canEdit),
 }))
+
+beforeAll(async () => {
+  await i18n.changeLanguage('vi')
+})
 
 describe('MobileGlossaryPage', () => {
   const renderPage = () => render(
@@ -115,5 +124,39 @@ describe('MobileGlossaryPage', () => {
 
     expect(screen.queryByRole('button', { name: 'Thêm từ' })).toBeNull()
     expect(screen.queryByRole('button', { name: /Xóa thuật ngữ/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Sửa thuật ngữ/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Import CSV' })).toBeNull()
+  })
+
+  it('edits an existing term via useUpdateTerm', () => {
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa thuật ngữ Artificial Intelligence' }))
+    expect((screen.getByLabelText('Thuật ngữ nguồn *') as HTMLInputElement).value).toBe(
+      'Artificial Intelligence',
+    )
+    fireEvent.change(screen.getByLabelText('Thuật ngữ đích *'), { target: { value: 'AI' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thuật ngữ' }))
+
+    expect(updateTermMutate).toHaveBeenCalledWith(
+      {
+        termId: 't1',
+        body: { sourceTerm: 'Artificial Intelligence', targetTerm: 'AI', targetLang: 'vi' },
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+    expect(addTermMutate).not.toHaveBeenCalled()
+  })
+
+  it('imports a CSV file via useImportGlossaryCsv', () => {
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import CSV' }))
+    const file = new File(['source_term,target_term,target_lang\nAI,TTNT,vi'], 'terms.csv', {
+      type: 'text/csv',
+    })
+    fireEvent.change(screen.getByTestId('glossary-import-input'), { target: { files: [file] } })
+
+    expect(importCsvMutate).toHaveBeenCalledWith(file, expect.any(Object))
   })
 })

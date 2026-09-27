@@ -42,7 +42,8 @@ public class SecurityConfig {
             "/api/auth/logout",
             "/actuator/health",
             "/actuator/health/**",
-            "/api/guides/**"
+            "/api/guides/**",
+            "/api/legal/**"
     };
 
     private static final String[] HMAC_AUTHENTICATED_PATHS = {

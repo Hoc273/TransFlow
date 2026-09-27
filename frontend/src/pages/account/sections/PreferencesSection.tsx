@@ -63,7 +63,7 @@ export function PreferencesSection() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
           <OptionCard
             selected={language === 'en'}
             badge="EN"
@@ -77,6 +77,13 @@ export function PreferencesSection() {
             title="Tiếng Việt"
             subtitle="Giao diện tiếng Việt chuẩn hóa"
             onClick={() => changeLang('vi')}
+          />
+          <OptionCard
+            selected={language === 'ko'}
+            badge="KO"
+            title="한국어"
+            subtitle="한국어 인터페이스"
+            onClick={() => changeLang('ko')}
           />
         </div>
       </div>

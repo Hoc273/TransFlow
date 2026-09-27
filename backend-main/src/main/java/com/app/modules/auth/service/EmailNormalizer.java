@@ -12,8 +12,8 @@ import java.util.Set;
  *       so {@code U.S.E.R+1@googlemail.com} → {@code user@gmail.com}</li>
  * </ul>
  * The stored {@code users.email} keeps what the user typed (mail is delivered there);
- * only uniqueness is checked on this canonical form. Keep in sync with the backfill in
- * {@code V17__users_email_canonical.sql}.
+ * only uniqueness is checked on this canonical form ({@code users.email_canonical}, non-unique
+ * index in {@code V2__init_indexes.sql}). Any SQL backfill of that column must apply the same rules.
  */
 public final class EmailNormalizer {
 

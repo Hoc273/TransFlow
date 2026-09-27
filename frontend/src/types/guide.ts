@@ -68,3 +68,28 @@ export interface GuideArticlesQuery {
   lang?: string
   status?: GuideArticleStatus
 }
+
+// =============================================================================
+// Legal documents (Terms of Service / Privacy Policy)
+// =============================================================================
+
+export type LegalDocumentType = 'TERMS' | 'PRIVACY'
+
+/** `title`/`content` are resolved for the requested language; the vi/en fields are admin-only. */
+export interface LegalDocument {
+  type: LegalDocumentType
+  title: string
+  content: string
+  titleVi: string | null
+  titleEn: string | null
+  contentVi: string | null
+  contentEn: string | null
+  updatedAt: string
+}
+
+export interface LegalDocumentRequest {
+  titleVi: string
+  titleEn: string
+  contentVi: string
+  contentEn: string
+}
