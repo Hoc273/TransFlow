@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \n    && useradd --create-home --uid 10001 --user-group app
 
 WORKDIR /app
 
@@ -15,6 +15,9 @@ RUN python -m pip install --no-cache-dir -r requirements.txt
 # for the real Demucs model.
 
 COPY app ./app
+
+# Non-root: chỉ ghi vào tempfile (/tmp) và MinIO.
+USER app
 
 EXPOSE 8000
 

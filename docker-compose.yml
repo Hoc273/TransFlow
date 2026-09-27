@@ -260,7 +260,7 @@ services:
   #     backend-main:
   #       condition: service_healthy
   #   ports:
-  #     - "${FRONTEND_PORT:-5173}:80"
+  #     - "${FRONTEND_PORT:-5173}:8080"
 
   # One-shot job: create media bucket in MinIO
   minio-init:
