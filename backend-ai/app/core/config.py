@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Keep this within the lowest verified supported narrative-model limit
     # (DashScope qwen-max/qwen-plus: 8192 output tokens).
     narrative_summarize_max_tokens: int = 8192
+    # Extra script-first summary calls when the model output violates the
+    # script contract (excerpt drift, duration window, malformed JSON).
+    script_output_repair_attempts: int = 2
     # Translate outputs are short (one segment ≈ one sentence), but
     # reasoning-capable models still spend tokens on chain-of-thought
     # before emitting the JSON payload. Match the summarize budget so
@@ -46,10 +49,12 @@ class Settings(BaseSettings):
     max_retries: int = 3
     backoff_base_ms: int = 250
 
-    # Source separation (CT7.1). Runtime is local Demucs; no fallback engine.
+    # Source separation (CT7.1). GPU Demucs is preferred; CPU fallback keeps
+    # local/CI pipelines executable when CUDA and model weights are absent.
     separation_engine_id: str = "local_demucs"
     separation_model_id: str = "htdemucs"
     separation_demucs_executable: str = "python"
+    separation_cpu_fallback: bool = True
     separation_max_input_bytes: int = 500 * 1024 * 1024
     separation_max_input_duration_ms: int = 30 * 60 * 1000
     separation_max_output_size_multiplier: int = 3
@@ -59,16 +64,11 @@ class Settings(BaseSettings):
     media_storage_access_key: str = ""
     media_storage_secret_key: str = ""
     media_storage_bucket: str = "transflow-media"
-    media_storage_secure: bool = False
 
-    # ── Capability Execution Platform — A1.2 Piper (Q-M-TTS-03/20, ADR-CEP §93) ──
-    # Local zero-key TTS engine. Runs in-process (Inference Gateway), never more
-    # than `piper_semaphore` concurrent syntheses (invariant 4, `93` §8).
-    piper_semaphore: int = 2
-    # Directory containing baked Piper voice models ({model_name}.onnx +
-    # {model_name}.onnx.json). Docker image bakes voices at build time
-    # (backend-ai/piper/download_voices.py); runtime never downloads.
-    piper_voices_dir: str = "piper/voices"
+    # Shared secret backend-main sends as X-Internal-Token (app.core.internal_auth).
+    # Empty = check disabled (local dev only).
+    internal_service_token: str = ""
+    media_storage_secure: bool = False
 
     # ── Capability Execution Platform — A2.1 Generated Asset Cache (Q-M-TTS-09/10) ──
     # Content-addressable cache of synthesized TTS assets in MinIO under

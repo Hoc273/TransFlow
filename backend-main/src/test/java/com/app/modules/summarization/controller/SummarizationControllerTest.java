@@ -1,5 +1,7 @@
 package com.app.modules.summarization.controller;
 
+import com.app.testsupport.TestRegistration;
+
 import com.app.common.exception.ErrorCode;
 import com.app.modules.auth.dto.RegisterRequest;
 import com.app.modules.auth.repository.UserRepository;
@@ -56,6 +58,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SummarizationControllerTest {
 
     @Autowired private MockMvc mockMvc;
+
+    @Autowired
+    private com.app.modules.auth.service.RegisterOtpStore registerOtpStore;
     @Autowired private ObjectMapper objectMapper;
 
     @Autowired private UserRepository userRepository;
@@ -115,7 +120,7 @@ class SummarizationControllerTest {
     }
 
     private Lead registerLeadWithWorkspace(String email) throws Exception {
-        RegisterRequest req = new RegisterRequest(email, "Password123!", "Lead " + email);
+        RegisterRequest req = TestRegistration.withOtp(registerOtpStore, new RegisterRequest(email, "Password123!", "Lead " + email));
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
@@ -219,6 +224,8 @@ class SummarizationControllerTest {
         reg.put("email", "client-custom@transflow.com");
         reg.put("password", "Password123!");
         reg.put("fullName", "Client");
+        registerOtpStore.saveOtp("client-custom@transflow.com", TestRegistration.TEST_OTP);
+        reg.put("otp", TestRegistration.TEST_OTP);
         MvcResult clientReg = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reg)))

@@ -10,6 +10,16 @@
 
 ---
 
+## Ghi chú cập nhật — 2026-09-23 (bổ sung trên nền 1.4b)
+
+Không đổi phạm vi hay RBAC của 1.4b; chỉ ghi nhận các năng lực đã triển khai:
+
+- **Dự án gần đây & ghim dự án** trên thanh điều hướng (§5.1).
+- **Quản trị nền tảng** (§5.8): thêm theo dõi hoạt động trực tiếp (số người dùng đang online), điều chỉnh
+  Credit của người dùng, và quản trị nội dung trang **Hướng dẫn** công khai.
+
+---
+
 ## Ghi chú cập nhật — Bản chỉnh lý 1.4b: thu gọn nền tảng dịch thuật, 2026-09-12
 
 Bản 1.4b **giữ nguyên cấu trúc và phần lớn nghiệp vụ của SRS 1.4/1.4a**, chỉ chốt thêm phạm vi cho bản
@@ -279,10 +289,11 @@ quyền xem Project/job**.
   theo cấp hệ thống / không gian làm việc / dự án.
 - Thanh toán theo Credit: cấp Credit miễn phí ban đầu (không refill), mua gói Credit bổ sung, cấu hình API
   key cá nhân trong Cài đặt cá nhân, và 2 chế độ tính chi phí do Lead cấu hình cho Workspace.
+- Quản trị nền tảng dành cho tài khoản nội bộ có cờ `is_platform_admin`: xem KPI toàn hệ thống, trạng thái
+  dịch vụ, danh bạ người dùng, danh sách Workspace và nhật ký kiểm toán qua khu vực tách biệt với Workspace.
 
 ### 4.2 Định hướng mở rộng trong tương lai (chưa triển khai ở giai đoạn này)
 - Sản xuất nội dung sáng tạo bằng AI (tạo video mới từ ý tưởng/tư liệu, thay vì chỉ xử lý video có sẵn).
-- Bảng điều khiển quản trị toàn nền tảng (dành cho đội vận hành nội bộ, quản lý xuyên suốt tất cả khách hàng).
 
 ### 4.3 Ngoài phạm vi (không triển khai ở dự án này)
 - **Dịch file/Text Translation độc lập**: không upload `.txt/.docx` để tạo Document/Translation Job/Text Editor.
@@ -316,6 +327,18 @@ quyền xem Project/job**.
 - Project assignment **không mang role riêng**; quyền thao tác được suy ra từ role Workspace:
   - Member: đầy đủ quyền nghiệp vụ trong Project được gán.
   - Client: chỉ xem trong Project được gán.
+
+**Dự án gần đây & ghim dự án [bổ sung 2026-09-23]**
+- Thanh điều hướng bên trái có mục **"Gần đây"**, liệt kê các Project mà người dùng vừa mở trong Workspace
+  hiện tại. Một Project được tính là "đã mở" khi người dùng chọn Project đó trong Media Studio hoặc mở một
+  job thuộc Project đó.
+- Người dùng có thể **ghim** một Project để nó luôn nằm ở đầu danh sách, và bỏ ghim bất kỳ lúc nào. Các
+  Project đã ghim hiển thị trước (theo thứ tự ghim), sau đó là tối đa 5 Project mở gần nhất chưa ghim.
+- Bấm vào một Project trong danh sách sẽ mở Media Studio của Project đó.
+- Danh sách là **riêng của từng người dùng và từng Workspace**. Project đã bị xoá hoặc người dùng không còn
+  được gán sẽ tự ẩn khỏi danh sách — mục này không cấp thêm quyền truy cập nào.
+- Danh sách và trạng thái ghim được lưu trên trình duyệt của người dùng, **không đồng bộ** giữa các thiết bị
+  hoặc trình duyệt khác nhau. Hiện chỉ có trên giao diện desktop.
 
 ### 5.2 Tải video lên & Đồng ý điều khoản
 - Người dùng tải lên 1 video (tối đa 500MB, tối đa 30 phút) vào một Project cụ thể. Hệ thống kiểm tra định
@@ -353,9 +376,11 @@ chọn hiện tại sẽ tự động được bỏ qua và không hiển thị.
   lại — giúp tiết kiệm chi phí và thời gian xử lý với video dài.
 
 **Lựa chọn về giọng lồng tiếng và âm thanh đầu ra**
-- Giữ nguyên âm thanh gốc, không lồng tiếng.
-- Thay thế hoàn toàn bằng giọng lồng tiếng mới.
-- Trộn giọng lồng tiếng mới với nhạc nền/hiệu ứng âm thanh gốc.
+- Giữ nguyên âm thanh gốc, không lồng tiếng (chỉ thêm phụ đề, âm lượng gốc giữ nguyên).
+- Lồng tiếng chế độ **Fast (voice-over)**: giọng lồng tiếng mới phát đè lên âm thanh gốc; mặc định âm thanh
+  gốc giảm 10 dB và giọng mới tăng 10 dB, người dùng chỉnh lại được hoặc tắt hẳn âm thanh gốc.
+- Lồng tiếng chế độ **Studio**: AI tách giọng người nói khỏi nhạc nền/hiệu ứng, bỏ giọng gốc và trộn giọng
+  mới với phần nhạc nền còn lại. Chỉ khả dụng khi máy chủ có GPU; tính thêm phí tách âm.
 
 Giọng đọc được chọn phải cùng ngôn ngữ với ngôn ngữ đích của video — hệ thống sẽ từ chối rõ ràng nếu lựa
 chọn không phù hợp.
@@ -508,8 +533,15 @@ nhất, áp dụng thống nhất cho mọi Workspace.
 **Mua gói Credit**
 Người dùng có thể mua các gói Credit bổ sung bất kỳ lúc nào để nạp thêm vào số dư cá nhân.
 
-**Cần xác nhận thêm:** Chi tiết các mức gói, đơn giá, và hình thức thanh toán chưa được mô tả — cần bổ sung
-ở giai đoạn thiết kế chi tiết sau.
+**Các gói Credit (đã chốt 2026-09-27, xem `Credit_Coefficient_Calculation.md` §9):**
+
+| Gói | Số Credit | Giá | Đơn giá |
+|---|---|---|---|
+| Starter | 500 | 50.000đ | 100đ/Credit |
+| Creator | 2.000 | 190.000đ | 95đ/Credit |
+| Business | 10.000 | 900.000đ | 90đ/Credit |
+
+Credit khởi tạo: 100 Credit/tài khoản. Hình thức thanh toán (cổng thanh toán) vẫn cần bổ sung ở giai đoạn sau.
 
 **Cấu hình nguồn AI cá nhân**
 - Mỗi người dùng có thể tự cấu hình API key của nhà cung cấp AI riêng (BYOK) trong phần Cài đặt cá nhân.
@@ -535,9 +567,14 @@ hình API key cá nhân hay không. Điều này hoàn toàn độc lập với 
 Trong đó: `x` = hệ số phí hạ tầng (áp dụng mọi trường hợp), `y` = hệ số quy đổi chi phí token thực tế sang
 Credit (chỉ áp dụng ở Trường hợp 2).
 
-**Cần xác nhận thêm:** Công thức ở Trường hợp 2 hiện là công thức tạm/dự kiến. Hệ số "y" cần được xác định
-chính thức ở giai đoạn sau. Ngoài ra, hành vi hệ thống khi số dư Credit không đủ để thực hiện một thao tác
-(chặn tạo job ngay từ đầu, hay cho phép xử lý rồi báo nợ) cũng cần được xác nhận thêm.
+**Hệ số x, y (đã chốt 2026-09-27):** "Số token" được hiểu là **số đơn vị sử dụng của từng thao tác**: STT và tách
+âm tính theo giây audio nguồn, dịch/tóm tắt/phân tích hình ảnh theo token, TTS theo ký tự, xuất video (RENDER) theo
+giây video output. Giá trị x, y theo từng thao tác và từng model nằm ở `Credit_Coefficient_Calculation.md` §7.2,
+lưu trong `credit_pricing_config` và chỉ Super Admin đổi được (có version, không hồi tố). Tách âm và xuất video chạy
+trên hạ tầng của nền tảng nên chỉ tính x.
+
+**Cần xác nhận thêm:** Hành vi khi số dư Credit không đủ. Hiện hệ thống kiểm tra trước mỗi công đoạn và chặn khi
+không đủ, không cho nợ (đề xuất chốt: `Credit_Coefficient_Calculation.md` §12.2 Q10).
 
 **Ví dụ minh hoạ cách áp dụng** (Member A và Lead B trong cùng 1 Workspace):
 
@@ -591,6 +628,33 @@ dịch vào TM. Việc dịch sử dụng context hiện tại + Glossary + prov
 Người dùng được thông báo khi một yêu cầu xử lý (đơn lẻ hoặc lô) hoàn thành, gặp lỗi, hoặc chuyển sang
 trạng thái "cần chạy lại".
 
+### 5.8 Quản trị nền tảng (Platform Super Admin)
+
+- Platform Super Admin là quyền vận hành nội bộ toàn hệ thống, được xác định bằng cờ
+  `users.is_platform_admin`; đây **không phải** role thứ tư của Workspace và không thay đổi mô hình
+  `LEAD/MEMBER/CLIENT`.
+- Chỉ tài khoản có cờ này mới được truy cập khu vực `/platform` và API `/api/platform/*`.
+- Khu vực quản trị cung cấp: tổng quan KPI, hoạt động trực tiếp (job đang xử lý, job hoàn thành trong
+  ngày, token AI trong 1 giờ qua, số người dùng đang online), sức khỏe PostgreSQL/Redis/RabbitMQ/MinIO/AI
+  Worker, danh bạ người dùng, danh sách Workspace và nhật ký kiểm toán.
+- "Đang online" = người dùng đã đăng nhập và còn mở ứng dụng trong khoảng 2 phút gần nhất; nhiều tab của
+  cùng một người chỉ tính 1.
+- **Điều chỉnh Credit [bổ sung 2026-09-23]:** Super Admin xem số dư và cộng/trừ Credit cho bất kỳ người dùng
+  nào (ví dụ hoàn Credit cho job lỗi), kèm lý do. Không được trừ làm số dư âm. Mỗi lần điều chỉnh được ghi
+  vào lịch sử giao dịch Credit của người dùng (loại "Điều chỉnh") và vào nhật ký kiểm toán.
+- **Trang Hướng dẫn [bổ sung 2026-09-23]:** Super Admin quản lý nội dung hướng dẫn song ngữ Việt/Anh theo
+  chuyên mục → bài viết (tạo, sửa, sắp xếp, xoá, chuyển Nháp/Xuất bản, xem trước). Chỉ bài đã xuất bản
+  thuộc chuyên mục đang hiển thị mới xuất hiện ở trang `/guide`; trang này ai cũng xem được, không cần đăng
+  nhập. Không xoá được chuyên mục khi còn bài viết.
+- **Bảng giá Credit [bổ sung 2026-09-26]:** Super Admin cấu hình hệ số x (hạ tầng) và y (chi phí AI) theo
+  thao tác AI và theo provider/model nền tảng, xem trước giá Credit/phút trước khi lưu, hẹn giờ giá mới và xem
+  lịch sử. Mỗi lần đổi giá tạo một phiên bản mới kèm lý do; giá cũ không bị sửa/xoá và không hồi tố. Job luôn
+  tính theo giá có hiệu lực lúc tạo job. Người dùng thường không xem được x, y.
+- Người không có cờ Platform Admin phải bị từ chối ở backend, kể cả khi biết URL hoặc tự gọi API.
+- Ngoài các thao tác trên, các API quản trị chỉ phục vụ quan sát/tra cứu trong MVP; không cấp quyền sửa dữ
+  liệu nghiệp vụ của Workspace (Project, Media Job, thành viên…) hoặc bỏ qua các gate RBAC/ownership hiện
+  hành.
+
 ---
 
 ## 6. Ràng buộc & nguyên tắc nghiệp vụ quan trọng
@@ -611,6 +675,7 @@ trạng thái "cần chạy lại".
 | Công thức tính Credit độc lập với chế độ thanh toán | Việc áp dụng công thức Trường hợp 1 hay Trường hợp 2 chỉ phụ thuộc người thực hiện thao tác có API key cá nhân hay không. |
 | Role và Project access tách biệt | Role nằm ở Workspace; Member/Client chỉ truy cập Project được gán. Client luôn bị chặn ở mọi hành động tạo/sửa/duyệt — chỉ có quyền xem. |
 | Dịch thuật tập trung vào Media Studio | Không có dịch file/Text Translation hoặc Translation Memory; giữ Glossary, QA và Video Batch Localization như năng lực hỗ trợ video. |
+| Platform Admin độc lập với RBAC Workspace | `is_platform_admin` là cờ vận hành cấp hệ thống, không phải role Workspace và phải được kiểm tra ở backend cho mọi `/api/platform/*`. |
 
 ---
 
@@ -635,6 +700,9 @@ dấu (*), quyền của Member chỉ áp dụng cho job DO CHÍNH MEMBER ĐÓ T
 | Bỏ qua lỗi chất lượng — override (có lý do) | ✔ (mọi job) | ✔ (*chỉ job của mình) | — |
 | Xác nhận tại các mốc quan trọng | ✔ (mọi job) | ✔ (*chỉ job của mình) | — |
 | Xem tiến trình & kết quả (mọi job trong Project) | ✔ | ✔ | ✔ |
+
+Platform Super Admin không nằm trong ma trận role Workspace ở trên. Quyền này chỉ mở khu vực quan sát
+toàn nền tảng theo §5.8 và không tự biến tài khoản thành Lead của các Workspace.
 
 ### 7.2 Danh sách các điểm cần xác nhận thêm
 

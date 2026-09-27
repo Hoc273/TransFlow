@@ -12,13 +12,58 @@ public interface ProviderResolverService {
 
     ProviderResolution resolveForCapability(UUID userId, String capability);
 
-    /** Language of a tts_voices row, used to validate targetLang match (API_Contract.md §5). */
-    Optional<String> resolveVoiceLanguage(UUID ttsVoiceId);
+    /**
+     * Resolves one specific provider (the TTS provider a job's voice belongs to): the user's own
+     * active provider or an active platform provider with {@code capability}. Voices are bound to
+     * their provider, so TTS must not be load-balanced to another key of the pool.
+     */
+    ProviderResolution resolveBoundProvider(UUID userId, UUID providerId, String capability);
+
+    /**
+     * Like {@link #resolveBoundProvider(UUID, UUID, String)}, but when the bound provider is a
+     * platform key that is unavailable (DOWN, cooling down or already failed in this stage), another
+     * platform key of the same protocol that serves the exact same {@code voiceIdentifier} is used,
+     * so the voice stays identical. Personal providers are never swapped.
+     */
+    ProviderResolution resolveBoundProvider(UUID userId, UUID providerId, String capability, String voiceIdentifier);
+
+    /** True when another available platform key of the same protocol serves {@code voiceIdentifier}. */
+    boolean hasVoiceSibling(UUID providerId, String voiceIdentifier);
+
+    /**
+     * Resolves the language only when the requested active voice belongs to the requested active,
+     * TTS-capable provider and that provider is available to the user. This is the public module
+     * boundary used by media_job; callers must never validate provider repositories directly.
+     */
+    Optional<String> resolveVoiceLanguage(UUID userId, UUID ttsProviderId, UUID ttsVoiceId);
+
+    /**
+     * Checks compatibility only for an active voice owned by the requested active,
+     * TTS-capable provider available to the user. Throws VALIDATION_ERROR when that
+     * provider/voice binding cannot be resolved; false means the valid voice is incompatible.
+     */
+    boolean isVoiceLanguageCompatible(UUID userId, UUID ttsProviderId, UUID ttsVoiceId, String targetLang);
+
+    Optional<String> resolveVoiceIdentifier(UUID userId, UUID ttsProviderId, UUID ttsVoiceId);
+
+    /**
+     * Legacy voiceId string resolution (ADR-CEP B7 parity).
+     * Finds active voice by voice_id string matching targetLang and accessible to user.
+     */
+    ResolvedVoice resolveLegacyVoice(UUID userId, String voiceId, String targetLang);
+
+    record ResolvedVoice(
+            UUID providerId,
+            UUID voiceId,
+            String language
+    ) {}
 
     record ProviderResolution(
+            UUID providerId,
             String providerType,
+            String baseUrl,
             String apiKey,
-            String endpointUrl,
+            String model,
             boolean isPersonalApiKey
     ) {}
 }

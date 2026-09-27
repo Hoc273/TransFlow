@@ -18,6 +18,7 @@ from app.services.ffmpeg import (
     _srt_vtt_to_ass,
     build_dubbed_audio,
     burn_subtitles,
+    mux_soft_subtitles,
     fit_dub_audio,
     get_stream_types,
     has_audio_stream,
@@ -189,6 +190,22 @@ class DubAudioTimingTest(unittest.TestCase):
         self.assertNotIn("force_style", cmd)
         self.assertIn("libx264", cmd)
 
+    def test_final_render_outputs_are_faststart_for_browser_streaming(self):
+        # The export/render players stream a presigned MinIO URL; a trailing
+        # moov atom forces the browser to fetch the file tail before playback.
+        with patch("app.services.ffmpeg._run") as run:
+            burn_subtitles("source.mp4", "subs/out.ass", "render.mp4", subtitle_format="ass")
+        burn_cmd = run.call_args.args[0]
+
+        with patch("app.services.ffmpeg._run") as run, patch(
+            "app.services.ffmpeg.get_video_height", return_value=1080
+        ), patch("app.services.ffmpeg.get_video_width", return_value=1920):
+            mux_soft_subtitles("source.mp4", "subs/out.srt", "render.mp4")
+        mux_cmd = run.call_args.args[0]
+
+        for cmd in (burn_cmd, mux_cmd):
+            self.assertEqual(cmd[-3:], ["-movflags", "+faststart", "render.mp4"])
+
     def test_burn_srt_still_applies_force_style(self):
         # The legacy SRT path keeps its inline styling (Alignment/MarginV/box).
         with patch("app.services.ffmpeg._run") as run, patch(
@@ -221,6 +238,28 @@ class DubAudioTimingTest(unittest.TestCase):
         self.assertIn("Fontsize=52", vf)
         self.assertIn("Bold=-1", vf)
         self.assertIn("Alignment=2", vf)
+
+    def test_burn_srt_scales_typography_from_1080_reference_to_frame_height(self):
+        # font_size/outline_width are authored for a 1080-line frame (Render
+        # Studio preview PLAY_RES_Y); a 720-line output burns them at 2/3.
+        with patch("app.services.ffmpeg._run") as run, patch(
+            "app.services.ffmpeg.get_video_height", return_value=720
+        ), patch("app.services.ffmpeg.get_video_width", return_value=1280):
+            burn_subtitles(
+                "source.mp4",
+                "subs/out.srt",
+                "render.mp4",
+                subtitle_format="srt",
+                background_box=False,
+                font_size=42,
+                outline_width=4,
+                outline_color="#FFFFFF",
+            )
+
+        cmd = run.call_args.args[0]
+        vf = cmd[cmd.index("-vf") + 1]
+        self.assertIn("Fontsize=28", vf)
+        self.assertIn("Outline=3", vf)
 
     def test_burn_srt_bold_false_maps_to_zero(self):
         with patch("app.services.ffmpeg._run") as run, patch(
@@ -903,6 +942,92 @@ class DubAudioTimingTest(unittest.TestCase):
         self.assertTrue(any("outline_width/outline_color ignored" in line
                             for line in captured.output))
 
+    def test_dual_box_outline_bakes_styles_in_ass_and_keeps_force_style_placement_only(self):
+        # 2026-09 dual-event: converted ASS carries Box (yellow) + Default
+        # (black text, white ring); force_style keeps Alignment/MarginV/Bold
+        # only so it cannot override either baked style. Positioning identical
+        # to the single path (same \pos + MarginV).
+        with TemporaryDirectory() as d:
+            srt = os.path.join(d, "sub.srt")
+            with open(srt, "w", encoding="utf-8") as fh:
+                fh.write("1\n00:00:00,500 --> 00:00:02,500\nHello world\n")
+            ass = _srt_vtt_to_ass(
+                srt, "srt", 1920, 1080, alignment=2, margin_v=130,
+                background_box=True, background_color="#FFFF00FF",
+                text_color="#000000", outline_width=2, outline_color="#FFFFFF",
+            )
+            try:
+                content = open(ass, "r", encoding="utf-8").read()
+            finally:
+                os.remove(ass)
+        # Yellow opaque: alpha FF → ASS 00, BGR 00FFFF.
+        self.assertIn(
+            "Style: Box,Arial,44,&HFF000000,&H000000FF,&H0000FFFF,&H0000FFFF,"
+            "0,0,0,0,100,100,0,0,3,4,0,2,10,10,130,1",
+            content,
+        )
+        self.assertIn(
+            "Style: Default,Arial,44,&H00000000,&H000000FF,&H00FFFFFF,&H80000000,"
+            "0,0,0,0,100,100,0,0,1,2,0,2,10,10,130,1",
+            content,
+        )
+        self.assertIn(
+            "Dialogue: 0,0:00:00.50,0:00:02.50,Box,,0,0,130,,"
+            "{\\an2\\pos(960,950)}Hello world",
+            content,
+        )
+        self.assertIn(
+            "Dialogue: 1,0:00:00.50,0:00:02.50,Default,,0,0,130,,"
+            "{\\an2\\pos(960,950)}Hello world",
+            content,
+        )
+
+    def test_dual_box_outline_force_style_has_no_box_or_primary(self):
+        # Converted path: force_style must not carry box/PrimaryColour or it
+        # would override the baked dual styles; single path keeps them.
+        with TemporaryDirectory() as temp_dir:
+            subtitle_path = os.path.join(temp_dir, "sub.srt")
+            with open(subtitle_path, "w", encoding="utf-8") as fh:
+                fh.write("1\n00:00:00,500 --> 00:00:02,500\nHello world\n")
+            with patch("app.services.ffmpeg._run") as run, patch(
+                "app.services.ffmpeg.get_video_height", return_value=1080
+            ), patch("app.services.ffmpeg.get_video_width", return_value=1920):
+                burn_subtitles(
+                    "source.mp4", subtitle_path, "render.mp4",
+                    subtitle_format="srt", background_box=True,
+                    background_color="#FFFF00FF", text_color="#000000",
+                    bold=True, outline_width=2, outline_color="#FFFFFF",
+                )
+            vf_dual = run.call_args.args[0]
+            vf_dual = vf_dual[vf_dual.index("-vf") + 1]
+        self.assertIn("Alignment=", vf_dual)
+        self.assertIn("MarginV=", vf_dual)
+        self.assertIn("Bold=-1", vf_dual)
+        self.assertNotIn("BorderStyle=", vf_dual)
+        self.assertNotIn("PrimaryColour=", vf_dual)
+        self.assertNotIn("OutlineColour=", vf_dual)
+        # No cover overlay: no mask/layers were passed.
+        self.assertNotIn("drawbox", vf_dual)
+        self.assertNotIn("boxblur", vf_dual)
+
+    def test_single_style_path_stays_byte_identical_without_outline(self):
+        # No outline → historical single style, \pos unchanged.
+        with TemporaryDirectory() as d:
+            srt = os.path.join(d, "sub.srt")
+            with open(srt, "w", encoding="utf-8") as fh:
+                fh.write("1\n00:00:00,500 --> 00:00:02,500\nHello world\n")
+            ass = _srt_vtt_to_ass(srt, "srt", 1920, 1080, alignment=2, margin_v=130)
+            try:
+                content = open(ass, "r", encoding="utf-8").read()
+            finally:
+                os.remove(ass)
+        self.assertIn(
+            "Style: Default,Arial,44,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,"
+            "0,0,0,0,100,100,0,0,3,0,0,2,10,10,130,1",
+            content,
+        )
+        self.assertNotIn("Style: Box,", content)
+
     def test_srt_vtt_to_ass_pins_playres_to_video_frame(self):
         # PRESET-VIZ (docs/97 §19.16): the legacy SRT burn path mis-scales
         # MarginV because libass reads SRT with a fixed PlayResY of 288. The
@@ -975,33 +1100,30 @@ class DubAudioTimingTest(unittest.TestCase):
         self.assertIn("PlayResY: 720", content)
         self.assertIn("Hello VTT", content)
 
-    def test_build_dubbed_audio_collects_segment_warning(self):
-        warning = {
-            "code": "AUDIO_TRUNCATED",
-            "exceeded_ms": 1_000,
-            "segment_id": "seg-42",
-        }
+    def test_build_dubbed_audio_keeps_long_lines_instead_of_cutting_them(self):
+        from pydub.generators import Sine
+
+        line = Sine(440).to_audio_segment(duration=3_000, volume=-20)
         storage = Mock()
+        storage.download.side_effect = lambda ref, local: line.export(local, format="wav")
         storage_module = ModuleType("app.services.storage")
         storage_module.get_storage = Mock(return_value=storage)
         with TemporaryDirectory() as temp_dir:
-            with patch.dict(sys.modules, {"app.services.storage": storage_module}), patch(
-                "app.services.ffmpeg.fit_dub_audio",
-                return_value=("fitted.wav", warning),
-            ), patch(
-                "app.services.ffmpeg.AudioSegment.from_file",
-                return_value=AudioSegment.silent(duration=2_000),
-            ):
+            with patch.dict(sys.modules, {"app.services.storage": storage_module}):
                 output_path, warnings = build_dubbed_audio(
                     "source.mp4",
-                    [CutRange(start_ms=0, end_ms=2_000)],
-                    [SegmentAudio("seg-42", "tts/seg-42.wav", 0, 2_000)],
+                    [CutRange(start_ms=0, end_ms=10_000)],
+                    # 3 s of speech for a 2 s subtitle followed by a pause.
+                    [SegmentAudio("seg-42", "tts/seg-42.wav", 1_000, 3_000)],
                     temp_dir,
                 )
+                audio = AudioSegment.from_file(output_path)
 
-        storage.download.assert_called_once()
-        self.assertEqual([warning], warnings)
-        self.assertTrue(output_path.endswith("final_audio.wav"))
+        self.assertEqual([], warnings)
+        self.assertEqual(10_000, len(audio))
+        # The tail after the subtitle end is still spoken, not truncated.
+        self.assertGreater(audio[3_200:3_800].dBFS, -40)
+        self.assertEqual(float("-inf"), audio[5_000:].dBFS)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import shutil
@@ -9,10 +10,12 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.config import settings
+from app.core.async_utils import blocking as _blocking
 from app.services import cancel_registry
 from app.services.callback import send_complete, send_progress
 from app.services.legacy_render_audio import resolve_legacy_audio
 from app.services.media_probe import probe_video
+from app.services.mix_executor import _apply_tempo
 from app.services.ffmpeg import (
     CutRange,
     FFmpegError,
@@ -36,6 +39,7 @@ from app.services.storage import get_storage
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_render_slots = asyncio.Semaphore(settings.render_max_concurrency)
 
 
 class CutRangeRequest(BaseModel):
@@ -155,6 +159,29 @@ class SubtitleTrackRequest(BaseModel):
         return self
 
 
+# Common format of every narration beat. The beats are joined with the concat demuxer,
+# which reads all files with the FIRST file's stream parameters: pooled TTS mixes
+# providers (Gemini 24 kHz, MeloTTS 44.1 kHz, Deepgram MP3 22.05 kHz), and a clip at
+# another rate was played slowed/sped up, drifting the voice away from the subtitles.
+BEAT_AUDIO_SAMPLE_RATE = 48_000
+BEAT_AUDIO_CHANNELS = 1
+
+
+def _pad_audio_to(path: str, duration_ms: Optional[int], temp_dir: str) -> str:
+    """Normalize the clip to the beat audio format and, when ``duration_ms`` is set,
+    append trailing silence so it lasts that long (longer clips are left intact)."""
+    output_path = os.path.join(temp_dir, f"padded_{uuid.uuid4()}.wav")
+    cmd = ["ffmpeg", "-y", "-i", path]
+    if duration_ms:
+        cmd += ["-af", f"apad=whole_dur={duration_ms / 1000:.3f}"]
+    cmd += [
+        "-ar", str(BEAT_AUDIO_SAMPLE_RATE), "-ac", str(BEAT_AUDIO_CHANNELS),
+        "-c:a", "pcm_s16le", output_path,
+    ]
+    _run(cmd)
+    return output_path
+
+
 class GenerativeBeatRequest(BaseModel):
     id: str
     source_start_ms: int
@@ -164,11 +191,16 @@ class GenerativeBeatRequest(BaseModel):
     visual_strategy: str = "SOURCE_CUT"
     visual_description: Optional[str] = None
     narration_segment: Optional[str] = None
+    # Uniform narration tempo chosen by Spring to fit the requested duration
+    # (bounded 0.9-1.1 there); tts_duration_ms is the retimed voice plus any
+    # trailing pause, and the voice is padded with silence to that length.
+    tempo: Optional[float] = None
 
 
 class RenderRequest(BaseModel):
     correlation_id: str
     media_job_id: str
+    stage_id: str | None = None
     source_video_ref: str
     cut_ranges: List[CutRangeRequest]
     audio_input_version: str
@@ -225,6 +257,11 @@ class RenderCancelled(Exception):
 
 
 async def process_render(req: RenderRequest) -> None:
+    async with _render_slots:
+        await _process_render(req)
+
+
+async def _process_render(req: RenderRequest) -> None:
     temp_dir = tempfile.mkdtemp(prefix="render_")
     output_ref = None
     srt_ref = None
@@ -234,10 +271,10 @@ async def process_render(req: RenderRequest) -> None:
     try:
         _check_cancelled(req.correlation_id)
         storage = get_storage()
-        await send_progress(req.media_job_id, req.correlation_id, 10)
+        await send_progress(req.media_job_id, req.correlation_id, 10, req.stage_id)
 
         source_path = os.path.join(temp_dir, "source_video")
-        storage.download(req.source_video_ref, source_path)
+        await _blocking(storage.download, req.source_video_ref, source_path)
         _check_cancelled(req.correlation_id)
 
         # Download subtitle. B1.0 (docs/93 §4.6.6): ASS burns as-is — the style is
@@ -246,7 +283,7 @@ async def process_render(req: RenderRequest) -> None:
         # inputs keep the legacy text-sidecar behavior (C1).
         sub_fmt = validate_subtitle_format(req.subtitle_track.format)
         subtitle_path = os.path.join(temp_dir, f"subtitle.{sub_fmt}")
-        storage.download(req.subtitle_track.content_ref, subtitle_path)
+        await _blocking(storage.download, req.subtitle_track.content_ref, subtitle_path)
 
         srt_path = None
         vtt_path = None
@@ -284,9 +321,9 @@ async def process_render(req: RenderRequest) -> None:
                 for sa in req.segment_audios:
                     audio_ref_by_id[sa.segment_id] = sa.audio_ref
 
-            await send_progress(req.media_job_id, req.correlation_id, 30)
+            await send_progress(req.media_job_id, req.correlation_id, 30, req.stage_id)
             try:
-                source_duration_probe = probe_source_duration(source_path)
+                source_duration_probe = await _blocking(probe_source_duration, source_path)
             except FFmpegError as exc:
                 first_beat = req.generative_beats[0]
                 diagnostic_beat = VisualBeatInput(
@@ -311,7 +348,8 @@ async def process_render(req: RenderRequest) -> None:
                     visual_strategy=beat.visual_strategy or "SOURCE_CUT",
                     tts_duration_ms=beat.tts_duration_ms,
                 )
-                _extract_and_rescale_beat(
+                await _blocking(
+                    _extract_and_rescale_beat,
                     source_path,
                     vbeat,
                     beat_video_path,
@@ -323,12 +361,22 @@ async def process_render(req: RenderRequest) -> None:
                 audio_ref = beat.audio_ref or audio_ref_by_id.get(beat.id)
                 if audio_ref:
                     raw_audio_path = os.path.join(temp_dir, f"beat_audio_{idx}_raw.wav")
-                    storage.download(audio_ref, raw_audio_path)
-                    # The measured TTS file is already the beat's timeline
-                    # authority. Do not pad it to the source visual duration.
+                    await _blocking(storage.download, audio_ref, raw_audio_path)
+                    if beat.tempo and abs(beat.tempo - 1.0) > 1e-3:
+                        raw_audio_path = await _blocking(
+                            _apply_tempo, raw_audio_path, beat.tempo, temp_dir
+                        )
+                    # The beat length (tts_duration_ms) is the timeline authority:
+                    # the voice gets trailing silence up to it (a pause Spring adds
+                    # when narration is short), keeping audio and footage in sync.
+                    # It is never padded to the source visual duration. Every clip is
+                    # normalized to one format so the concat below keeps real time.
+                    raw_audio_path = await _blocking(
+                        _pad_audio_to, raw_audio_path, beat.tts_duration_ms or None, temp_dir
+                    )
                     tts_audio_paths.append(raw_audio_path)
 
-            await send_progress(req.media_job_id, req.correlation_id, 50)
+            await send_progress(req.media_job_id, req.correlation_id, 50, req.stage_id)
             _check_cancelled(req.correlation_id)
 
             concat_list = os.path.join(temp_dir, "generative_concat_list.txt")
@@ -338,7 +386,7 @@ async def process_render(req: RenderRequest) -> None:
                     f.write(f"file '{escaped}'\n")
             concat_path = os.path.join(temp_dir, "concat.mp4")
             cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list, "-c", "copy", concat_path]
-            _run(cmd)
+            await _blocking(_run, cmd)
 
             warnings = []
             if len(tts_audio_paths) == len(req.generative_beats):
@@ -349,19 +397,19 @@ async def process_render(req: RenderRequest) -> None:
                         f.write(f"file '{escaped}'\n")
                 final_audio_path = os.path.join(temp_dir, "resolved_audio.wav")
                 cmd_a = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", audio_concat_list, "-c:a", "pcm_s16le", final_audio_path]
-                _run(cmd_a)
+                await _blocking(_run, cmd_a)
             elif req.resolved_audio_ref:
                 final_audio_path = os.path.join(temp_dir, "resolved_audio.wav")
-                storage.download(req.resolved_audio_ref, final_audio_path)
+                await _blocking(storage.download, req.resolved_audio_ref, final_audio_path)
             else:
                 raise FFmpegError("Generative render requires beat audio_refs or resolved_audio_ref", "INVALID_INPUT", retryable=False)
         else:
-            await send_progress(req.media_job_id, req.correlation_id, 30)
+            await send_progress(req.media_job_id, req.correlation_id, 30, req.stage_id)
             _check_cancelled(req.correlation_id)
 
             concat_path = os.path.join(temp_dir, "concat.mp4")
-            cut_and_concat_video(source_path, cut_ranges, concat_path, temp_dir)
-            await send_progress(req.media_job_id, req.correlation_id, 50)
+            await _blocking(cut_and_concat_video, source_path, cut_ranges, concat_path, temp_dir)
+            await send_progress(req.media_job_id, req.correlation_id, 50, req.stage_id)
             _check_cancelled(req.correlation_id)
 
             # CT9: the resolver owns source selection. Worker validates the
@@ -375,7 +423,7 @@ async def process_render(req: RenderRequest) -> None:
                 logger.info("Render using MIXED_AUDIO path: correlation=%s audio=%s",
                             req.correlation_id, req.resolved_audio_ref)
                 final_audio_path = os.path.join(temp_dir, "resolved_audio.wav")
-                storage.download(req.resolved_audio_ref, final_audio_path)
+                await _blocking(storage.download, req.resolved_audio_ref, final_audio_path)
                 warnings = []
             elif req.audio_source in {"LEGACY_DUBBED", "LEGACY_ORIGINAL"}:
                 # Explicit compatibility bridge; the mux path never invents audio.
@@ -391,7 +439,8 @@ async def process_render(req: RenderRequest) -> None:
                 if req.resolved_audio_ref is not None:
                     raise FFmpegError("Legacy audio source must not carry resolved_audio_ref", "INVALID_INPUT", retryable=False)
                 try:
-                    final_audio_path, warnings = resolve_legacy_audio(
+                    final_audio_path, warnings = await _blocking(
+                        resolve_legacy_audio,
                         req.audio_source,
                         req.audio_mode,
                         segment_audios,
@@ -404,17 +453,18 @@ async def process_render(req: RenderRequest) -> None:
             else:
                 raise FFmpegError("Unsupported audio_source", "INVALID_INPUT", retryable=False)
 
-        await send_progress(req.media_job_id, req.correlation_id, 70)
+        await send_progress(req.media_job_id, req.correlation_id, 70, req.stage_id)
         _check_cancelled(req.correlation_id)
 
         audio_replaced = os.path.join(temp_dir, "with_audio.mp4")
-        replace_audio(concat_path, final_audio_path, audio_replaced)
+        await _blocking(replace_audio, concat_path, final_audio_path, audio_replaced)
         _check_cancelled(req.correlation_id)
 
         final_video_path = os.path.join(temp_dir, "final.mp4")
         mode = (req.subtitle_track.mode or "SOFT_SUB").upper()
         if mode == "HARD_SUB":
-            burn_subtitles(
+            await _blocking(
+                burn_subtitles,
                 audio_replaced,
                 burn_input,
                 final_video_path,
@@ -471,7 +521,8 @@ async def process_render(req: RenderRequest) -> None:
                 # OUTPUT-ASPECT (docs/97 §19.19): a reframe on the soft-sub path
                 # forces a video re-encode inside the mux (copy keeps the source
                 # frame); identity keeps the historical stream-copy mux.
-                mux_soft_subtitles(
+                await _blocking(
+                    mux_soft_subtitles,
                     audio_replaced,
                     srt_path,
                     final_video_path,
@@ -495,7 +546,7 @@ async def process_render(req: RenderRequest) -> None:
 
         # C0 obtains the canonical probe once; validation consumes it rather
         # than spawning separate ffprobe subprocesses.
-        media_probe = probe_video(final_video_path)
+        media_probe = await _blocking(probe_video, final_video_path)
 
         # A2.2a: technical validation before upload — ERROR fails the render
         # (no orphan objects), WARNING passes with the report in the callback.
@@ -516,7 +567,7 @@ async def process_render(req: RenderRequest) -> None:
             tolerance_pct=settings.validation_duration_tolerance_pct,
             media_probe=media_probe,
         )
-        validation_report = RenderValidationRunner().run(validation_context)
+        validation_report = await _blocking(RenderValidationRunner().run, validation_context)
         if not validation_report.passed:
             first_error = first_error_check(validation_report)
             logger.warning(
@@ -537,24 +588,25 @@ async def process_render(req: RenderRequest) -> None:
                 warnings=warnings,
                 validation=validation_report.to_payload(),
                 media_probe=media_probe.to_payload(),
+                stage_id=req.stage_id,
             )
             return
 
-        await send_progress(req.media_job_id, req.correlation_id, 90)
+        await send_progress(req.media_job_id, req.correlation_id, 90, req.stage_id)
         _check_cancelled(req.correlation_id)
 
         # Upload video; text sidecars only for SRT/VTT input — ASS sidecars are
         # Spring-owned at preparation (B1.0), callback refs stay null for styled jobs.
         video_key = f"rendered/{req.media_job_id}/{uuid.uuid4()}.mp4"
-        output_ref = storage.upload(final_video_path, video_key)
+        output_ref = await _blocking(storage.upload, final_video_path, video_key)
 
         srt_ref = None
         vtt_ref = None
         if srt_path is not None:
             srt_key = f"rendered/{req.media_job_id}/{uuid.uuid4()}.srt"
             vtt_key = f"rendered/{req.media_job_id}/{uuid.uuid4()}.vtt"
-            srt_ref = storage.upload(srt_path, srt_key)
-            vtt_ref = storage.upload(vtt_path, vtt_key)
+            srt_ref = await _blocking(storage.upload, srt_path, srt_key)
+            vtt_ref = await _blocking(storage.upload, vtt_path, vtt_key)
 
         if cancel_registry.is_cancelled(req.correlation_id):
             # Cancel observed after work finished — still send complete so Spring Boot
@@ -569,6 +621,7 @@ async def process_render(req: RenderRequest) -> None:
                 vtt_ref=vtt_ref,
                 validation=validation_report.to_payload(),
                 media_probe=media_probe.to_payload(),
+                stage_id=req.stage_id,
             )
             return
 
@@ -583,6 +636,7 @@ async def process_render(req: RenderRequest) -> None:
             vtt_ref=vtt_ref,
             validation=validation_report.to_payload(),
             media_probe=media_probe.to_payload(),
+            stage_id=req.stage_id,
         )
     except RenderCancelled:
         logger.info("Render cancelled for correlation=%s", req.correlation_id)
@@ -595,6 +649,7 @@ async def process_render(req: RenderRequest) -> None:
             output_ref=None,
             error={"code": "CANCELLED", "message": "Render cancelled by user", "retryable": False},
             warnings=warnings,
+            stage_id=req.stage_id,
         )
     except FFmpegError as exc:
         logger.exception("Render failed (ffmpeg)")
@@ -608,6 +663,7 @@ async def process_render(req: RenderRequest) -> None:
             output_ref=None,
             error=error,
             warnings=warnings,
+            stage_id=req.stage_id,
         )
     except Exception as exc:
         logger.exception("Render failed")
@@ -623,6 +679,7 @@ async def process_render(req: RenderRequest) -> None:
             output_ref=None,
             error={"code": code, "message": message},
             warnings=warnings,
+            stage_id=req.stage_id,
         )
     finally:
         cancel_registry.unregister(req.correlation_id)

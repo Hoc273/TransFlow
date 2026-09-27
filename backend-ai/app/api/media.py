@@ -20,12 +20,18 @@ from app.schemas.contract import (
     ValidateProviderResponse,
 )
 from app.schemas.visual_contract import VisualUnderstandRequest, VisualUnderstandResponse
+from app.schemas.script import (
+    ScriptRefineRequest,
+    ScriptSummarizeRequest,
+    ScriptSummarizeResponse,
+)
 from app.services import content_brief_gateway
 from app.services import narrative_summarize_gateway
 from app.services import stt_gateway
 from app.services import summarize_gateway
 from app.services import tts_gateway
 from app.services import visual_understanding_gateway
+from app.services import script_gateway
 from app.services.provider_errors import ProviderException
 
 _int_log = get_internal_logger("media")
@@ -96,6 +102,18 @@ async def understand_brief(req: ContentBriefRequest) -> ContentBriefResponse:
 async def summarize(req: SummarizeRequest) -> SummarizeResponse:
     """Generate 3 summary proposals from a transcript."""
     return await summarize_gateway.summarize(req)
+
+
+@media_router.post("/summarize/script", response_model=ScriptSummarizeResponse)
+async def summarize_script(req: ScriptSummarizeRequest) -> ScriptSummarizeResponse:
+    """SRS script-first summary: author target-language script then match footage."""
+    return await script_gateway.summarize_script(req)
+
+
+@media_router.post("/summarize/refine", response_model=ScriptSummarizeResponse)
+async def refine_script(req: ScriptRefineRequest) -> ScriptSummarizeResponse:
+    """Rewrite a saved script using user feedback; legacy narrative API is separate."""
+    return await script_gateway.refine_script(req)
 
 
 @media_router.post("/summarize/narrative", response_model=NarrativeSummarizeResponse)

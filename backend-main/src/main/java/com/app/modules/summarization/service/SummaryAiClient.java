@@ -3,11 +3,7 @@ package com.app.modules.summarization.service;
 import java.math.BigDecimal;
 import java.util.List;
 
-/**
- * Boundary to FastAPI (backend-ai) {@code summarize/script} (System_Architecture.md §7.2/§7.4). Real
- * implementation needs the backend-ai HTTP contract, which isn't specified in the docs available for this
- * module — {@code SummaryAiClientImpl} is a placeholder until that integration is built.
- */
+/** Boundary to FastAPI (backend-ai) script-first summarization endpoints. */
 public interface SummaryAiClient {
 
     ScriptProposalResult generateScript(String transcript, String visualContext, int requestedDurationSeconds, String targetLang);
@@ -28,6 +24,37 @@ public interface SummaryAiClient {
             List<SegmentDraft> segments,
             String reasoningNote,
             BigDecimal confidence,
-            List<String> warnings
-    ) {}
+            List<String> warnings,
+            long inputTokens,
+            long outputTokens
+    ) {
+        /** Backward-compatible constructor for local/fake clients that do not expose usage yet. */
+        public ScriptProposalResult(String scriptContent,
+                                     String scriptLanguage,
+                                     List<SegmentDraft> segments,
+                                     String reasoningNote,
+                                     BigDecimal confidence,
+                                     List<String> warnings) {
+            this(scriptContent, scriptLanguage, segments, reasoningNote, confidence, warnings, 0L, 0L);
+        }
+
+        public long usageTokens() {
+            return Math.max(0L, inputTokens) + Math.max(0L, outputTokens);
+        }
+
+        /** Duration represented by the matched footage segments. */
+        public long totalDurationMs() {
+            if (segments == null) {
+                return 0L;
+            }
+            return segments.stream()
+                    .mapToLong(segment -> Math.max(0L, segment.endMs() - segment.startMs()))
+                    .sum();
+        }
+
+        /** Alias matching the FastAPI/domain terminology. */
+        public BigDecimal confidenceScore() {
+            return confidence;
+        }
+    }
 }

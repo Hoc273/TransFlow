@@ -1,6 +1,7 @@
 package com.app.modules.summarization.dto;
 
 import com.app.modules.summarization.entity.SummaryProposal;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonRawValue;
 
 import java.math.BigDecimal;
@@ -23,6 +24,36 @@ public record SummaryProposalResponse(
         Instant createdAt,
         List<SummaryProposalSegmentResponse> segments
 ) {
+    @JsonProperty("generated_by")
+    public String getGeneratedBySnake() {
+        return generatedBy;
+    }
+
+    @JsonProperty("generation_round")
+    public short getGenerationRoundSnake() {
+        return generationRound;
+    }
+
+    @JsonProperty("cut_ranges")
+    public List<SummaryProposalSegmentResponse> getCutRanges() {
+        return segments;
+    }
+
+    @JsonProperty("total_duration_ms")
+    public Long getTotalDurationMsSnake() {
+        return totalDurationMs;
+    }
+
+    @JsonProperty("reasoning_note")
+    public String getReasoningNoteSnake() {
+        return reasoningNote;
+    }
+
+    @JsonProperty("archived_at")
+    public Instant getArchivedAtSnake() {
+        return archivedAt;
+    }
+
     public static SummaryProposalResponse from(SummaryProposal p, List<SummaryProposalSegmentResponse> segments) {
         return new SummaryProposalResponse(p.getId(), p.getGeneratedBy().name(), p.getGenerationRound(),
                 p.getFeedbackText(), p.getScriptContent(), p.getScriptLanguage(), p.getReasoningNote(),

@@ -5,6 +5,7 @@ The adapter owns all Demucs output naming. Downstream code receives logical role
 from __future__ import annotations
 
 import asyncio
+import shutil
 from pathlib import Path
 from typing import Callable
 
@@ -27,10 +28,12 @@ class DemucsAdapter(SeparationEngine):
         executable: str = "python",
         engine_version: str = "demucs",
         gpu_available: Callable[[], bool] | None = None,
+        allow_cpu_fallback: bool = False,
     ) -> None:
         self._executable = executable
         self._engine_version = engine_version
         self._gpu_available = gpu_available or _cuda_available
+        self._allow_cpu_fallback = allow_cpu_fallback
 
     @property
     def engine_id(self) -> str:
@@ -51,7 +54,10 @@ class DemucsAdapter(SeparationEngine):
         if profile not in self.supported_profiles:
             raise DemucsExecutionError(f"unsupported Demucs profile: {profile}")
         if not self._gpu_available():
-            raise DemucsGpuUnavailableError("Demucs GPU is unavailable")
+            if not self._allow_cpu_fallback:
+                raise DemucsGpuUnavailableError("Demucs GPU is unavailable")
+            source_facts = _wav_facts(source_path)
+            return await self._cpu_fallback(source_path, output_dir, source_facts, model_id)
         source_facts = _wav_facts(source_path)
         output_dir.mkdir(parents=True, exist_ok=True)
         command = [
@@ -94,6 +100,34 @@ class DemucsAdapter(SeparationEngine):
         stems = [self._stem(AudioRole.VOCAL, vocals_path), self._stem(AudioRole.MUSIC, music_path)]
         return EngineResult(
             engine_version=self._engine_version,
+            model_id=model_id,
+            input_duration_ms=source_facts["duration_ms"],
+            stems=tuple(stems),
+        )
+
+    async def _cpu_fallback(
+        self,
+        source_path: Path,
+        output_dir: Path,
+        source_facts: dict[str, int],
+        model_id: str,
+    ) -> EngineResult:
+        """Produce deterministic stems for CPU/dev/CI environments.
+
+        This is intentionally a compatibility fallback, not a claim of source
+        separation quality: both roles retain the original signal so a local
+        end-to-end pipeline can be exercised without CUDA/Demucs weights.
+        Production GPU deployments keep the real Demucs path above.
+        """
+        result_dir = output_dir / "cpu-fallback" / source_path.stem
+        result_dir.mkdir(parents=True, exist_ok=True)
+        vocals_path = result_dir / "vocals.wav"
+        music_path = result_dir / "no_vocals.wav"
+        shutil.copy2(source_path, vocals_path)
+        shutil.copy2(source_path, music_path)
+        stems = [self._stem(AudioRole.VOCAL, vocals_path), self._stem(AudioRole.MUSIC, music_path)]
+        return EngineResult(
+            engine_version="cpu-fallback",
             model_id=model_id,
             input_duration_ms=source_facts["duration_ms"],
             stems=tuple(stems),

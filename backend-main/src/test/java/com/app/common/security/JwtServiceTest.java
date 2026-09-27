@@ -22,7 +22,8 @@ class JwtServiceTest {
                 "http://localhost:5173",
                 new AppProperties.Oauth(new AppProperties.Oauth.Google("client", "secret", "http://redirect", null, null, 10, 120)),
                 new AppProperties.Credit(new BigDecimal("100.0")),
-                new AppProperties.Storage("http://localhost:9000", "minioadmin", "minioadmin", "transflow-media")
+                new AppProperties.Storage("http://localhost:9000", "minioadmin", "minioadmin", "transflow-media"),
+                null
         );
         jwtService = new JwtService(props);
     }

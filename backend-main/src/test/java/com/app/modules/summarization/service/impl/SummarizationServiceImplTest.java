@@ -322,9 +322,9 @@ class SummarizationServiceImplTest {
         when(mediaJobService.getJob(workspaceId, userId, jobId)).thenReturn(summaryJob());
 
         AppException ex = assertThrows(AppException.class, () ->
-                service.createSummaryLanguageJob(workspaceId, userId, jobId, "vi", null));
+                service.createSummaryLanguageJob(workspaceId, userId, jobId, "vi", null, null));
         assertEquals(ErrorCode.VALIDATION_ERROR, ex.getErrorCode());
-        verify(mediaJobService, never()).createDerivedSummaryJob(any(), any(), any(), any(), any());
+        verify(mediaJobService, never()).createDerivedSummaryJob(any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -339,7 +339,7 @@ class SummarizationServiceImplTest {
         when(summaryProposalRepository.findById(proposalId)).thenReturn(Optional.of(human));
 
         AppException ex = assertThrows(AppException.class, () ->
-                service.createSummaryLanguageJob(workspaceId, userId, jobId, "vi", null));
+                service.createSummaryLanguageJob(workspaceId, userId, jobId, "vi", null, null));
         assertEquals(ErrorCode.VALIDATION_ERROR, ex.getErrorCode());
     }
 
@@ -354,9 +354,9 @@ class SummarizationServiceImplTest {
         ai.setGeneratedBy(SummaryProposal.GeneratedBy.AI);
         when(summaryProposalRepository.findById(proposalId)).thenReturn(Optional.of(ai));
         MediaJob derived = new MediaJob();
-        when(mediaJobService.createDerivedSummaryJob(workspaceId, userId, jobId, "vi", null)).thenReturn(derived);
+        when(mediaJobService.createDerivedSummaryJob(workspaceId, userId, jobId, "vi", null, null)).thenReturn(derived);
 
-        MediaJob result = service.createSummaryLanguageJob(workspaceId, userId, jobId, "vi", null);
+        MediaJob result = service.createSummaryLanguageJob(workspaceId, userId, jobId, "vi", null, null);
 
         assertSame(derived, result);
     }

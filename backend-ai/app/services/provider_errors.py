@@ -293,6 +293,7 @@ class ProviderException(Exception):
         provider: str | None = None,
         protocol: str | None = None,
         capability: str | None = None,
+        model: str | None = None,
         details: Mapping[str, str] | None = None,
     ) -> None:
         super().__init__(message)
@@ -301,6 +302,7 @@ class ProviderException(Exception):
         self.provider = provider
         self.protocol = protocol
         self.capability = capability
+        self.model = model
         self.details = details
 
     @property
@@ -321,6 +323,7 @@ class ProviderException(Exception):
             "provider": self.provider,
             "protocol": self.protocol,
             "capability": self.capability,
+            "model": self.model,
             "retryable": self.retryable,
             "recommendedAction": recommended_action(self.code),
             "documentation": documentation(self.code),

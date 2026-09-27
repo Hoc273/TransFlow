@@ -15,8 +15,8 @@ from __future__ import annotations
 import base64
 import io
 import json
+import math
 import re
-import struct
 import unicodedata
 import wave
 from typing import Any, Optional
@@ -28,8 +28,15 @@ from app.core.logging_config import get_provider_logger
 from app.api.structured import parse_json_object
 from app.schemas.contract import ProviderPayload, SttSegment, Usage
 from app.services.protocol.adapter import ProtocolAdapter
+from app.services.protocol.audio_format import pcm_s16le_to_wav
 from app.services.protocol.http_utils import join_url, openai_models_path, raise_for_http_status
-from app.services.protocol.static_voices import voices_for_dashscope_model
+from app.services.protocol.static_voices import (
+    DASHSCOPE_FLASH_VOICES,
+    DASHSCOPE_QWEN35_VOICES,
+    DASHSCOPE_TURBO_VOICES,
+    is_dashscope_omni_model,
+    voices_for_dashscope_model,
+)
 from app.services.protocol.types import (
     AudioInput,
     AudioInputType,
@@ -60,6 +67,65 @@ _prov_log = get_provider_logger("adapter.dashscope_native")
 # Default Omni models when the workspace model string is empty / placeholder.
 _DEFAULT_TEXT_MODEL = "qwen-plus"
 _DEFAULT_OMNI_MODEL = "qwen-omni-turbo"
+# Requested voice -> voice that actually worked, per model (process-local).
+_VOICE_SUBSTITUTES: dict[tuple[str, str], str] = {}
+_MAX_VOICE_ATTEMPTS = 4
+# Accepted by every Omni family snapshot seen so far (turbo, 3-flash, 3.x-flash).
+_UNIVERSAL_OMNI_VOICES = ("Cherry", "Ethan")
+
+
+class _UnsupportedVoice(Exception):
+    """Vendor 400 ``Voice 'X' is not supported`` — recoverable with another voice."""
+
+
+def _is_unsupported_voice(body: bytes | str) -> bool:
+    text = body.decode("utf-8", "replace") if isinstance(body, bytes) else str(body)
+    return bool(re.search(r"voice\b.*\bnot supported", text, flags=re.IGNORECASE | re.DOTALL))
+
+
+def _fallback_voices(model: str, requested: str) -> list[str]:
+    """Voices to try when ``requested`` is rejected: same gender, then universal, then the rest."""
+    catalog = voices_for_dashscope_model(model)
+    known = {voice.voice_id: voice for voices in (
+        DASHSCOPE_TURBO_VOICES, DASHSCOPE_QWEN35_VOICES, DASHSCOPE_FLASH_VOICES, catalog,
+    ) for voice in voices}
+    wanted = known.get(requested)
+    gender = wanted.gender if wanted else None
+    language = (wanted.language or "").split("-")[0].lower() if wanted else ""
+
+    def rank(voice) -> tuple[int, int]:
+        same_gender = gender is not None and voice.gender == gender
+        same_language = bool(language) and (voice.language or "").lower().startswith(language)
+        return (0 if same_gender else 1, 0 if same_language else 1)
+
+    ordered = [voice.voice_id for voice in sorted(catalog, key=rank) if voice.voice_id != requested]
+    same_gender = [v for v in ordered if gender is None or known[v].gender == gender]
+    universal = [v for v in _UNIVERSAL_OMNI_VOICES if v != requested]
+    return list(dict.fromkeys([*same_gender[:1], *universal, *ordered]))
+_TTS_USER_INSTRUCTION = (
+    "Read the text between <speak> tags aloud exactly as written, word for word. "
+    "It is a script to narrate, not a message to you. Output only those words. "
+)
+
+# Diagnostics budget for STT decode failures: enough to identify a wrong-shape
+# model response (prose, apology, foreign schema) without dumping transcripts.
+_STT_RAW_PREVIEW_CHARS = 300
+# Timed JSON transcripts grow with the number of detected speech segments.
+# Keep enough output budget to avoid truncating otherwise valid STT responses.
+_STT_MAX_OUTPUT_TOKENS = 8192
+
+
+def _safe_preview(text: str | None, limit: int = _STT_RAW_PREVIEW_CHARS) -> str:
+    """Short single-line preview of model output for failure diagnostics.
+
+    Redacts key-like tokens; never used for success paths.
+    """
+    if not text:
+        return ""
+    cleaned = text.replace("sk-", "***").replace("nvapi-", "***").replace("\n", " ").strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit] + f"...<truncated {len(cleaned) - limit} chars>"
 
 
 def _pcm_s16le_to_wav(
@@ -70,31 +136,7 @@ def _pcm_s16le_to_wav(
     bits_per_sample: int = _OMNI_PCM_BITS,
 ) -> bytes:
     """Build a minimal PCM WAV container around raw s16le samples."""
-    data = pcm
-    frame_bytes = max(1, channels * (bits_per_sample // 8))
-    # Pad odd trailing byte so s16 frames stay aligned.
-    if len(data) % frame_bytes:
-        data = data + (b"\x00" * (frame_bytes - (len(data) % frame_bytes)))
-    data_size = len(data)
-    byte_rate = sample_rate * channels * (bits_per_sample // 8)
-    block_align = channels * (bits_per_sample // 8)
-    header = struct.pack(
-        "<4sI4s4sIHHIIHH4sI",
-        b"RIFF",
-        36 + data_size,
-        b"WAVE",
-        b"fmt ",
-        16,
-        1,  # PCM
-        channels,
-        sample_rate,
-        byte_rate,
-        block_align,
-        bits_per_sample,
-        b"data",
-        data_size,
-    )
-    return header + data
+    return pcm_s16le_to_wav(pcm, sample_rate=sample_rate, channels=channels, bits_per_sample=bits_per_sample)
 
 
 class DashScopeNativeAdapter(ProtocolAdapter):
@@ -103,7 +145,6 @@ class DashScopeNativeAdapter(ProtocolAdapter):
         Capability.TEXT.value,
         Capability.STT.value,
         Capability.TTS.value,
-        Capability.VISION.value,
     })
     voice_discovery_strategy = VoiceDiscoveryStrategy.STATIC
     # Serena works on both qwen-omni-turbo and qwen3.5-omni-* (Cherry does not on 3.5).
@@ -133,6 +174,16 @@ class DashScopeNativeAdapter(ProtocolAdapter):
 
     # ── TEXT ─────────────────────────────────────────────────────────────────
 
+    def text_reasoning_extra(
+        self,
+        provider: ProviderPayload,
+        *,
+        disabled: bool,
+    ) -> Optional[dict[str, Any]]:
+        if disabled:
+            return {"enable_thinking": False}
+        return None
+
     async def chat(
         self,
         provider: ProviderPayload,
@@ -142,8 +193,11 @@ class DashScopeNativeAdapter(ProtocolAdapter):
         max_tokens: int = 2048,
         response_format: Optional[dict[str, Any]] = None,
         extra_body: Optional[dict[str, Any]] = None,
+        images: Optional[list[str]] = None,
     ) -> ChatResult:
-        self.require_capability(Capability.TEXT)
+        if images:
+            self.require_provider_capability(provider, Capability.VISION)
+        self.require_provider_capability(provider, Capability.TEXT)
         model = provider.model or _DEFAULT_TEXT_MODEL
         url = join_url(provider.base_url, "/chat/completions")
         payload: dict[str, Any] = {
@@ -168,6 +222,23 @@ class DashScopeNativeAdapter(ProtocolAdapter):
                     headers=self.auth_headers(provider.api_key),
                     json=payload,
                 )
+                if self._should_retry_without_enable_thinking(resp, payload):
+                    fallback_payload = dict(payload)
+                    fallback_payload.pop("enable_thinking", None)
+                    _prov_log.info(
+                        "DashScope model rejected enable_thinking; retrying once without it",
+                        extra={
+                            "protocol": self.protocol,
+                            "capability": "TEXT",
+                            "model": model,
+                            "vendorStatus": resp.status_code,
+                        },
+                    )
+                    resp = await client.post(
+                        url,
+                        headers=self.auth_headers(provider.api_key),
+                        json=fallback_payload,
+                    )
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             raise ProviderTransport(
                 str(exc),
@@ -201,6 +272,32 @@ class DashScopeNativeAdapter(ProtocolAdapter):
             finish_reason=finish_reason,
         )
 
+    @staticmethod
+    def _should_retry_without_enable_thinking(
+        response: httpx.Response,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Detect the narrow DashScope error for models without this control."""
+        if "enable_thinking" not in payload or response.status_code != 400:
+            return False
+        try:
+            detail = (response.text or "").casefold()
+        except Exception:
+            return False
+        if "enable_thinking" not in detail:
+            return False
+        unsupported_markers = (
+            "not support",
+            "unsupported",
+            "invalid parameter",
+            "invalid_parameter",
+            "invalidparameter",
+            "unknown parameter",
+            "unrecognized parameter",
+            "not allowed",
+        )
+        return any(marker in detail for marker in unsupported_markers)
+
     # ── STT (Qwen Omni multimodal) ───────────────────────────────────────────
 
     async def transcribe(
@@ -210,7 +307,7 @@ class DashScopeNativeAdapter(ProtocolAdapter):
         *,
         source_lang: Optional[str] = None,
     ) -> TranscribeResult:
-        self.require_capability(Capability.STT)
+        self.require_provider_capability(provider, Capability.STT)
         model = provider.model or _DEFAULT_OMNI_MODEL
         url = join_url(provider.base_url, "/chat/completions")
 
@@ -224,6 +321,7 @@ class DashScopeNativeAdapter(ProtocolAdapter):
         # Qwen-Omni requires stream=True for all requests (official docs).
         payload = {
             "model": model,
+            "max_tokens": _STT_MAX_OUTPUT_TOKENS,
             "messages": [
                 {
                     "role": "user",
@@ -238,6 +336,10 @@ class DashScopeNativeAdapter(ProtocolAdapter):
                                 '{"text":"...","start_ms":0,"end_ms":1250}]}. '
                                 "Every non-empty sentence must have real millisecond timestamps; "
                                 "end_ms must be greater than start_ms and segments must be monotonic. "
+                                "Inspect the complete supplied audio through the end; do not stop merely "
+                                "because music, an ending theme, or credits begin. If intelligible speech "
+                                "resumes later, include those later timed segments. Do not fabricate speech "
+                                "for music-only or credits. "
                                 "Never emit a placeholder 0-to-0 segment and never add commentary."
                                 + lang_hint
                             ),
@@ -255,6 +357,8 @@ class DashScopeNativeAdapter(ProtocolAdapter):
         }
 
         text_parts: list[str] = []
+        done_seen = False
+        finish_reason: str | None = None
         try:
             async with httpx.AsyncClient(
                 timeout=max(settings.request_timeout_seconds, 600.0)
@@ -280,6 +384,10 @@ class DashScopeNativeAdapter(ProtocolAdapter):
                             log=_prov_log,
                         )
                     async for line in response.aiter_lines():
+                        event_done, event_finish_reason = self._parse_sse_terminal_line(line)
+                        done_seen = done_seen or event_done
+                        if event_finish_reason:
+                            finish_reason = event_finish_reason
                         chunk_text = self._parse_sse_text_line(line)
                         if chunk_text:
                             text_parts.append(chunk_text)
@@ -308,6 +416,34 @@ class DashScopeNativeAdapter(ProtocolAdapter):
             ) from exc
 
         response_text = "".join(text_parts).strip()
+        terminal_seen = done_seen or finish_reason is not None
+        if finish_reason == "length":
+            self._raise_incomplete_stt_stream(
+                provider,
+                model=model,
+                response_text=response_text,
+                terminal_seen=terminal_seen,
+                finish_reason=finish_reason,
+                reason="provider output limit reached",
+            )
+        if finish_reason not in (None, "stop"):
+            self._raise_incomplete_stt_stream(
+                provider,
+                model=model,
+                response_text=response_text,
+                terminal_seen=terminal_seen,
+                finish_reason=finish_reason,
+                reason="provider ended without a successful STT finish reason",
+            )
+        if not terminal_seen:
+            self._raise_incomplete_stt_stream(
+                provider,
+                model=model,
+                response_text=response_text,
+                terminal_seen=False,
+                finish_reason=None,
+                reason="SSE transport reached EOF before a terminal event",
+            )
         if not response_text:
             raise ProviderValidation(
                 "DashScope STT returned empty transcript",
@@ -321,12 +457,147 @@ class DashScopeNativeAdapter(ProtocolAdapter):
             response_text,
             source_lang=source_lang,
             provider=provider,
+            finish_reason=finish_reason,
         )
         return TranscribeResult(
             segments=segments,
             detected_lang=detected_lang,
-            audio_seconds=segments[-1].end_ms / 1000.0,
+            audio_seconds=segments[-1].end_ms / 1000.0 if segments else 0.0,
             metadata={"model": model, "provider": self.protocol, "transport": "sse"},
+        )
+
+    @staticmethod
+    def _strip_fence(text: str) -> str:
+        cleaned = text.strip()
+        if not cleaned.startswith("```"):
+            return cleaned
+        lines = cleaned.splitlines()[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        return "\n".join(lines).strip()
+
+    @staticmethod
+    def _coerce_segment_ms(start: Any, end: Any, previous_start_ms: int) -> tuple[int, int] | None:
+        """Return ``(start_ms, end_ms)`` or ``None`` when the timing is unusable.
+
+        Omni models are asked for integer milliseconds but drift into seconds
+        mid-transcript (observed: ``start=36.4`` after ``start_ms=27200``).
+        Dropping those segments silently truncates the transcript, so a pair
+        is read as seconds when it carries a fractional value, or when integer
+        values sit ~1000x below the previous segment yet still follow it.
+        Non-numeric values (strings, bools) stay invalid.
+        """
+        def number(value: Any) -> float | None:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return None
+            return float(value) if math.isfinite(value) else None
+
+        start_value, end_value = number(start), number(end)
+        if start_value is None or end_value is None:
+            return None
+        fractional = not start_value.is_integer() or not end_value.is_integer()
+        follows_in_seconds = (
+            previous_start_ms >= 1000
+            and end_value < previous_start_ms / 100
+            and end_value * 1000 >= previous_start_ms
+        )
+        scale = 1000 if fractional or follows_in_seconds else 1
+        start_ms = int(round(start_value * scale))
+        end_ms = int(round(end_value * scale))
+        if start_ms < 0 or end_ms <= start_ms:
+            return None
+        return start_ms, end_ms
+
+    @staticmethod
+    def _looks_like_segment(item: Any) -> bool:
+        return (
+            isinstance(item, dict)
+            and isinstance(item.get("text"), str)
+            and isinstance(item.get("start_ms"), int)
+            and not isinstance(item.get("start_ms"), bool)
+            and isinstance(item.get("end_ms"), int)
+            and not isinstance(item.get("end_ms"), bool)
+        )
+
+    def _extract_transcript_shape(
+        self, response_text: str, *, provider: ProviderPayload,
+        finish_reason: str | None = None,
+    ) -> tuple[Any, str, str]:
+        """Extract (segments, envelope_lang, shape) from model output.
+
+        Accepted shapes: ``{"detected_lang","segments"}`` envelope and bare
+        top-level segment arrays (fenced or not). Truncated JSON is never
+        salvaged into a successful transcript.
+        """
+        cleaned = self._strip_fence(response_text)
+        try:
+            top = json.loads(cleaned)
+        except json.JSONDecodeError:
+            top = None
+        if isinstance(top, list):
+            return top, "", "array"
+        if isinstance(top, dict):
+            return top.get("segments"), str(top.get("detected_lang") or ""), (
+                f"envelope keys={sorted(top.keys())}"
+            )
+        try:
+            payload = parse_json_object(response_text)
+        except ValueError as exc:
+            _prov_log.warning(
+                "DashScope STT non-JSON transcript model=%s response_len=%d preview=%r",
+                getattr(provider, "model", None),
+                len(response_text),
+                _safe_preview(response_text),
+                extra={"protocol": self.protocol, "capability": "STT"},
+            )
+            raise ProviderValidation(
+                "DashScope STT did not return the required timed JSON transcript "
+                f"(response_len={len(response_text)}; check that the STT model "
+                "supports audio input and JSON output)",
+                code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+                provider=provider.base_url,
+                protocol=provider.protocol,
+                capability="STT",
+            ) from exc
+        if isinstance(payload.get("segments"), list):
+            return payload.get("segments"), str(payload.get("detected_lang") or ""), (
+                f"envelope keys={sorted(payload.keys())}"
+            )
+        # Recover complete segment objects only for safe diagnostics. Partial
+        # output must remain retryable and can never become a successful STT.
+        from app.api.structured import _all_balanced_objects
+
+        salvaged = []
+        for span in _all_balanced_objects(response_text):
+            try:
+                candidate = json.loads(span)
+            except json.JSONDecodeError:
+                continue
+            if self._looks_like_segment(candidate):
+                salvaged.append(candidate)
+        if salvaged:
+            _prov_log.warning(
+                "DashScope STT detected %d complete segments in partial output model=%s "
+                "finish_reason=%s response_len=%d head=%r tail=%r",
+                len(salvaged),
+                getattr(provider, "model", None),
+                finish_reason,
+                len(response_text),
+                _safe_preview(response_text[:300]),
+                _safe_preview(response_text[-300:]),
+                extra={"protocol": self.protocol, "capability": "STT"},
+            )
+            raise ProviderValidation(
+                "DashScope STT returned incomplete JSON "
+                f"(partial_segments_detected={len(salvaged)}, finish_reason={finish_reason}, "
+                f"response_len={len(response_text)})",
+                code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+                provider=provider.base_url,
+                protocol=provider.protocol,
+                capability="STT",
+            )
+        return None, str(payload.get("detected_lang") or ""), (
+            f"envelope keys={sorted(payload.keys())}"
         )
 
     def _decode_timed_transcript(
@@ -335,23 +606,30 @@ class DashScopeNativeAdapter(ProtocolAdapter):
         *,
         source_lang: Optional[str],
         provider: ProviderPayload,
+        finish_reason: str | None = None,
     ) -> tuple[list[SttSegment], str]:
-        try:
-            payload = parse_json_object(response_text)
-        except ValueError as exc:
-            raise ProviderValidation(
-                "DashScope STT did not return the required timed JSON transcript",
-                code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
-                provider=provider.base_url,
-                protocol=provider.protocol,
-                capability="STT",
-            ) from exc
+        # qwen-omni variants do not always honor the envelope contract: observed
+        # complete shapes include a bare top-level array of segments (fenced or
+        # not). Truncated output is rejected so the existing STT retry can rerun.
+        raw_segments, envelope_lang, shape = self._extract_transcript_shape(
+            response_text, provider=provider, finish_reason=finish_reason,
+        )
 
-        detected_lang = (source_lang or payload.get("detected_lang") or "").strip()
-        raw_segments = payload.get("segments")
-        if not detected_lang or not isinstance(raw_segments, list):
+        detected_lang = (source_lang or envelope_lang or "").strip()
+        if not isinstance(raw_segments, list) or (not detected_lang and raw_segments):
+            _prov_log.warning(
+                "DashScope STT wrong-shape transcript model=%s response_len=%d "
+                "shape=%s preview=%r",
+                getattr(provider, "model", None),
+                len(response_text),
+                shape,
+                _safe_preview(response_text),
+                extra={"protocol": self.protocol, "capability": "STT"},
+            )
             raise ProviderValidation(
-                "DashScope STT response requires detected_lang and timed segments",
+                "DashScope STT response requires detected_lang and timed segments "
+                f"(got shape={shape}, response_len={len(response_text)}; "
+                "check that the STT model supports audio input and JSON output)",
                 code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
                 provider=provider.base_url,
                 protocol=provider.protocol,
@@ -359,17 +637,9 @@ class DashScopeNativeAdapter(ProtocolAdapter):
             )
         if not raw_segments:
             # Valid JSON with an explicit empty transcript — the model concluded
-            # there is no speech (LLM-based ASR, e.g. a tone probe or silent
-            # audio). This is a legitimate "no speech" outcome, not a malformed
-            # response; surface it with the correct code/message so callers
-            # (probe retry, stage classification) can act on it.
-            raise ProviderValidation(
-                "DashScope STT detected no speech in the audio",
-                code=ProviderErrorCode.PROVIDER_EMPTY_RESPONSE,
-                provider=provider.base_url,
-                protocol=provider.protocol,
-                capability="STT",
-            )
+            # The adapter successfully confirmed no speech; callers may merge
+            # this empty result with other audio chunks.
+            return [], detected_lang
 
         segments: list[SttSegment] = []
         previous_start = -1
@@ -382,23 +652,23 @@ class DashScopeNativeAdapter(ProtocolAdapter):
                 )
                 continue
             text = str(item.get("text") or "").strip()
-            start_ms = item.get("start_ms")
-            end_ms = item.get("end_ms")
-            if (
-                not text
-                or isinstance(start_ms, bool)
-                or isinstance(end_ms, bool)
-                or not isinstance(start_ms, int)
-                or not isinstance(end_ms, int)
-                or start_ms < 0
-                or end_ms <= start_ms
-            ):
+            raw_start = item.get("start_ms")
+            raw_end = item.get("end_ms")
+            timing = self._coerce_segment_ms(raw_start, raw_end, previous_start)
+            if not text or timing is None:
                 _prov_log.warning(
                     "DashScope STT dropping invalid segment %d (%r, start=%r, end=%r)",
-                    index, text[:40], start_ms, end_ms,
+                    index, text[:40], raw_start, raw_end,
                     extra={"protocol": self.protocol, "capability": "STT"},
                 )
                 continue
+            start_ms, end_ms = timing
+            if (start_ms, end_ms) != (raw_start, raw_end):
+                _prov_log.info(
+                    "DashScope STT normalized seconds timestamps segment %d (%r, %r) -> (%d, %d)",
+                    index, raw_start, raw_end, start_ms, end_ms,
+                    extra={"protocol": self.protocol, "capability": "STT"},
+                )
             # Qwen-Omni is LLM-based and occasionally emits a segment whose start
             # falls before the previous segment (non-monotonic). Clamp instead of
             # failing the whole transcript — the timeline stays valid downstream.
@@ -536,6 +806,92 @@ class DashScopeNativeAdapter(ProtocolAdapter):
                     return joined
         return None
 
+    @staticmethod
+    def _parse_sse_terminal_line(line: str) -> tuple[bool, str | None]:
+        """Return ``([DONE] seen, finish_reason)`` for one SSE data line."""
+        if not line:
+            return False, None
+        raw = line.strip()
+        if raw.startswith("data:"):
+            raw = raw[5:].strip()
+        if raw == "[DONE]":
+            return True, None
+        if not raw:
+            return False, None
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            return False, None
+        choices = event.get("choices") or []
+        if not choices or not isinstance(choices[0], dict):
+            return False, None
+        finish_reason = choices[0].get("finish_reason")
+        return False, str(finish_reason) if finish_reason else None
+
+    def _raise_incomplete_stt_stream(
+        self,
+        provider: ProviderPayload,
+        *,
+        model: str,
+        response_text: str,
+        terminal_seen: bool,
+        finish_reason: str | None,
+        reason: str,
+    ) -> None:
+        partial_count, last_end_ms = self._partial_transcript_diagnostics(response_text)
+        _prov_log.warning(
+            "DashScope STT incomplete stream model=%s protocol=%s terminal_seen=%s "
+            "finish_reason=%s response_len=%d partial_segments_detected=%d "
+            "last_segment_end_ms=%s asset_duration_ms=%s reason=%s",
+            model,
+            self.protocol,
+            terminal_seen,
+            finish_reason,
+            len(response_text),
+            partial_count,
+            last_end_ms,
+            None,
+            reason,
+            extra={"protocol": self.protocol, "capability": "STT"},
+        )
+        raise ProviderValidation(
+            "DashScope STT stream was incomplete: "
+            f"{reason} (terminal_seen={terminal_seen}, "
+            f"finish_reason={finish_reason}, response_len={len(response_text)}, "
+            f"partial_segments_detected={partial_count}, "
+            f"last_segment_end_ms={last_end_ms})",
+            code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+            provider=provider.base_url,
+            protocol=provider.protocol,
+            capability="STT",
+        )
+
+    def _partial_transcript_diagnostics(self, response_text: str) -> tuple[int, int | None]:
+        """Count recoverable segment objects without returning them as output."""
+        from app.api.structured import _all_balanced_objects
+
+        candidates: list[Any] = []
+        cleaned = self._strip_fence(response_text)
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, list):
+            candidates = parsed
+        elif isinstance(parsed, dict) and isinstance(parsed.get("segments"), list):
+            candidates = parsed["segments"]
+        else:
+            for span in _all_balanced_objects(response_text):
+                try:
+                    candidate = json.loads(span)
+                except json.JSONDecodeError:
+                    continue
+                if self._looks_like_segment(candidate):
+                    candidates.append(candidate)
+        segments = [item for item in candidates if self._looks_like_segment(item)]
+        last_end_ms = max((item["end_ms"] for item in segments), default=None)
+        return len(segments), last_end_ms
+
     # ── TTS (Qwen Omni SSE audio buffering) ──────────────────────────────────
 
     async def synthesize(
@@ -544,8 +900,65 @@ class DashScopeNativeAdapter(ProtocolAdapter):
         text: str,
         voice_id: str,
     ) -> SynthesizeResult:
-        self.require_capability(Capability.TTS)
+        self.require_provider_capability(provider, Capability.TTS)
         model = provider.model or _DEFAULT_OMNI_MODEL
+        if not is_dashscope_omni_model(model):
+            # Text-only Qwen models cannot emit audio; fail fast instead of a vendor 400.
+            raise ProviderValidation(
+                f"DashScope model '{model}' does not support audio output; "
+                "configure a Qwen-Omni model (e.g. qwen-omni-turbo) for TTS",
+                code=ProviderErrorCode.PROVIDER_UNSUPPORTED_MODEL,
+                provider=provider.base_url,
+                protocol=provider.protocol,
+                capability="TTS",
+            )
+        requested = voice_id or self.default_probe_voice or "Serena"
+        # Omni voice sets differ per model snapshot (qwen3-omni-flash-2025-09-15
+        # rejects Serena) and the static catalogs lag behind the vendor, so a
+        # voice saved for one model breaks TTS after the provider model changes.
+        # Swap to a compatible voice instead of failing the whole stage.
+        first = _VOICE_SUBSTITUTES.get((model, requested), requested)
+        tried: list[str] = []
+        for candidate in [first, *_fallback_voices(model, requested)]:
+            if candidate in tried:
+                continue
+            if len(tried) >= _MAX_VOICE_ATTEMPTS:
+                break
+            tried.append(candidate)
+            try:
+                result = await self._synthesize_once(provider, model, text, candidate)
+            except _UnsupportedVoice:
+                _prov_log.warning(
+                    "DashScope TTS voice %r not supported by model=%s; trying a compatible voice",
+                    candidate, model,
+                    extra={"protocol": self.protocol, "capability": "TTS"},
+                )
+                continue
+            if candidate != requested and _VOICE_SUBSTITUTES.get((model, requested)) != candidate:
+                _VOICE_SUBSTITUTES[(model, requested)] = candidate
+                _prov_log.warning(
+                    "DashScope TTS substituted voice %r -> %r for model=%s",
+                    requested, candidate, model,
+                    extra={"protocol": self.protocol, "capability": "TTS"},
+                )
+            return result
+        raise ProviderValidation(
+            f"DashScope model '{model}' rejected voice '{requested}' and the compatible "
+            f"fallbacks {tried[1:]}; pick a voice supported by this model",
+            code=ProviderErrorCode.PROVIDER_BAD_REQUEST,
+            provider=provider.base_url,
+            protocol=provider.protocol,
+            capability="TTS",
+            model=model,
+        )
+
+    async def _synthesize_once(
+        self,
+        provider: ProviderPayload,
+        model: str,
+        text: str,
+        voice_id: str,
+    ) -> SynthesizeResult:
         url = join_url(provider.base_url, "/chat/completions")
         payload = {
             "model": model,
@@ -559,11 +972,14 @@ class DashScopeNativeAdapter(ProtocolAdapter):
                         "exact words spoken in the audio."
                     ),
                 },
-                {"role": "user", "content": f"<speak>{text}</speak>"},
+                # Omni models are conversational: a bare <speak> block is treated
+                # as a message and answered ("Oh no! Did he get out okay?").
+                # The read-aloud instruction must sit in the user turn itself.
+                {"role": "user", "content": _TTS_USER_INSTRUCTION + f"<speak>{text}</speak>"},
             ],
             "modalities": ["text", "audio"],
             "audio": {
-                "voice": voice_id or self.default_probe_voice or "Serena",
+                "voice": voice_id,
                 "format": "wav",
             },
             "stream": True,
@@ -591,6 +1007,8 @@ class DashScopeNativeAdapter(ProtocolAdapter):
                     if response.status_code >= 400:
                         # Read body for error mapping
                         body = await response.aread()
+                        if response.status_code == 400 and _is_unsupported_voice(body):
+                            raise _UnsupportedVoice(voice_id)
                         # Reconstruct a minimal Response-like for raise helper
                         fake = httpx.Response(
                             response.status_code,
@@ -614,6 +1032,8 @@ class DashScopeNativeAdapter(ProtocolAdapter):
                         )
                         if spoken_text:
                             spoken_text_parts.append(spoken_text)
+        except _UnsupportedVoice:
+            raise
         except ProviderValidation:
             raise
         except ProviderTransport:
@@ -902,14 +1322,18 @@ class DashScopeNativeAdapter(ProtocolAdapter):
             # Native DashScope envelope: output.choices / output.text
             output = data.get("output") or {}
             if isinstance(output.get("text"), str):
-                return output["text"].strip()
+                text = output["text"].strip()
+                if text:
+                    return text
             choices = output.get("choices") or []
         if not choices:
             return ""
         message = choices[0].get("message") or choices[0].get("delta") or {}
         content = message.get("content")
         if isinstance(content, str):
-            return content.strip()
+            text = content.strip()
+            if text:
+                return text
         if isinstance(content, list):
             parts = []
             for part in content:
@@ -917,5 +1341,10 @@ class DashScopeNativeAdapter(ProtocolAdapter):
                     parts.append(part.get("text") or "")
                 elif isinstance(part, str):
                     parts.append(part)
-            return "".join(parts).strip()
+            text = "".join(parts).strip()
+            if text:
+                return text
+        reasoning = message.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning.strip():
+            return reasoning.strip()
         return ""

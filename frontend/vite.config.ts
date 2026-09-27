@@ -1,58 +1,30 @@
 import { defineConfig } from 'vitest/config'
-import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
-import { createMockMiddleware } from './mock/index.cjs'
 
-function mockApiPlugin(): Plugin {
-  const mw = createMockMiddleware()
-  return {
-    name: 'transflow-mock-api',
-    apply: 'serve',
-    configureServer(server) {
-      server.middlewares.use('/api', (req, res, next) => {
-        mw(req as any, res, next)
-      })
-    },
-  }
-}
+// Frontend always proxies /api to the real Spring Boot backend
+const backendUrl = process.env.VITE_BACKEND_URL || 'http://localhost:8080'
 
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    // =========================================================================
-    // [CHẾ ĐỘ 1: DÙNG MOCK API NỘI BỘ]
-    // Mặc định Vite dev server chặn request /api và trả về dữ liệu mẫu (mock).
-    // KHI CHUYỂN SANG DÙNG BACKEND THẬT: Hãy COMMENT dòng `mockApiPlugin()` dưới đây.
-    // =========================================================================
-    mockApiPlugin(),
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(import.meta.dirname, './src'),
     },
   },
   server: {
     port: 5173,
-    // =========================================================================
-    // [CHẾ ĐỘ 2: DÙNG BACKEND API THẬT QUA VITE PROXY]
-    // Để chuyển sang Backend thật:
-    //   1. Comment `mockApiPlugin()` ở mảng plugins phía trên.
-    //   2. Mở comment khối `proxy` bên dưới và điền đúng cổng/domain của Backend thật.
-    // Lợi ích: Tránh hoàn toàn lỗi CORS khi dev ở localhost.
-    // =========================================================================
-    /*
     proxy: {
       '/api': {
-        target: 'http://localhost:8080', // TODO: Thay bằng địa chỉ backend thật (VD: http://localhost:8080)
+        target: backendUrl,
         changeOrigin: true,
         secure: false,
-        // rewrite: (path) => path.replace(/^\/api/, ''), // Mở dòng này nếu Backend không dùng tiền tố /api
       },
     },
-    */
   },
   test: {
     // React.act only exists in the non-production React build. Vitest does not

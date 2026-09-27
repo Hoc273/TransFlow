@@ -3,7 +3,7 @@ package com.app.modules.auth.service;
 import com.app.modules.auth.dto.*;
 import com.app.modules.auth.entity.User;
 
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Authentication service interface (API_Contract.md §1 & CLAUDE_A.md §4.8).
@@ -15,11 +15,25 @@ public interface AuthService {
 
     AuthResponse register(RegisterRequest req);
 
+    OtpMessageResponse sendRegisterOtp(RegisterOtpRequest req);
+
     AuthResponse login(LoginRequest req);
 
     TokenRefreshResponse refresh(RefreshRequest req);
 
     UserResponse me(UUID userId);
+
+    UserResponse updateProfile(UUID userId, UpdateProfileRequest req);
+
+    UserResponse deleteAvatar(UUID userId);
+
+    void changePassword(UUID userId, ChangePasswordRequest req);
+
+    Optional<UserResponse> findUserById(UUID userId);
+
+    Map<UUID, UserResponse> findUsersByIds(Collection<UUID> userIds);
+
+    Optional<UserResponse> findUserByEmail(String email);
 
     WorkspaceProjectInit initDefaultWorkspaceAndCredit(User user);
 
@@ -27,5 +41,22 @@ public interface AuthService {
 
     AuthResponse issueAuthTokens(User user, UUID workspaceId, UUID projectId);
 
+    OtpMessageResponse sendForgotPasswordOtp(ForgotPasswordOtpRequest req);
+
+    OtpVerifyResponse verifyForgotPasswordOtp(VerifyPasswordOtpRequest req);
+
+    OtpMessageResponse resetPasswordWithOtp(ResetPasswordOtpRequest req);
+
+    /**
+     * Grant {@code users.is_platform_admin} by email — used by the platform seed runner
+     * (SRS §5.8). Idempotent: never creates users, never revokes.
+     */
+    PlatformAdminGrantOutcome grantPlatformAdminByEmail(String email);
+
     record WorkspaceProjectInit(UUID workspaceId, UUID projectId) {}
+
+    /** {@code userId} is null when {@code result} is USER_NOT_FOUND. */
+    record PlatformAdminGrantOutcome(UUID userId, Result result) {
+        public enum Result { GRANTED, ALREADY_ADMIN, USER_NOT_FOUND }
+    }
 }

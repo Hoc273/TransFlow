@@ -25,7 +25,6 @@ ProviderProtocol = Literal[
     "google_speech",
     "amazon_polly",
     "dashscope_native",
-    "local_piper",
 ]
 ProviderCapability = Literal[
     "TEXT",
@@ -64,6 +63,16 @@ class Usage(BaseModel):
 
 
 # ── /ai/translate ────────────────────────────────────────────────────────────
+class TranslateSegmentIn(BaseModel):
+    id: str = Field(min_length=1)
+    text: str
+
+
+class TranslateSegmentOut(BaseModel):
+    id: str
+    translation: str
+
+
 class TranslateRequest(BaseModel):
     request_id: str
     workspace_id: Optional[str] = None
@@ -74,15 +83,20 @@ class TranslateRequest(BaseModel):
     glossary: list[GlossaryTerm] = Field(default_factory=list)
     context: Optional[dict[str, Any]] = None
     options: Optional[dict[str, Any]] = None
+    # Timed subtitle lines: when present each line is translated on its own
+    # (batched), so callers never re-split a joined translation by guesswork.
+    segments: Optional[list[TranslateSegmentIn]] = None
 
 
 class TranslateResponse(BaseModel):
     request_id: str
     status: Status
     translation: Optional[str] = None
+    segments: list[TranslateSegmentOut] = Field(default_factory=list)
     applied_glossary: list[str] = Field(default_factory=list)
     usage: Optional[Usage] = None
     error: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 # ── /ai/qa ───────────────────────────────────────────────────────────────────
@@ -98,7 +112,8 @@ class QARequest(BaseModel):
 
 
 BlockingAction = Literal[
-    "BLOCK_EXPORT",
+    "BLOCK_APPROVAL",
+    "BLOCK_PUBLISH",
     "BLOCK_RENDER",
 ]
 
@@ -120,6 +135,7 @@ class QAResponse(BaseModel):
     score: Optional[float] = None
     usage: Optional[Usage] = None
     error: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 # ── /ai/validate-provider ────────────────────────────────────────────────────
@@ -131,6 +147,7 @@ class ValidateProviderResponse(BaseModel):
     ok: bool
     model: Optional[str] = None
     message: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 # ── /media/stt ──────────────────────────────────────────────────────────────
@@ -205,8 +222,12 @@ class SummarizeRequest(BaseModel):
     correlation_id: str
     media_job_id: str
     transcript: list[SttSegment] = Field(default_factory=list)
-    requested_duration_seconds: int
-    duration_tolerance: dict[str, int]
+    # Optional for Localization HYBRID. The gateway derives a conservative
+    # target from the transcript when Spring has no user-requested duration.
+    requested_duration_seconds: Optional[int] = Field(default=None, gt=0)
+    duration_tolerance: dict[str, int] = Field(
+        default_factory=lambda: {"lower_seconds": 20, "upper_seconds": 20}
+    )
     provider: ProviderPayload
 
 
@@ -282,6 +303,9 @@ class NarrativeSummarizeRequest(BaseModel):
     visual_observations: Optional[list[dict]] = None
     visual_scenes: Optional[list[dict]] = None
     multimodal_context: Optional[dict] = None
+    # Option A+ additive — cold-start narration pacing estimate (chars/sec) from the
+    # bound TTS voice. Same-language jobs only; None preserves the legacy default.
+    narration_cps_estimate: Optional[int] = None
 
 
 class NarrativeSummarizeResponse(BaseModel):
@@ -338,6 +362,8 @@ class TtsResult(BaseModel):
     audio_ref: Optional[str] = None
     # Base64 audio payload; Spring Boot uploads to media bucket (C4)
     audio_base64: Optional[str] = None
+    # Measured clip length; Spring builds the narration timeline from it.
+    duration_ms: Optional[int] = None
     error: Optional[str] = None
     # OI-01 (D2.6, `93` §4.19.12): typed per-segment error code — canonical
     # ProviderErrorCode name/value (e.g. "PROVIDER_TTS_VOICE_NOT_FOUND").
@@ -377,6 +403,7 @@ class TtsResponse(BaseModel):
     results: list[TtsResult] = Field(default_factory=list)
     usage: Optional[TtsUsage] = None
     error: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 class TtsVoice(BaseModel):
@@ -387,9 +414,12 @@ class TtsVoice(BaseModel):
     # [language] so legacy payloads keep working. ``language`` stays the first
     # entry (primary display language) for backward-compatible ordering/index.
     languages: Optional[list[str]] = None
-    # Unknown gender (e.g. Piper vi models, MODEL_CARD does not publish it) = None.
+    # Unknown gender (vendor does not publish it) = None.
     gender: Optional[Literal["MALE", "FEMALE"]] = None
     display_name: str
+    # Vendor lifecycle when published (Azure: GA / Preview / Deprecated). None = unknown,
+    # treated as GA. Spring ranks PREVIEW after GA and keeps DEPRECATED inactive.
+    status: Optional[Literal["GA", "PREVIEW", "DEPRECATED"]] = None
 
 
 class TtsVoicesResponse(BaseModel):

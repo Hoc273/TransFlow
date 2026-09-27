@@ -31,10 +31,14 @@ public class MediaAssetController {
 
     private final MediaAssetService mediaAssetService;
     private final WorkspaceAccessService access;
+    private final java.time.Duration retention;
 
-    public MediaAssetController(MediaAssetService mediaAssetService, WorkspaceAccessService access) {
+    public MediaAssetController(MediaAssetService mediaAssetService, WorkspaceAccessService access,
+                                @org.springframework.beans.factory.annotation.Value("${app.maintenance.media-retention:P3D}")
+                                java.time.Duration retention) {
         this.mediaAssetService = mediaAssetService;
         this.access = access;
+        this.retention = retention;
     }
 
     @GetMapping("/media/terms-version")
@@ -48,7 +52,7 @@ public class MediaAssetController {
                 .build();
     }
 
-    @PostMapping(value = "/projects/{projectId}/media/assets", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = {"/projects/{projectId}/media/assets", "/projects/{projectId}/media/upload"}, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<MediaAssetResponse> upload(@AuthenticationPrincipal AuthenticatedUser user,
                                                    @PathVariable UUID workspaceId,
@@ -57,7 +61,7 @@ public class MediaAssetController {
                                                    @RequestParam(value = "name", required = false) String name) {
         var asset = mediaAssetService.upload(workspaceId, user.id(), projectId, file, name);
         return ApiResponse.<MediaAssetResponse>builder()
-                .data(MediaAssetResponse.from(asset))
+                .data(MediaAssetResponse.from(asset, retention))
                 .build();
     }
 
@@ -66,7 +70,7 @@ public class MediaAssetController {
                                                               @PathVariable UUID workspaceId,
                                                               @PathVariable UUID projectId) {
         var assets = mediaAssetService.listRootAssets(workspaceId, user.id(), projectId).stream()
-                .map(MediaAssetResponse::from)
+                .map(asset -> MediaAssetResponse.from(asset, retention))
                 .toList();
         return ApiResponse.<List<MediaAssetResponse>>builder().data(assets).build();
     }
@@ -76,7 +80,7 @@ public class MediaAssetController {
                                                      @PathVariable UUID workspaceId,
                                                      @PathVariable UUID assetId) {
         var asset = mediaAssetService.getAsset(workspaceId, user.id(), assetId);
-        return ApiResponse.<MediaAssetResponse>builder().data(MediaAssetResponse.from(asset)).build();
+        return ApiResponse.<MediaAssetResponse>builder().data(MediaAssetResponse.from(asset, retention)).build();
     }
 
     @PostMapping("/media/assets/{assetId}/consent")
@@ -84,8 +88,11 @@ public class MediaAssetController {
     public ApiResponse<ConsentResponse> consent(@AuthenticationPrincipal AuthenticatedUser user,
                                                  @PathVariable UUID workspaceId,
                                                  @PathVariable UUID assetId,
-                                                 @Valid @RequestBody ConsentRequest req) {
-        var consent = mediaAssetService.consent(workspaceId, user.id(), assetId, req.termsVersion());
+                                                 @RequestBody(required = false) ConsentRequest req) {
+        String version = (req != null && req.termsVersion() != null && !req.termsVersion().isBlank())
+                ? req.termsVersion()
+                : mediaAssetService.currentTermsVersion();
+        var consent = mediaAssetService.consent(workspaceId, user.id(), assetId, version);
         return ApiResponse.<ConsentResponse>builder().data(ConsentResponse.from(consent)).build();
     }
 }

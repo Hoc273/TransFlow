@@ -185,3 +185,143 @@ async def test_real_frame_checksum_preserved_in_observation_flow(monkeypatch):
             data = base64.b64decode(b64)
             h = hashlib.sha256(data).hexdigest()
             assert len(h) == 64
+
+
+def _vision_probe_frame():
+    return {"timestamp": 0, "frame_ref": "data:image/png;base64,AAAA"}
+
+
+def _vision_json():
+    return (
+        '{"people":0,"objects":[],"location":"room","action":null,'
+        '"text":null,"visualDescription":"A room","confidence":0.9}'
+    )
+
+
+@pytest.mark.asyncio
+async def test_vlm_text_only_provider_is_rejected_before_provider_call(monkeypatch):
+    from app.schemas.contract import ProviderPayload
+    from app.services.provider_errors import ProviderErrorCode, ProviderException
+    from app.services.visual.vlm_gateway import _call_vlm_for_frame
+
+    monkeypatch.setattr("app.services.visual.vlm_gateway.settings.mock_mode", False)
+    provider = ProviderPayload(
+        protocol="openai_compatible",
+        base_url="https://provider.test/v1",
+        api_key="sk-test",
+        model="opaque-model",
+        temperature=0.2,
+        capabilities={"TEXT"},
+    )
+    with pytest.raises(ProviderException) as exc:
+        await _call_vlm_for_frame(provider, _vision_probe_frame())
+    assert exc.value.code == ProviderErrorCode.PROVIDER_UNSUPPORTED_CAPABILITY
+
+
+@pytest.mark.asyncio
+async def test_vlm_legacy_capabilities_none_keeps_vision_adapter_behavior(monkeypatch):
+    from app.schemas.contract import ProviderPayload, Usage
+    from app.services.protocol.openai_compatible import OpenAICompatibleAdapter
+    from app.services.protocol.types import ChatResult
+    from app.services.visual.vlm_gateway import _call_vlm_for_frame
+
+    images_seen = []
+
+    async def fake_chat(self, provider, system, user, *, max_tokens=2048, response_format=None, extra_body=None, images=None):
+        images_seen.extend(images or [])
+        return ChatResult(
+            text=_vision_json(),
+            usage=Usage(input_tokens=1, output_tokens=1, provider="openai_compatible", model=provider.model),
+        )
+
+    monkeypatch.setattr("app.services.visual.vlm_gateway.settings.mock_mode", False)
+    monkeypatch.setattr(OpenAICompatibleAdapter, "chat", fake_chat)
+    provider = ProviderPayload(
+        protocol="openai_compatible",
+        base_url="https://provider.test/v1",
+        api_key="sk-test",
+        model="opaque-model",
+        temperature=0.2,
+        capabilities=None,
+    )
+    await _call_vlm_for_frame(provider, _vision_probe_frame())
+    assert images_seen == ["data:image/png;base64,AAAA"]
+
+
+@pytest.mark.asyncio
+async def test_vlm_json_mode_fallback_is_once_and_preserves_image(monkeypatch):
+    from app.schemas.contract import ProviderPayload, Usage
+    from app.services.protocol.openai_compatible import OpenAICompatibleAdapter
+    from app.services.protocol.types import ChatResult
+    from app.services.provider_errors import ProviderErrorCode, ProviderException
+    from app.services.visual.vlm_gateway import _call_vlm_for_frame
+
+    calls = []
+
+    async def fake_chat(self, provider, system, user, *, max_tokens=2048, response_format=None, extra_body=None, images=None):
+        calls.append({"response_format": response_format, "images": images, "user": user})
+        if len(calls) == 1:
+            raise ProviderException(
+                ProviderErrorCode.PROVIDER_BAD_REQUEST,
+                "Provider rejected chat (400): unsupported response_format json_object",
+                provider=provider.base_url,
+                protocol=provider.protocol,
+                capability="VISION",
+            )
+        return ChatResult(
+            text=_vision_json(),
+            usage=Usage(input_tokens=1, output_tokens=1, provider="openai_compatible", model=provider.model),
+        )
+
+    monkeypatch.setattr("app.services.visual.vlm_gateway.settings.mock_mode", False)
+    monkeypatch.setattr(OpenAICompatibleAdapter, "chat", fake_chat)
+    provider = ProviderPayload(
+        protocol="openai_compatible",
+        base_url="https://provider.test/v1",
+        api_key="sk-test",
+        model="opaque-model",
+        temperature=0.2,
+        capabilities={"VISION"},
+    )
+    await _call_vlm_for_frame(provider, _vision_probe_frame())
+
+    assert len(calls) == 2
+    assert calls[0]["response_format"] == {"type": "json_object"}
+    assert calls[1]["response_format"] is None
+    assert calls[0]["images"] == calls[1]["images"] == ["data:image/png;base64,AAAA"]
+    assert calls[0]["user"] == calls[1]["user"]
+
+
+@pytest.mark.asyncio
+async def test_vlm_arbitrary_400_does_not_retry(monkeypatch):
+    from app.schemas.contract import ProviderPayload
+    from app.services.protocol.openai_compatible import OpenAICompatibleAdapter
+    from app.services.provider_errors import ProviderErrorCode, ProviderException
+    from app.services.visual.vlm_gateway import _call_vlm_for_frame
+
+    calls = 0
+
+    async def fake_chat(self, provider, system, user, *, max_tokens=2048, response_format=None, extra_body=None, images=None):
+        nonlocal calls
+        calls += 1
+        raise ProviderException(
+            ProviderErrorCode.PROVIDER_BAD_REQUEST,
+            "Provider rejected chat (400): image dimensions are too large",
+            provider=provider.base_url,
+            protocol=provider.protocol,
+            capability="VISION",
+        )
+
+    monkeypatch.setattr("app.services.visual.vlm_gateway.settings.mock_mode", False)
+    monkeypatch.setattr(OpenAICompatibleAdapter, "chat", fake_chat)
+    provider = ProviderPayload(
+        protocol="openai_compatible",
+        base_url="https://provider.test/v1",
+        api_key="sk-test",
+        model="opaque-model",
+        temperature=0.2,
+        capabilities={"VISION"},
+    )
+    with pytest.raises(ProviderException):
+        await _call_vlm_for_frame(provider, _vision_probe_frame())
+    assert calls == 1

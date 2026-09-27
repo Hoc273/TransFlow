@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.async_utils import blocking as _blocking
 from app.services.ffmpeg import FFmpegError
 from app.services.media_probe import probe_video
 from app.services.storage import get_storage
@@ -33,7 +34,7 @@ async def probe_endpoint(req: ProbeRequest) -> dict[str, Any]:
             status_code=422,
             detail={"code": "PROBE_PAYLOAD_INVALID", "detail": "blank object ref"},
         )
-    return run_probe(req.ref)
+    return await _blocking(run_probe, req.ref)
 
 
 def run_probe(ref: str) -> dict[str, Any]:

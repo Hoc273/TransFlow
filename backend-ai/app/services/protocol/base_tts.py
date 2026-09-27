@@ -37,9 +37,8 @@ class BaseTtsAdapter(ProtocolAdapter):
     #: TTS-only adapters expose a static catalog (no live voice-list API).
     voice_discovery_strategy: VoiceDiscoveryStrategy = VoiceDiscoveryStrategy.STATIC
 
-    #: Whether this adapter requires an API key. Zero-key System-tier adapters
-    #: (e.g. local_piper) override to False so the gateway does not mock/gate
-    #: on ``api_key`` presence.
+    #: Whether this adapter requires an API key. All TTS adapters are cloud
+    #: providers (BYOK / platform key), so the gateway gates on ``api_key``.
     requires_api_key: bool = True
 
     def catalog(self) -> list[TtsVoice]:
@@ -82,7 +81,7 @@ class BaseTtsAdapter(ProtocolAdapter):
         text: str,
         voice_id: str,
     ) -> SynthesizeResult:
-        self.require_capability(Capability.TTS)
+        self.require_provider_capability(provider, Capability.TTS)
         self.ensure_voice_known(voice_id)
         result = await self._synthesize_engine(provider, text, voice_id)
         return replace(result, metadata=self._with_execution_info(provider, voice_id, result.metadata))
@@ -98,7 +97,7 @@ class BaseTtsAdapter(ProtocolAdapter):
         object for a voice removed from the catalog still raises
         ``PROVIDER_TTS_VOICE_NOT_FOUND``. Pure (static catalog only), no I/O.
         """
-        self.require_capability(Capability.TTS)
+        self.require_provider_capability(provider, Capability.TTS)
         self.ensure_voice_known(voice_id)
         return super().cache_descriptor(provider, voice_id)
 

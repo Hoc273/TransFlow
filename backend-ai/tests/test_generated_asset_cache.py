@@ -30,8 +30,7 @@ from app.services.generated_asset_cache import (
     set_cache_override,
 )
 from app.services.protocol.google_tts import GoogleSpeechAdapter
-from app.services.protocol.piper import PiperAdapter
-from app.services.protocol.static_voices import PIPER_VOICE_MODELS
+from app.services.protocol.dashscope_native import DashScopeNativeAdapter
 from app.services.protocol.types import SynthesizeResult, TtsCacheDescriptor
 from app.services.provider_errors import (
     ProviderErrorCode,
@@ -67,7 +66,7 @@ def _provider(protocol: str, base_url: str = "http://provider.test/v1") -> Provi
     )
 
 
-def _request(provider: ProviderPayload, text: str = "Xin chào", voice: str = "piper-vi-vais1000") -> TtsRequest:
+def _request(provider: ProviderPayload, text: str = "Xin chào", voice: str = "Serena") -> TtsRequest:
     return TtsRequest(
         correlation_id="corr-1",
         media_job_id="job-1",
@@ -102,78 +101,69 @@ def _synth_adapter(protocol: str, descriptor: TtsCacheDescriptor | None = None):
     return adapter, calls
 
 
-def _piper_descriptor(provider, voice_id: str) -> TtsCacheDescriptor:
-    return PiperAdapter().cache_descriptor(provider, voice_id)
+def _wav_descriptor(provider, voice_id: str) -> TtsCacheDescriptor:
+    return DashScopeNativeAdapter().cache_descriptor(provider, voice_id)
 
 
 class CacheKeyTest(unittest.TestCase):
     def test_stable_across_calls(self):
-        provider = _provider("local_piper")
-        desc = _piper_descriptor(provider, "piper-vi-vais1000")
-        a = build_cache_key(provider, desc, "piper-vi-vais1000", "Xin chào")
-        b = build_cache_key(provider, desc, "piper-vi-vais1000", "Xin chào")
+        provider = _provider("dashscope_native")
+        desc = _wav_descriptor(provider, "Serena")
+        a = build_cache_key(provider, desc, "Serena", "Xin chào")
+        b = build_cache_key(provider, desc, "Serena", "Xin chào")
         self.assertEqual(a.hash, b.hash)
         self.assertEqual(a.provider_identity, b.provider_identity)
         self.assertEqual("wav", a.extension)
         self.assertEqual("audio/wav", a.mime_type)
 
     def test_different_text_different_key(self):
-        provider = _provider("local_piper")
-        desc = _piper_descriptor(provider, "piper-vi-vais1000")
-        a = build_cache_key(provider, desc, "piper-vi-vais1000", "Xin chào")
-        b = build_cache_key(provider, desc, "piper-vi-vais1000", "Hello")
+        provider = _provider("dashscope_native")
+        desc = _wav_descriptor(provider, "Serena")
+        a = build_cache_key(provider, desc, "Serena", "Xin chào")
+        b = build_cache_key(provider, desc, "Serena", "Hello")
         self.assertNotEqual(a.hash, b.hash)
 
     def test_different_voice_different_key(self):
-        provider = _provider("local_piper")
-        a = build_cache_key(provider, _piper_descriptor(provider, "piper-vi-vais1000"), "piper-vi-vais1000", "t")
-        b = build_cache_key(provider, _piper_descriptor(provider, "piper-en-amy"), "piper-en-amy", "t")
+        provider = _provider("dashscope_native")
+        a = build_cache_key(provider, _wav_descriptor(provider, "Serena"), "Serena", "t")
+        b = build_cache_key(provider, _wav_descriptor(provider, "Ethan"), "Ethan", "t")
         self.assertNotEqual(a.hash, b.hash)
 
     def test_canonical_json_keeps_field_boundaries(self):
         # Concatenation would collide ("a"+"bc" == "ab"+"c"); the JSON array must not.
-        provider = _provider("local_piper")
+        provider = _provider("dashscope_native")
         desc = TtsCacheDescriptor(resolved_model="m", mime_type="audio/mpeg", extension="mp3")
         a = build_cache_key(provider, desc, "a", "bc")
         b = build_cache_key(provider, desc, "ab", "c")
         self.assertNotEqual(a.hash, b.hash)
 
     def test_base_url_normalized(self):
-        raw = _provider("local_piper", base_url="HTTP://PROVIDER.TEST:9000/v1/")
-        normalized = _provider("local_piper", base_url="http://provider.test:9000/v1")
-        a = build_cache_key(raw, _piper_descriptor(raw, "piper-vi-vais1000"), "piper-vi-vais1000", "t")
-        b = build_cache_key(normalized, _piper_descriptor(normalized, "piper-vi-vais1000"), "piper-vi-vais1000", "t")
+        raw = _provider("dashscope_native", base_url="HTTP://PROVIDER.TEST:9000/v1/")
+        normalized = _provider("dashscope_native", base_url="http://provider.test:9000/v1")
+        a = build_cache_key(raw, _wav_descriptor(raw, "Serena"), "Serena", "t")
+        b = build_cache_key(normalized, _wav_descriptor(normalized, "Serena"), "Serena", "t")
         self.assertEqual(a.provider_identity, b.provider_identity)
 
     def test_different_endpoints_isolated(self):
-        tenant_a = _provider("local_piper", base_url="http://provider-a.test/v1")
-        tenant_b = _provider("local_piper", base_url="http://provider-b.test/v1")
-        a = build_cache_key(tenant_a, _piper_descriptor(tenant_a, "piper-vi-vais1000"), "piper-vi-vais1000", "t")
-        b = build_cache_key(tenant_b, _piper_descriptor(tenant_b, "piper-vi-vais1000"), "piper-vi-vais1000", "t")
+        tenant_a = _provider("dashscope_native", base_url="http://provider-a.test/v1")
+        tenant_b = _provider("dashscope_native", base_url="http://provider-b.test/v1")
+        a = build_cache_key(tenant_a, _wav_descriptor(tenant_a, "Serena"), "Serena", "t")
+        b = build_cache_key(tenant_b, _wav_descriptor(tenant_b, "Serena"), "Serena", "t")
         self.assertNotEqual(a.provider_identity, b.provider_identity)
         self.assertNotEqual(a.hash, b.hash)
         self.assertNotIn("provider-b", a.provider_identity)
 
     def test_object_key_path(self):
-        provider = _provider("local_piper")
-        material = build_cache_key(provider, _piper_descriptor(provider, "piper-vi-vais1000"), "piper-vi-vais1000", "t")
+        provider = _provider("dashscope_native")
+        material = build_cache_key(provider, _wav_descriptor(provider, "Serena"), "Serena", "t")
         cache = InMemoryGeneratedAssetCache(prefix="generated-assets/v1")
         self.assertEqual(
             cache.object_key(material),
-            f"generated-assets/v1/tts/local_piper/piper-vi-vais1000/{material.hash}.wav",
+            f"generated-assets/v1/tts/dashscope_native/Serena/{material.hash}.wav",
         )
 
 
 class CacheDescriptorTest(unittest.IsolatedAsyncioTestCase):
-    def test_piper_resolves_executed_model(self):
-        provider = _provider("local_piper")
-        desc = PiperAdapter().cache_descriptor(provider, "piper-vi-vais1000")
-        self.assertEqual(PIPER_VOICE_MODELS["piper-vi-vais1000"], desc.resolved_model)
-        self.assertNotEqual(desc.resolved_model, provider.model)
-        self.assertEqual("audio/wav", desc.mime_type)
-        self.assertEqual("wav", desc.extension)
-        self.assertEqual("1.0", desc.speed)
-
     def test_base_tts_validation_fails_fast_for_unknown_voice(self):
         provider = _provider("google_speech")
         adapter = GoogleSpeechAdapter()
@@ -201,8 +191,8 @@ class CacheDescriptorTest(unittest.IsolatedAsyncioTestCase):
 
 class MetadataTest(unittest.TestCase):
     def test_provenance_metadata_has_all_13_fields(self):
-        provider = _provider("local_piper")
-        material = build_cache_key(provider, _piper_descriptor(provider, "piper-vi-vais1000"), "piper-vi-vais1000", "t")
+        provider = _provider("dashscope_native")
+        material = build_cache_key(provider, _wav_descriptor(provider, "Serena"), "Serena", "t")
         meta = build_metadata(material, b"data", time.time())
         blob = json.loads(meta[gac._META_USER_KEY])
         self.assertEqual(PROVENANCE_FIELDS, set(blob))
@@ -221,9 +211,9 @@ class InMemoryCacheTest(unittest.IsolatedAsyncioTestCase):
         self.cache = InMemoryGeneratedAssetCache(
             cap_bytes=10_000, ttl_seconds=86400, prefix="generated-assets/v1"
         )
-        self.provider = _provider("local_piper")
+        self.provider = _provider("dashscope_native")
         self.material = build_cache_key(
-            self.provider, _piper_descriptor(self.provider, "piper-vi-vais1000"), "piper-vi-vais1000", "Xin chào"
+            self.provider, _wav_descriptor(self.provider, "Serena"), "Serena", "Xin chào"
         )
 
     async def test_miss_then_hit(self):
@@ -264,7 +254,7 @@ class InMemoryCacheTest(unittest.IsolatedAsyncioTestCase):
         keys = []
         for i in range(3):
             text = f"text-{i}"
-            m = build_cache_key(self.provider, _piper_descriptor(self.provider, "piper-vi-vais1000"), "piper-vi-vais1000", text)
+            m = build_cache_key(self.provider, _wav_descriptor(self.provider, "Serena"), "Serena", text)
             await self.cache.put(m, f"audio-{i}".encode() * 100)
             keys.append(self.cache.object_key(m))
             await asyncio.sleep(0.01)  # distinct last_access
@@ -300,7 +290,7 @@ class InMemoryCacheTest(unittest.IsolatedAsyncioTestCase):
 
 
 def _material_for(provider, text):
-    return build_cache_key(provider, _piper_descriptor(provider, "piper-vi-vais1000"), "piper-vi-vais1000", text)
+    return build_cache_key(provider, _wav_descriptor(provider, "Serena"), "Serena", text)
 
 
 class GatewayCacheIntegrationTest(unittest.IsolatedAsyncioTestCase):
@@ -314,10 +304,10 @@ class GatewayCacheIntegrationTest(unittest.IsolatedAsyncioTestCase):
         set_cache_override(None)
 
     async def test_miss_then_hit_with_execution_info(self):
-        adapter, calls = _synth_adapter("local_piper", _piper_descriptor(_provider("local_piper"), "piper-vi-vais1000"))
+        adapter, calls = _synth_adapter("dashscope_native", _wav_descriptor(_provider("dashscope_native"), "Serena"))
         with patch("app.services.tts_gateway.require_adapter", return_value=adapter):
-            first = await gateway_synthesize(_request(_provider("local_piper")))
-            second = await gateway_synthesize(_request(_provider("local_piper")))
+            first = await gateway_synthesize(_request(_provider("dashscope_native")))
+            second = await gateway_synthesize(_request(_provider("dashscope_native")))
 
         self.assertEqual(1, calls["n"], "second identical request must be a cache hit")
         import base64 as b64
@@ -329,17 +319,17 @@ class GatewayCacheIntegrationTest(unittest.IsolatedAsyncioTestCase):
         # Second call: hit with a source pointing into the namespace.
         info = second.results[0].execution_info
         self.assertTrue(info.cache.hit)
-        self.assertTrue(info.cache.source.startswith("generated-assets/v1/tts/local_piper/piper-vi-vais1000/"))
+        self.assertTrue(info.cache.source.startswith("generated-assets/v1/tts/dashscope_native/Serena/"))
         self.assertEqual("wav", info.cache.source.rsplit(".", 1)[1])
         self.assertEqual(second.results[0].audio_base64, first.results[0].audio_base64)
-        self.assertEqual("piper-vi-vais1000", info.voice)
-        self.assertEqual(PIPER_VOICE_MODELS["piper-vi-vais1000"], info.model)
+        self.assertEqual("Serena", info.voice)
+        self.assertEqual("probe-model", info.model)
         self.assertIsNotNone(info.request_id)
         self.assertIsNotNone(info.latency_ms)
 
     async def test_single_flight_exactly_one_engine_call(self):
-        provider = _provider("local_piper")
-        descriptor = _piper_descriptor(provider, "piper-vi-vais1000")
+        provider = _provider("dashscope_native")
+        descriptor = _wav_descriptor(provider, "Serena")
         entered = asyncio.Event()
         release = asyncio.Event()
         calls = {"n": 0}
@@ -353,7 +343,7 @@ class GatewayCacheIntegrationTest(unittest.IsolatedAsyncioTestCase):
         adapter = SimpleNamespace(
             synthesize=blocked_synthesize,
             cache_descriptor=lambda p, v: descriptor,
-            protocol="local_piper",
+            protocol="dashscope_native",
             requires_api_key=True,
         )
         with patch("app.services.tts_gateway.require_adapter", return_value=adapter):
@@ -372,8 +362,8 @@ class GatewayCacheIntegrationTest(unittest.IsolatedAsyncioTestCase):
     async def test_cached_object_does_not_bypass_voice_validation(self):
         # P0-2: an object exists in the cache, but the adapter's catalog no
         # longer knows the voice → the fail-fast gate must win, never the cache.
-        provider = _provider("local_piper")
-        adapter, _calls = _synth_adapter("local_piper", _piper_descriptor(provider, "piper-vi-vais1000"))
+        provider = _provider("dashscope_native")
+        adapter, _calls = _synth_adapter("dashscope_native", _wav_descriptor(provider, "Serena"))
         with patch("app.services.tts_gateway.require_adapter", return_value=adapter):
             await gateway_synthesize(_request(provider))  # populates the cache
 
@@ -381,7 +371,7 @@ class GatewayCacheIntegrationTest(unittest.IsolatedAsyncioTestCase):
             raise ProviderValidation(
                 f"Voice '{voice_id}' is not in the static catalog",
                 code=ProviderErrorCode.PROVIDER_TTS_VOICE_NOT_FOUND,
-                protocol="local_piper",
+                protocol="dashscope_native",
                 capability="TTS",
             )
 
@@ -405,9 +395,9 @@ class GatewayCacheIntegrationTest(unittest.IsolatedAsyncioTestCase):
                 raise RuntimeError("MinIO down")
 
         set_cache_override(_BrokenCache())
-        adapter, calls = _synth_adapter("local_piper", _piper_descriptor(_provider("local_piper"), "piper-vi-vais1000"))
+        adapter, calls = _synth_adapter("dashscope_native", _wav_descriptor(_provider("dashscope_native"), "Serena"))
         with patch("app.services.tts_gateway.require_adapter", return_value=adapter):
-            response = await gateway_synthesize(_request(_provider("local_piper")))
+            response = await gateway_synthesize(_request(_provider("dashscope_native")))
         self.assertEqual("COMPLETED", response.status)
         self.assertEqual("SUCCESS", response.results[0].status)
         self.assertEqual(1, calls["n"])
@@ -440,21 +430,21 @@ class FailOpenTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(cache, NoopGeneratedAssetCache)
 
     async def test_disabled_cache_synthesizes_without_cache_io(self):
-        adapter, calls = _synth_adapter("local_piper", _piper_descriptor(_provider("local_piper"), "piper-vi-vais1000"))
+        adapter, calls = _synth_adapter("dashscope_native", _wav_descriptor(_provider("dashscope_native"), "Serena"))
         set_cache_override(NoopGeneratedAssetCache())
         with patch("app.services.tts_gateway.require_adapter", return_value=adapter):
-            response = await gateway_synthesize(_request(_provider("local_piper")))
+            response = await gateway_synthesize(_request(_provider("dashscope_native")))
         self.assertEqual("COMPLETED", response.status)
         self.assertEqual(1, calls["n"])
         self.assertFalse(response.results[0].execution_info.cache.hit)
         self.assertIsNone(response.results[0].execution_info.cache.source)
 
     async def test_mock_mode_bypasses_cache(self):
-        adapter, calls = _synth_adapter("local_piper", _piper_descriptor(_provider("local_piper"), "piper-vi-vais1000"))
+        adapter, calls = _synth_adapter("dashscope_native", _wav_descriptor(_provider("dashscope_native"), "Serena"))
         set_cache_override(InMemoryGeneratedAssetCache())
         with patch("app.services.tts_gateway.require_adapter", return_value=adapter):
             with patch.object(settings, "mock_mode", True):
-                response = await gateway_synthesize(_request(_provider("local_piper")))
+                response = await gateway_synthesize(_request(_provider("dashscope_native")))
         self.assertEqual("COMPLETED", response.status)
         self.assertEqual(0, calls["n"], "mock path must not touch the engine or the cache")
         self.assertIsNone(response.results[0].execution_info)
@@ -516,8 +506,8 @@ class MinioFlushTest(unittest.TestCase):
         return cache, spy
 
     def _prime(self, cache, spy):
-        provider = _provider("local_piper")
-        material = build_cache_key(provider, _piper_descriptor(provider, "piper-vi-vais1000"), "piper-vi-vais1000", "t")
+        provider = _provider("dashscope_native")
+        material = build_cache_key(provider, _wav_descriptor(provider, "Serena"), "Serena", "t")
         key = cache.object_key(material)
         now = time.time()
         entry = gac._Entry(size=1234, last_access=now, hit_count=3, verified_at=now, dirty=True)
@@ -567,8 +557,8 @@ class MinioFlushTest(unittest.TestCase):
 
     def test_foreign_object_without_provenance_is_not_rewritten(self):
         cache, spy = self._cache_with_spy()
-        provider = _provider("local_piper")
-        material = build_cache_key(provider, _piper_descriptor(provider, "piper-vi-vais1000"), "piper-vi-vais1000", "t")
+        provider = _provider("dashscope_native")
+        material = build_cache_key(provider, _wav_descriptor(provider, "Serena"), "Serena", "t")
         key = cache.object_key(material)
         now = time.time()
         cache._stats[key] = gac._Entry(size=10, last_access=now, hit_count=1, verified_at=now, dirty=True)

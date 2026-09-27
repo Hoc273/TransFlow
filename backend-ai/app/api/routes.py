@@ -33,6 +33,7 @@ from app.schemas.contract import (
     ValidateProviderResponse,
 )
 from app.services import llm_gateway
+from app.services.segment_translation import translate_segments
 from app.services.provider_errors import ProviderErrorCode, ProviderException
 
 _int_log = get_internal_logger("routes")
@@ -41,17 +42,12 @@ _fe_log = get_frontend_logger("routes")
 router = APIRouter()
 
 
-def _text_extra_body() -> dict | None:
-    """Build the thinking-disabled extra_body for TEXT calls (translate/qa).
-
-    Mirrors the summarize gateway: when the setting is on, pass the
-    documented DeepSeek V4 kill-switch so reasoning-capable models emit
-    JSON directly into ``content`` instead of ``reasoning_content``.
-    Non-DeepSeek providers ignore the unknown field per OpenAI spec.
-    """
-    if settings.disable_thinking_for_translate:
-        return {"thinking": {"type": "disabled"}}
-    return None
+def _text_extra_body(provider) -> dict | None:
+    """Build protocol-normalized reasoning controls for translate/QA."""
+    return llm_gateway.text_reasoning_extra(
+        provider,
+        disabled=settings.disable_thinking_for_translate,
+    )
 
 
 def _classify_text_failure(raw_text: str, finish_reason: str) -> tuple[str, str]:
@@ -75,6 +71,11 @@ def _classify_text_failure(raw_text: str, finish_reason: str) -> tuple[str, str]
 
 @router.post("/ai/translate", response_model=None)
 async def translate(req: TranslateRequest) -> TranslateResponse | StreamingResponse:
+    if req.segments:
+        try:
+            return await translate_segments(req)
+        except ProviderException as exc:
+            return _translate_failed(req, exc)
     system, user = build_translate_prompt(
         req.source_lang,
         req.target_lang,
@@ -96,7 +97,7 @@ async def translate(req: TranslateRequest) -> TranslateResponse | StreamingRespo
             user,
             max_tokens=settings.translate_max_tokens,
             response_format={"type": "json_object"},
-            extra_body=_text_extra_body(),
+            extra_body=_text_extra_body(req.provider),
         )
     except ProviderException as exc:
         return _translate_failed(req, exc)
@@ -104,15 +105,18 @@ async def translate(req: TranslateRequest) -> TranslateResponse | StreamingRespo
     try:
         obj = parse_json_object(result.text)
     except ValueError:
-        message, _code = _classify_text_failure(result.text, result.finish_reason)
+        message, code = _classify_text_failure(result.text, result.finish_reason)
         _int_log.warning(
             "translate parse failure request_id=%s finish_reason=%s text_len=%d code=%s",
             req.request_id,
             result.finish_reason,
             len(result.text or ""),
-            _code,
+            code,
         )
-        return _translate_failed(req, message)
+        return _translate_failed(req, ProviderException(
+            ProviderErrorCode(code), message, provider=req.provider.base_url,
+            protocol=req.provider.protocol, capability="TEXT", model=req.provider.model,
+        ))
 
     translation = obj.get("translation")
     _int_log.info(
@@ -124,7 +128,14 @@ async def translate(req: TranslateRequest) -> TranslateResponse | StreamingRespo
     )
     if not isinstance(translation, str) or not translation.strip():
         _int_log.warning("translate validation failure request_id=%s: blank translation", req.request_id)
-        return _translate_failed(req, "Model returned an empty translation")
+        return _translate_failed(req, ProviderException(
+            ProviderErrorCode.PROVIDER_EMPTY_RESPONSE,
+            "Model returned an empty translation",
+            provider=req.provider.base_url,
+            protocol=req.provider.protocol,
+            capability="TEXT",
+            model=req.provider.model,
+        ))
 
     return TranslateResponse(
         request_id=req.request_id,
@@ -152,37 +163,36 @@ async def qa(req: QARequest) -> QAResponse:
             user,
             max_tokens=settings.translate_max_tokens,
             response_format={"type": "json_object"},
-            extra_body=_text_extra_body(),
+            extra_body=_text_extra_body(req.provider),
         )
     except ProviderException as exc:
-        return QAResponse(request_id=req.request_id, status="FAILED", error=str(exc))
+        return _qa_failed(req, exc)
 
     try:
         obj = parse_json_object(result.text)
     except ValueError:
-        message, _code = _classify_text_failure(result.text, result.finish_reason)
-        return QAResponse(
-            request_id=req.request_id,
-            status="FAILED",
-            error=message,
-        )
+        message, code = _classify_text_failure(result.text, result.finish_reason)
+        return _qa_failed(req, ProviderException(
+            ProviderErrorCode(code), message, provider=req.provider.base_url,
+            protocol=req.provider.protocol, capability="TEXT", model=req.provider.model,
+        ))
 
     raw_issues = obj.get("issues", [])
     if not isinstance(raw_issues, list):
-        return QAResponse(
-            request_id=req.request_id,
-            status="FAILED",
-            error="Model returned 'issues' in an unexpected shape",
-        )
+        return _qa_failed(req, ProviderException(
+            ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+            "Model returned issues in an unexpected shape",
+            protocol=req.provider.protocol, capability="TEXT", model=req.provider.model,
+        ))
     try:
         issues = [QAIssue.model_validate(i) for i in raw_issues if isinstance(i, dict)]
     except ValidationError as exc:
         _int_log.warning("QA issues failed schema validation: %s", exc.error_count())
-        return QAResponse(
-            request_id=req.request_id,
-            status="FAILED",
-            error="Model returned issues that violate the QA schema",
-        )
+        return _qa_failed(req, ProviderException(
+            ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+            "Model returned issues that violate the QA schema",
+            protocol=req.provider.protocol, capability="TEXT", model=req.provider.model,
+        ))
     return QAResponse(
         request_id=req.request_id,
         status="COMPLETED",
@@ -203,20 +213,55 @@ async def validate_provider(req: ValidateProviderRequest) -> ValidateProviderRes
             max_tokens=8,
         )
     except ProviderException as exc:
-        return ValidateProviderResponse(ok=False, model=req.provider.model, message=str(exc))
+        detail = _detail_for_request(exc, req.provider, "TEXT")
+        return ValidateProviderResponse(ok=False, model=req.provider.model,
+                                        message=exc.message, error_detail=detail)
+    if not (result.text or "").strip():
+        error = ProviderException(
+            ProviderErrorCode.PROVIDER_EMPTY_RESPONSE,
+            "Provider returned an empty response",
+            protocol=req.provider.protocol,
+            capability="TEXT",
+            model=req.provider.model,
+        )
+        return ValidateProviderResponse(
+            ok=False,
+            model=req.provider.model,
+            message=error.message,
+            error_detail=_detail_for_request(error, req.provider, "TEXT"),
+        )
     return ValidateProviderResponse(
         ok=True,
         model=req.provider.model,
-        message="Provider reachable" + (f": {result.text[:40]}" if result.text else ""),
+        message="Text capability probe successful",
     )
 
 
-def _translate_failed(req: TranslateRequest, error: object) -> TranslateResponse:
+def _translate_failed(req: TranslateRequest, error: ProviderException) -> TranslateResponse:
+    detail = _detail_for_request(error, req.provider, "TEXT")
     return TranslateResponse(
         request_id=req.request_id,
         status="FAILED",
-        error=str(error),
+        error=error.message,
+        error_detail=detail,
     )
+
+
+def _qa_failed(req: QARequest, error: ProviderException) -> QAResponse:
+    return QAResponse(
+        request_id=req.request_id,
+        status="FAILED",
+        error=error.message,
+        error_detail=_detail_for_request(error, req.provider, "TEXT"),
+    )
+
+
+def _detail_for_request(error: ProviderException, provider, capability: str) -> dict:
+    detail = error.to_error_detail()
+    detail["protocol"] = detail.get("protocol") or provider.protocol
+    detail["capability"] = detail.get("capability") or capability
+    detail["model"] = detail.get("model") or provider.model
+    return detail
 
 
 async def _translate_stream(req: TranslateRequest, system: str, user: str):
@@ -228,7 +273,7 @@ async def _translate_stream(req: TranslateRequest, system: str, user: str):
             user,
             max_tokens=settings.translate_max_tokens,
             response_format={"type": "json_object"},
-            extra_body=_text_extra_body(),
+            extra_body=_text_extra_body(req.provider),
         )
     except ProviderException as exc:
         yield _sse("done", _translate_failed(req, exc).model_dump())
@@ -237,15 +282,19 @@ async def _translate_stream(req: TranslateRequest, system: str, user: str):
     try:
         obj = parse_json_object(result.text)
     except ValueError:
-        message, _code = _classify_text_failure(result.text, result.finish_reason)
+        message, code = _classify_text_failure(result.text, result.finish_reason)
         _int_log.warning(
             "translate-stream parse failure request_id=%s finish_reason=%s text_len=%d code=%s",
             req.request_id,
             result.finish_reason,
             len(result.text or ""),
-            _code,
+            code,
         )
-        yield _sse("done", _translate_failed(req, message).model_dump())
+        error = ProviderException(
+            ProviderErrorCode(code), message, provider=req.provider.base_url,
+            protocol=req.provider.protocol, capability="TEXT", model=req.provider.model,
+        )
+        yield _sse("done", _translate_failed(req, error).model_dump())
         return
 
     translation = obj.get("translation")
@@ -258,7 +307,15 @@ async def _translate_stream(req: TranslateRequest, system: str, user: str):
     )
     if not isinstance(translation, str) or not translation.strip():
         _int_log.warning("translate-stream validation failure request_id=%s: blank translation", req.request_id)
-        yield _sse("done", _translate_failed(req, "Model returned an empty translation").model_dump())
+        error = ProviderException(
+            ProviderErrorCode.PROVIDER_EMPTY_RESPONSE,
+            "Model returned an empty translation",
+            provider=req.provider.base_url,
+            protocol=req.provider.protocol,
+            capability="TEXT",
+            model=req.provider.model,
+        )
+        yield _sse("done", _translate_failed(req, error).model_dump())
         return
     for chunk in _chunks(translation):
         yield _sse("token", {"delta": chunk})

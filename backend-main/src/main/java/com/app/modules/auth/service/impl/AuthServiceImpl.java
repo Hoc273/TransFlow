@@ -9,6 +9,10 @@ import com.app.modules.auth.entity.User;
 import com.app.modules.auth.entity.UserStatus;
 import com.app.modules.auth.repository.UserRepository;
 import com.app.modules.auth.service.AuthService;
+import com.app.modules.auth.service.AvatarPolicy;
+import com.app.modules.auth.service.EmailNormalizer;
+import com.app.modules.auth.service.LoginAttemptService;
+import com.app.modules.auth.service.PasswordPolicy;
 import com.app.modules.credit.entity.CostMode;
 import com.app.modules.credit.service.CreditService;
 import com.app.modules.project.entity.Project;
@@ -21,12 +25,23 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Locale;
-import java.util.Optional;
-import java.util.UUID;
+import com.app.modules.auth.service.ForgotPasswordOtpRateLimiter;
+import com.app.modules.auth.service.ForgotPasswordOtpStore;
+import com.app.modules.auth.service.RegisterOtpStore;
+import com.app.modules.auth.service.email.EmailService;
+import com.app.modules.auth.service.email.OtpType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.security.SecureRandom;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class AuthServiceImpl implements AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final UserRepository userRepository;
     private final WorkspaceService workspaceService;
@@ -35,6 +50,13 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AppProperties appProperties;
+    private final ForgotPasswordOtpStore otpStore;
+    private final ForgotPasswordOtpRateLimiter otpRateLimiter;
+    private final RegisterOtpStore registerOtpStore;
+    private final EmailService emailService;
+    private final LoginAttemptService loginAttemptService;
+    /** Hash compared against when the email is unknown, so response time does not reveal registered emails. */
+    private volatile String dummyPasswordHash;
 
     public AuthServiceImpl(UserRepository userRepository,
                            WorkspaceService workspaceService,
@@ -42,7 +64,12 @@ public class AuthServiceImpl implements AuthService {
                            CreditService creditService,
                            PasswordEncoder passwordEncoder,
                            JwtService jwtService,
-                           AppProperties appProperties) {
+                           AppProperties appProperties,
+                           ForgotPasswordOtpStore otpStore,
+                           ForgotPasswordOtpRateLimiter otpRateLimiter,
+                           RegisterOtpStore registerOtpStore,
+                           EmailService emailService,
+                           LoginAttemptService loginAttemptService) {
         this.userRepository = userRepository;
         this.workspaceService = workspaceService;
         this.projectService = projectService;
@@ -50,14 +77,27 @@ public class AuthServiceImpl implements AuthService {
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.appProperties = appProperties;
+        this.otpStore = otpStore;
+        this.otpRateLimiter = otpRateLimiter;
+        this.registerOtpStore = registerOtpStore;
+        this.emailService = emailService;
+        this.loginAttemptService = loginAttemptService;
     }
 
     @Override
     @Transactional
     public AuthResponse register(RegisterRequest req) {
-        String email = req.email().trim().toLowerCase(Locale.ROOT);
-        if (userRepository.existsByEmailIgnoreCase(email)) {
-            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
+        String email = EmailNormalizer.normalize(req.email());
+        requireEmailAvailable(email);
+        PasswordPolicy.requireAcceptable(req.password());
+
+        // Email ownership is always proven by OTP: without it bots could mass-register
+        // unverified addresses and farm the initial credit grant.
+        if (req.otp() == null || req.otp().isBlank()) {
+            throw new AppException(ErrorCode.OTP_REQUIRED);
+        }
+        if (!registerOtpStore.verifyAndConsumeOtp(email, req.otp())) {
+            throw new AppException(ErrorCode.INVALID_OTP);
         }
 
         User user = new User();
@@ -75,11 +115,36 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    public OtpMessageResponse sendRegisterOtp(RegisterOtpRequest req) {
+        String email = EmailNormalizer.normalize(req.email());
+        requireEmailAvailable(email);
+        // Same per-email budget as forgot-password: stops OTP mail-bombing a victim's inbox.
+        otpRateLimiter.check("register:" + email);
+
+        String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
+        registerOtpStore.saveOtp(email, otp);
+        log.info("Generated register verification OTP for email [{}]", email);
+        emailService.sendOtpEmail(email, otp, OtpType.REGISTER);
+
+        return new OtpMessageResponse("Mã xác thực OTP 6 chữ số đã được gửi đến email " + email);
+    }
+
+    @Override
     @Transactional
     public AuthResponse login(LoginRequest req) {
-        String email = req.email().trim().toLowerCase(Locale.ROOT);
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new AppException(ErrorCode.INVALID_CREDENTIALS));
+        String email = EmailNormalizer.normalize(req.email());
+        loginAttemptService.ensureNotLocked(email);
+
+        Optional<User> found = userRepository.findByEmailIgnoreCase(email);
+        if (found.isEmpty()) {
+            // Burn the same BCrypt cost as a real check so timing does not reveal unknown emails.
+            if (PasswordPolicy.fitsBcrypt(req.password())) {
+                passwordEncoder.matches(req.password(), dummyPasswordHash());
+            }
+            loginAttemptService.recordFailure(email);
+            throw new AppException(ErrorCode.INVALID_CREDENTIALS);
+        }
+        User user = found.get();
 
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new AppException(ErrorCode.ACCOUNT_DISABLED);
@@ -87,9 +152,12 @@ public class AuthServiceImpl implements AuthService {
         if (user.getPasswordHash() == null || user.getPasswordHash().isBlank()) {
             throw new AppException(ErrorCode.OAUTH_ONLY_ACCOUNT);
         }
-        if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
+        if (!PasswordPolicy.fitsBcrypt(req.password())
+                || !passwordEncoder.matches(req.password(), user.getPasswordHash())) {
+            loginAttemptService.recordFailure(email);
             throw new AppException(ErrorCode.INVALID_CREDENTIALS);
         }
+        loginAttemptService.recordSuccess(email);
 
         WorkspaceProjectInit init = resolveOrCreateDefaultWorkspaceAndProject(user);
         return issueAuthTokens(user, init.workspaceId(), init.projectId());
@@ -132,6 +200,76 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
+    public UserResponse updateProfile(UUID userId, UpdateProfileRequest req) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        user.setFullName(req.fullName().trim());
+        if (req.avatarUrl() != null) {
+            user.setAvatarUrl(AvatarPolicy.sanitize(req.avatarUrl()));
+        }
+        userRepository.save(user);
+        return UserResponse.from(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse deleteAvatar(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        user.setAvatarUrl(null);
+        userRepository.save(user);
+        return UserResponse.from(user);
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(UUID userId, ChangePasswordRequest req) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (user.getPasswordHash() != null && !user.getPasswordHash().isBlank()) {
+            if (req.currentPassword() == null || !PasswordPolicy.fitsBcrypt(req.currentPassword())
+                    || !passwordEncoder.matches(req.currentPassword(), user.getPasswordHash())) {
+                throw new AppException(ErrorCode.INVALID_CREDENTIALS);
+            }
+        }
+        PasswordPolicy.requireAcceptable(req.newPassword());
+
+        user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
+        userRepository.save(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<UserResponse> findUserById(UUID userId) {
+        if (userId == null) {
+            return Optional.empty();
+        }
+        return userRepository.findById(userId).map(UserResponse::from);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, UserResponse> findUsersByIds(Collection<UUID> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, UserResponse::from));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<UserResponse> findUserByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return Optional.empty();
+        }
+        return userRepository.findByEmailIgnoreCase(email.trim().toLowerCase(Locale.ROOT))
+                .map(UserResponse::from);
+    }
+
+    @Override
+    @Transactional
     public WorkspaceProjectInit initDefaultWorkspaceAndCredit(User user) {
         // 1 & 2. Workspace and LEAD member
         Workspace workspace = workspaceService.createDefaultWorkspace(user.getId(), user.getFullName());
@@ -167,5 +305,97 @@ public class AuthServiceImpl implements AuthService {
         String access = jwtService.generateAccessToken(user.getId(), user.getEmail());
         String refresh = jwtService.generateRefreshToken(user.getId());
         return new AuthResponse(access, refresh, UserResponse.from(user), workspaceId, projectId);
+    }
+
+    @Override
+    public OtpMessageResponse sendForgotPasswordOtp(ForgotPasswordOtpRequest req) {
+        String email = req.email().trim().toLowerCase(Locale.ROOT);
+        otpRateLimiter.check(email);
+
+        // Anti-enumeration: response is always 200 with the same message whether the
+        // email exists, is disabled, or not. Unknown/disabled accounts simply get no email.
+        // Google-only accounts (passwordHash == null) may set a password via this flow.
+        Optional<User> user = userRepository.findByEmailIgnoreCase(email);
+        if (user.isPresent() && user.get().getStatus() == UserStatus.ACTIVE) {
+            String otp = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
+            otpStore.saveOtp(email, otp);
+            log.info("Generated forgot password OTP for email [{}]", email);
+            emailService.sendOtpEmail(email, otp, OtpType.FORGOT_PASSWORD);
+        }
+
+        return new OtpMessageResponse("Nếu email đã đăng ký, mã xác thực OTP 6 chữ số đã được gửi.");
+    }
+
+    @Override
+    public OtpVerifyResponse verifyForgotPasswordOtp(VerifyPasswordOtpRequest req) {
+        String email = req.email().trim().toLowerCase(Locale.ROOT);
+        boolean valid = otpStore.verifyOtp(email, req.otp().trim());
+        if (!valid) {
+            throw new AppException(ErrorCode.INVALID_OTP);
+        }
+        return new OtpVerifyResponse(true, req.otp().trim());
+    }
+
+    @Override
+    @Transactional
+    public OtpMessageResponse resetPasswordWithOtp(ResetPasswordOtpRequest req) {
+        String email = req.email().trim().toLowerCase(Locale.ROOT);
+        PasswordPolicy.requireAcceptable(req.newPassword());
+        boolean valid = otpStore.consumeOtp(email, req.otp().trim());
+        if (!valid) {
+            throw new AppException(ErrorCode.INVALID_OTP);
+        }
+
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new AppException(ErrorCode.ACCOUNT_DISABLED);
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
+        userRepository.save(user);
+        loginAttemptService.recordSuccess(email);
+
+        return new OtpMessageResponse("Mật khẩu đã được cập nhật thành công.");
+    }
+
+    /** Rejects exact duplicates and aliases of an existing mailbox (a+1@gmail.com, a.b@gmail.com). */
+    private void requireEmailAvailable(String email) {
+        if (userRepository.existsByEmailIgnoreCase(email)
+                || userRepository.existsByEmailCanonical(EmailNormalizer.canonicalize(email))) {
+            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
+        }
+    }
+
+    private String dummyPasswordHash() {
+        String h = dummyPasswordHash;
+        if (h == null) {
+            h = passwordEncoder.encode("tf-dummy-" + UUID.randomUUID());
+            dummyPasswordHash = h;
+        }
+        return h;
+    }
+
+    @Override
+    @Transactional
+    public PlatformAdminGrantOutcome grantPlatformAdminByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return new PlatformAdminGrantOutcome(null,
+                    PlatformAdminGrantOutcome.Result.USER_NOT_FOUND);
+        }
+        Optional<User> found = userRepository.findByEmailIgnoreCase(email.trim());
+        if (found.isEmpty()) {
+            return new PlatformAdminGrantOutcome(null,
+                    PlatformAdminGrantOutcome.Result.USER_NOT_FOUND);
+        }
+        User user = found.get();
+        if (user.isPlatformAdmin()) {
+            return new PlatformAdminGrantOutcome(user.getId(),
+                    PlatformAdminGrantOutcome.Result.ALREADY_ADMIN);
+        }
+        user.setPlatformAdmin(true);
+        userRepository.save(user);
+        return new PlatformAdminGrantOutcome(user.getId(),
+                PlatformAdminGrantOutcome.Result.GRANTED);
     }
 }

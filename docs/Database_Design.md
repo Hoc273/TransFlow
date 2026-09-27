@@ -1,6 +1,8 @@
 # Thiết kế CSDL — TransFlow Media
 
-> Phiên bản: **3.3** · Ngày cập nhật: 2026-09-12 · Bám sát SRS v1.4 + bản chỉnh lý 1.4b.
+> Phiên bản: **3.4** · Ngày cập nhật: 2026-09-23 · Bám sát SRS v1.4 + bản chỉnh lý 1.4b.
+> 3.4: thêm bảng Hướng dẫn `guide_categories`/`guide_articles` (§3.2, migration V11); bổ sung action audit
+> `VIEW_USER_CREDIT`/`ADJUST_USER_CREDIT`/`OTHER` (§3.1); ghi chú presence online dùng Redis (§3.1).
 > Giữ nguyên mô hình RBAC 3 role của 3.2, đồng thời thu gọn phần dịch thuật:
 > 1. **Không có `documents` / Text Translation Job / Batch dịch file**.
 > 2. **Bỏ `translation_memory`** và do đó không còn yêu cầu `pgvector`.
@@ -80,10 +82,12 @@ erDiagram
 users(
   id UUID PK,
   email VARCHAR(320) NOT NULL,
-  password_hash VARCHAR,           -- NULL nếu chỉ đăng nhập Google
+  email_canonical VARCHAR(320),    -- V17: hộp thư gốc bỏ alias (+tag; Gmail bỏ dấu chấm, googlemail→gmail); chặn 1 inbox tạo nhiều tài khoản farm credit
+  password_hash VARCHAR,           -- NULL nếu chỉ đăng nhập Google; BCrypt
   full_name VARCHAR(200) NOT NULL,
   google_sub VARCHAR,
   google_linked BOOLEAN NOT NULL DEFAULT false,
+  is_platform_admin BOOLEAN NOT NULL DEFAULT false, -- quyền vận hành cấp hệ thống, không phải role Workspace
   status VARCHAR CHECK (status IN ('ACTIVE','DISABLED')) NOT NULL DEFAULT 'ACTIVE',
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
@@ -91,6 +95,8 @@ users(
 )
 CREATE UNIQUE INDEX ux_users_email ON users (lower(email));
 CREATE UNIQUE INDEX ux_users_google_sub ON users (google_sub) WHERE google_sub IS NOT NULL;
+-- Không unique (dữ liệu trước V17 có thể đã trùng canonical); service kiểm tra khi đăng ký mới.
+CREATE INDEX idx_users_email_canonical ON users (email_canonical);
 
 workspaces(
   id UUID PK,
@@ -121,6 +127,10 @@ projects(
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   name VARCHAR(200) NOT NULL,
   source_lang VARCHAR(20),
+  default_glossary_id UUID,
+  tm_enabled BOOLEAN NOT NULL DEFAULT true, -- legacy UI compatibility; không kích hoạt TM trong v1.4b
+  domain VARCHAR(80),
+  tone VARCHAR(80),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 )
@@ -146,6 +156,101 @@ CREATE INDEX ix_project_members_project ON project_members(project_id);
 - `MEMBER`/`CLIENT` phải có row `project_members` mới được đọc Project;
 - quyền ghi lấy từ `workspace_members.role`: `LEAD|MEMBER` được thao tác, `CLIENT` read-only;
 - Project assignment không thay đổi role và không tạo thêm một lớp role thứ hai.
+- `is_platform_admin` độc lập với membership/role Workspace; mọi API `/api/platform/*` kiểm tra cờ này từ
+  bản ghi `users`, nhưng cờ không tự cấp quyền mutation vào dữ liệu của Workspace.
+
+### 3.1 `platform_admin_audit_logs` — nhật ký kiểm toán Super Admin (SRS §5.8)
+
+Append-only, ghi bởi `PlatformAdminAuditFilter` cho mọi request `/api/platform/*` (kể cả bị từ chối)
+và bởi seed runner khi grant quyền lúc startup. Thuộc domain Platform — không có `workspace_id`.
+
+```sql
+platform_admin_audit_logs(
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_user_id UUID NULL REFERENCES users(id),   -- NULL: request không JWT / SEED_GRANT lúc bootstrap
+  action        VARCHAR(40)  NOT NULL,            -- VIEW_OVERVIEW|VIEW_STATUS|LIST_USERS|LIST_WORKSPACES|LIST_AUDIT|VIEW_USER_CREDIT|ADJUST_USER_CREDIT|SEED_GRANT|DENIED|OTHER (không CHECK — enum ở Java)
+  http_method   VARCHAR(10)  NOT NULL,
+  path          VARCHAR(512) NOT NULL,
+  query_string  VARCHAR(1024) NULL,
+  ip            VARCHAR(64)  NULL,
+  user_agent    VARCHAR(512) NULL,
+  status_code   INT          NOT NULL,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
+)
+CREATE INDEX ix_platform_audit_created ON platform_admin_audit_logs(created_at DESC);
+CREATE INDEX ix_platform_audit_actor   ON platform_admin_audit_logs(actor_user_id);
+CREATE INDEX ix_platform_audit_action  ON platform_admin_audit_logs(action);
+```
+
+- Admin điều chỉnh Credit của user (`POST /api/platform/users/{userId}/credit/adjust`) **không** có bảng
+  riêng: ghi `credit_transactions(type='ADJUSTMENT', ref_type='ADMIN_ADJUSTMENT',
+  performed_by_user_id=<admin>)` (§4) + 1 dòng audit `ADJUST_USER_CREDIT` ở bảng này.
+- Trạng thái online của user (`onlineUsers` ở `GET /api/platform/realtime`) **không lưu PostgreSQL**:
+  Redis ZSET `platform:presence:online` (member = `userId`, score = epoch giây heartbeat cuối), prune entry
+  cũ hơn 120s khi đọc — dữ liệu tạm, mất khi Redis restart là chấp nhận được.
+
+### 3.2 `guide_categories` / `guide_articles` — trang Hướng dẫn (migration V11)
+
+Nội dung tĩnh song ngữ vi/en do Platform Super Admin quản trị; không thuộc Workspace (không có
+`workspace_id`), đọc công khai không cần đăng nhập. `content_*` là Markdown.
+
+```sql
+guide_categories(
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug         VARCHAR(120) NOT NULL UNIQUE,
+  title_vi     VARCHAR(200) NOT NULL,
+  title_en     VARCHAR(200) NOT NULL,
+  order_index  INT          NOT NULL DEFAULT 0,
+  is_published BOOLEAN      NOT NULL DEFAULT true,
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+)
+CREATE INDEX ix_guide_categories_order     ON guide_categories(order_index);
+CREATE INDEX ix_guide_categories_published ON guide_categories(is_published);
+
+guide_articles(
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id     UUID NOT NULL REFERENCES guide_categories(id) ON DELETE RESTRICT,
+  slug            VARCHAR(160)  NOT NULL UNIQUE,
+  title_vi        VARCHAR(300)  NOT NULL,
+  title_en        VARCHAR(300)  NOT NULL,
+  excerpt_vi      VARCHAR(500)  NULL,
+  excerpt_en      VARCHAR(500)  NULL,
+  content_vi      TEXT          NOT NULL,
+  content_en      TEXT          NOT NULL,
+  status          VARCHAR(20)   NOT NULL DEFAULT 'DRAFT',   -- DRAFT|PUBLISHED (enum ở Java, không CHECK)
+  order_index     INT           NOT NULL DEFAULT 0,
+  cover_image_url VARCHAR(1000) NULL,
+  created_at      TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ   NOT NULL DEFAULT now()
+)
+CREATE INDEX ix_guide_articles_category_order ON guide_articles(category_id, order_index);
+CREATE INDEX ix_guide_articles_status         ON guide_articles(status);
+```
+
+- `ON DELETE RESTRICT` + kiểm tra ở service (`GUIDE_CATEGORY_HAS_ARTICLES`) — không xoá Category còn Article.
+- V5 seed sẵn vài Category và Article `PUBLISHED` mẫu.
+
+### 3.3 `legal_documents` — Điều khoản sử dụng & Chính sách bảo mật
+
+Hiển thị công khai dưới trang Hướng dẫn (`/guide/legal/terms`, `/guide/legal/privacy`), Platform Super Admin
+chỉnh sửa tại `/platform/legal`. Mỗi loại đúng 1 dòng (PK = `doc_type`), nội dung Markdown song ngữ vi/en.
+
+```sql
+legal_documents(
+  doc_type    VARCHAR(20) PRIMARY KEY CHECK (doc_type IN ('TERMS','PRIVACY')),
+  title_vi    VARCHAR(300) NOT NULL,
+  title_en    VARCHAR(300) NOT NULL,
+  content_vi  TEXT NOT NULL,
+  content_en  TEXT NOT NULL,
+  updated_by  UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+```
+
+- Bảng tạo trong `V1__init_tables.sql`, nội dung mặc định seed trong `V2__init_indexes.sql`.
+- Cập nhật dùng `SELECT ... FOR UPDATE` (khóa bi quan) theo `doc_type`.
 
 ## 4. Credit & Thanh toán (không đổi so với thiết kế trước)
 
@@ -181,16 +286,25 @@ workspace_billing_configs(
 
 credit_pricing_config(
   id UUID PK,
-  capability VARCHAR CHECK (capability IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION')) NOT NULL,
+  capability VARCHAR CHECK (capability IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION','AUDIO_SEPARATION')) NOT NULL,
   provider_scope VARCHAR,
   infra_coefficient_x NUMERIC(10,6) NOT NULL,
   token_coefficient_y NUMERIC(10,6),
   effective_from TIMESTAMPTZ NOT NULL DEFAULT now(),
   effective_to TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  created_by_user_id UUID REFERENCES users(id),   -- V16: Super Admin tạo version
+  change_reason TEXT                              -- V16: lý do đổi giá
 )
 CREATE INDEX ix_credit_pricing_active
   ON credit_pricing_config(capability, provider_scope) WHERE effective_to IS NULL;
+-- V16: đúng 1 version đang mở cho mỗi cặp capability + provider_scope
+CREATE UNIQUE INDEX ux_credit_pricing_open
+  ON credit_pricing_config(capability, COALESCE(provider_scope, '')) WHERE effective_to IS NULL;
+CREATE INDEX ix_credit_pricing_history
+  ON credit_pricing_config(capability, provider_scope, effective_from DESC);
+-- Row giá không bao giờ UPDATE giá trị / DELETE: đổi giá = đóng row đang mở (effective_to = effective_from mới)
+-- + insert row mới. provider_scope = 'protocol/model' | 'protocol' | NULL (mặc định), chữ thường.
 
 credit_packages(
   id UUID PK,
@@ -216,7 +330,7 @@ CREATE INDEX ix_credit_package_purchases_user ON credit_package_purchases(user_i
 
 ---
 
-## 5. Nguồn AI — chỉ cá nhân (BYOK) + nền tảng (không đổi)
+## 5. Nguồn AI — cá nhân (BYOK) + pool key nền tảng dùng chung (V13)
 
 ```sql
 user_ai_providers(
@@ -231,21 +345,48 @@ user_ai_providers(
   api_key_hint VARCHAR(20) NOT NULL,
   default_model VARCHAR(200),
   is_active BOOLEAN NOT NULL DEFAULT true,
+  -- V13: kết quả kiểm tra key hằng ngày (cronjob). DOWN = provider từ chối key; key vẫn được dùng
+  -- (user đã chọn) nhưng user nhận notification PROVIDER_KEY_INVALID một lần khi chuyển sang DOWN.
+  health_status VARCHAR(10) NOT NULL DEFAULT 'UNKNOWN' CHECK (health_status IN ('UNKNOWN','HEALTHY','DOWN')),
+  last_checked_at TIMESTAMPTZ,
+  last_error_code VARCHAR(80),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 )
 CREATE INDEX ix_user_ai_providers_user ON user_ai_providers(user_id) WHERE is_active;
 
+user_ai_provider_defaults(
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  capability VARCHAR(20) NOT NULL CHECK (capability IN ('STT','TRANSLATE','TTS','VISION')),
+  provider_id UUID NOT NULL REFERENCES user_ai_providers(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, capability)
+)
+
+-- Pool key nền tảng dùng chung (V13): mọi user không có BYOK cho capability đó được phục vụ
+-- từ pool và trừ Credit. Nhiều key/capability; resolver chọn nhóm priority nhỏ nhất còn key
+-- khả dụng (không DOWN, không đang cooldown Redis, chưa lỗi trong stage hiện tại), random theo weight.
 platform_ai_providers(
   id UUID PK,
+  name VARCHAR(100) NOT NULL,                     -- tên hiển thị, vd "FreeLLMAPI", "OpenAI chính"
   protocol VARCHAR NOT NULL,
   capabilities VARCHAR[] NOT NULL CHECK (capabilities <@ ARRAY['STT','TRANSLATE','TTS','VISION']::VARCHAR[]),
   base_url VARCHAR(500) NOT NULL,
   api_key_enc BYTEA NOT NULL,
+  api_key_hint VARCHAR(20),
   default_model VARCHAR(200),
   is_active BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT now()
+  priority SMALLINT NOT NULL DEFAULT 100 CHECK (priority BETWEEN 0 AND 1000),   -- nhỏ = dùng trước
+  weight SMALLINT NOT NULL DEFAULT 1 CHECK (weight BETWEEN 1 AND 100),          -- chia tải cùng priority
+  tier VARCHAR(10) NOT NULL DEFAULT 'PAID' CHECK (tier IN ('PAID','FREE')),     -- FREE = FreeLLMAPI
+  health_status VARCHAR(10) NOT NULL DEFAULT 'UNKNOWN' CHECK (health_status IN ('UNKNOWN','HEALTHY','DOWN')),
+  last_checked_at TIMESTAMPTZ,
+  last_error_code VARCHAR(80),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 )
+CREATE INDEX ix_platform_ai_providers_pool ON platform_ai_providers(is_active, priority);
+-- Cooldown ngắn hạn KHÔNG lưu DB: Redis `provider:cooldown:<id>` (TTL theo mã lỗi) và
+-- `provider:exclude:<stageId>` (set key đã lỗi trong stage, TTL 2h). Redis lỗi => fail-open.
 
 tts_voices(
   id UUID PK,
@@ -256,6 +397,8 @@ tts_voices(
   language VARCHAR NOT NULL,
   languages VARCHAR[] DEFAULT '{}',
   gender VARCHAR CHECK (gender IN ('MALE','FEMALE','UNKNOWN')) DEFAULT 'UNKNOWN',
+  display_name VARCHAR(200),                                        -- V15: tên đọc được ("Hoài My"); NULL → UI hiện voice_id
+  status VARCHAR(20) CHECK (status IN ('GA','PREVIEW','DEPRECATED')), -- V15: vòng đời vendor; NULL = không công bố (coi như GA)
   is_active BOOLEAN NOT NULL DEFAULT true,
   cached_at TIMESTAMPTZ DEFAULT now(),
   CONSTRAINT ck_tts_voice_source CHECK (
@@ -296,12 +439,16 @@ media_assets(
   duration_ms BIGINT CHECK (duration_ms IS NULL OR duration_ms <= 1800000),                        -- 30 phút (SRS §6)
   uploaded_by_user_id UUID NOT NULL REFERENCES users(id),
   processing_status VARCHAR CHECK (processing_status IN ('UPLOADED','VALIDATING','READY','FAILED')) NOT NULL,
+  -- V13: retention 3 ngày. Cronjob xoá object MinIO quá hạn và đặt purged_at; dòng được giữ lại
+  -- (media_jobs.root_asset_id ON DELETE RESTRICT). Asset đã purge không tạo/rerun job được (MEDIA_FILE_EXPIRED).
+  purged_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (storage_provider, bucket_name, object_storage_key)
 )
 CREATE INDEX ix_media_assets_workspace_project ON media_assets(workspace_id, project_id);
 CREATE INDEX ix_media_assets_parent ON media_assets(parent_asset_id);
+CREATE INDEX ix_media_assets_retention ON media_assets(created_at) WHERE purged_at IS NULL;
 
 media_consents(
   id UUID PK,
@@ -371,12 +518,16 @@ media_jobs(
                     NOT NULL DEFAULT 'ORIGINAL_ONLY',
   source_separation_enabled BOOLEAN NOT NULL DEFAULT false,
 
+  tts_provider_id UUID,
   tts_voice_id UUID REFERENCES tts_voices(id),
 
   visual_context_enabled BOOLEAN NOT NULL DEFAULT false,
 
   preset_id UUID REFERENCES media_presets(id),
   preset_snapshot JSONB NOT NULL DEFAULT '{}',
+  render_config JSONB NOT NULL DEFAULT '{}',   -- Render Studio config của job (V9); {} = chưa cấu hình
+  subtitle_style JSONB,                          -- snapshot 13 trường style phụ đề đã gán (V8); NULL = chưa gán
+  publish_package JSONB,                         -- bản nháp thông tin đăng bài (V10): {title,description,language,tags,thumbnailRef}; NULL = chưa lưu
 
   workflow_mode VARCHAR CHECK (workflow_mode IN ('MANUAL','AUTO')) NOT NULL DEFAULT 'MANUAL',
 
@@ -389,8 +540,8 @@ media_jobs(
     (recipe_id = 'localization.full' AND processing_mode IN ('TRANSLATE_ONLY','HYBRID'))
     OR (recipe_id = 'summary.script_match' AND processing_mode IS NULL AND requested_duration_seconds IS NOT NULL)
   ),
-  CONSTRAINT ck_audio_mode_sep CHECK (output_audio_mode <> 'DUB_MIX' OR source_separation_enabled = true),
   CONSTRAINT ck_audio_mode_voice CHECK ((output_audio_mode = 'ORIGINAL_ONLY') = (tts_voice_id IS NULL)),
+  CONSTRAINT ck_media_jobs_tts_binding CHECK ((tts_provider_id IS NULL) = (tts_voice_id IS NULL)),
   CONSTRAINT ck_source_summary_job CHECK (
     source_summary_job_id IS NULL OR recipe_id = 'summary.script_match'
   )
@@ -405,7 +556,7 @@ CREATE INDEX ix_media_jobs_created_by ON media_jobs(created_by_user_id);
 - `created_by_user_id` **không được update sau khi tạo** (immutable ở service layer) — là nguồn sự thật duy
   nhất cho quy tắc "Member chỉ duyệt QA/checkpoint job của chính mình" (SRS §3.3, khác `performed_by_user_id`
   vốn chỉ phục vụ công thức Credit).
-- Voice ngôn ngữ khớp `target_lang`: enforce ở service layer (cần join `tts_voices.language`).
+- Voice ngôn ngữ tương thích `target_lang`: enforce ở service layer trên `tts_voices.language` và `languages[]`, so case-insensitive theo primary subtag (`en`, `en-US`, `en_US` → `en`); blank/`und` không tự khớp ngôn ngữ thật.
 
 ### 6.3 `media_job_stages`
 ```sql
@@ -426,6 +577,8 @@ media_job_stages(
   attempt_count SMALLINT NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
   execution_time_ms BIGINT,
   error_message TEXT,
+  error_code VARCHAR(100),
+  error_detail JSONB,
   started_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
   UNIQUE (media_job_id, stage_name),
@@ -433,8 +586,10 @@ media_job_stages(
 )
 CREATE INDEX ix_media_job_stages_job ON media_job_stages(media_job_id, stage_name);
 ```
-- Điều kiện kích hoạt: `SOURCE_SEPARATION` khi `source_separation_enabled=true`; `AUDIO_MIX` khi
-  `output_audio_mode='DUB_MIX'`; `SUMMARIZE` khi (`localization.full` + `HYBRID`) hoặc
+- Điều kiện kích hoạt: `SOURCE_SEPARATION` khi `source_separation_enabled=true` (STUDIO); `AUDIO_MIX` khi
+  `output_audio_mode='DUB_MIX'` — nền trộn là stem MUSIC khi tách nguồn COMPLETED, ngược lại là audio gốc đã
+  extract (FAST, voice-over). Đổi giọng trên job có sẵn (`setVoice`) đồng bộ lại SKIPPED/PENDING của
+  TTS/AUDIO_MIX/SOURCE_SEPARATION theo mode mới; `SUMMARIZE` khi (`localization.full` + `HYBRID`) hoặc
   (`summary.script_match` + `source_summary_job_id IS NULL`).
 
 ---
@@ -500,6 +655,11 @@ subtitle_segments(
   start_ms BIGINT NOT NULL,
   end_ms BIGINT NOT NULL CHECK (end_ms > start_ms),
   tts_audio_ref VARCHAR,
+  -- V14: TTS chạy tiếp được. SHA-256(protocol|vendor voice|target_text) của clip trong tts_audio_ref +
+  -- thời lượng đo được. Rerun/failover TTS chỉ tạo lại (và tính phí) segment có key lệch, clip đã mất
+  -- (retention) hoặc chưa có clip; segment đã sửa text hay đổi voice tự lệch key nên được tạo lại.
+  tts_clip_key VARCHAR(64),
+  tts_duration_ms BIGINT,
   word_timings JSONB,
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (media_job_id, seq)
@@ -596,6 +756,17 @@ CREATE UNIQUE INDEX ux_preset_default_per_scope
 - `SYSTEM` preset không gắn tenant và tuyệt đối không chứa API key, media asset, job hoặc dữ liệu riêng.
 - Khi user dùng template, hệ thống snapshot config vào `media_jobs.preset_snapshot`; không tạo membership
   vào Workspace/Project khác.
+- `render_config` dùng đúng key của `media_jobs.render_config` (`subtitleMode`, `subtitlePosition`,
+  `verticalOffsetPercent`, `backgroundBox`, `backgroundColor`, `textColor`, `outputAspectRatio`);
+  `subtitle_style` là `SubtitleStyleSnapshot` đủ 13 field snake_case. Khi tạo job, giá trị hợp lệ được chép vào
+  `media_jobs.render_config` / `media_jobs.subtitle_style` (giá trị sai miền bị bỏ qua); `subtitleMode` gửi
+  tường minh trong request thắng preset.
+- Không có preset `SYSTEM` mặc định (V8): job tạo không kèm preset giữ `SOFT_SUB` + khung hình gốc.
+- System template (V8): `Standard Subtitle & Dub` (HARD_SUB, 16:9, dòng phụ đề ở 80% chiều cao) và
+  `Social Media Shorts / Reels` (HARD_SUB, 9:16, dòng phụ đề ở 75% chiều cao, chữ đậm cỡ 40). V10: cả hai dùng chữ đen trên nền vàng nhạt `#FFF59DE6`, viền trắng 4, phụ đề ngắt cụm ≤ 5 từ (`presentation.subtitle.displayMode=PHRASE`).
+  `font_size`/`outline_width` được tính trên khung chuẩn 1080 dòng (như preview Render Studio); media worker
+  quy đổi theo chiều cao khung đầu ra thật. `Cinematic Subtitles` đã xoá
+  (tỉ lệ 21:9 worker không hỗ trợ).
 
 ---
 
@@ -607,14 +778,17 @@ notifications(
   workspace_id UUID NOT NULL REFERENCES workspaces(id),
   user_id UUID NOT NULL REFERENCES users(id),
   type VARCHAR CHECK (type IN (
-    'JOB_COMPLETED','JOB_FAILED','JOB_NEEDS_RERUN','BATCH_COMPLETED','BATCH_PARTIALLY_FAILED','BATCH_FAILED'
-  )) NOT NULL,
+    'JOB_COMPLETED','JOB_FAILED','JOB_NEEDS_RERUN','JOB_QA_BLOCKED',
+    'BATCH_COMPLETED','BATCH_PARTIALLY_FAILED','BATCH_FAILED',
+    'PROVIDER_KEY_INVALID'
+  )) NOT NULL,  -- JOB_QA_BLOCKED: RENDER chờ QA issue BLOCK_RENDER (V12); PROVIDER_KEY_INVALID: key BYOK bị từ chối (V13)
   ref_id UUID,
   message TEXT NOT NULL,
   read_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now()
 )
 CREATE INDEX ix_notifications_user_unread ON notifications(user_id) WHERE read_at IS NULL;
+CREATE INDEX ix_notifications_created ON notifications(created_at);  -- V13: cronjob dọn thông báo
 
 ai_usage_logs(
   id UUID PK,
@@ -622,8 +796,9 @@ ai_usage_logs(
   project_id UUID NOT NULL REFERENCES projects(id),
   media_job_id UUID REFERENCES media_jobs(id),
   performed_by_user_id UUID NOT NULL REFERENCES users(id),
-  operation VARCHAR CHECK (operation IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION')) NOT NULL,
+  operation VARCHAR CHECK (operation IN ('STT','TRANSLATE','TTS','SUMMARIZE_SCRIPT','RENDER','VISION','AUDIO_SEPARATION')) NOT NULL,
   used_personal_api_key BOOLEAN NOT NULL,
+  provider_id UUID,  -- V13: platform hoặc user provider đã phục vụ lượt gọi (không FK — thuộc 1 trong 2 bảng)
   input_tokens INT,
   output_tokens INT,
   credit_used NUMERIC(14,4) NOT NULL,
@@ -631,6 +806,7 @@ ai_usage_logs(
 )
 CREATE INDEX ix_ai_usage_logs_workspace_op ON ai_usage_logs(workspace_id, operation, created_at DESC);
 CREATE INDEX ix_ai_usage_logs_user ON ai_usage_logs(performed_by_user_id, created_at DESC);
+CREATE INDEX ix_ai_usage_logs_provider ON ai_usage_logs(provider_id, created_at);
 ```
 
 ---
@@ -666,7 +842,7 @@ CREATE INDEX ix_ai_usage_logs_user ON ai_usage_logs(performed_by_user_id, create
 | `localization_batches` | CHECK array_length nguồn≤20; `target_lang` là scalar không phải mảng | Giới hạn lô + đúng bản chất "1 ngôn ngữ/lô" (v1.4) |
 | `media_jobs` | CHECK `ck_job_recipe_mode`, không có `PARTIALLY_FAILED` trong status | "1 yêu cầu không có lỗi một phần" |
 | `media_jobs` | `created_by_user_id NOT NULL`, immutable ở service | Cơ sở duy nhất cho authorization QA/checkpoint (SRS §3.3) |
-| `media_jobs` | CHECK `ck_audio_mode_sep`/`ck_audio_mode_voice` | Ràng buộc DUB_MIX cần tách nguồn, mode cần giọng nhất quán |
+| `media_jobs` | CHECK `ck_audio_mode_voice`/`ck_media_jobs_tts_binding` | Mode lồng tiếng cần giọng và provider/voice phải luôn đi theo cặp (DUB_MIX không bắt buộc tách nguồn: FAST = voice-over) |
 | `summary_proposals` | CHECK `ck_proposal_origin_fields`, UNIQUE partial (stage,round) WHERE AI | Phân biệt AI (có script) vs HUMAN |
 | `qa_issue_overrides.reason` | CHECK char_length ≥ 10 | Bắt buộc lý do override rõ ràng |
 | `credit_accounts.balance` | CHECK ≥ 0 | Không âm — chặn tạo job nếu không đủ |
@@ -676,6 +852,18 @@ CREATE INDEX ix_ai_usage_logs_user ON ai_usage_logs(performed_by_user_id, create
 
 ## 13. Ghi chú migration
 - Schema **mới hoàn toàn** — không migrate dữ liệu từ base gốc.
+- Flyway được squash còn đúng 2 baseline: `V1__init_tables.sql` tạo toàn bộ bảng/constraint và
+  `V2__init_indexes.sql` tạo index + seed dữ liệu nền (terms, gói credit, bảng giá, platform provider mẫu,
+  TTS voice mẫu, 2 system preset render-ready, nội dung Hướng dẫn). Hai file đã gộp chuỗi V1–V17 cũ
+  (avatar, audit Super Admin §3.1, `user_ai_provider_defaults`, lỗi structured của stage, Guide §3.2,
+  pool key nền tảng §5 + health BYOK + `ai_usage_logs.provider_id` + retention `media_assets.purged_at`,
+  `JOB_QA_BLOCKED`/`PROVIDER_KEY_INVALID`, TTS resume `tts_clip_key`/`tts_duration_ms`,
+  `tts_voices.display_name`/`status`, lịch sử bảng giá credit, `users.email_canonical`).
+- Database đã chạy chuỗi migration cũ phải **reset schema và `flyway_schema_history`** trước khi dùng
+  baseline này; không chồng baseline mới lên history cũ. Thay đổi schema tiếp theo bắt đầu từ `V3__...`.
+- **Đồng bộ `tts_voices` (BYOK refresh & platform sync):** upsert theo `voice_id`, **không bao giờ xoá** —
+  job DUB có thể còn tham chiếu (FK `ON DELETE SET NULL` sẽ vi phạm `ck_audio_mode_voice`). Voice provider
+  gỡ hoặc `status=DEPRECATED` → `is_active=false`. Danh sách rỗng từ provider → lỗi, giữ nguyên catalog.
 - **Thứ tự tạo bảng chính (do FK chéo):**
   1. `users` → `workspaces` → `workspace_members` → `projects` → `project_members`.
   2. `terms_versions`, `credit_packages`, `platform_ai_providers` (độc lập).

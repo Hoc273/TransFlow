@@ -93,9 +93,31 @@ class VideoDurationProbe:
         }
 
 
+def _strip_ffmpeg_banner(stderr: str) -> str:
+    lines = (stderr or "").splitlines()
+    body_lines = [
+        line for line in lines
+        if not (line.strip().startswith("configuration:")
+                or line.strip().startswith("libav")
+                or line.strip().startswith("libsw")
+                or line.strip().startswith("libpostproc")
+                or line.strip().startswith("built with")
+                or line.strip().startswith("ffmpeg version"))
+    ]
+    return "\n".join(body_lines)
+
+
 def _classify_ffmpeg_error(stderr: str) -> tuple[str, bool]:
-    text = (stderr or "").lower()
+    stripped = _strip_ffmpeg_banner(stderr)
+    text = stripped.lower()
     non_retryable_patterns = (
+        ("unknown decoder", "CODEC_UNSUPPORTED"),
+        ("unknown encoder", "CODEC_UNSUPPORTED"),
+        ("unsupported codec", "CODEC_UNSUPPORTED"),
+        ("codec not supported", "CODEC_UNSUPPORTED"),
+        ("codec is not supported", "CODEC_UNSUPPORTED"),
+        ("could not find codec", "CODEC_UNSUPPORTED"),
+        ("codec not found", "CODEC_UNSUPPORTED"),
         ("codec", "CODEC_UNSUPPORTED"),
         ("unsupported", "CODEC_UNSUPPORTED"),
         ("invalid data", "INVALID_INPUT"),
@@ -112,6 +134,17 @@ def _classify_ffmpeg_error(stderr: str) -> tuple[str, bool]:
     return "RENDER_FAILED", True
 
 
+def _sanitize_ffmpeg_log(text: str) -> str:
+    if not text:
+        return ""
+    return re.sub(r'([a-zA-Z]:[\\/][^\s"\'<>]+|/(?:[^\s"\'<>]+/)+[^\s"\'<>]*)', '<path>', text)
+
+
+# Final deliverables only: move the MP4 index (moov) to the front so browsers
+# can start playback from a presigned URL without fetching the file tail.
+_FASTSTART = ["-movflags", "+faststart"]
+
+
 def _run(cmd: List[str], timeout: int = _DEFAULT_TIMEOUT, **kwargs) -> None:
     logger.info("Running ffmpeg operation=%s", cmd[0])
     try:
@@ -122,7 +155,7 @@ def _run(cmd: List[str], timeout: int = _DEFAULT_TIMEOUT, **kwargs) -> None:
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr or ""
         code, retryable = _classify_ffmpeg_error(stderr)
-        logger.error("ffmpeg failed code=%s retryable=%s", code, retryable)
+        logger.error("ffmpeg failed code=%s retryable=%s: %s", code, retryable, _sanitize_ffmpeg_log(stderr.strip()))
         raise FFmpegError("ffmpeg command failed", code, retryable=retryable) from exc
 
 
@@ -527,12 +560,17 @@ def build_dubbed_audio(
     _ = source_path  # DUB_REPLACE does not mix original speech.
     warnings: List[dict] = []
 
+    from app.services.dub_timeline import VoiceClip, prepare_voice, schedule
+    from app.services.storage import get_storage
+
+    storage = get_storage()
     cut_audios: List[AudioSegment] = []
     for r in cut_ranges:
         target_len = max(0, r.end_ms - r.start_ms)
-        # DUB_REPLACE: silent bed, place fitted TTS into each segment slot.
+        # DUB_REPLACE: silent bed; voice lines are levelled and scheduled on it.
         cut_audio = AudioSegment.silent(duration=target_len)
 
+        clips = []
         for sa in segment_audios:
             if sa.start_ms >= r.end_ms or sa.end_ms <= r.start_ms:
                 continue
@@ -544,22 +582,23 @@ def build_dubbed_audio(
                     "message": "Segment straddles cut ranges; slot left silent",
                 })
                 continue
-            from app.services.storage import get_storage
-            storage = get_storage()
             tts_local = _local_tts_path(temp_dir, sa.segment_id, sa.audio_ref)
             storage.download(sa.audio_ref, tts_local)
-            target_ms = sa.end_ms - sa.start_ms
-            fitted_path, warning = fit_dub_audio(
-                tts_local,
-                target_ms,
-                temp_dir,
-                segment_id=sa.segment_id,
-            )
-            if warning:
-                warnings.append(warning)
-            fitted_audio = AudioSegment.from_file(fitted_path)
-            position = sa.start_ms - r.start_ms
-            cut_audio = cut_audio.overlay(fitted_audio, position=position)
+            clips.append(VoiceClip(
+                sa.segment_id,
+                sa.start_ms - r.start_ms,
+                sa.end_ms - r.start_ms,
+                prepare_voice(AudioSegment.from_file(tts_local)),
+            ))
+        placements, fit_warnings = schedule(clips, target_len, temp_dir)
+        warnings.extend(fit_warnings)
+        for placement in placements:
+            # A cut range is a fixed video slice: a line may not spill into the next range.
+            room = max(0, target_len - placement.position_ms)
+            voice = placement.audio
+            if len(voice) > room:
+                voice = voice[:room].fade_out(min(120, room))
+            cut_audio = cut_audio.overlay(voice, position=placement.position_ms)
 
         cut_audios.append(cut_audio)
 
@@ -687,6 +726,11 @@ def _srt_vtt_to_ass(
     *,
     alignment: int = 2,
     margin_v: int = 0,
+    background_box: bool = True,
+    background_color: str | None = None,
+    text_color: str | None = None,
+    outline_width: int | None = None,
+    outline_color: str | None = None,
 ) -> str:
     """Convert an SRT/VTT subtitle to a temp ASS file whose ``PlayResX``/``PlayResY``
     match the video frame.
@@ -699,6 +743,15 @@ def _srt_vtt_to_ass(
     ``MarginV`` map 1:1 to video pixels, restoring correct positioning for the
     legacy SRT/VTT burn path (the ASS/styled path already carries its own
     PlayRes from Spring's ``AssGenerator``).
+
+    2026-09 dual-event: when ``background_box`` carries an explicit outline
+    override, a single ``BorderStyle=3`` style cannot express the white glyph
+    border (the box owns ``OutlineColour``). Emit two styles — ``Box`` (Layer
+    0, yellow opaque box, transparent glyphs) UNDER ``Default`` (Layer 1,
+    ring text with the authored outline) — with identical ``\\pos``/
+    alignment/``MarginV`` so positioning is byte-identical to the single
+    path. Without the combination the historical single style is emitted
+    byte-identical.
     """
     normalized = (fmt or "srt").lower().strip()
     if normalized == "vtt":
@@ -745,9 +798,39 @@ def _srt_vtt_to_ass(
         anchor_y = height - margin_v if alignment == 2 else margin_v
         position_tag = f"{{\\an{alignment}\\pos({round(width / 2)},{anchor_y})}}"
         text = position_tag + "\\N".join(escaped)
-        events.append(
-            f"Dialogue: 0,{to_ass_ts(start)},{to_ass_ts(end)},Default,,0,0,{margin_v},,{text}"
+        events.append((to_ass_ts(start), to_ass_ts(end), text))
+
+    dual = bool(background_box) and (outline_width is not None or outline_color is not None)
+    if not dual:
+        event_lines = [
+            f"Dialogue: 0,{s},{e},Default,,0,0,{margin_v},,{t}"
+            for s, e, t in events
+        ]
+        styles = (
+            f"Style: Default,Arial,44,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,3,0,0,{alignment},10,10,{margin_v},1\n"
         )
+    else:
+        if background_color is not None:
+            ass_bg = _hex8_to_ass_backcolour(_normalize_background_color(background_color))
+        else:
+            ass_bg = "&H80000000"
+        if text_color is not None:
+            ass_text = _hex_to_ass_primarycolour(_normalize_text_color(text_color))
+        else:
+            ass_text = "&H00FFFFFF"
+        ring_width = _validate_ring_outline_width(outline_width)
+        if outline_color is not None:
+            ring_colour = _hex_to_ass_primarycolour(_normalize_outline_color(outline_color))
+        else:
+            ring_colour = "&H00000000"
+        styles = (
+            f"Style: Box,Arial,44,&HFF000000,&H000000FF,{ass_bg},{ass_bg},0,0,0,0,100,100,0,0,3,{_BOX_OUTLINE_EXTENT},0,{alignment},10,10,{margin_v},1\n"
+            f"Style: Default,Arial,44,{ass_text},&H000000FF,{ring_colour},&H80000000,0,0,0,0,100,100,0,0,1,{ring_width},0,{alignment},10,10,{margin_v},1\n"
+        )
+        event_lines = []
+        for s, e, t in events:
+            event_lines.append(f"Dialogue: 0,{s},{e},Box,,0,0,{margin_v},,{t}")
+            event_lines.append(f"Dialogue: 1,{s},{e},Default,,0,0,{margin_v},,{t}")
 
     ass = (
         "[Script Info]\n"
@@ -757,10 +840,10 @@ def _srt_vtt_to_ass(
         "ScaledBorderAndShadow: yes\n"
         "[V4+ Styles]\n"
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,Arial,44,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,3,0,0,{alignment},10,10,{margin_v},1\n"
+        + styles +
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
-        + "\n".join(events)
+        + "\n".join(event_lines)
         + "\n"
     )
     fd, ass_path = tempfile.mkstemp(suffix=".ass", dir=os.path.dirname(subtitle_path) or None)
@@ -835,6 +918,7 @@ def burn_subtitles(
             "-c:a", "copy",
             "-c:v", "libx264",
             "-preset", "fast",
+            *_FASTSTART,
             output_path,
         ]
         _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 1800))
@@ -862,20 +946,36 @@ def burn_subtitles(
         # percentage offsets deterministic across landscape and portrait video.
         alignment = 8
         margin_v = round(height * desired_percent / 100)
+    # font_size / outline_width are authored against a 1080-line frame (the
+    # Render Studio preview's PLAY_RES_Y). PlayRes is pinned to the real output
+    # frame, so scale them to its height — otherwise a 720p source reframed to
+    # 9:16 (404x720) burns text 1.5x larger than the preview on a narrow frame.
+    if font_size is not None and not 16 <= font_size <= 120:
+        raise FFmpegError(
+            f"Invalid font_size: {font_size}",
+            "INVALID_INPUT",
+            retryable=False,
+        )
+    if outline_width is not None:
+        _validate_ring_outline_width(outline_width)
+    font_px = _scale_to_frame(font_size, height, minimum=8)
+    outline_px = _scale_to_frame(outline_width, height, minimum=1 if outline_width else 0)
+    if outline_px is not None:
+        outline_px = min(outline_px, _RING_OUTLINE_WIDTH_MAX)
     # PRESET-VIZ (docs/97 §19.16): background_color (#RRGGBBAA) overrides the
     # historical fixed &H80000000 for the legacy force_style path. Absent →
     # byte-identical historical behavior. ASS/styled path is unaffected (the
     # assigned SubtitleStyleSnapshot owns the background there).
+    # 2026-09 dual-event: box + explicit outline renders as two ASS styles
+    # (Box Layer 0 + outlined Default Layer 1). A single force_style box
+    # would override both, so colors/box stay baked in the generated ASS and
+    # force_style carries only placement (+ Fontsize/Bold, which apply to
+    # both styles equally). All other combinations keep the exact historical
+    # single-style force_style behavior byte-for-byte.
+    dual_box_outline = bool(background_box) and (
+        outline_width is not None or outline_color is not None
+    )
     if background_box:
-        if outline_width is not None or outline_color is not None:
-            # Defensive XOR (F-12/F-13, docs/97 §19.17 Mục F): the background
-            # box owns the border extent and colour; ring values are ignored.
-            # Spring's validator already rejects this combination with a 422 —
-            # this guard only keeps a malformed direct dispatch honest.
-            logger.warning(
-                "outline_width/outline_color ignored in box mode: the "
-                "background box owns BorderStyle=3 extent/colour"
-            )
         if background_color is not None:
             normalized_bg = _normalize_background_color(background_color)
             ass_bg = _hex8_to_ass_backcolour(normalized_bg)
@@ -900,7 +1000,7 @@ def burn_subtitles(
         # V2 outline override on the legacy ring path (docs/97 §19.17 Mục F):
         # explicit width/colour replace the historical Outline=2 black defaults;
         # absent fields keep those exact historical values byte-for-byte.
-        ring_width = _validate_ring_outline_width(outline_width)
+        ring_width = _validate_ring_outline_width(outline_px)
         ring_colour = (
             _hex_to_ass_primarycolour(_normalize_outline_color(outline_color))
             if outline_color is not None else "&H00000000"
@@ -911,15 +1011,8 @@ def burn_subtitles(
         )
     else:
         box_style = "BorderStyle=1,Outline=2,Shadow=0"
-    # Phase 3 additive typography (legacy path only): force_style Fontsize/Bold.
-    # Bounds are enforced by the Spring API contract; defensive validation here
-    # keeps malformed direct dispatches fail-closed.
-    if font_size is not None and not 16 <= font_size <= 120:
-        raise FFmpegError(
-            f"Invalid font_size: {font_size}",
-            "INVALID_INPUT",
-            retryable=False,
-        )
+    # Phase 3 additive typography (legacy path only): force_style Fontsize/Bold
+    # (validated and frame-scaled above).
     style_parts = [f"Alignment={alignment}", f"MarginV={margin_v}", box_style]
     # PRESET-VIZ (docs/97 §19.16) additive: text_color (#RRGGBB / #RRGGBBAA,
     # opaque default) overrides the historical fixed &H00FFFFFF PrimaryColour
@@ -929,8 +1022,8 @@ def burn_subtitles(
     if text_color is not None:
         normalized_text = _normalize_text_color(text_color)
         style_parts.append(f"PrimaryColour={_hex_to_ass_primarycolour(normalized_text)}")
-    if font_size is not None:
-        style_parts.append(f"Fontsize={font_size}")
+    if font_px is not None:
+        style_parts.append(f"Fontsize={font_px}")
     if bold is not None:
         style_parts.append(f"Bold={-1 if bold else 0}")
     force_style = ",".join(style_parts)
@@ -946,6 +1039,7 @@ def burn_subtitles(
         # libass does not reliably honor MarginV from force_style for an ASS
         # input. Bake both placement fields into the generated Default style so
         # the converted SRT/VTT lands on the same scanline as the preset preview.
+        # Dual-event colors ride in the ASS (force_style keeps placement only).
         ass_path = _srt_vtt_to_ass(
             subtitle_path,
             normalized_format,
@@ -953,10 +1047,31 @@ def burn_subtitles(
             height,
             alignment=alignment,
             margin_v=margin_v,
+            background_box=background_box,
+            background_color=background_color,
+            text_color=text_color,
+            outline_width=outline_px,
+            outline_color=outline_color,
         )
+        # 2026-09 dual-event: the converted ASS already bakes Box + outlined
+        # Default styles, so force_style carries placement (+ Fontsize/Bold,
+        # which apply to both styles) — never box/PrimaryColour, which would
+        # override both baked styles with one. Other combos keep force_style.
+        ass_force_parts = [f"Alignment={alignment}", f"MarginV={margin_v}"]
+        if font_px is not None:
+            ass_force_parts.append(f"Fontsize={font_px}")
+        if bold is not None:
+            ass_force_parts.append(f"Bold={-1 if bold else 0}")
+        ass_force_style = (
+            ",".join(ass_force_parts) if dual_box_outline else force_style
+        )
+        if dual_box_outline:
+            logger.info(
+                "dual-event box+outline: colors baked in ASS, force_style keeps placement only"
+            )
         try:
             escaped_ass = _escape_subtitles_path(ass_path)
-            subtitle_filter = f"subtitles={escaped_ass}:force_style='{force_style}'"
+            subtitle_filter = f"subtitles={escaped_ass}:force_style='{ass_force_style}'"
             cmd = [
                 "ffmpeg",
                 "-y",
@@ -965,6 +1080,7 @@ def burn_subtitles(
                 "-c:a", "copy",
                 "-c:v", "libx264",
                 "-preset", "fast",
+                *_FASTSTART,
                 output_path,
             ]
             _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 1800))
@@ -974,6 +1090,15 @@ def burn_subtitles(
             except OSError:
                 pass
     else:
+        # Direct-SRT fallback (no converted ASS to carry two styles): a single
+        # force_style cannot express box + outline together, so the box stays
+        # authoritative and the outline is dropped with a warning. The converted
+        # ASS path above renders both via dual-event instead.
+        if dual_box_outline:
+            logger.warning(
+                "outline_width/outline_color ignored in box mode: the "
+                "background box owns BorderStyle=3 extent/colour"
+            )
         subtitle_filter = f"subtitles={escaped}:force_style='{force_style}'"
         cmd = [
             "ffmpeg",
@@ -983,6 +1108,7 @@ def burn_subtitles(
             "-c:a", "copy",
             "-c:v", "libx264",
             "-preset", "fast",
+            *_FASTSTART,
             output_path,
         ]
         _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 1800))
@@ -1080,10 +1206,17 @@ def _build_reframe_filter(width: int, height: int,
 
 
 def _compose_vf(prefix: str | None, graph: str) -> str:
-    """Join the optional reframe prefix with the cover+subtitles graph."""
+    """Join the optional reframe prefix with the cover+subtitles graph.
+
+    In a simple filtergraph (-vf), FFmpeg requires exactly 1 input and 1 output.
+    Because prefix ends with an unlabeled overlay output and graph begins with
+    an unlabeled input, they must be joined with a comma (,) rather than a
+    semicolon (;). A semicolon would start a new independent filter chain,
+    causing FFmpeg to expect multiple inputs/outputs and fail with code 234.
+    """
     if not prefix:
         return graph
-    return f"{prefix};{graph}"
+    return f"{prefix},{graph}"
 
 # V2 presentation layers (docs/97 §19.17 §B/§E): semantic-percent overlays
 # sorted (zIndex ASC, id ASC) and chained UNDER the subtitles filter in one
@@ -1442,6 +1575,16 @@ def _build_layer_filters(
     return ";".join(segments)
 
 
+_TYPOGRAPHY_REFERENCE_HEIGHT = 1080
+
+
+def _scale_to_frame(value: int | None, frame_height: int, *, minimum: int) -> int | None:
+    """Scale a size authored for a 1080-line frame to ``frame_height`` pixels."""
+    if value is None:
+        return None
+    return max(minimum, round(value * frame_height / _TYPOGRAPHY_REFERENCE_HEIGHT))
+
+
 def _validate_ring_outline_width(outline_width: int | None) -> int:
     """Ring outline width 0..8 (wire contract §B); absent keeps the historical
     Outline=2 default byte-for-byte."""
@@ -1557,6 +1700,7 @@ def mux_soft_subtitles(
             "-map", "0:v:0",
             "-map", "0:a:0?",
             "-map", "1:0",
+            *_FASTSTART,
             output_path,
         ]
     else:
@@ -1572,6 +1716,7 @@ def mux_soft_subtitles(
             "-map", "0:v:0",
             "-map", "0:a:0?",
             "-map", "1:0",
+            *_FASTSTART,
             output_path,
         ]
     _run(cmd, timeout=max(_DEFAULT_TIMEOUT, 900))

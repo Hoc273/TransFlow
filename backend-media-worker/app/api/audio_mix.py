@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
+from app.core.async_utils import blocking as _blocking
 from app.services import cancel_registry
 from app.services.callback import send_audio_mix_complete, send_audio_mix_progress
 from app.services.ffmpeg import FFmpegError
@@ -25,6 +26,7 @@ router = APIRouter()
 class AudioMixRequest(BaseModel):
     correlation_id: str
     media_job_id: str
+    stage_id: str | None = None
     mix_plan: dict[str, Any]
 
 
@@ -76,18 +78,19 @@ async def process_audio_mix(req: AudioMixRequest) -> None:
     warnings: list[dict] = []
     try:
         _check_cancelled(req.correlation_id)
-        await send_audio_mix_progress(req.media_job_id, req.correlation_id, 10)
+        await send_audio_mix_progress(req.media_job_id, req.correlation_id, 10, req.stage_id)
 
         _check_cancelled(req.correlation_id)
-        output_path, duration_ms, warnings = execute_mix_plan(req.mix_plan, temp_dir)
-        await send_audio_mix_progress(req.media_job_id, req.correlation_id, 70)
+        output_path, duration_ms, warnings = await _blocking(
+            execute_mix_plan, req.mix_plan, temp_dir)
+        await send_audio_mix_progress(req.media_job_id, req.correlation_id, 70, req.stage_id)
         _check_cancelled(req.correlation_id)
 
         storage = get_storage()
         # Immutable object key per attempt — never overwrite a previous mix.
         object_key = f"mixed/{req.media_job_id}/{uuid.uuid4()}.wav"
-        output_ref = storage.upload(output_path, object_key)
-        await send_audio_mix_progress(req.media_job_id, req.correlation_id, 95)
+        output_ref = await _blocking(storage.upload, output_path, object_key)
+        await send_audio_mix_progress(req.media_job_id, req.correlation_id, 95, req.stage_id)
 
         if cancel_registry.is_cancelled(req.correlation_id):
             raise MixCancelled(req.correlation_id)
@@ -99,6 +102,7 @@ async def process_audio_mix(req: AudioMixRequest) -> None:
             output_ref=output_ref,
             duration_ms=duration_ms,
             warnings=warnings,
+            stage_id=req.stage_id,
         )
         logger.info(
             "Audio mix completed correlation=%s job=%s output=%s",
@@ -113,6 +117,7 @@ async def process_audio_mix(req: AudioMixRequest) -> None:
             correlation_id=req.correlation_id,
             status="FAILED",
             error={"code": "CANCELLED", "message": "Audio mix cancelled"},
+            stage_id=req.stage_id,
         )
     except FFmpegError as exc:
         logger.exception("Audio mix failed: %s", exc.code)
@@ -121,6 +126,7 @@ async def process_audio_mix(req: AudioMixRequest) -> None:
             correlation_id=req.correlation_id,
             status="FAILED",
             error={"code": exc.code, "message": str(exc)},
+            stage_id=req.stage_id,
         )
     except Exception as exc:
         logger.exception("Audio mix failed")
@@ -129,6 +135,7 @@ async def process_audio_mix(req: AudioMixRequest) -> None:
             correlation_id=req.correlation_id,
             status="FAILED",
             error={"code": "FFMPEG_FAILED", "message": str(exc)},
+            stage_id=req.stage_id,
         )
     finally:
         cancel_registry.unregister(req.correlation_id)

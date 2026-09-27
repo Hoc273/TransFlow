@@ -1,0 +1,250 @@
+package com.app.modules.provider.client.impl;
+
+import com.app.common.exception.AppException;
+import com.app.common.exception.ErrorCode;
+import com.app.modules.provider.client.AiGatewayClient;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+@Component
+public class AiGatewayClientImpl implements AiGatewayClient {
+
+    private static final Logger log = LoggerFactory.getLogger(AiGatewayClientImpl.class);
+
+    private final RestClient restClient;
+
+    public AiGatewayClientImpl(@Qualifier("aiRestClient") RestClient restClient) {
+        this.restClient = restClient;
+    }
+
+    @Override
+    public boolean testConnection(String protocol, String baseUrl, String apiKey) {
+        try {
+            Map<String, Object> body = Map.of(
+                    "protocol", protocol != null ? protocol : "openai_compatible",
+                    "base_url", baseUrl,
+                    "api_key", apiKey != null ? apiKey : ""
+            );
+
+            Map<?, ?> response = restClient.post()
+                    .uri("/ai/validate/auth")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+
+            if (response != null && Boolean.TRUE.equals(response.get("ok"))) {
+                return true;
+            }
+            log.warn("Auth probe returned ok=false: {}", response);
+            return false;
+        } catch (Exception ex) {
+            log.warn("Failed to test AI provider auth via FastAPI: {}", ex.getClass().getSimpleName());
+            return false;
+        }
+    }
+
+    @Override
+    public ProviderCapabilityProbe probeCapability(String protocol, String baseUrl, String apiKey,
+                                                    String model, String capability) {
+        String normalizedCapability = "TEXT".equalsIgnoreCase(capability) ? "TRANSLATE"
+                : capability.toUpperCase(java.util.Locale.ROOT);
+        Map<String, Object> body = Map.of("provider", Map.of(
+                "protocol", protocol,
+                "base_url", baseUrl,
+                "api_key", apiKey,
+                "model", model,
+                "capabilities", List.of("TRANSLATE".equals(normalizedCapability) ? "TEXT" : normalizedCapability)
+        ));
+        String path = switch (normalizedCapability) {
+            case "STT" -> "/ai/validate/stt-probe";
+            case "TTS" -> "/ai/validate/tts-probe";
+            case "VISION" -> "/ai/validate/vision-probe";
+            default -> "/ai/validate-provider";
+        };
+        try {
+            Map<?, ?> response = restClient.post()
+                    .uri(path)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+            if (response == null) {
+                return new ProviderCapabilityProbe(false, model, "PROVIDER_UNAVAILABLE",
+                        "AI provider returned an empty validation response");
+            }
+            Object rawDetail = response.get("error_detail");
+            Map<?, ?> detail = rawDetail instanceof Map<?, ?> value ? value : Map.of();
+            boolean success = Boolean.TRUE.equals(response.get("ok"));
+            String testedModel = string(response.get("model"));
+            return new ProviderCapabilityProbe(success, testedModel == null ? model : testedModel,
+                    string(detail.get("errorCode")), string(detail.get("message")) != null
+                    ? string(detail.get("message")) : string(response.get("message")));
+        } catch (Exception ex) {
+            log.warn("AI provider capability probe failed: {}", ex.getClass().getSimpleName());
+            return new ProviderCapabilityProbe(false, model, "PROVIDER_UNAVAILABLE",
+                    "AI provider capability probe failed");
+        }
+    }
+
+    private String string(Object value) {
+        return value instanceof String text ? text : null;
+    }
+
+    @Override
+    public List<DiscoveredVoice> fetchTtsVoices(String protocol, String baseUrl, String apiKey, String defaultModel) {
+        try {
+            Map<String, Object> body = Map.of(
+                    "protocol", protocol != null ? protocol : "openai_compatible",
+                    "base_url", baseUrl,
+                    "api_key", apiKey != null ? apiKey : "",
+                    "capabilities", List.of("TTS"),
+                    "model", defaultModel != null ? defaultModel : ""
+            );
+
+            FastApiTtsVoicesResponse response = restClient.post()
+                    .uri("/media/tts/voices")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(FastApiTtsVoicesResponse.class);
+
+            if (response == null || response.voices == null) {
+                return List.of();
+            }
+
+            List<DiscoveredVoice> result = new ArrayList<>();
+            for (FastApiVoice v : response.voices) {
+                result.add(new DiscoveredVoice(
+                        v.voiceId,
+                        v.language != null ? v.language : "en",
+                        v.languages != null ? v.languages : List.of(v.language != null ? v.language : "en"),
+                        v.gender != null ? v.gender : "UNKNOWN",
+                        v.displayName != null ? v.displayName : v.voiceId,
+                        v.status
+                ));
+            }
+            return result;
+        } catch (Exception ex) {
+            log.error("Failed to fetch TTS voices from AI service: {}", ex.getMessage());
+            throw new AppException(ErrorCode.PROVIDER_VOICES_FETCH_FAILED);
+        }
+    }
+
+    @Override
+    public String synthesizeTtsPreview(String protocol, String baseUrl, String apiKey, String model,
+                                       String voiceId, String text) {
+        Map<String, Object> body = Map.of(
+                "correlation_id", UUID.randomUUID().toString(),
+                "media_job_id", "voice-preview",
+                "voice_id", voiceId,
+                "segments", List.of(Map.of("segment_id", "preview", "target_text", text)),
+                "provider", Map.of(
+                        "protocol", protocol != null ? protocol : "openai_compatible",
+                        "base_url", baseUrl,
+                        "api_key", apiKey != null ? apiKey : "",
+                        "model", model != null ? model : "",
+                        "capabilities", List.of("TTS")
+                )
+        );
+
+        FastApiTtsResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/media/tts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(FastApiTtsResponse.class);
+        } catch (Exception ex) {
+            log.error("TTS preview synthesize call failed: {}", ex.getMessage());
+            throw new AppException(ErrorCode.TTS_PREVIEW_FAILED);
+        }
+
+        if (response == null || response.results == null) {
+            log.warn("TTS preview returned no results (status={})", response != null ? response.status : null);
+            return null;
+        }
+        for (FastApiTtsResult r : response.results) {
+            if (!"preview".equals(r.segmentId)) {
+                continue;
+            }
+            boolean ok = "SUCCESS".equalsIgnoreCase(r.status) || "COMPLETED".equalsIgnoreCase(r.status);
+            if (ok && r.audioBase64 != null && !r.audioBase64.isBlank()) {
+                return r.audioBase64;
+            }
+            log.warn("TTS preview segment failed: status={} error={} errorCode={}", r.status, r.error, r.errorCode);
+            return null;
+        }
+        return null;
+    }
+
+    public static class FastApiTtsResponse {
+        @JsonProperty("correlation_id")
+        public String correlationId;
+
+        @JsonProperty("status")
+        public String status;
+
+        @JsonProperty("results")
+        public List<FastApiTtsResult> results;
+
+        @JsonProperty("error")
+        public String error;
+    }
+
+    public static class FastApiTtsResult {
+        @JsonProperty("segment_id")
+        public String segmentId;
+
+        @JsonProperty("status")
+        public String status;
+
+        @JsonProperty("audio_base64")
+        public String audioBase64;
+
+        @JsonProperty("error")
+        public String error;
+
+        @JsonProperty("errorCode")
+        public String errorCode;
+    }
+
+    public static class FastApiTtsVoicesResponse {
+        @JsonProperty("protocol")
+        public String protocol;
+
+        @JsonProperty("voices")
+        public List<FastApiVoice> voices;
+    }
+
+    public static class FastApiVoice {
+        @JsonProperty("voice_id")
+        public String voiceId;
+
+        @JsonProperty("language")
+        public String language;
+
+        @JsonProperty("languages")
+        public List<String> languages;
+
+        @JsonProperty("gender")
+        public String gender;
+
+        @JsonProperty("display_name")
+        public String displayName;
+
+        @JsonProperty("status")
+        public String status;
+    }
+}

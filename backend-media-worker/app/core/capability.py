@@ -30,6 +30,10 @@ SUPPORTED_AUDIO_STRATEGY_OUTPUT_VERSIONS = ["1"]
 # RENDER_OUTPUT_ASPECT — docs/97 §19.19: `output_aspect_ratio` request field;
 # the worker reframes (blur-pad) BEFORE burning subtitles/layers. Dispatched
 # only when advertised (all-match, fail-closed at claim).
+# SUBTITLE_BOX_OUTLINE — 2026-09 dual-event box+outline (Layer 0 yellow box +
+# Layer 1 white-outlined glyphs, one encode). Spring claim-gates the
+# background_box + outline combination on it so old workers fail closed
+# instead of silently dropping the outline.
 SUPPORTED_RENDER_FEATURES = [
     "SUBTITLE_FONT",
     "SUBTITLE_MASK",
@@ -38,6 +42,7 @@ SUPPORTED_RENDER_FEATURES = [
     "SUBTITLE_OUTLINE",
     "PRESENTATION_LAYERS_V2",
     "RENDER_OUTPUT_ASPECT",
+    "SUBTITLE_BOX_OUTLINE",
 ]
 
 

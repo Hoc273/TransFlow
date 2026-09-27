@@ -27,10 +27,20 @@ from app.services.provider_errors import (
 )
 
 # Re-export for callers that import ChatResult from this module.
-__all__ = ["ChatResult", "chat"]
+__all__ = ["ChatResult", "chat", "text_reasoning_extra"]
 
 _int_log = get_internal_logger("llm_gateway")
 _prov_log = get_provider_logger("llm_gateway")
+
+
+def text_reasoning_extra(
+    provider: ProviderPayload,
+    *,
+    disabled: bool,
+) -> dict[str, Any] | None:
+    """Translate caller reasoning intent into protocol-specific wire fields."""
+    adapter = require_adapter(provider.protocol, capability="TEXT")
+    return adapter.text_reasoning_extra(provider, disabled=disabled)
 
 
 async def chat(
@@ -49,12 +59,9 @@ async def chat(
             (e.g. ``{"type": "json_object"}`` for OpenAI-compatible
             adapters). Anthropic ignores it; OpenAI-compatible and
             DashScope compatible-mode forward it as-is.
-        extra_body: optional extra JSON fields merged into the chat
-            request body (e.g. ``{"thinking": {"type": "disabled"}}``
-            for DeepSeek V4 to suppress chain-of-thought). Adapters
-            that do not understand a given field are expected to
-            forward it as-is; OpenAI-compatible endpoints typically
-            ignore unknown keys.
+        extra_body: optional protocol-normalized JSON fields merged into the
+            chat request body. Call ``text_reasoning_extra`` for reasoning
+            controls instead of constructing vendor syntax in a gateway.
     """
     if settings.mock_mode or not settings.key_is_usable(provider.api_key):
         return _mock_chat(provider, user)

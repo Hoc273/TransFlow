@@ -115,6 +115,10 @@ class SemanticPlanningParserTest(unittest.TestCase):
         with self.assertRaisesRegex(PlanningOutputError, "Malformed semantic planning output"):
             parse_semantic_plan(json.dumps(payload), _blocks(), max_sections=3)
 
+    def test_rejects_legacy_final_plans_envelope(self):
+        with self.assertRaisesRegex(PlanningOutputError, "Malformed semantic planning output"):
+            parse_semantic_plan('{"plans":[{}]}', _blocks(), max_sections=3)
+
     def test_rejects_incomplete_block_ranking(self):
         payload = _payload()
         payload["block_rankings"].pop()

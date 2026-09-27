@@ -4,6 +4,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, patch
 
+import httpx
+
 from app.schemas.contract import ContentBriefRequest, ProviderPayload, SttSegment, Usage
 from app.services import content_brief_gateway
 from app.services.protocol import ChatResult
@@ -15,6 +17,24 @@ def _provider() -> ProviderPayload:
         base_url="https://provider.test/v1",
         api_key="sk-real-key",
         model="gpt-4o-mini",
+    )
+
+
+def _deepseek_provider() -> ProviderPayload:
+    return ProviderPayload(
+        protocol="dashscope_native",
+        base_url="https://dashscope.test/compatible-mode/v1",
+        api_key="sk-real-key",
+        model="deepseek-v4.1-flash",
+    )
+
+
+def _qwen_omni_provider() -> ProviderPayload:
+    return ProviderPayload(
+        protocol="dashscope_native",
+        base_url="https://dashscope.test/compatible-mode/v1",
+        api_key="sk-real-key",
+        model="qwen-omni-turbo",
     )
 
 
@@ -100,6 +120,101 @@ class ContentBriefGatewayTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result.usage.input_tokens, 100)
         chat_mock.assert_awaited_once()
+
+    async def test_deepseek_dashscope_uses_normalized_reasoning_control(self):
+        req = _request()
+        req.provider = _deepseek_provider()
+        chat_result = ChatResult(
+            text="A source-grounded product review brief.",
+            usage=Usage(
+                input_tokens=10,
+                output_tokens=5,
+                provider="dashscope_native",
+                model="deepseek-v4.1-flash",
+            ),
+        )
+        with (
+            patch.object(content_brief_gateway.settings, "mock_mode", False),
+            patch.object(content_brief_gateway, "chat", AsyncMock(return_value=chat_result)) as chat_mock,
+        ):
+            result = await content_brief_gateway.understand_brief(req)
+
+        self.assertEqual("COMPLETED", result.status)
+        self.assertEqual("A source-grounded product review brief.", result.content_brief)
+        self.assertEqual(
+            {"enable_thinking": False},
+            chat_mock.await_args.kwargs["extra_body"],
+        )
+
+    async def test_deepseek_dashscope_reasoning_content_response_succeeds(self):
+        captured: dict = {}
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                captured.update(kwargs)
+                return httpx.Response(200, json={
+                    "choices": [{"message": {
+                        "content": "",
+                        "reasoning_content": "A source-grounded DeepSeek brief.",
+                    }, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                })
+
+        req = _request()
+        req.provider = _deepseek_provider()
+        with (
+            patch.object(content_brief_gateway.settings, "mock_mode", False),
+            patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()),
+        ):
+            result = await content_brief_gateway.understand_brief(req)
+
+        self.assertEqual("COMPLETED", result.status)
+        self.assertEqual("A source-grounded DeepSeek brief.", result.content_brief)
+        self.assertEqual(False, captured["json"]["enable_thinking"])
+
+    async def test_qwen_omni_brief_retries_without_unsupported_reasoning_control(self):
+        calls: list[dict] = []
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kwargs):
+                calls.append(kwargs["json"])
+                if len(calls) == 1:
+                    return httpx.Response(400, json={
+                        "code": "InvalidParameter",
+                        "message": "qwen-omni-turbo does not support enable_thinking",
+                    })
+                return httpx.Response(200, json={
+                    "choices": [{"message": {
+                        "content": "A source-grounded Qwen brief.",
+                    }, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                })
+
+        req = _request()
+        req.provider = _qwen_omni_provider()
+        with (
+            patch.object(content_brief_gateway.settings, "mock_mode", False),
+            patch("app.services.protocol.dashscope_native.httpx.AsyncClient", return_value=_Client()),
+        ):
+            result = await content_brief_gateway.understand_brief(req)
+
+        self.assertEqual("COMPLETED", result.status)
+        self.assertEqual("A source-grounded Qwen brief.", result.content_brief)
+        self.assertEqual(2, len(calls))
+        self.assertEqual(False, calls[0]["enable_thinking"])
+        self.assertNotIn("enable_thinking", calls[1])
 
     async def test_gateway_contract_shape_completed(self):
         with patch.object(content_brief_gateway.settings, "mock_mode", True):

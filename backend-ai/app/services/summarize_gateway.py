@@ -13,7 +13,7 @@ from app.schemas.contract import (
     SummaryCutRange,
     SummaryProposal,
 )
-from app.services.llm_gateway import chat
+from app.services.llm_gateway import chat, text_reasoning_extra
 from app.services.provider_errors import (
     ProviderErrorCode,
     ProviderException,
@@ -28,6 +28,16 @@ _prov_log = get_provider_logger("summarize")
 _PROMPT_PREVIEW_CHARS = 1200
 _RAW_TEXT_PREVIEW_CHARS = 800
 _MODEL_NAME_PREVIEW_CHARS = 200
+
+
+def _effective_requested_duration_seconds(req: SummarizeRequest) -> int:
+    """Resolve the optional HYBRID duration without changing the cut-plan API."""
+    if req.requested_duration_seconds:
+        return req.requested_duration_seconds
+    transcript_end_ms = max((segment.end_ms for segment in req.transcript), default=60_000)
+    # HYBRID is an extractive assist, so target roughly half of the source
+    # transcript while always retaining a valid positive duration.
+    return max(1, round(transcript_end_ms / 2000))
 
 # errorCode returned to Spring Boot when the model output cannot be coerced
 # into a valid JSON object. Deterministic — the orchestrator should NOT retry.
@@ -57,7 +67,7 @@ def _force_non_retryable(detail: dict) -> dict:
 
 def _mock_response(req: SummarizeRequest) -> SummarizeResponse:
     """Deterministic mock returning 3 valid proposals."""
-    requested_ms = req.requested_duration_seconds * 1000
+    requested_ms = _effective_requested_duration_seconds(req) * 1000
     return SummarizeResponse(
         correlation_id=req.correlation_id,
         status="COMPLETED",
@@ -150,12 +160,13 @@ async def summarize(req: SummarizeRequest) -> SummarizeResponse:
         )
         return _mock_response(req)
 
+    requested_duration_seconds = _effective_requested_duration_seconds(req)
     transcript = [
         {"text": seg.text, "start_ms": seg.start_ms, "end_ms": seg.end_ms}
         for seg in req.transcript
     ]
     system, user = build_summarize_prompt(
-        transcript, req.requested_duration_seconds, req.duration_tolerance
+        transcript, requested_duration_seconds, req.duration_tolerance
     )
 
     _int_log.info(
@@ -166,16 +177,15 @@ async def summarize(req: SummarizeRequest) -> SummarizeResponse:
         req.provider.base_url,
         req.provider.protocol,
         _safe_preview(req.provider.model, _MODEL_NAME_PREVIEW_CHARS),
-        req.requested_duration_seconds,
+        requested_duration_seconds,
         len(transcript),
         _safe_preview(user, _PROMPT_PREVIEW_CHARS),
     )
 
     try:
-        extra_body = (
-            {"thinking": {"type": "disabled"}}
-            if settings.disable_thinking_for_summarize
-            else None
+        extra_body = text_reasoning_extra(
+            req.provider,
+            disabled=settings.disable_thinking_for_summarize,
         )
         result = await chat(
             req.provider,

@@ -1,8 +1,13 @@
+import asyncio
+import os
+import shutil
+import threading
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
 from pydantic import ValidationError
 
+from app.api.capabilities import capabilities
 from app.api.render import (
     LayerGeometryRequest,
     PresentationLayerRequest,
@@ -105,6 +110,90 @@ class RenderContractTest(unittest.IsolatedAsyncioTestCase):
 
         legacy.assert_called_once()
         self.assertEqual("INVALID_INPUT", complete.await_args.kwargs["error"]["code"])
+
+    async def test_heavy_render_does_not_block_capabilities(self):
+        storage = Mock()
+        storage.upload.side_effect = lambda _path, key: f"media/{key}"
+        entered = threading.Event()
+        release = threading.Event()
+
+        def blocked_cut(*_args):
+            entered.set()
+            release.wait(timeout=1)
+
+        validation = Mock(passed=True)
+        validation.to_payload.return_value = {}
+        media_probe = Mock()
+        media_probe.to_payload.return_value = {}
+        # The timer only prevents an assertion failure from leaving the worker
+        # thread blocked if this regression ever runs against the old code.
+        release_timer = threading.Timer(0.2, release.set)
+        release_timer.start()
+        started = asyncio.get_running_loop().time()
+        try:
+            with patch("app.api.render.get_storage", return_value=storage), patch(
+                "app.api.render.send_progress", new=AsyncMock()
+            ), patch("app.api.render.send_complete", new=AsyncMock()), patch(
+                "app.api.render.validate_subtitle_format", return_value="srt"
+            ), patch("app.api.render.shutil.copyfile"), patch(
+                "app.api.render.srt_to_vtt"
+            ), patch("app.api.render.cut_and_concat_video", side_effect=blocked_cut), patch(
+                "app.api.render.replace_audio"
+            ), patch("app.api.render.mux_soft_subtitles"), patch(
+                "app.api.render.probe_video", return_value=media_probe
+            ), patch(
+                "app.api.render.RenderValidationRunner.run", return_value=validation
+            ):
+                render_task = asyncio.create_task(process_render(request()))
+                self.assertTrue(await asyncio.to_thread(entered.wait, 1))
+                self.assertFalse(release.is_set())
+                await asyncio.wait_for(capabilities(), timeout=0.05)
+                self.assertLess(asyncio.get_running_loop().time() - started, 0.2)
+                release.set()
+                await render_task
+        finally:
+            release.set()
+            release_timer.cancel()
+
+    async def test_render_slot_keeps_second_render_out_of_heavy_section(self):
+        storage = Mock()
+        storage.upload.side_effect = lambda _path, key: f"media/{key}"
+        first_entered = threading.Event()
+        release_first = threading.Event()
+        calls = []
+
+        def controlled_cut(*_args):
+            calls.append(True)
+            if len(calls) == 1:
+                first_entered.set()
+                release_first.wait(timeout=1)
+
+        validation = Mock(passed=True)
+        validation.to_payload.return_value = {}
+        media_probe = Mock()
+        media_probe.to_payload.return_value = {}
+        with patch("app.api.render.get_storage", return_value=storage), patch(
+            "app.api.render.send_progress", new=AsyncMock()
+        ), patch("app.api.render.send_complete", new=AsyncMock()), patch(
+            "app.api.render.validate_subtitle_format", return_value="srt"
+        ), patch("app.api.render.shutil.copyfile"), patch(
+            "app.api.render.srt_to_vtt"
+        ), patch("app.api.render.cut_and_concat_video", side_effect=controlled_cut), patch(
+            "app.api.render.replace_audio"
+        ), patch("app.api.render.mux_soft_subtitles"), patch(
+            "app.api.render.probe_video", return_value=media_probe
+        ), patch(
+            "app.api.render.RenderValidationRunner.run", return_value=validation
+        ):
+            first = asyncio.create_task(process_render(request(correlation_id="first")))
+            self.assertTrue(await asyncio.to_thread(first_entered.wait, 1))
+            second = asyncio.create_task(process_render(request(correlation_id="second")))
+            await asyncio.sleep(0.05)
+            self.assertEqual(1, len(calls))
+            release_first.set()
+            await asyncio.gather(first, second)
+
+        self.assertEqual(2, len(calls))
 
     # ─── B1.0 styled burn-in (docs/93 §4.6.6, TC-CEP-28) ─────────────────
 
@@ -390,6 +479,86 @@ class RenderContractTest(unittest.IsolatedAsyncioTestCase):
         replace_aud.assert_called_once()
         burn.assert_called_once()
         self.assertEqual("COMPLETED", complete.await_args.args[2])
+
+    async def test_generative_beat_tempo_retimes_only_the_narration_it_targets(self):
+        # Spring fits the total narration to the requested duration with one
+        # bounded tempo; beats without it keep their measured audio untouched.
+        from app.api.render import GenerativeBeatRequest
+        storage = Mock()
+        storage.upload.side_effect = lambda _path, key: f"media/{key}"
+        with patch("app.api.render.get_storage", return_value=storage), patch(
+            "app.api.render.send_progress", new=AsyncMock()
+        ), patch("app.api.render.send_complete", new=AsyncMock()) as complete, patch(
+            "app.services.generative_compose._extract_and_rescale_beat"
+        ), patch(
+            "app.services.generative_compose.probe_source_duration",
+            return_value=VideoDurationProbe(
+                container_duration_ms=25_000,
+                video_stream_start_ms=0,
+                video_stream_duration_ms=25_000,
+                video_stream_end_ms=25_000,
+                duration_source="test",
+            ),
+        ), patch("app.api.render._run"), patch("app.api.render.replace_audio"), patch(
+            "app.api.render.burn_subtitles"
+        ), patch("app.api.render.shutil.copyfile"), patch("app.api.render.srt_to_vtt"), patch(
+            "app.api.render._apply_tempo", side_effect=lambda path, tempo, temp_dir: path + ".tempo.wav"
+        ) as apply_tempo, patch(
+            "app.services.render_validation.get_duration", return_value=5.0
+        ), patch(
+            "app.services.render_validation.get_stream_types", return_value=["video", "audio"]
+        ):
+            await process_render(request(
+                subtitle_track=SubtitleTrackRequest(format="srt", content_ref="media/subtitle.srt", mode="HARD_SUB"),
+                generative_beats=[
+                    GenerativeBeatRequest(id="b1", source_start_ms=0, source_end_ms=10000,
+                                          tts_duration_ms=2315, audio_ref="media/b1.wav", tempo=1.08),
+                    GenerativeBeatRequest(id="b2", source_start_ms=15000, source_end_ms=25000,
+                                          tts_duration_ms=2500, audio_ref="media/b2.wav"),
+                ],
+            ))
+
+        apply_tempo.assert_called_once()
+        self.assertEqual(1.08, apply_tempo.call_args.args[1])
+        self.assertEqual("COMPLETED", complete.await_args.args[2])
+
+    def test_beat_voice_is_padded_with_silence_to_the_beat_length(self):
+        # Spring adds a bounded pause after a short narration beat; the voice
+        # must last the whole beat or audio drifts ahead of the footage.
+        from app.api.render import _pad_audio_to
+        with patch("app.api.render._run") as run:
+            out = _pad_audio_to("voice.wav", 3250, "tmp")
+        cmd = run.call_args.args[0]
+        self.assertIn("apad=whole_dur=3.250", cmd)
+        self.assertEqual(["-ar", "48000", "-ac", "1"], cmd[cmd.index("-ar"):cmd.index("-ac") + 2])
+        self.assertEqual(out, cmd[-1])
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg not installed")
+    def test_mixed_provider_sample_rates_keep_real_time_after_concat(self):
+        # Pooled TTS mixed Gemini 24 kHz, MeloTTS 44.1 kHz and Deepgram 22.05 kHz clips; the
+        # concat demuxer read every clip at the first clip's rate and the voice drifted.
+        import subprocess
+        import tempfile
+        from app.api.render import _pad_audio_to
+
+        def seconds(path: str) -> float:
+            return float(subprocess.check_output(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path]))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            padded = []
+            for index, (rate, beat_ms) in enumerate([(24_000, 3_000), (44_100, 2_500), (22_050, 2_000)]):
+                clip = os.path.join(tmp, f"clip{index}.wav")
+                subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
+                                f"sine=frequency=440:sample_rate={rate}:duration=1.5", clip], check=True)
+                padded.append(_pad_audio_to(clip, beat_ms, tmp))
+            listing = os.path.join(tmp, "list.txt")
+            with open(listing, "w", encoding="utf-8") as f:
+                f.writelines(f"file '{p}'\n" for p in padded)
+            joined = os.path.join(tmp, "joined.wav")
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listing,
+                            "-c:a", "pcm_s16le", joined], check=True)
+            self.assertAlmostEqual(7.5, seconds(joined), delta=0.05)
 
     async def test_generative_ffmpeg_retryable_flag_reaches_callback(self):
         storage = Mock()

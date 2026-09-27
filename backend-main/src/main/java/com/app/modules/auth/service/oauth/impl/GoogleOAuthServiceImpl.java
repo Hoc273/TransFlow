@@ -7,6 +7,7 @@ import com.app.modules.auth.dto.AuthResponse;
 import com.app.modules.auth.entity.User;
 import com.app.modules.auth.entity.UserStatus;
 import com.app.modules.auth.repository.UserRepository;
+import com.app.modules.auth.service.EmailNormalizer;
 import com.app.modules.auth.service.AuthService;
 import com.app.modules.auth.service.oauth.GoogleOAuthService;
 import com.app.modules.auth.service.oauth.GoogleOAuthSessionStore;
@@ -150,7 +151,7 @@ public class GoogleOAuthServiceImpl implements GoogleOAuthService {
     @Transactional
     public AuthResponse exchange(String code) {
         UUID userId = sessionStore.consumeExchangeCode(code)
-                .orElseThrow(() -> new AppException(ErrorCode.INVALID_REFRESH_TOKEN));
+                .orElseThrow(() -> new AppException(ErrorCode.GOOGLE_OAUTH_FAILED));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         if (user.getStatus() != UserStatus.ACTIVE) {
@@ -187,6 +188,12 @@ public class GoogleOAuthServiceImpl implements GoogleOAuthService {
             return new UserUpsertResult(userRepository.save(existing), false);
         }
 
+        // An alias of an existing mailbox (a.b@gmail.com vs ab@gmail.com) must not spawn a second
+        // account with a second initial-credit grant; auto-linking is unsafe outside Gmail, so refuse.
+        if (userRepository.existsByEmailCanonical(EmailNormalizer.canonicalize(profile.email()))) {
+            throw new GoogleAccountConflictException();
+        }
+
         User created = new User();
         created.setEmail(profile.email().trim().toLowerCase(Locale.ROOT));
         created.setFullName((profile.fullName() != null && !profile.fullName().isBlank())
@@ -199,10 +206,20 @@ public class GoogleOAuthServiceImpl implements GoogleOAuthService {
 
     private String feErrorRedirect(String error) {
         return UriComponentsBuilder
-                .fromUriString(feOrigin() + "/auth/login")
+                .fromUriString(feOrigin() + "/auth/google/done")
                 .queryParam("error", error)
                 .build(true)
                 .toUriString();
+    }
+
+    @Override
+    public boolean isConfigured() {
+        return props.oauth().google().isConfigured();
+    }
+
+    @Override
+    public String buildErrorUrl(String error) {
+        return feErrorRedirect(error);
     }
 
     private String feOrigin() {

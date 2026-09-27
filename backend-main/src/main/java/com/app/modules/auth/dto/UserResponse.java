@@ -2,6 +2,8 @@ package com.app.modules.auth.dto;
 
 import com.app.modules.auth.entity.User;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.UUID;
 
 /**
@@ -12,14 +14,26 @@ public record UserResponse(
         UUID id,
         String email,
         String fullName,
-        boolean googleLinked
+        boolean googleLinked,
+        @JsonProperty("isPlatformAdmin") boolean isPlatformAdmin,
+        String avatarUrl
 ) {
+    public UserResponse(UUID id, String email, String fullName, boolean googleLinked) {
+        this(id, email, fullName, googleLinked, false, null);
+    }
+
+    public UserResponse(UUID id, String email, String fullName, boolean googleLinked, boolean isPlatformAdmin) {
+        this(id, email, fullName, googleLinked, isPlatformAdmin, null);
+    }
+
     public static UserResponse from(User u) {
         return new UserResponse(
                 u.getId(),
                 u.getEmail(),
                 u.getFullName(),
-                u.isGoogleLinked()
+                u.isGoogleLinked(),
+                u.isPlatformAdmin(),
+                u.getAvatarUrl()
         );
     }
 }

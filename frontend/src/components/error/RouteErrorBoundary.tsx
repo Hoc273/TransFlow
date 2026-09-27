@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import i18n from '@/i18n'
 
 type Props = {
   children: ReactNode
@@ -27,10 +28,10 @@ export class RouteErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-8 text-center">
           <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
-            This screen failed to load
+            {i18n.t('common:errorBoundary.routeTitle')}
           </h2>
           <p className="text-sm text-[var(--color-text-secondary)]">
-            The rest of the app is still available.
+            {i18n.t('common:errorBoundary.routeDesc')}
           </p>
           <div className="flex gap-2">
             <button
@@ -38,14 +39,14 @@ export class RouteErrorBoundary extends Component<Props, State> {
               className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm"
               onClick={() => this.setState({ hasError: false })}
             >
-              Try again
+              {i18n.t('common:errorBoundary.tryAgain')}
             </button>
             <Link
               to={home}
               className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-white no-underline"
               onClick={() => this.setState({ hasError: false })}
             >
-              Dashboard
+              {i18n.t('common:errorBoundary.dashboard')}
             </Link>
           </div>
         </div>

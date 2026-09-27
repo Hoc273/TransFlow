@@ -1,5 +1,7 @@
 package com.app.modules.media_asset.controller;
 
+import com.app.testsupport.TestRegistration;
+
 import com.app.common.exception.ErrorCode;
 import com.app.modules.auth.dto.RegisterRequest;
 import com.app.modules.media_asset.entity.MediaAsset;
@@ -48,6 +50,9 @@ class MediaAssetControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private com.app.modules.auth.service.RegisterOtpStore registerOtpStore;
     @Autowired
     private ObjectMapper objectMapper;
 
@@ -95,7 +100,7 @@ class MediaAssetControllerTest {
         userRepository.deleteAll();
 
         // Tests run with flyway disabled (ddl-auto=create-drop) — seed the current
-        // terms version normally provided by V3__seed_terms_version.sql in real environments.
+        // terms version normally seeded by V2__init_indexes.sql in real environments.
         termsVersionRepository.deleteAll();
         TermsVersion terms = new TermsVersion();
         terms.setVersion("v1");
@@ -116,7 +121,7 @@ class MediaAssetControllerTest {
     }
 
     private Lead registerLeadWithWorkspace(String email) throws Exception {
-        RegisterRequest req = new RegisterRequest(email, "Password123!", "Lead " + email);
+        RegisterRequest req = TestRegistration.withOtp(registerOtpStore, new RegisterRequest(email, "Password123!", "Lead " + email));
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
@@ -131,7 +136,7 @@ class MediaAssetControllerTest {
     }
 
     private RegisteredUser registerPlainUser(String email) throws Exception {
-        RegisterRequest req = new RegisterRequest(email, "Password123!", "User " + email);
+        RegisterRequest req = TestRegistration.withOtp(registerOtpStore, new RegisterRequest(email, "Password123!", "User " + email));
         MvcResult result = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))

@@ -1,7 +1,7 @@
 """VLM gateway (requirement 3) — provider abstraction via CEP (no hard-coded provider).
 
-Supports protocol adapters: openai_compatible vision, anthropic vision, dashscope_native vision,
-plus mock/placeholder path for deterministic testing (zero-key or mock_mode).
+Supports explicit VISION-capable protocol adapters plus a mock path for
+deterministic testing (zero-key or mock_mode).
 
 - Cost governance checked before VLM calls (requirement 4)
 - Cache keyed by hash video + timestamp + model + prompt version (requirement 5)
@@ -53,6 +53,16 @@ VLM_SYSTEM_PROMPT = (
 )
 
 VLM_USER_PROMPT_TEMPLATE = "Frame timestamp: {timestamp_ms}ms ({mmss}). Analyze this frame."
+
+
+def _supports_json_mode_fallback(exc: ProviderException, protocol: str | None) -> bool:
+    """Keep JSON-mode compatibility fallback narrow and bounded."""
+    if protocol != "openai_compatible" or exc.code != ProviderErrorCode.PROVIDER_BAD_REQUEST:
+        return False
+    message = (exc.message or "").lower()
+    return any(marker in message for marker in ("response_format", "json_object", "json mode")) and any(
+        marker in message for marker in ("unsupported", "unknown", "invalid parameter")
+    )
 
 
 def _mmss(ms: int) -> str:
@@ -208,48 +218,56 @@ async def _call_vlm_for_frame(
             variant = "fight"
         return _mock_observation(ts, variant=variant)
 
-    # Real VLM path — try vision-aware chat
-    # For V1, route through openai_compatible / anthropic / dashscope_native vision adapters.
-    # If no vision adapter exists, fail closed with unsupported model.
+    # Real VLM path — only an adapter with an explicit VISION contract may run.
     try:
         from app.services.protocol import require_adapter
 
-        # Vision uses IMAGE/VIDEO capability; accept TEXT as fallback for vision-capable models
-        # Attempt to require a vision-capable adapter; if none, use TEXT.
-        adapter = None
-        last_exc: Exception | None = None
-        for cap in ("VISION", "IMAGE", "VIDEO", "TEXT"):
-            try:
-                adapter = require_adapter(provider.protocol, capability=cap)
-                break
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                continue
-        if adapter is None:
-            raise last_exc or ProviderValidation(
-                f"VLM not supported for protocol {provider.protocol}",
-                code=ProviderErrorCode.PROVIDER_UNSUPPORTED_PROTOCOL,
+        adapter = require_adapter(provider.protocol, capability="VISION")
+        system = VLM_SYSTEM_PROMPT
+        user = VLM_USER_PROMPT_TEMPLATE.format(timestamp_ms=frame.get("timestamp", 0), mmss=_mmss(int(frame.get("timestamp", 0))))
+        frame_ref = frame.get("frame_ref")
+        if not (
+            isinstance(frame_ref, str)
+            and (
+                frame_ref.startswith("http://")
+                or frame_ref.startswith("https://")
+                or frame_ref.startswith("data:image/")
+            )
+        ):
+            raise ProviderValidation(
+                "VISION requires real image bytes/data URL or image URL",
+                code=ProviderErrorCode.PROVIDER_BAD_REQUEST,
+                provider=provider.base_url,
                 protocol=provider.protocol,
                 capability="VISION",
             )
-        # Build vision prompt — adapter may support images param
-        system = VLM_SYSTEM_PROMPT
-        user = VLM_USER_PROMPT_TEMPLATE.format(timestamp_ms=frame.get("timestamp", 0), mmss=_mmss(int(frame.get("timestamp", 0))))
-        # Pass image ref via extra_body/images if adapter supports it
-        # For V1, we send frame_ref as text placeholder — real image fetching would stream bytes.
-        # Adapter contract is internal; we call chat with images list when available.
-        kwargs: dict[str, Any] = {"max_tokens": 512, "response_format": {"type": "json_object"}}
-        # Check if adapter.chat supports images kwarg
-        import inspect
-
-        sig = inspect.signature(adapter.chat)
-        if "images" in sig.parameters:
-            kwargs["images"] = [frame.get("frame_ref")]
-        # Merge frame ref into user when no images param
-        if "images" not in kwargs:
-            user = user + f" Frame ref: {frame.get('frame_ref')}"
-
-        result = await adapter.chat(provider, system, user, **kwargs)  # type: ignore[call-arg]
+        images = [frame_ref]
+        try:
+            result = await adapter.chat(
+                provider,
+                system,
+                user,
+                max_tokens=512,
+                response_format={"type": "json_object"},
+                images=images,
+            )
+        except ProviderException as exc:
+            if not _supports_json_mode_fallback(exc, provider.protocol):
+                raise
+            _int_log.warning(
+                "VLM JSON mode unsupported; retrying once without response_format "
+                "protocol=%s model=%s",
+                provider.protocol,
+                provider.model,
+            )
+            result = await adapter.chat(
+                provider,
+                system,
+                user,
+                max_tokens=512,
+                response_format=None,
+                images=images,
+            )
         raw = (result.text or "").strip()
         # Capture provider usage if available (for actual_cost mapping)
         _usage = None

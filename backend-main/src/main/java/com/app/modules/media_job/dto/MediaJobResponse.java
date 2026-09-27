@@ -23,6 +23,7 @@ public record MediaJobResponse(
         String subtitleMode,
         String outputAudioMode,
         boolean sourceSeparationEnabled,
+        UUID ttsProviderId,
         UUID ttsVoiceId,
         boolean visualContextEnabled,
         UUID presetId,
@@ -43,7 +44,7 @@ public record MediaJobResponse(
                 j.getRecipeId(), j.getProcessingMode() != null ? j.getProcessingMode().name() : null,
                 j.getSourceLanguage(), j.getTargetLang(), j.getStatus().name(), j.getRequestedDurationSeconds(),
                 j.getSelectedProposalId(), j.getSourceSummaryJobId(), j.getSubtitleMode().name(),
-                j.getOutputAudioMode().name(), j.isSourceSeparationEnabled(), j.getTtsVoiceId(),
+                j.getOutputAudioMode().name(), j.isSourceSeparationEnabled(), j.getTtsProviderId(), j.getTtsVoiceId(),
                 j.isVisualContextEnabled(), j.getPresetId(), j.getWorkflowMode().name(),
                 j.getPerformedByUserId(), j.getCreatedByUserId(), j.getCreatedAt(), j.getUpdatedAt(), stages);
     }

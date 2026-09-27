@@ -31,7 +31,7 @@ React + Vite (SPA)
 Spring Boot ("Core") ────────────────────────────────────────────
    │  • PostgreSQL (SoT duy nhất) · RabbitMQ (consumer duy nhất)   │
    │  • Auth / Workspace-Project / RBAC 3 vai trò / Credit Ledger  │
-   │  • Glossary / QA / Preset / Notification                     │
+   │  • Platform Admin / Glossary / QA / Preset / Notification    │
    │            │ internal REST (context đóng gói: glossary,      │
    │            │ provider đã resolve, subtitle style, script)    │
    │            ▼                                                 │
@@ -53,8 +53,8 @@ Redis — cache phiên Refine Summarization (TTL) + session/rate-limit
 ```
 
 **Không có trong dự án này** (SRS §4.2/4.3, không build): Dịch file/Text Translation độc lập,
-Batch dịch file, Translation Memory, Creative Production (Composition Worker), Bảng điều khiển quản trị
-toàn nền tảng (Platform Admin), voice cloning/lip-sync, video editor đầy đủ, public API/plugin,
+Batch dịch file, Translation Memory, Creative Production (Composition Worker), voice cloning/lip-sync,
+video editor đầy đủ, public API/plugin,
 podcast/meeting/livestream.
 
 **Phase 2 tuỳ chọn** (SRS §4.4, không cam kết MVP): tích hợp `yt-dlp` (nhập video qua link) và tích hợp nền
@@ -164,9 +164,15 @@ EXTRACT_AUDIO → [SOURCE_SEPARATION → SKIPPED nếu không tách nguồn]
 ### 5.3 Giọng lồng tiếng & đầu ra âm thanh (`output_audio_mode`)
 | Giá trị | Ý nghĩa | Bắt buộc chọn giọng? |
 |---|---|---|
-| `ORIGINAL_ONLY` | Giữ nguyên âm thanh gốc | Không |
-| `DUB_REPLACE` | Thay thế hoàn toàn bằng giọng mới | Có |
-| `DUB_MIX` | Trộn giọng mới với nhạc nền/hiệu ứng gốc đã tách | Có, bắt buộc `source_separation_enabled=true` |
+| `ORIGINAL_ONLY` | Giữ nguyên âm thanh gốc (0 dB), chỉ thêm phụ đề — không TTS, không AUDIO_MIX | Không |
+| `DUB_REPLACE` | Chỉ còn giọng mới trên nền im lặng. Dùng cho tóm tắt có giọng đọc (`summary.script_match`) và client API gửi tường minh | Có |
+| `DUB_MIX` | Giọng mới trộn lên nền âm thanh qua AUDIO_MIX (gain + ducking). `source_separation_enabled=false` (**FAST**): nền = toàn bộ audio gốc (voice-over). `=true` (**STUDIO**, cần GPU): nền = stem nhạc nền/hiệu ứng, giọng gốc bị loại | Có |
+
+Chế độ FAST/STUDIO (`requestedMode` khi tạo job, API_Contract §5.2): job localization có giọng → `DUB_MIX`;
+STUDIO bật tách nguồn và chỉ khả dụng khi backend-ai báo `separation.gpu_available=true` (nếu không → `2906
+STUDIO_MODE_UNAVAILABLE`, không âm thầm chạy fallback CPU). Gain mặc định của AUDIO_MIX khi người dùng chưa
+chỉnh: audio gốc **−10 dB**, giọng TTS **+10 dB** (worker chặn đỉnh giọng ở −1 dBFS để không vỡ tiếng);
+`originalGainDb = −100` tắt hẳn audio gốc.
 
 Giọng chọn phải cùng ngôn ngữ với `target_lang` — từ chối rõ ràng nếu không khớp, không fallback ngầm.
 
@@ -350,16 +356,86 @@ mở §14). Số dư không đủ → mặc định thiết kế `BLOCK_UPFRONT`
 
 ---
 
-## 11. Nguồn AI (chỉ BYOK cá nhân + nguồn nền tảng — không đổi)
+## 11. Nguồn AI (BYOK cá nhân + pool key nền tảng dùng chung)
 
 - Cấu hình API key **chỉ ở cấp cá nhân** — không có cấu hình nguồn AI ở cấp Workspace.
-- Không có API key cá nhân hợp lệ cho capability cần dùng → hệ thống tự dùng **nguồn AI nền tảng**
+- Không có API key cá nhân hợp lệ cho capability cần dùng → hệ thống tự dùng **pool key nền tảng**
   (`platform_ai_providers`) — kích hoạt công thức Trường hợp 2 (§10.2).
+- **Pool (V13):** nhiều key/capability, Super Admin quản lý ở `/api/platform/providers`. Resolver chọn nhóm
+  `priority` nhỏ nhất còn key khả dụng, random theo `weight`. Khả dụng = không `DOWN`, không cooldown
+  (Redis `provider:cooldown:<id>`), chưa lỗi trong stage hiện tại (Redis `provider:exclude:<stageId>`).
+  Hết key khả dụng vẫn trả key xếp hạng cao nhất (cờ health cũ không được chặn mọi job).
+- **Failover:** mỗi attempt stage mở một `ProviderUsageScope` (thread-bound). Key nền tảng lỗi phía provider
+  (rate limit, quota, auth, timeout, output hỏng…) bị loại khỏi scope + cooldown; nếu pool còn key khác, stage
+  được xếp lại `PENDING` dưới job lock (`retryOnAnotherProvider`, tối đa 4 attempt) thay vì FAILED. Key BYOK
+  lỗi không bao giờ rơi sang pool. TTS dùng đúng provider gắn với voice của job (`resolveBoundProvider`); chỉ
+  failover sang key nền tảng **cùng protocol có đúng vendor voice đó** (giọng không đổi giữa track).
+- **Chờ rồi thử lại (deferred retry):** lỗi tạm thời (`PROVIDER_RATE_LIMITED`, `UNAVAILABLE`, `TIMEOUT`,
+  `INTERNAL_ERROR`, lỗi mạng) mà không còn key khác → stage về `PENDING` và được dispatch lại sau
+  `Retry-After` của provider (FastAPI chuyển thành `details.retryAfterSeconds`, kẹp 15 s–5 phút) hoặc backoff
+  30 s × 2ⁿ (≤ 5 phút), tối đa 5 attempt — áp dụng cả key BYOK. Hẹn giờ bằng `TaskScheduler` trong bộ nhớ;
+  restart thì cron `MediaJobReconciler` nhặt lại job. `errorDetail.retry = DEFERRED|FAILOVER` (+ `retryAt`)
+  cho UI. Rerun do user reset `attempt_count` về 0.
+- **TTS thiếu câu không COMPLETED:** còn segment chưa có clip sau các vòng thử → stage FAILED với mã lỗi
+  provider (hoặc `TTS_SEGMENTS_INCOMPLETE`) + `errorDetail.missingSegments/totalSegments`. Clip đã tạo được
+  trừ credit rồi lưu (`tts_clip_key`), lần chạy sau chỉ tạo phần thiếu. FastAPI dừng batch ngay khi gặp lỗi
+  cấp key (quota, auth, rate limit, model/endpoint, voice) và trả `error_detail` cả khi thành công một phần.
+- **Chặn credit trước khi gọi provider:** mỗi stage AI ước tính chi phí (STT theo giây audio, TRANSLATE/SUMMARIZE
+  theo token ước tính, TTS theo ký tự các câu còn thiếu) và gọi `CreditService.canAffordUsage` cho **người trả
+  theo cost mode** (Lead khi `LEAD_PAYS_ALL`). Không đủ → FAILED `INSUFFICIENT_CREDIT` trước khi tốn tiền provider.
+  Lượng thực tế vẫn trừ sau khi xong; kiểm tra lúc tạo job cũng dùng người trả theo cost mode.
+- **FreeLLMAPI:** proxy tự host (service `freellmapi`, profile compose) gom free tier nhiều LLM provider, là 1 key
+  `tier=FREE`, `priority=10`, capability `TRANSLATE` trong pool; key trả phí priority 100 làm dự phòng. Tính Credit
+  theo giá bóng của capability (D3). Tự đăng ký khi có `FREELLMAPI_API_KEY`.
+
+### 11.2 Cronjob bảo trì (`@Scheduled`, 1 instance backend-main — không distributed lock)
+
+| Job | Lịch | Việc |
+|---|---|---|
+| `MediaStageWatchdog` | 1 phút | Stage `PROCESSING`/`CANCEL_REQUESTED` quá budget → retry attempt mới hoặc FAILED `STAGE_TIMEOUT`. |
+| `MediaJobReconciler` | 5 phút | (1) Job mở có source đã purge → FAILED `MEDIA_FILE_EXPIRED`. (2) Job mở không đổi ≥5 phút, không stage đang chạy/`STALE` → gọi lại `dispatchNext` (idempotent; tôn trọng checkpoint & QA gate). |
+| `BatchStatusReconciler` | 10 phút | Tính lại trạng thái lô `PENDING`/`PROCESSING` từ job con. |
+| `MediaRetentionSweeper` | mỗi giờ (:15) | Xoá mọi object bucket media cũ hơn 3 ngày (trừ prefix `generated-assets/` do backend-ai tự quản TTL, và file của job đang chạy — nhận diện qua jobId/correlationId trong key); đặt `media_assets.purged_at`. |
+| `ProviderHealthCheckJob.checkPlatformProviders` | 30 phút | Test auth + probe từng capability cho key pool; lỗi credential/quota/model → `DOWN`, lỗi tạm thời giữ trạng thái. Bỏ qua cả vòng khi backend-ai down. |
+| `ProviderHealthCheckJob.syncPlatformVoices` | 04:30 hằng ngày | Upsert voice TTS của key nền tảng; voice bị gỡ → inactive (không xoá vì job còn tham chiếu). |
+| `ProviderHealthCheckJob.checkUserProviders` | 04:00 hằng ngày | Probe auth key BYOK; chuyển sang `DOWN` → notification `PROVIDER_KEY_INVALID`. |
+| `NotificationCleanupJob` | CN 03:30 | Xoá thông báo đã đọc >30 ngày, mọi thông báo >90 ngày. |
+
+Cấu hình ở `app.maintenance.*` (`MAINTENANCE_ENABLED=false` tắt toàn bộ). Cron theo múi giờ của JVM.
+
+### 11.1 Platform Super Admin
+
+- Quyền quản trị nền tảng được biểu diễn bằng `users.is_platform_admin`, độc lập hoàn toàn với role
+  `LEAD/MEMBER/CLIENT` trong Workspace.
+- Mọi endpoint `/api/platform/*` phải đọc lại cờ quyền từ PostgreSQL và từ chối bằng `UNAUTHORIZED` nếu
+  tài khoản không phải Platform Admin; không chỉ tin vào route guard phía frontend.
+- Bề mặt read-only của MVP gồm: KPI toàn hệ thống, snapshot realtime (job đang chạy, token 1 giờ qua, user
+  online), health của PostgreSQL/Redis/RabbitMQ/MinIO/AI Worker, danh bạ user, danh sách Workspace và audit log.
+- Mutation duy nhất được phép ở cấp nền tảng: **điều chỉnh Credit của user** (cộng/trừ, ghi
+  `credit_transactions(type=ADJUSTMENT)` + audit `ADJUST_USER_CREDIT`) và **quản trị nội dung trang Hướng dẫn**
+  (`guide_categories`/`guide_articles`, không thuộc Workspace nào).
+- **Presence online**: mọi user đã đăng nhập gửi `POST /api/presence/heartbeat` mỗi ~60s; server ghi Redis
+  ZSET `platform:presence:online` và đếm user có heartbeat trong 120s (fallback bộ nhớ trong process nếu
+  Redis lỗi — chỉ chính xác khi chạy 1 instance).
+- Platform Admin không tự động có membership hoặc quyền mutation trong Workspace. Mọi thao tác nghiệp vụ
+  vẫn phải qua RBAC, Project assignment và job ownership tương ứng.
+- **Kiểm tra quyền ở tầng service**: `PlatformAdminAccessService.requirePlatformAdmin` đọc cờ
+  `is_platform_admin` từ DB mỗi request (thu hồi quyền có hiệu lực ngay, không phụ thuộc claim JWT cũ).
+- **Audit**: `PlatformAdminAuditFilter` (sau `JwtAuthFilter`, chỉ `/api/platform/**`) ghi append-only vào
+  `platform_admin_audit_logs` sau khi request hoàn tất — status ≥ 400 → action `DENIED`; ghi ở transaction
+  `REQUIRES_NEW`, lỗi audit chỉ log warn không làm hỏng request. Filter là audit-only — không chặn request.
+- **Seed**: `PlatformAdminSeedRunner` chạy lúc startup khi `app.platform-admin.seed-on-startup=true`,
+  grant `is_platform_admin` cho các email trong `PLATFORM_ADMIN_EMAILS` (CSV) đã tồn tại — grant-only,
+  không tạo user, không revoke; mỗi grant ghi audit `SEED_GRANT`.
+- Health `/api/platform/status` probe song song 6 service: PostgreSQL (`SELECT 1`), Redis (`PING`),
+  RabbitMQ (mở connection), MinIO (`bucketExists`), backend-ai + media-worker (`GET /health` qua
+  `ServiceHealthProbe`); `overall = UP|DEGRADED`, message đã lọc chuỗi nhạy cảm.
 
 ---
 
 ## 12. Bảo mật & multi-tenancy
 - JWT access+refresh; đăng nhập Google (OAuth2).
+- `/api/platform/*` yêu cầu JWT hợp lệ và `users.is_platform_admin = true`.
 - Không có Document/Text Translation domain hoặc Translation Memory trong access model hiện hành.
 - Mọi bảng nghiệp vụ có `workspace_id`; scope theo workspace của user hiện tại.
 - RBAC 3 vai trò cấp Workspace (§4) + Project assignment + quy tắc job-ownership cho QA/checkpoint được

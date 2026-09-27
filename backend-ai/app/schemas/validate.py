@@ -6,6 +6,7 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel
 
 from app.schemas.contract import ProviderPayload
+from app.schemas.error import ProviderErrorDetail
 
 
 # ── Phase 1: CONNECTION ──────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ class SttProbeResponse(BaseModel):
     duration_ms: int = 0
     message: Optional[str] = None
     detected_text: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 class TtsProbeRequest(BaseModel):
@@ -72,6 +74,21 @@ class TtsProbeResponse(BaseModel):
     duration_ms: int = 0
     message: Optional[str] = None
     audio_bytes: int = 0
+    error_detail: Optional[ProviderErrorDetail] = None
+
+
+class VisionProbeRequest(BaseModel):
+    """Phase 3 VISION — prove the configured model accepts image input."""
+    provider: ProviderPayload
+    image_data_url: Optional[str] = None
+
+
+class VisionProbeResponse(BaseModel):
+    ok: bool
+    duration_ms: int = 0
+    message: Optional[str] = None
+    detected_text: Optional[str] = None
+    error_detail: Optional[ProviderErrorDetail] = None
 
 
 # ── Phase 4: OPTIONAL FEATURES ──────────────────────────────────────────────

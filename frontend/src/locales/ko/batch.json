@@ -1,0 +1,63 @@
+{
+  "list": {
+    "title": "배치",
+    "subtitle": "이 워크스페이스의 일괄 번역 작업",
+    "create": "배치 만들기",
+    "updating": "업데이트 중…",
+    "updatedAt": "{{time}} 업데이트됨",
+    "emptyTitle": "아직 배치가 없습니다",
+    "emptyDesc": "여러 파일을 배치로 업로드하여 병렬로 번역하세요.",
+    "searchPlaceholder": "배치 또는 프로젝트 검색…",
+    "noMatchTitle": "배치를 찾을 수 없습니다",
+    "noMatchDesc": "검색어와 일치하는 배치가 없습니다.",
+    "clearSearch": "검색어 지우기",
+    "col": {
+      "project": "프로젝트"
+    }
+  },
+  "create": {
+    "title": "배치 만들기",
+    "subtitle": "최대 20개 파일 · 총 50MB · .txt / .docx",
+    "project": "프로젝트",
+    "projectPlaceholder": "프로젝트 선택…",
+    "nameOptional": "배치 이름 (선택)",
+    "namePlaceholder": "3분기 마케팅 패키지",
+    "sourceLang": "원본 언어",
+    "targetLangs": "대상 언어",
+    "targetPlaceholder": "대상 언어 선택",
+    "files": "파일",
+    "dropHint": "클릭하거나 파일을 여기에 놓으세요",
+    "limits": "최대 {{maxFiles}}개 파일 · 총 {{maxMb}}MB · .txt, .docx",
+    "usage": "{{count}} / {{maxFiles}}개 파일 · {{used}} / {{max}}",
+    "tooManyFiles": "최대 {{max}}개 파일까지 허용됩니다",
+    "tooLarge": "총 크기가 {{maxMb}}MB를 초과합니다",
+    "invalidType": "지원하지 않는 파일 형식: {{name}}",
+    "targetEqualsSource": "대상 언어는 원본 언어와 달라야 합니다",
+    "rateLimited": "이 워크스페이스에서 너무 많은 배치를 만들었습니다. 잠시 후 다시 시도하세요.",
+    "noProjects": "배치를 업로드하기 전에 먼저 프로젝트를 만드세요.",
+    "submit": "배치 시작",
+    "submitting": "업로드 중…"
+  },
+  "detail": {
+    "title": "배치 상세",
+    "documents": "파일 및 작업",
+    "failed": "실패",
+    "partialTitle": "일부 실패",
+    "partialBody": "{{total}}개 중 {{ok}}개 파일 성공, {{failed}}개 실패 — 배치 전체가 실패로 처리되지는 않습니다. 아래에서 실패한 파일을 다시 시도하세요.",
+    "retry": "다시 시도",
+    "retrying": "다시 시도 중…",
+    "downloadZip": "완료된 파일 다운로드 (.zip)",
+    "downloading": "zip 준비 중…",
+    "downloadFailed": "다운로드에 실패했습니다. 다시 시도하세요.",
+    "skippedNotice": "{{count}}개 작업을 건너뛰었습니다 (미완료 또는 차단됨).",
+    "lastUpdated": "{{relative}} 업데이트됨",
+    "noDocuments": "이 배치에 파일이 없습니다",
+    "mobileBanner": "배치 상세 화면을 온전히 사용하려면 데스크톱 컴퓨터를 이용하세요.",
+    "col": {
+      "document": "파일",
+      "sourceLang": "원본",
+      "jobs": "작업",
+      "actions": "작업 메뉴"
+    }
+  }
+}

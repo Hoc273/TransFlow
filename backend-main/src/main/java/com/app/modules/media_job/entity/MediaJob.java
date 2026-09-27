@@ -80,6 +80,9 @@ public class MediaJob extends BaseEntity {
     @Column(name = "tts_voice_id")
     private UUID ttsVoiceId;
 
+    @Column(name = "tts_provider_id")
+    private UUID ttsProviderId;
+
     @Column(name = "visual_context_enabled", nullable = false)
     private boolean visualContextEnabled = false;
 
@@ -89,6 +92,21 @@ public class MediaJob extends BaseEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "preset_snapshot", nullable = false)
     private String presetSnapshot = "{}";
+
+    /** Render Studio config (merged {@code UpdateRenderConfigRequest} JSON); {@code {}} = nothing configured yet. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "render_config", nullable = false)
+    private String renderConfig = "{}";
+
+    /** Assigned {@code SubtitleStyleSnapshot} JSON; null = no style assigned yet. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "subtitle_style")
+    private String subtitleStyle;
+
+    /** Saved {@code UpdatePublishPackageRequest} JSON; null = no draft yet. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "publish_package")
+    private String publishPackage;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "workflow_mode", nullable = false, length = 20)

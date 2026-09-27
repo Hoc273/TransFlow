@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app.api import audio_mix, capabilities, extract_audio, frames, probe, render
 from app.core.config import settings
+from app.core.internal_auth import InternalTokenMiddleware
 from app.services import cancel_registry
 
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +26,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="TransFlow Media Processing Worker", lifespan=lifespan)
+app.add_middleware(InternalTokenMiddleware, token_getter=lambda: settings.internal_service_token)
 
 app.include_router(extract_audio.router, prefix="/internal/media")
 app.include_router(render.router, prefix="/internal/media")

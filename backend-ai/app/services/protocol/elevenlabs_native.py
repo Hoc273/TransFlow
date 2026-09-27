@@ -143,7 +143,7 @@ class ElevenLabsNativeAdapter(ProtocolAdapter):
         text: str,
         voice_id: str,
     ) -> SynthesizeResult:
-        self.require_capability(Capability.TTS)
+        self.require_provider_capability(provider, Capability.TTS)
         payload = {"text": text, "model_id": provider.model}
         headers = {
             **self.auth_headers(provider.api_key),
