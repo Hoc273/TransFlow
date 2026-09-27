@@ -22,15 +22,19 @@ HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-300}"
 
 log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 fail() { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
+# set -e thoát im lặng khi một lệnh lỗi — in ra dòng + lệnh gây lỗi để CD log có manh mối.
+trap 'rc=$?; printf "\033[1;31mERROR: line %s: \`%s\` exited with %s\033[0m\n" "$LINENO" "$BASH_COMMAND" "$rc" >&2' ERR
 
 cd "$APP_DIR"
 
 if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
 
 # Đọc 1 biến từ file env mà không `source` (giá trị secret có thể chứa ký tự đặc biệt).
+# Key vắng mặt -> chuỗi rỗng (grep trả 1 sẽ làm pipefail + set -e thoát im lặng); bỏ \r nếu file CRLF.
 env_value() {
   local key="$1" file="${2:-.env}"
-  grep -E "^${key}=" "$file" | tail -n1 | cut -d= -f2- | sed -e 's/^["'\'']//' -e 's/["'\'']$//'
+  { grep -E "^${key}=" "$file" || true; } | tail -n1 | cut -d= -f2- | tr -d '\r' \
+    | sed -e 's/^["'\'']//' -e 's/["'\'']$//'
 }
 
 compose() {
