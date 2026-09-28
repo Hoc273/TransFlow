@@ -678,13 +678,17 @@ export function validateMediaFile(file: File): string | null {
 }
 
 /** Client-side effective_block for EXPORT (mirrors 06b / BE gate). */
+/** Backend publish gate action (`BLOCK_PUBLISH`); `BLOCK_EXPORT` is its legacy name. */
+const PUBLISH_BLOCKS: readonly string[] = ['BLOCK_PUBLISH', 'BLOCK_EXPORT']
+
+/** Mirrors MediaExportServiceImpl.requirePublishAllowed: an open BLOCK_PUBLISH issue -> QA_BLOCKED. */
 export function hasEffectiveBlockExport(issues: QaIssue[] | undefined | null): boolean {
   if (!issues?.length) return false
   return issues.some((issue) => {
     if (issue.resolved) return false
     const actions = issueBlockingActions(issue)
-    if (!actions.includes('BLOCK_EXPORT')) return false
-    const overridden = issue.overrides?.some((o) => o.blockingAction === 'BLOCK_EXPORT')
+    if (!actions.some((a) => PUBLISH_BLOCKS.includes(a))) return false
+    const overridden = issue.overrides?.some((o) => PUBLISH_BLOCKS.includes(o.blockingAction))
     return !overridden
   })
 }

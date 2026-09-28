@@ -35,11 +35,19 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 
+import org.springframework.test.web.servlet.ResultActions;
+
+import java.io.InputStream;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -166,6 +174,143 @@ class MediaAssetControllerTest {
 
     private MockMultipartFile videoFile() {
         return new MockMultipartFile("file", "clip.mp4", "video/mp4", "fake-video-bytes".getBytes());
+    }
+
+    // ---- Chunked upload (chunk-size-bytes = 1024 in the test profile) ----
+
+    private String startUpload(Lead lead, long size) throws Exception {
+        MvcResult res = mockMvc.perform(post("/api/workspaces/{ws}/projects/{p}/media/uploads", lead.workspaceId(), lead.projectId())
+                        .header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fileName\":\"clip.mp4\",\"fileSizeBytes\":" + size + ",\"contentType\":\"video/mp4\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.chunkSizeBytes").value(1024))
+                .andExpect(jsonPath("$.data.totalChunks").value((size + 1023) / 1024))
+                .andExpect(jsonPath("$.data.receivedChunks").value(0))
+                .andReturn();
+        return objectMapper.readTree(res.getResponse().getContentAsString()).path("data").path("uploadId").asText();
+    }
+
+    private ResultActions putChunk(String token, UUID ws, String uploadId, int index, byte[] bytes) throws Exception {
+        return mockMvc.perform(put("/api/workspaces/{ws}/media/uploads/{id}/chunks/{i}", ws, uploadId, index)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .content(bytes));
+    }
+
+    private ResultActions completeUpload(Lead lead, String uploadId) throws Exception {
+        return mockMvc.perform(post("/api/workspaces/{ws}/media/uploads/{id}/complete", lead.workspaceId(), uploadId)
+                .header("Authorization", "Bearer " + lead.accessToken()));
+    }
+
+    @Test
+    void chunkedUpload_outOfOrderChunksAssembleIntoTheStoredVideo() throws Exception {
+        Lead lead = registerLeadWithWorkspace("chunk-lead@transflow.com");
+        byte[] video = new byte[2500];
+        new Random(7).nextBytes(video);
+        String uploadId = startUpload(lead, video.length);
+
+        AtomicReference<byte[]> stored = new AtomicReference<>();
+        doAnswer(inv -> {
+            stored.set(inv.<InputStream>getArgument(1).readAllBytes());
+            return null;
+        }).when(storageService).putMediaObject(any(), any(), anyLong(), any());
+
+        putChunk(lead.accessToken(), lead.workspaceId(), uploadId, 2, Arrays.copyOfRange(video, 2048, 2500))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.receivedChunks").value(1));
+        // Completing early is refused.
+        completeUpload(lead, uploadId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(ErrorCode.UPLOAD_INCOMPLETE.getCode()));
+        putChunk(lead.accessToken(), lead.workspaceId(), uploadId, 0, Arrays.copyOfRange(video, 0, 1024))
+                .andExpect(status().isOk());
+        // Re-sending a chunk (lost response) is harmless.
+        putChunk(lead.accessToken(), lead.workspaceId(), uploadId, 0, Arrays.copyOfRange(video, 0, 1024))
+                .andExpect(status().isOk());
+        putChunk(lead.accessToken(), lead.workspaceId(), uploadId, 1, Arrays.copyOfRange(video, 1024, 2048))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.receivedChunks").value(3));
+
+        MvcResult done = mockMvc.perform(post("/api/workspaces/{ws}/media/uploads/{id}/complete", lead.workspaceId(), uploadId)
+                        .header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"My clip.mp4\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.fileName").value("My clip.mp4"))
+                .andExpect(jsonPath("$.data.fileSizeBytes").value(2500))
+                .andExpect(jsonPath("$.data.processingStatus").value("READY"))
+                .andReturn();
+        assertArrayEquals(video, stored.get());
+
+        // Retried complete (lost response) returns the same asset instead of storing twice.
+        String assetId = objectMapper.readTree(done.getResponse().getContentAsString()).path("data").path("id").asText();
+        completeUpload(lead, uploadId)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.id").value(assetId));
+        assertEquals(1, mediaAssetRepository.count());
+    }
+
+    @Test
+    void chunkedUpload_rejectsWrongChunkSizeAndForeignUsers() throws Exception {
+        Lead lead = registerLeadWithWorkspace("chunk-owner@transflow.com");
+        Lead other = registerLeadWithWorkspace("chunk-other@transflow.com");
+        String uploadId = startUpload(lead, 2048);
+
+        putChunk(lead.accessToken(), lead.workspaceId(), uploadId, 0, new byte[1000])
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.UPLOAD_CHUNK_INVALID.getCode()));
+        putChunk(lead.accessToken(), lead.workspaceId(), uploadId, 2, new byte[1024])
+                .andExpect(status().isBadRequest());
+        // Another user cannot see or write the session, even with its id.
+        putChunk(other.accessToken(), other.workspaceId(), uploadId, 0, new byte[1024])
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(ErrorCode.UPLOAD_SESSION_NOT_FOUND.getCode()));
+
+        mockMvc.perform(delete("/api/workspaces/{ws}/media/uploads/{id}", lead.workspaceId(), uploadId)
+                        .header("Authorization", "Bearer " + lead.accessToken()))
+                .andExpect(status().isOk());
+        putChunk(lead.accessToken(), lead.workspaceId(), uploadId, 0, new byte[1024])
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void chunkedUpload_invalidVideoIsRejectedAndDiscarded() throws Exception {
+        Lead lead = registerLeadWithWorkspace("chunk-bad@transflow.com");
+        when(durationProbe.extractDurationMs(any())).thenReturn(null);
+        when(durationProbe.isAvailable()).thenReturn(true);
+        String uploadId = startUpload(lead, 10);
+        putChunk(lead.accessToken(), lead.workspaceId(), uploadId, 0, new byte[10]).andExpect(status().isOk());
+
+        completeUpload(lead, uploadId)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.MEDIA_INVALID_FILE.getCode()));
+        completeUpload(lead, uploadId).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void chunkedUpload_startEnforcesSizeTypeAndRole() throws Exception {
+        Lead lead = registerLeadWithWorkspace("chunk-limits@transflow.com");
+        String base = "/api/workspaces/" + lead.workspaceId() + "/projects/" + lead.projectId() + "/media/uploads";
+
+        mockMvc.perform(post(base).header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fileName\":\"big.mp4\",\"fileSizeBytes\":524288001,\"contentType\":\"video/mp4\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.MEDIA_FILE_TOO_LARGE.getCode()));
+        mockMvc.perform(post(base).header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fileName\":\"a.zip\",\"fileSizeBytes\":10,\"contentType\":\"application/zip\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.MEDIA_INVALID_FILE.getCode()));
+
+        RegisteredUser client = registerPlainUser("chunk-client@transflow.com");
+        addWorkspaceMember(lead.workspaceId(), client.userId(), Role.CLIENT);
+        addProjectMember(lead.projectId(), client.userId(), lead.userId());
+        mockMvc.perform(post(base).header("Authorization", "Bearer " + client.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fileName\":\"c.mp4\",\"fileSizeBytes\":10,\"contentType\":\"video/mp4\"}"))
+                .andExpect(status().isForbidden());
     }
 
     // ---- upload ----

@@ -19,7 +19,7 @@ export function MobileHeader({ workspaceId, onOpenSearch }: MobileHeaderProps) {
   const balance = Number(credit?.balance ?? 0)
 
   return (
-    <header className="sticky top-0 z-30 w-full border-b border-neutral-200 bg-white/95 backdrop-blur-md dark:border-neutral-800 dark:bg-neutral-900/95 pt-[env(safe-area-inset-top,0px)] overflow-visible">
+    <header className="sticky top-0 z-[45] w-full border-b border-neutral-200 bg-white/95 backdrop-blur-md dark:border-neutral-800 dark:bg-neutral-900/95 pt-[env(safe-area-inset-top,0px)] overflow-visible">
       <div className="flex h-14 min-w-0 items-center justify-between gap-1 px-3">
         <div className="flex min-w-0 flex-1 items-center gap-0.5">
           <Link

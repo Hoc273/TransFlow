@@ -136,6 +136,23 @@ class MediaStageResilienceTest {
     }
 
     @Test
+    void redeliveryOfAnAttemptStillRunningDoesNotStartTheStageTwice() {
+        MediaStageExecutionService pipeline = pipeline(RestClient.builder().baseUrl("http://ai.test").build());
+        // RabbitMQ consumer_timeout: the broker redelivers the same message while the first run is still busy.
+        when(providerResolver.resolveForCapability(userId, "TTS")).thenAnswer(inv -> {
+            pipeline.execute(message());
+            throw new com.app.common.exception.AppException(
+                    com.app.common.exception.ErrorCode.PLATFORM_PROVIDER_NOT_CONFIGURED);
+        });
+
+        pipeline.execute(message());
+
+        verify(providerResolver, times(1)).resolveForCapability(userId, "TTS");
+        verify(callbackService, times(1)).completeStage(eq(jobId), eq(stageId), eq(MediaJobStage.StageName.TTS),
+                eq(false), any(), any(), any(), any(), anyString());
+    }
+
+    @Test
     void ttsRerunOnlySynthesizesAndBillsTheMissingSegments() {
         keepClip(first, "First sentence.");
         MockRestServiceServer server = expectTts(1, """

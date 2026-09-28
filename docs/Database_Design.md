@@ -252,6 +252,39 @@ legal_documents(
 - Bảng tạo trong `V1__init_tables.sql`, nội dung mặc định seed trong `V2__init_indexes.sql`.
 - Cập nhật dùng `SELECT ... FOR UPDATE` (khóa bi quan) theo `doc_type`.
 
+### 3.4 `auth_sessions` — phiên đăng nhập / refresh token (migration V4)
+
+Mỗi lần đăng nhập (mật khẩu, đăng ký, Google exchange) tạo 1 dòng. Refresh token =
+`<id>.<generation>.<HMAC-SHA256(id.generation)>` (khoá dẫn xuất từ `JWT_SECRET`) nên DB **không lưu token**.
+
+```sql
+CREATE TABLE auth_sessions (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    generation      INTEGER NOT NULL DEFAULT 1 CHECK (generation >= 1),
+    rotated_at      TIMESTAMPTZ,
+    last_used_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at      TIMESTAMPTZ NOT NULL,              -- hạn tuyệt đối: đăng nhập + JWT_SESSION_MAX_DAYS
+    revoked_at      TIMESTAMPTZ,
+    revoked_reason  VARCHAR(32) CHECK (revoked_reason IN
+                        ('LOGOUT','PASSWORD_CHANGED','PASSWORD_RESET','TOKEN_REUSE','ACCOUNT_DISABLED')),
+    user_agent      VARCHAR(512),
+    ip_address      VARCHAR(64),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_auth_sessions_user_active ON auth_sessions (user_id) WHERE revoked_at IS NULL;
+CREATE INDEX idx_auth_sessions_expires_at ON auth_sessions (expires_at);
+```
+
+**Invariant service-layer (`AuthSessionService`):**
+- refresh khoá dòng bằng `SELECT … FOR UPDATE`; token đúng `generation` → `generation + 1`, `rotated_at = now`;
+- token của `generation - 1` trong 30 giây sau `rotated_at` → trả lại token hiện tại, không xoay thêm;
+- mọi token cũ khác → `revoked_reason = TOKEN_REUSE` (ghi lại dù request lỗi);
+- hết hạn khi `now ≥ expires_at` hoặc `now ≥ last_used_at + JWT_REFRESH_TTL_DAYS`;
+- logout → thu hồi phiên hiện tại; đổi mật khẩu → thu hồi các phiên khác; reset mật khẩu → thu hồi tất cả;
+- job hằng ngày xoá dòng đã hết hạn/thu hồi quá 7 ngày.
+
 ## 4. Credit & Thanh toán (không đổi so với thiết kế trước)
 
 ```sql
@@ -861,6 +894,8 @@ CREATE INDEX ix_ai_usage_logs_provider ON ai_usage_logs(provider_id, created_at)
   `tts_voices.display_name`/`status`, lịch sử bảng giá credit, `users.email_canonical`).
 - Database đã chạy chuỗi migration cũ phải **reset schema và `flyway_schema_history`** trước khi dùng
   baseline này; không chồng baseline mới lên history cũ. Thay đổi schema tiếp theo bắt đầu từ `V3__...`.
+- `V4__auth_sessions.sql` (§3.4): refresh token cũ (JWT) không còn được chấp nhận sau khi deploy — mọi
+  người dùng phải đăng nhập lại một lần.
 - **Đồng bộ `tts_voices` (BYOK refresh & platform sync):** upsert theo `voice_id`, **không bao giờ xoá** —
   job DUB có thể còn tham chiếu (FK `ON DELETE SET NULL` sẽ vi phạm `ck_audio_mode_voice`). Voice provider
   gỡ hoặc `status=DEPRECATED` → `is_active=false`. Danh sách rỗng từ provider → lỗi, giữ nguyên catalog.

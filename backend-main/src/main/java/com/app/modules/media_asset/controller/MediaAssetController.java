@@ -4,12 +4,17 @@ import com.app.common.dto.ApiResponse;
 import com.app.common.exception.AppException;
 import com.app.common.exception.ErrorCode;
 import com.app.common.security.AuthenticatedUser;
+import com.app.modules.media_asset.dto.CompleteUploadRequest;
 import com.app.modules.media_asset.dto.ConsentRequest;
 import com.app.modules.media_asset.dto.ConsentResponse;
 import com.app.modules.media_asset.dto.MediaAssetResponse;
+import com.app.modules.media_asset.dto.UploadSessionRequest;
+import com.app.modules.media_asset.dto.UploadSessionResponse;
 import com.app.modules.media_asset.service.MediaAssetService;
+import com.app.modules.media_asset.service.MediaUploadSessionService;
 import com.app.modules.workspace.entity.Role;
 import com.app.modules.workspace.service.WorkspaceAccessService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -17,6 +22,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,13 +36,16 @@ import java.util.UUID;
 public class MediaAssetController {
 
     private final MediaAssetService mediaAssetService;
+    private final MediaUploadSessionService uploadSessions;
     private final WorkspaceAccessService access;
     private final java.time.Duration retention;
 
-    public MediaAssetController(MediaAssetService mediaAssetService, WorkspaceAccessService access,
+    public MediaAssetController(MediaAssetService mediaAssetService, MediaUploadSessionService uploadSessions,
+                                WorkspaceAccessService access,
                                 @org.springframework.beans.factory.annotation.Value("${app.maintenance.media-retention:P3D}")
                                 java.time.Duration retention) {
         this.mediaAssetService = mediaAssetService;
+        this.uploadSessions = uploadSessions;
         this.access = access;
         this.retention = retention;
     }
@@ -63,6 +72,48 @@ public class MediaAssetController {
         return ApiResponse.<MediaAssetResponse>builder()
                 .data(MediaAssetResponse.from(asset, retention))
                 .build();
+    }
+
+    // ---- Chunked upload: each request stays below the 100MB Cloudflare / 10MB nginx body caps ----
+
+    @PostMapping("/projects/{projectId}/media/uploads")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<UploadSessionResponse> startUpload(@AuthenticationPrincipal AuthenticatedUser user,
+                                                          @PathVariable UUID workspaceId,
+                                                          @PathVariable UUID projectId,
+                                                          @Valid @RequestBody UploadSessionRequest req) {
+        var session = uploadSessions.start(workspaceId, user.id(), projectId,
+                req.fileName(), req.fileSizeBytes(), req.contentType());
+        return ApiResponse.<UploadSessionResponse>builder().data(UploadSessionResponse.from(session)).build();
+    }
+
+    @PutMapping(value = "/media/uploads/{uploadId}/chunks/{index}", consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    public ApiResponse<UploadSessionResponse> putChunk(@AuthenticationPrincipal AuthenticatedUser user,
+                                                       @PathVariable UUID workspaceId,
+                                                       @PathVariable UUID uploadId,
+                                                       @PathVariable int index,
+                                                       HttpServletRequest request) throws IOException {
+        var session = uploadSessions.putChunk(workspaceId, user.id(), uploadId, index,
+                request.getContentLengthLong(), request.getInputStream());
+        return ApiResponse.<UploadSessionResponse>builder().data(UploadSessionResponse.from(session)).build();
+    }
+
+    @PostMapping("/media/uploads/{uploadId}/complete")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<MediaAssetResponse> completeUpload(@AuthenticationPrincipal AuthenticatedUser user,
+                                                          @PathVariable UUID workspaceId,
+                                                          @PathVariable UUID uploadId,
+                                                          @Valid @RequestBody(required = false) CompleteUploadRequest req) {
+        var asset = uploadSessions.complete(workspaceId, user.id(), uploadId, req != null ? req.name() : null);
+        return ApiResponse.<MediaAssetResponse>builder().data(MediaAssetResponse.from(asset, retention)).build();
+    }
+
+    @DeleteMapping("/media/uploads/{uploadId}")
+    public ApiResponse<Void> abortUpload(@AuthenticationPrincipal AuthenticatedUser user,
+                                         @PathVariable UUID workspaceId,
+                                         @PathVariable UUID uploadId) {
+        uploadSessions.abort(workspaceId, user.id(), uploadId);
+        return ApiResponse.<Void>builder().build();
     }
 
     @GetMapping("/projects/{projectId}/media/assets")

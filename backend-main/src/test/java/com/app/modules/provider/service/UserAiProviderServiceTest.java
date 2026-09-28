@@ -10,6 +10,7 @@ import com.app.modules.provider.dto.UpdateUserAiProviderRequest;
 import com.app.modules.provider.dto.UserAiProviderResponse;
 import com.app.modules.provider.entity.UserAiProvider;
 import com.app.modules.provider.entity.UserAiProviderDefault;
+import com.app.modules.provider.event.TtsVoiceSyncRequested;
 import com.app.modules.provider.repository.TtsVoiceRepository;
 import com.app.modules.provider.repository.UserAiProviderDefaultRepository;
 import com.app.modules.provider.repository.UserAiProviderRepository;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
 import java.util.Optional;
@@ -46,6 +48,9 @@ class UserAiProviderServiceTest {
     @Mock
     private AiGatewayClient aiGatewayClient;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private UserAiProviderService service;
 
     private final UUID userId = UUID.randomUUID();
@@ -58,7 +63,8 @@ class UserAiProviderServiceTest {
                 ttsVoiceRepository,
                 providerDefaultRepository,
                 cryptoService,
-                aiGatewayClient
+                aiGatewayClient,
+                eventPublisher
         );
     }
 
@@ -92,6 +98,7 @@ class UserAiProviderServiceTest {
         assertTrue(resp.isActive());
         assertEquals(List.of(), resp.defaultForCapabilities());
         verify(providerRepository).save(any(UserAiProvider.class));
+        verify(eventPublisher).publishEvent(TtsVoiceSyncRequested.user(userId, providerId));
     }
 
     @Test
@@ -114,6 +121,8 @@ class UserAiProviderServiceTest {
                 mapping.getId().getUserId().equals(userId)
                         && mapping.getId().getCapability().equals("TRANSLATE")
                         && mapping.getProviderId().equals(providerId)));
+        // No TTS capability → no voice catalog to load.
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -223,6 +232,27 @@ class UserAiProviderServiceTest {
         assertEquals("https://new.url", resp.baseUrl());
         assertEquals(List.of("STT", "TTS"), resp.capabilities());
         assertEquals("whisper-1", resp.defaultModel());
+        verify(eventPublisher).publishEvent(TtsVoiceSyncRequested.user(userId, providerId));
+    }
+
+    @Test
+    void updateProviderKeepsVoiceCatalogWhenConnectionUnchanged() {
+        UserAiProvider provider = new UserAiProvider();
+        provider.setId(providerId);
+        provider.setUserId(userId);
+        provider.setProtocol("azure_speech");
+        provider.setCapabilities(List.of("TTS"));
+        provider.setBaseUrl("https://southeastasia.tts.speech.microsoft.com");
+        provider.setDefaultModel("azure-tts");
+        provider.setActive(true);
+
+        when(providerRepository.findByIdAndUserId(providerId, userId)).thenReturn(Optional.of(provider));
+        when(providerRepository.save(any(UserAiProvider.class))).thenAnswer(i -> i.getArgument(0));
+
+        service.updateProvider(userId, providerId, new UpdateUserAiProviderRequest(
+                null, null, "https://southeastasia.tts.speech.microsoft.com", null, "azure-tts", true));
+
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test

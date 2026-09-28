@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next'
+import { localizedJobFailure } from '@/lib/stageErrors'
 import type { NotificationItem } from '@/types/notification'
 
 /**
@@ -19,6 +20,14 @@ export function notificationHref(workspaceId: string, n: NotificationItem): stri
     return `/w/${workspaceId}/account/api-keys`
   }
   return null
+}
+
+/** Localized body: a failed job's raw backend reason becomes a user-facing one. */
+export function notificationMessage(t: TFunction, n: NotificationItem): string {
+  if ((n.type || '').toUpperCase() === 'JOB_FAILED') {
+    return localizedJobFailure(t, n.message) ?? n.message
+  }
+  return n.message
 }
 
 /** Localized title per notification type; falls back to the raw API title. */

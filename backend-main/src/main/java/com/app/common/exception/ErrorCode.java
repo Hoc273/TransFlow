@@ -109,6 +109,11 @@ public enum ErrorCode {
     TERMS_VERSION_MISMATCH(2803, "termsVersion does not match the current terms version", HttpStatus.BAD_REQUEST),
     MEDIA_INVALID_FILE(2805, "Uploaded file is not a readable video", HttpStatus.BAD_REQUEST),
     MEDIA_FILE_EXPIRED(2804, "Media files were deleted after the retention period; upload the video again", HttpStatus.GONE),
+    UPLOAD_SESSION_NOT_FOUND(2806, "Upload session not found or expired; start the upload again", HttpStatus.NOT_FOUND),
+    UPLOAD_CHUNK_INVALID(2807, "Upload chunk index or size does not match the upload session", HttpStatus.BAD_REQUEST),
+    UPLOAD_INCOMPLETE(2808, "Not all chunks of the upload have been received", HttpStatus.CONFLICT),
+    UPLOAD_SESSION_LIMIT(2809, "Too many uploads in progress; finish or cancel one first", HttpStatus.TOO_MANY_REQUESTS),
+    UPLOAD_STORAGE_FULL(2810, "Server storage is temporarily full; try again later", HttpStatus.SERVICE_UNAVAILABLE),
 
     // 29xx - media_job (Member B)
     VOICE_LANGUAGE_MISMATCH(2900, "Selected voice language does not match targetLang", HttpStatus.BAD_REQUEST),

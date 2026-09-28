@@ -73,10 +73,10 @@
 | POST | `/api/auth/register` | không | `{email,password,fullName,otp}` → tạo user; **lần đầu đăng nhập** trigger auto-init Workspace+Project+Credit (Arch §3). Trả `{accessToken,user,workspaceId,projectId}` + cookie refresh (xem dưới). **`otp` luôn bắt buộc** (thiếu → `OTP_REQUIRED`, sai → `INVALID_OTP`). `password` 8–72 ký tự và ≤ 72 byte UTF-8 (giới hạn BCrypt) → vượt: `VALIDATION_ERROR`. Email trùng **hoặc là alias của hộp thư đã đăng ký** (`a+1@gmail.com`, `a.b@gmail.com`, `@googlemail.com`; mọi domain: bỏ `+tag`) → `EMAIL_ALREADY_EXISTS`. |
 | POST | `/api/auth/register/otp` | không | `{email}` → gửi OTP 6 số xác thực email đăng ký (Redis `auth:otp:register:<email>`, TTL 5 phút, lưu plain). Trả `{message}`. Email đã tồn tại/alias → `EMAIL_ALREADY_EXISTS`. Rate limit theo email như forgot-password → `OTP_RATE_LIMIT_EXCEEDED`. |
 | POST | `/api/auth/login` | không | `{email,password}` → cùng response shape như trên. Sai mật khẩu ≥ `LOGIN_MAX_FAILURES` (mặc định 5) lần trong `LOGIN_LOCK_DURATION` (15 phút) → khoá email đó tới hết cửa sổ: `LOGIN_TEMPORARILY_LOCKED` (kể cả khi nhập đúng). |
-| POST | `/api/auth/refresh` | không (refresh cookie) | Đọc refresh token từ cookie `tf_refresh`; client không phải trình duyệt có thể gửi body `{refreshToken}`. Trả `{accessToken}` và **xoay vòng** cookie. Thiếu/sai → `INVALID_REFRESH_TOKEN`. Refresh token cũ **không** bị thu hồi sau reset mật khẩu (JWT stateless, chưa có cơ chế revocation). |
-| POST | `/api/auth/logout` | không | Xoá cookie `tf_refresh` (`Max-Age=0`). `data` rỗng. |
+| POST | `/api/auth/refresh` | không (refresh cookie) | Đọc refresh token từ cookie `tf_refresh`; client không phải trình duyệt có thể gửi body `{refreshToken}`. Trả `{accessToken}` và **xoay vòng** cookie (rotation thật, bảng `auth_sessions` — Database_Design §3.4): token vừa bị thay còn được nhận thêm **30 giây** (nhiều tab refresh cùng lúc nhận lại đúng token mới); dùng lại token cũ sau đó, hoặc token cũ hơn 1 thế hệ → **thu hồi cả phiên**. Thiếu/sai/hết hạn/đã thu hồi/bị dùng lại → `INVALID_REFRESH_TOKEN` (401); user bị khoá → `ACCOUNT_DISABLED` (403) và phiên bị thu hồi. Phiên hết hạn khi không dùng quá `JWT_REFRESH_TTL_DAYS` (14 ngày) hoặc quá `JWT_SESSION_MAX_DAYS` (30 ngày) kể từ lúc đăng nhập. |
+| POST | `/api/auth/logout` | không | Thu hồi phiên ứng với cookie `tf_refresh` (nếu hợp lệ) rồi xoá cookie (`Max-Age=0`). Access token đã cấp vẫn dùng được tới khi hết hạn (≤ `JWT_ACCESS_TTL_MINUTES`). `data` rỗng. |
 
-**Refresh token cookie** (register / login / google-exchange / refresh): `Set-Cookie: tf_refresh=<jwt>; Path=/api/auth; HttpOnly; Secure; SameSite=Strict; Max-Age=<JWT_REFRESH_TTL_DAYS>`.
+**Refresh token cookie** (register / login / google-exchange / refresh): `Set-Cookie: tf_refresh=<sessionId>.<generation>.<hmac>; Path=/api/auth; HttpOnly; Secure; SameSite=Strict; Max-Age=<JWT_REFRESH_TTL_DAYS>`.
 Refresh token **không** xuất hiện trong JSON (JS/XSS không đọc được); FE gọi API với `credentials: 'include'`.
 
 **Throttle theo IP**: `POST` `/api/auth/login`, `/register`, `/register/otp`, `/forgot-password/*`, `/google/exchange`
@@ -84,13 +84,13 @@ dùng chung ngân sách `AUTH_THROTTLE_MAX_REQUESTS` (30) request / `AUTH_THROTT
 | GET | `/api/auth/me` | JWT | Thông tin user hiện tại (`UserResponse`): `{id,email,fullName,googleLinked,isPlatformAdmin,avatarUrl}`. |
 | PUT | `/api/auth/me` | JWT | `{fullName, avatarUrl?}` → cập nhật hồ sơ (`fullName` bắt buộc, tối đa 200 ký tự). `avatarUrl` chỉ nhận `data:image/(png|jpeg|webp|gif);base64,...` ≤ ~1MB hoặc URL `https://` ≤ 2048 ký tự; khác (SVG, `javascript:`, http, ...) → `INVALID_AVATAR`. Trả `UserResponse`. |
 | DELETE | `/api/auth/avatar` | JWT | Xoá avatar của user hiện tại (`users.avatar_url = null`). Trả `UserResponse`. |
-| PUT | `/api/auth/password` | JWT | `{currentPassword?, newPassword}` → đổi mật khẩu (`newPassword` 8–72 ký tự, ≤ 72 byte). Nếu user đã có mật khẩu thì `currentPassword` bắt buộc và phải khớp, sai → `INVALID_CREDENTIALS`; tài khoản Google-only (chưa có `password_hash`) được đặt mật khẩu mới mà không cần `currentPassword`. `data` rỗng. |
+| PUT | `/api/auth/password` | JWT | `{currentPassword?, newPassword}` → đổi mật khẩu (`newPassword` 8–72 ký tự, ≤ 72 byte). Nếu user đã có mật khẩu thì `currentPassword` bắt buộc và phải khớp, sai → `INVALID_CREDENTIALS`; tài khoản Google-only (chưa có `password_hash`) được đặt mật khẩu mới mà không cần `currentPassword`. Thành công → **thu hồi mọi phiên khác** của user, giữ phiên ứng với cookie `tf_refresh` của request (không có cookie → thu hồi tất cả). `data` rỗng. |
 | GET | `/api/auth/google/start` | không | Redirect sang Google OAuth2 consent screen. |
 | GET | `/api/auth/google/callback` | không | Google redirect về; set cookie/state tạm, FE gọi `exchange` tiếp theo. |
 | POST | `/api/auth/google/exchange` | không | `{code}` → cùng response shape `register/login`; nếu `google_sub` chưa gắn user nào thì chạy auto-init như lần đầu (Arch §3). |
 | POST | `/api/auth/forgot-password/otp` | không | `{email}` → sinh OTP 6 số, lưu Redis `auth:otp:forgot:<email>` TTL 5 phút (plain text), gửi email (dev fallback: log console). **Luôn trả 200 `{message}` dù email không tồn tại/bị khoá** (chống dò tài khoản); tài khoản Google-only vẫn được gửi OTP để đặt mật khẩu. Rate limit theo email (mặc định 5 lần/10 phút) → `OTP_RATE_LIMIT_EXCEEDED`. |
 | POST | `/api/auth/forgot-password/verify` | không | `{email,otp}` → kiểm tra khớp (không consume OTP), trả `{valid:true, token}` (`token` echo lại otp). OTP sai/hết hạn → `INVALID_OTP`. Sai ≥5 lần → OTP bị xoá (OTP đúng cũng `INVALID_OTP`). |
-| POST | `/api/auth/forgot-password/reset` | không | `{email,otp,newPassword}` → verify lại OTP rồi xoá atomic, BCrypt cập nhật `users.password_hash`. OTP sai/hết hạn → `INVALID_OTP`. Trả `{message}`. |
+| POST | `/api/auth/forgot-password/reset` | không | `{email,otp,newPassword}` → verify lại OTP rồi xoá atomic, BCrypt cập nhật `users.password_hash`, **thu hồi mọi phiên** của user. OTP sai/hết hạn → `INVALID_OTP`. Trả `{message}`. |
 
 ---
 
@@ -125,7 +125,11 @@ dùng chung ngân sách `AUTH_THROTTLE_MAX_REQUESTS` (30) request / `AUTH_THROTT
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
 | GET | `/api/workspaces/{workspaceId}/media/terms-version` | LEAD/MEMBER | `{termsVersion}` — phiên bản điều khoản hiện hành (`terms_versions.is_current`). |
-| POST | `/api/workspaces/{workspaceId}/projects/{projectId}/media/assets` | LEAD/MEMBER (project) | Multipart: `file` (≤500MB, ≤30 phút), `name?`. Trả `MediaAssetResponse` (`asset_type=SOURCE_VIDEO`, `processing_status=VALIDATING→READY`). |
+| POST | `/api/workspaces/{workspaceId}/projects/{projectId}/media/assets` | LEAD/MEMBER (project) | Multipart: `file` (≤500MB, ≤30 phút), `name?`. Trả `MediaAssetResponse` (`asset_type=SOURCE_VIDEO`, `processing_status=VALIDATING→READY`). Qua nginx public chỉ nhận body ≤ 10MB — FE dùng upload chia chunk bên dưới. |
+| POST | `/api/workspaces/{workspaceId}/projects/{projectId}/media/uploads` | LEAD/MEMBER (project) | Bắt đầu upload chia chunk: `{fileName, fileSizeBytes, contentType}` (≤500MB, `video/*`). Trả `UploadSessionResponse {uploadId, chunkSizeBytes (8MB), totalChunks, receivedChunks, expiresAt}`. Mỗi user tối đa 3 phiên đang chạy → `UPLOAD_SESSION_LIMIT`; đĩa staging không đủ chỗ → `UPLOAD_STORAGE_FULL`. |
+| PUT | `/api/workspaces/{workspaceId}/media/uploads/{uploadId}/chunks/{index}` | người tạo phiên | Body `application/octet-stream` = byte `[index*chunkSizeBytes, …)`; chunk cuối có thể ngắn hơn. Gửi lại cùng index là idempotent, gửi không theo thứ tự được. Sai index/kích thước → `UPLOAD_CHUNK_INVALID`. Trả `UploadSessionResponse`. |
+| POST | `/api/workspaces/{workspaceId}/media/uploads/{uploadId}/complete` | người tạo phiên | `{name?}` → kiểm tra lại quyền ghi Project, ghép file, ffprobe + lưu storage như upload multipart; trả `MediaAssetResponse` (201). Gọi lại trả cùng asset. Thiếu chunk → `UPLOAD_INCOMPLETE`; video không hợp lệ/quá 30 phút → phiên bị xoá. |
+| DELETE | `/api/workspaces/{workspaceId}/media/uploads/{uploadId}` | người tạo phiên | Huỷ phiên, xoá dữ liệu tạm. Phiên không hoạt động quá 24 giờ tự bị xoá. Phiên của người khác / không tồn tại / hết hạn → `UPLOAD_SESSION_NOT_FOUND`. |
 | GET | `/api/workspaces/{workspaceId}/projects/{projectId}/media/assets` | LEAD/MEMBER/CLIENT | Danh sách asset gốc (`SOURCE_VIDEO`) trong Project. |
 | GET | `/api/workspaces/{workspaceId}/media/assets/{assetId}` | LEAD/MEMBER/CLIENT | Chi tiết 1 asset. |
 | POST | `/api/workspaces/{workspaceId}/media/assets/{assetId}/consent` | LEAD/MEMBER | `{termsVersion}` phải khớp version hiện hành → tạo `media_consents`. Bắt buộc trước khi tạo Media Job từ asset này. |
@@ -868,6 +872,11 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `MEDIA_FILE_TOO_LARGE` | 2801 | 400 | Upload video vượt 500MB (SRS §6), enforce ở service layer. |
 | `MEDIA_DURATION_EXCEEDED` | 2802 | 400 | Video vượt 30 phút (SRS §6), enforce ở service layer sau khi ffprobe. |
 | `MEDIA_INVALID_FILE` | 2805 | 400 | Content-Type không phải `video/*`, hoặc ffprobe (có trên host) không đọc được stream media — file không được lưu. |
+| `UPLOAD_SESSION_NOT_FOUND` | 2806 | 404 | Phiên upload chia chunk không tồn tại, hết hạn (24 giờ không hoạt động), đã huỷ, hoặc thuộc user khác. |
+| `UPLOAD_CHUNK_INVALID` | 2807 | 400 | Index chunk ngoài phạm vi hoặc số byte khác kích thước chunk mong đợi. |
+| `UPLOAD_INCOMPLETE` | 2808 | 409 | Gọi `complete` khi chưa nhận đủ chunk. |
+| `UPLOAD_SESSION_LIMIT` | 2809 | 429 | User đã có đủ số phiên upload đang chạy (mặc định 3). |
+| `UPLOAD_STORAGE_FULL` | 2810 | 503 | Đĩa staging của backend-main không đủ chỗ cho file (giữ lại tối thiểu 1GB trống). |
 | `TERMS_VERSION_MISMATCH` | 2803 | 400 | `termsVersion` gửi lên không khớp `terms_versions.is_current` tại thời điểm consent. |
 | `INSUFFICIENT_CREDIT` | 2300 | 402 | Số dư không đủ khi tạo job hoặc trừ credit. |
 | `CREDIT_PACKAGE_NOT_FOUND` | 2301 | 404 | Gói credit không tồn tại. |

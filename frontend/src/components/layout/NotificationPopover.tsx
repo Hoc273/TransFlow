@@ -10,7 +10,7 @@ import {
 } from '@/hooks/useNotifications'
 import { useUiStore } from '@/store/uiStore'
 import { formatRelativeTime } from '@/lib/format'
-import { notificationHref, notificationTitle } from '@/lib/notifications'
+import { notificationHref, notificationMessage, notificationTitle } from '@/lib/notifications'
 import type { NotificationItem } from '@/types/notification'
 
 export function NotificationPopover() {
@@ -152,7 +152,7 @@ export function NotificationPopover() {
                       </div>
                       {item.message && (
                         <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
-                          {item.message}
+                          {notificationMessage(t, item)}
                         </p>
                       )}
                     </div>

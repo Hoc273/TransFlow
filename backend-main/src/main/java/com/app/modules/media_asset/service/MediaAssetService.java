@@ -14,6 +14,13 @@ public interface MediaAssetService {
 
     MediaAsset upload(UUID workspaceId, UUID userId, UUID projectId, MultipartFile file, String name);
 
+    /**
+     * Validates a fully received video on local disk (size, type, ffprobe duration), stores it
+     * and creates the root SOURCE_VIDEO asset. The caller owns and deletes {@code videoFile}.
+     */
+    MediaAsset createSourceAsset(UUID workspaceId, UUID userId, UUID projectId, java.nio.file.Path videoFile,
+                                 long sizeBytes, String contentType, String fileName);
+
     List<MediaAsset> listRootAssets(UUID workspaceId, UUID userId, UUID projectId);
 
     MediaAsset getAsset(UUID workspaceId, UUID userId, UUID assetId);

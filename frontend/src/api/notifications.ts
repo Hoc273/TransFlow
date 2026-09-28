@@ -28,11 +28,14 @@ export function listNotificationsApi(
   const qs = search.toString()
   const path = buildWorkspacePath(workspaceId, `/notifications${qs ? `?${qs}` : ''}`)
   return apiRequest<any>(path).then((res) => {
+    // Backend PageResponse<T> exposes `items`; `content` kept for Spring Page payloads.
     const rawItems: any[] = Array.isArray(res)
       ? res
-      : Array.isArray(res?.content)
-        ? res.content
-        : []
+      : Array.isArray(res?.items)
+        ? res.items
+        : Array.isArray(res?.content)
+          ? res.content
+          : []
 
     return rawItems.map(toNotificationItem)
   })
@@ -66,7 +69,9 @@ export function countUnreadNotificationsApi(workspaceId: string): Promise<number
   const path = buildWorkspacePath(workspaceId, '/notifications?unread=true&page=0&size=1')
   return apiRequest<any>(path).then((res) => {
     if (typeof res?.totalElements === 'number') return res.totalElements
-    return Array.isArray(res) ? res.length : Array.isArray(res?.content) ? res.content.length : 0
+    if (Array.isArray(res)) return res.length
+    if (Array.isArray(res?.items)) return res.items.length
+    return Array.isArray(res?.content) ? res.content.length : 0
   })
 }
 

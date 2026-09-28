@@ -1,8 +1,8 @@
 # Tính toán Hệ số Credit (x, y) — TransFlow Media Studio
 
-> **Phiên bản:** v2.3 (thay thế v2.2; v2.2 → v2.1 → v2 → DRAFT v1)
-> **Trạng thái:** **ĐÃ CHỐT** bảng hệ số §7.2, gói Credit §9, model nền tảng (Q2) — 2026-09-27. Các mục còn mở và đề xuất xử lý ở [§12](#12-việc-cần-chốt--trạng-thái-và-đề-xuất).
-> **Ngày:** 2026-09-24 (v2.2) · cập nhật 2026-09-27 (v2.3)
+> **Phiên bản:** v2.4 (thay thế v2.3; v2.3 → v2.2 → v2.1 → v2 → DRAFT v1)
+> **Trạng thái:** **ĐÃ CHỐT** bảng hệ số §7.2, model nền tảng (Q2) — 2026-09-27; **giá v2.4** (hệ số ×2 §7.6, gói Credit §9) — 2026-09-28. Các mục còn mở và đề xuất xử lý ở [§12](#12-việc-cần-chốt--trạng-thái-và-đề-xuất).
+> **Ngày:** 2026-09-24 (v2.2) · cập nhật 2026-09-27 (v2.3) · 2026-09-28 (v2.4)
 > **Đầu vào:** `Khung_Tinh_Toan_He_So_Credit.docx`, `Credit_Coefficient_Calculation.md` v1/v2/v2.1, `Credit_Pricing_Review.md`, SRS §5.6 & §7.2, System_Architecture §10, Database_Design (`credit_pricing_config`), code `backend-main` / `backend-ai` hiện tại.
 > **Ký hiệu:** ✅ đã chốt · ⚠️ giả định cần kiểm chứng · ❓ cần quyết định · 🆕 điểm mới so với v1
 
@@ -10,16 +10,16 @@
 
 ## 0. Tóm tắt điều hành
 
-| Câu hỏi | Kết luận (v2.3 — đã chốt) |
+| Câu hỏi | Kết luận (v2.4 — đã chốt) |
 |---|---|
 | Hướng tính x | **Theo tác nhân chi phí (cost driver)**, không chia % hạ tầng đều cho mọi capability. Hạ tầng tách **cố định** (thu qua STT theo thời lượng video nguồn) và **biến đổi** (thu ở đúng stage gây ra chi phí). 🆕 |
-| Hướng tính y | **Shadow price theo provider/model thật** qua `provider_scope` (OpenAI `gpt-4o`, `gpt-4o-mini`, `whisper-1`, `tts-1`, `tts-1-hd`, Qwen…), markup **50%**. 🆕 |
+| Hướng tính y | **Shadow price theo provider/model thật** qua `provider_scope` (OpenAI `gpt-4o`, `gpt-4o-mini`, `whisper-1`, `tts-1`, `tts-1-hd`, Qwen…), markup **50%**. 🆕 v2.4: cả x và y nhân thêm hệ số định vị **k = 2** (§7.6). |
 | TTS | **Chỉ dùng TTS qua API.** Piper bị loại khỏi tính giá vì chỉ dùng local để test. Mặc định `tts-1`, cao cấp `tts-1-hd`. |
 | Capability mới | **`AUDIO_SEPARATION`** (Demucs) tách khỏi RENDER — chỉ job `DUB_MIX` trả. 🆕 |
 | Sản lượng tính x | **5.000 phút/tháng** (thận trọng), chỉ áp cho phần hạ tầng cố định, review hàng tháng. |
-| Biên gộp tại sản lượng kế hoạch | **~24–29% ở giá lẻ 100đ, ~16–21% ở giá gói lớn nhất 90đ**, đồng đều giữa các loại job (v1: 4–14% và lệch nhau). Hoà vốn ở **~2.000–4.100 phút/tháng** (v1: ~9.400–10.300). |
-| Giá hiển thị cho user | Phụ đề **~6,7 Credit/phút** · Lồng tiếng thay giọng **~12,6** · Lồng tiếng giữ nhạc nền **~13,4** · Giọng HD **~19,3** · Ngôn ngữ thứ 2 cùng video **~10,2**. |
-| Gói Credit | ✅ Starter **500 Credit / 50.000đ** · Creator **2.000 / 190.000đ** · Business **10.000 / 900.000đ** (đơn giá thấp nhất 90đ/Credit). |
+| Biên gộp tại sản lượng kế hoạch | v2.4: **~58–63%** (giá lẻ 100đ và gói 90đ), §7.6. v2.3: ~24–29% @100đ, ~16–21% @90đ, hoà vốn ~2.000–4.100 phút/tháng. |
+| Giá hiển thị cho user | v2.4: Phụ đề **~13,4 Credit/phút** · Lồng tiếng thay giọng **~25,2** · Lồng tiếng giữ nhạc nền **~26,8** · Giọng HD **~38,5** (v2.3: 6,7 / 12,6 / 13,4 / 19,3). |
+| Gói Credit | ✅ v2.4: Starter **2.500 Credit / 250.000đ** · Creator **5.250 / 500.000đ** · Business **10.000 / 900.000đ** — giữ **1 Credit = 100đ** (đơn giá thấp nhất 90đ/Credit). |
 | Credit khởi tạo | ✅ **100**, cấp 1 lần, không refill (giá vốn ~7.000đ/tài khoản). |
 | Model nền tảng (Q2) | ✅ STT `whisper-1` · dịch/tóm tắt `gpt-4o-mini` (FreeLLMAPI ưu tiên, key trả phí dự phòng) · TTS `tts-1` · VISION `gpt-4o-mini`. **Chưa mở giọng HD** trong MVP. |
 | Stage thu Credit | ✅ STT, TRANSLATE, SUMMARIZE_SCRIPT, TTS, VISION, AUDIO_SEPARATION, **RENDER** (RENDER thu x theo giây video output khi worker báo xong — 2026-09-27). |
@@ -171,6 +171,8 @@ Demucs là tác vụ nặng CPU/GPU nhất nhưng chỉ `DUB_MIX` dùng. Gộp v
 |---|---|---|---|
 | x | ×1,25 | **×1,25 × 1,10 = ×1,375** | +10% dự phòng cho stage FAILED/retry do hệ thống (đã tiêu tài nguyên nhưng không thu) 🆕 |
 | y | ×1,25 | **×1,50** | Markup 25% chỉ cho biên gộp 4–14% (review §2.2); 50% là mức pass-through phổ biến, vẫn rẻ hơn đối thủ quốc tế nhiều lần |
+
+> **v2.4 (2026-09-28):** thêm hệ số định vị **k = 2** nhân lên cả x và y của mọi row (§7.6). x, y giờ là `chi phí × markup × k`; công thức §7.1 giữ nguyên, bảng §7.2 là mức k = 1.
 
 ### P6 — Tái dùng STT & stems khi dịch cùng video sang ngôn ngữ khác 🆕 (Phase 2)
 
@@ -349,23 +351,57 @@ Giả định chung: STT `whisper-1`, dịch `gpt-4o-mini`, TTS `tts-1` (trừ k
 
 → Không quảng bá "BYOK rẻ hơn 3 lần". Định vị BYOK: dùng provider/giọng riêng (ElevenLabs, Google, Azure…), tận dụng free tier/hạn mức sẵn có, kiểm soát chi phí AI.
 
+### 7.6 Bảng giá v2.4 — hệ số định vị ×2 (2026-09-28) 🆕
+
+Giá v2.3 rẻ hơn đối thủ 5–45 lần (HeyGen ~$0,24–0,62/phút, ElevenLabs Dubbing ~$0,33–0,55, Rask ~$2,4–3,0) trong khi biên chỉ ~20%. v2.4 giữ **1 Credit = 100đ** và nhân **mọi** x, y với **k = 2** (giữ nguyên tương quan giữa capability và model). Làm tròn 6 chữ số thập phân (`NUMERIC(10,6)`; API từ chối số lẻ hơn).
+
+**Không có migration:** Super Admin tạo 24 version qua `/platform/pricing` (§10), cùng một `effective_from`, tick *xác nhận thay đổi lớn* (×2 vượt ±50%). Trong mỗi capability tạo row `NULL` trước để tránh cảnh báo `DEFAULT_Y_BELOW_SCOPED_MAX`.
+
+**Đóng 8 row mẫu** (`V3__platform_provider_and_credit_packages.sql`, `effective_to = now()`, không xoá): STT `openai_compatible/whisper-1`, `openai_compatible/gpt-4o-mini-transcribe`; TRANSLATE, SUMMARIZE_SCRIPT, VISION `openai_compatible/gpt-4o-mini`; TRANSLATE, SUMMARIZE_SCRIPT `dashscope_native/qwen-plus`; TTS `openai_compatible/tts-1`. Thiếu các row này resolver rơi xuống row protocol (cùng giá) hoặc `NULL` (đắt hơn) nên không bán lỗ. **Giữ** row `gpt-4o` và `tts-1-hd` (thiếu thì model đắt bị tính theo giá protocol rẻ). Sau V3 còn **16 row** cần tạo version ×2 — bỏ các dòng mẫu trong bảng dưới.
+
+| Capability | `provider_scope` | x v2.3 → **v2.4** | y v2.3 → **v2.4** |
+|---|---|---|---|
+| STT | `NULL`, `openai_compatible`, `openai_compatible/whisper-1` | 0.054313 → **0.108626** | 0.039000 → **0.078000** |
+| STT | `openai_compatible/gpt-4o-mini-transcribe` | 0.054313 → **0.108626** | 0.019500 → **0.039000** |
+| TRANSLATE | `NULL`, `openai_compatible/gpt-4o` | 0.000007 → **0.000014** | 0.002438 → **0.004876** |
+| TRANSLATE | `openai_compatible`, `openai_compatible/gpt-4o-mini` | 0.000007 → **0.000014** | 0.000146 → **0.000292** |
+| TRANSLATE | `dashscope_native/qwen-plus` | 0.000007 → **0.000014** | 0.000312 → **0.000624** |
+| SUMMARIZE_SCRIPT | `NULL`, `openai_compatible/gpt-4o` | 0.000007 → **0.000014** | 0.001560 → **0.003120** |
+| SUMMARIZE_SCRIPT | `openai_compatible`, `openai_compatible/gpt-4o-mini` | 0.000007 → **0.000014** | 0.000094 → **0.000188** |
+| SUMMARIZE_SCRIPT | `dashscope_native/qwen-plus` | 0.000007 → **0.000014** | 0.000218 → **0.000436** |
+| TTS | `NULL`, `openai_compatible/tts-1-hd` | 0.000027 → **0.000054** | 0.011700 → **0.023400** |
+| TTS | `openai_compatible`, `openai_compatible/tts-1` | 0.000027 → **0.000054** | 0.005850 → **0.011700** |
+| VISION | `NULL`, `openai_compatible/gpt-4o` | 0.000069 → **0.000138** | 0.001267 → **0.002534** |
+| VISION | `openai_compatible`, `openai_compatible/gpt-4o-mini` | 0.000069 → **0.000138** | 0.000076 → **0.000152** |
+| AUDIO_SEPARATION | `NULL` | 0.013750 → **0.027500** | 0 → **0** |
+| RENDER | `NULL` | 0.017188 → **0.034376** | 0 → **0** |
+
+Kết quả (nguồn nền tảng, 5.000 phút/tháng, cùng giả định §7.3):
+
+| Job 10 phút | Credit v2.3 → **v2.4** | Giá @100đ | Chi phí thực (AI + hạ tầng) | Biên @100đ | Biên @90đ |
+|---|---|---|---|---|---|
+| Phụ đề | 67,1 → **134,1** | 13.410đ | ~4.730đ | ~62% | ~58% |
+| `DUB_MIX` STUDIO | 134,1 → **268,2** | 26.820đ | ~9.250đ | ~63% | ~59% |
+
+Vẫn rẻ hơn đối thủ quốc tế rẻ nhất (HeyGen ~6.200đ/phút) khoảng 2,3 lần. Khi đổi sang model rẻ hơn (Groq STT, Google WaveNet TTS), thêm row `protocol/model` mới với cùng k = 2.
+
 ---
 
 ## 8. Giá hiển thị cho người dùng 🆕
 
-Hệ số x, y là nội bộ; UI nên hiển thị **Credit/phút video** theo loại job (và **ước tính trước khi chạy** — Q10). Giá dưới đây là khi dùng nguồn AI nền tảng:
+Hệ số x, y là nội bộ; UI nên hiển thị **Credit/phút video** theo loại job (và **ước tính trước khi chạy** — Q10). Giá dưới đây là khi dùng nguồn AI nền tảng — **v2.4** (cột v2.3 để đối chiếu):
 
-| Loại job | Credit / phút | ≈ VNĐ / phút |
-|---|---|---|
-| Phụ đề (dịch) | ~6,7 | ~670đ |
-| Lồng tiếng — thay giọng (`DUB_REPLACE`) | ~12,6 | ~1.260đ |
-| Lồng tiếng — giữ nhạc nền (`DUB_MIX`) | ~13,4 | ~1.340đ |
-| Lồng tiếng giọng HD (`tts-1-hd`, giữ nhạc nền) | ~19,3 | ~1.930đ |
-| Thêm ngôn ngữ cho video đã xử lý (P6) | ~10,2 | ~1.020đ |
-| Tóm tắt video + phân tích hình ảnh | ~6,1 / phút nguồn | ~610đ |
-| Mọi loại job khi dùng BYOK | ~3,6–5,2 | ~360–520đ (chưa gồm hoá đơn provider của user) |
+| Loại job | v2.3 Credit / phút | **v2.4 Credit / phút** | ≈ VNĐ / phút (v2.4) |
+|---|---|---|---|
+| Phụ đề (dịch) | ~6,7 | **~13,4** | ~1.340đ |
+| Lồng tiếng — thay giọng (`DUB_REPLACE`) | ~12,6 | **~25,2** | ~2.520đ |
+| Lồng tiếng — giữ nhạc nền (`DUB_MIX`) | ~13,4 | **~26,8** | ~2.680đ |
+| Lồng tiếng giọng HD (`tts-1-hd`, giữ nhạc nền) | ~19,3 | **~38,5** | ~3.850đ |
+| Thêm ngôn ngữ cho video đã xử lý (P6) | ~10,2 | **~20,5** | ~2.050đ |
+| Tóm tắt video + phân tích hình ảnh | ~6,1 / phút nguồn | **~12,2** | ~1.220đ |
+| Mọi loại job khi dùng BYOK | ~3,6–5,2 | **~7,3–10,3** | ~730–1.030đ (chưa gồm hoá đơn provider của user) |
 
-Với gói Starter (500 Credit / 50.000đ): ~7 video 10 phút phụ đề, hoặc ~4 video 10 phút lồng tiếng, hoặc ~2,5 video lồng tiếng HD.
+Với gói Starter v2.4 (2.500 Credit / 250.000đ): ~18 video 10 phút phụ đề, hoặc ~9 video 10 phút lồng tiếng giữ nhạc nền.
 
 ---
 
@@ -373,17 +409,21 @@ Với gói Starter (500 Credit / 50.000đ): ~7 video 10 phút phụ đề, hoặ
 
 ### 9.1 Gói Credit
 
-| Gói | Trước | ✅ Đã chốt (seed 2026-09-27) | Đơn giá |
-|---|---|---|---|
-| Starter | 500 Credit / 50.000đ | Giữ nguyên | 100đ |
-| Creator | 2.000 Credit / 180.000đ | **2.000 Credit / 190.000đ** | 95đ |
-| Business | 10.000 Credit / 800.000đ | **10.000 Credit / 900.000đ** | 90đ |
+| Gói | v2.3 (seed `V2`, 2026-09-27) | ✅ **v2.4** (`V3__platform_provider_and_credit_packages.sql`, 2026-09-28) | Đơn giá v2.4 | Lồng tiếng giữ nhạc nền / phụ đề (v2.4) |
+|---|---|---|---|---|
+| Starter | 500 / 50.000đ | **2.500 Credit / 250.000đ** (~$10) | 100đ | ~90 / ~185 phút |
+| Creator | 2.000 / 190.000đ | **5.250 Credit / 500.000đ** (~$20) | ~95đ (tiết kiệm 5%) | ~195 / ~390 phút |
+| Business | 10.000 / 900.000đ | **10.000 Credit / 900.000đ** (~$35) | 90đ (tiết kiệm 10%) | ~370 / ~745 phút |
 
-Giá vốn bình quân ~69–71đ/Credit ở 5.000 phút → Business 80đ chỉ còn ~11% biên sau phí cổng 3%, và âm khi sản lượng thấp.
+- v2.4 giữ **1 Credit = 100đ** (giá niêm yết); phần tăng giá nằm ở hệ số x, y (§7.6), không ở đơn giá Credit.
+- `V3` tắt (`is_active = false`) các gói v2.3 và thêm gói mới; không sửa/xoá gói cũ vì `credit_package_purchases` còn tham chiếu. Credit user đã mua giữ nguyên số dư, tiêu hao theo x, y mới kể từ mốc hiệu lực.
+- Gói Credit **chưa có màn hình Super Admin**: đổi gói = migration mới + cập nhật `frontend/src/locales/{vi,en,ko}/landing.json`.
+- Lý do chỉnh gói ở v2.3 (giữ lại): giá vốn bình quân ~69–71đ/Credit ở 5.000 phút → Business 80đ chỉ còn ~11% biên sau phí cổng 3%. Ở v2.4 giá vốn chỉ còn ~35đ/Credit.
 
 ### 9.2 Credit khởi tạo
 
-- ✅ Chốt **100 Credit** (≈ 1,5 video 10 phút phụ đề, hoặc ~7 phút lồng tiếng giữ nhạc nền), chi phí thực tối đa ~7.000đ/tài khoản.
+- ✅ Chốt **100 Credit** (v2.3: ≈ 1,5 video 10 phút phụ đề, hoặc ~7 phút lồng tiếng giữ nhạc nền), chi phí thực tối đa ~7.000đ/tài khoản.
+- ❓ v2.4: 100 Credit chỉ còn ~7 phút phụ đề hoặc ~3,7 phút lồng tiếng. **Đề xuất** nâng lên 270–300 (`APP_CREDIT_INITIAL_GRANT_AMOUNT`) để thử trọn 1 video lồng tiếng 10 phút (~268 Credit); chi phí thực vẫn ~7.000–10.000đ/tài khoản. **Chốt:** ______
 - Chỉ nâng lên 150–300 khi có chống lạm dụng nhiều tài khoản (xác minh email/số điện thoại, giới hạn thiết bị).
 - ❓ Nếu muốn người dùng mới trải nghiệm trọn 1 video 10 phút lồng tiếng, cần ~135 Credit → cân nhắc 150.
 
@@ -453,6 +493,20 @@ Request tạo version (ví dụ):
 3. Dùng `/preview` kiểm tra giá Credit/phút và biên → lưu với `effective_from` là đầu kỳ sau.
 4. Kiểm tra `/coverage` sau mỗi thay đổi cấu hình provider.
 
+### 10.6 Cấu hình giá cho provider/model mới (FreeLLMAPI, Azure TTS…) 🆕
+
+Giá **không** nằm trong màn hình AI Provider; màn hình đó chỉ lưu `protocol`, key và `default_model`. Khi stage chạy, hệ thống ghi `provider_scope = protocol/default_model` (chữ thường) của provider đã dùng rồi tìm giá theo thứ tự P4: `protocol/model` → `protocol` → `NULL` (row mặc định = model đắt nhất).
+
+| Provider | Scope thực tế | Hiện khớp row | Muốn giá riêng |
+|---|---|---|---|
+| FreeLLMAPI (`openai_compatible`, model `auto`) | `openai_compatible/auto` | row protocol `openai_compatible` (= giá `gpt-4o-mini`) | tạo row `TRANSLATE` và `SUMMARIZE_SCRIPT` scope `openai_compatible/auto` |
+| Azure TTS (`azure_speech`, model mặc định `azure-neural-tts`; adapter không dùng model, giọng chọn theo voice) | `azure_speech/azure-neural-tts` | row `NULL` của TTS (= giá `tts-1-hd`, đắt ~2 lần Azure) | tạo row `TTS` scope `azure_speech` (áp mọi key Azure) |
+| Google Cloud TTS (`google_speech`, `google-cloud-tts`) | `google_speech/google-cloud-tts` | row `NULL` của TTS | tạo row `TTS` scope `google_speech` |
+
+Giá tham chiếu (tra 2026-09-28, ⚠️ nguồn tổng hợp): Azure Neural **$16/1M ký tự** → C_market = 0,416đ/ký tự → y = 0,416 × 1,5 ÷ 100 × 2 = **0.012480**, x = **0.000054** (x chung của TTS). Azure Neural HD ($22/1M) → y = **0.017160**. Adapter không phân biệt model nên muốn tính giá HD riêng thì tạo provider Azure thứ hai với `default_model` là nhãn khác (ví dụ `azure-neural-hd`) và row scope `azure_speech/azure-neural-hd`.
+
+Sau khi thêm provider: mở tab **Coverage** — *Matched by* phải là `EXACT` hoặc `PROTOCOL`; `DEFAULT` nghĩa là đang tính theo giá model đắt nhất của capability.
+
 ---
 
 ## 11. Thay đổi cần làm trong code / DB / docs
@@ -505,7 +559,7 @@ Request tạo version (ví dụ):
 - [x] **RENDER có thu Credit:** x = 0.017188/giây video output, y = 0 (C7).
 - [x] **P5 — Markup:** x ×1,375 (25% + 10% dự phòng lỗi), y ×1,50.
 - [x] **Q6 — Sản lượng kế hoạch:** 5.000 phút/tháng, review hằng tháng.
-- [x] **P7 — Gói Credit:** Starter 500/50.000đ · Creator 2.000/190.000đ · Business 10.000/900.000đ.
+- [x] **P7 — Gói Credit:** Starter 500/50.000đ · Creator 2.000/190.000đ · Business 10.000/900.000đ. → **Thay bởi v2.4 (2026-09-28):** Starter 2.500/250.000đ · Creator 5.250/500.000đ · Business 10.000/900.000đ; x, y ×2 (§7.6).
 - [x] **Giọng HD:** **chưa mở** trong MVP. Row `openai_compatible/tts-1-hd` đã có sẵn để bật sau, không cần đổi giá.
 - [x] **Q4 — Credit khởi tạo:** 100, cấp 1 lần.
 - [x] **Nguồn API miễn phí (FreeLLMAPI)** (2026-09-25): dùng cả production, tier FREE, priority 10, capability TRANSLATE; tính theo giá bóng. v2.3: giá bóng áp qua row protocol `openai_compatible` (= giá `gpt-4o-mini`) vì scope thực tế là `openai_compatible/auto`.
@@ -567,7 +621,17 @@ Request tạo version (ví dụ):
 
 ## 13. Thay đổi so với các bản trước & điểm mới
 
-### 13.0 v2.2 → v2.3 (bản này, 2026-09-27)
+### 13.0a v2.3 → v2.4 (bản này, 2026-09-28)
+
+| Hạng mục | v2.3 | v2.4 |
+|---|---|---|
+| Hệ số x, y | chi phí × markup (§7.2) | × thêm **k = 2** (§7.6), tạo version qua Super Admin, không migration |
+| Gói Credit | 500/50k · 2.000/190k · 10.000/900k | **2.500/250k · 5.250/500k · 10.000/900k** (`V3__platform_provider_and_credit_packages.sql`), giữ 1 Credit = 100đ |
+| Lồng tiếng giữ nhạc nền | ~13,4 Credit/phút | **~26,8 Credit/phút** (~2.680đ) |
+| Biên @ 5.000 phút | 16–29% | ~58–63% |
+| Mới | — | §10.6 cấu hình giá cho FreeLLMAPI / Azure / Google TTS |
+
+### 13.0 v2.2 → v2.3 (2026-09-27)
 
 | Hạng mục | v2.2 | v2.3 |
 |---|---|---|
@@ -682,6 +746,8 @@ Hoà vốn (phút) = Fixed × phút_nguồn ÷ (Credit_job × P_eff × (1 − ph
 Đồng bộ với `TransFlow_Kich_ban_Pitching_Day (1).docx` mục 7, 11 và Phụ lục A, C, D (cập nhật 2026-09-27).
 
 ### 15.1 Ví dụ 1 video (mục 7)
+
+> ⚠️ Số liệu §15 theo **v2.3**. Theo v2.4 (§7.6): video 10 phút `DUB_MIX` STUDIO ≈ **268 Credit ≈ 26.800đ**, biên ~59–63%; vẫn rẻ hơn ElevenLabs (~86.000–130.000đ) 3–5 lần.
 
 Video 10 phút, lồng tiếng giữ nhạc nền (`DUB_MIX` STUDIO), dùng AI nền tảng: **134 Credit ≈ 13.400đ** ở giá lẻ; chi phí AI thực tế **≈ 5.500đ**; biên gộp sau AI, hạ tầng và phí thanh toán **≈ 28%** (giá lẻ) / **≈ 20%** (gói Business) ở 5.000 phút/tháng, lên **≈ 37%** ở 10.000 phút. Cùng video trên ElevenLabs API: ~86.000–130.000đ (0,33–0,50 USD/phút ⚠️ giá bên thứ ba).
 

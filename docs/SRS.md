@@ -533,12 +533,12 @@ nhất, áp dụng thống nhất cho mọi Workspace.
 **Mua gói Credit**
 Người dùng có thể mua các gói Credit bổ sung bất kỳ lúc nào để nạp thêm vào số dư cá nhân.
 
-**Các gói Credit (đã chốt 2026-09-27, xem `Credit_Coefficient_Calculation.md` §9):**
+**Các gói Credit (chốt 2026-09-28 — v2.4, xem `Credit_Coefficient_Calculation.md` §9):**
 
 | Gói | Số Credit | Giá | Đơn giá |
 |---|---|---|---|
-| Starter | 500 | 50.000đ | 100đ/Credit |
-| Creator | 2.000 | 190.000đ | 95đ/Credit |
+| Starter | 2.500 | 250.000đ | 100đ/Credit |
+| Creator | 5.250 | 500.000đ | ~95đ/Credit |
 | Business | 10.000 | 900.000đ | 90đ/Credit |
 
 Credit khởi tạo: 100 Credit/tài khoản. Hình thức thanh toán (cổng thanh toán) vẫn cần bổ sung ở giai đoạn sau.

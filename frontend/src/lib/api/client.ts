@@ -17,6 +17,46 @@ export type RequestOptions = {
   signal?: AbortSignal
   /** When true, do not JSON-stringify body (FormData / Blob). */
   rawBody?: boolean
+  /**
+   * Bytes of the request body sent so far. fetch() cannot report upload progress, so a request
+   * with this callback goes through XMLHttpRequest; auth/refresh handling stays the same.
+   */
+  onUploadProgress?: (loadedBytes: number) => void
+}
+
+/** fetch()-compatible transport over XHR, only to observe upload progress. */
+function xhrFetch(url: string, init: RequestInit, onUploadProgress: (loaded: number) => void): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const signal = init.signal
+    if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'))
+    const xhr = new XMLHttpRequest()
+    xhr.open(init.method ?? 'GET', url)
+    xhr.withCredentials = init.credentials === 'include'
+    xhr.responseType = 'blob'
+    for (const [name, value] of Object.entries((init.headers ?? {}) as Record<string, string>)) {
+      xhr.setRequestHeader(name, value)
+    }
+    xhr.upload.onprogress = (e) => onUploadProgress(e.loaded)
+    const onAbort = () => xhr.abort()
+    signal?.addEventListener('abort', onAbort, { once: true })
+    const done = () => signal?.removeEventListener('abort', onAbort)
+    xhr.onload = () => {
+      done()
+      const headers = new Headers()
+      for (const row of xhr.getAllResponseHeaders().trim().split(/[\r\n]+/)) {
+        const at = row.indexOf(':')
+        if (at > 0) headers.append(row.slice(0, at).trim(), row.slice(at + 1).trim())
+      }
+      // Null-body statuses (204/205/304) reject a body in the Response constructor.
+      const body = [204, 205, 304].includes(xhr.status) ? null : (xhr.response as Blob)
+      resolve(new Response(body, { status: xhr.status, statusText: xhr.statusText, headers }))
+    }
+    // Same failure shapes as fetch: TypeError on network loss, AbortError on abort.
+    xhr.onerror = () => { done(); reject(new TypeError('Network request failed')) }
+    xhr.ontimeout = xhr.onerror
+    xhr.onabort = () => { done(); reject(new DOMException('Aborted', 'AbortError')) }
+    xhr.send((init.body ?? null) as XMLHttpRequestBodyInit | null)
+  })
 }
 
 function codeFromStatus(status: number): string {
@@ -71,12 +111,20 @@ async function parseError(res: Response, requestPath: string): Promise<ApiError>
   })
 }
 
-let refreshInFlight: Promise<boolean> | null = null
+/**
+ * - refreshed: a new access token is stored
+ * - rejected: the server refused the refresh token (expired/revoked/disabled) → session is over
+ * - unavailable: network error, 5xx or 429 → the session may still be valid, do NOT log out
+ */
+type RefreshOutcome = 'refreshed' | 'rejected' | 'unavailable'
 
-async function tryRefreshAccessToken(): Promise<boolean> {
+let refreshInFlight: Promise<RefreshOutcome> | null = null
+
+/** Shared single-flight refresh (HttpOnly cookie). */
+async function refreshAccessToken(): Promise<RefreshOutcome> {
   if (refreshInFlight) return refreshInFlight
 
-  refreshInFlight = (async () => {
+  refreshInFlight = (async (): Promise<RefreshOutcome> => {
     try {
       // The refresh token rides in the HttpOnly cookie; the backend rotates it on success.
       const res = await fetch(`${apiBaseUrl}/auth/refresh`, {
@@ -84,7 +132,8 @@ async function tryRefreshAccessToken(): Promise<boolean> {
         headers: { Accept: 'application/json' },
         credentials: 'include',
       })
-      if (!res.ok) return false
+      if (res.status === 401 || res.status === 403) return 'rejected'
+      if (!res.ok) return 'unavailable'
       const raw = await res.json()
       const data =
         raw && typeof raw === 'object' && typeof raw.code === 'number' && 'data' in raw
@@ -93,17 +142,45 @@ async function tryRefreshAccessToken(): Promise<boolean> {
 
       if (data?.accessToken) {
         useAuthStore.getState().setAccessToken(data.accessToken)
-        return true
+        return 'refreshed'
       }
-      return false
+      return 'rejected'
     } catch {
-      return false
+      return 'unavailable'
     } finally {
       refreshInFlight = null
     }
   })()
 
   return refreshInFlight
+}
+
+/**
+ * Decide what to do after a request sent with `tokenUsed` got 401:
+ * - retry: another request already rotated the token, or the refresh succeeded
+ * - expired: the refresh token was rejected → caller logs out
+ * - unavailable: the refresh endpoint could not be reached → keep the session, surface an error
+ */
+async function recoverFromUnauthorized(
+  tokenUsed: string | null,
+): Promise<'retry' | 'expired' | 'unavailable'> {
+  const current = useAuthStore.getState().accessToken
+  if (current && current !== tokenUsed) return 'retry'
+  const outcome = await refreshAccessToken()
+  if (outcome === 'refreshed') return 'retry'
+  return outcome === 'rejected' ? 'expired' : 'unavailable'
+}
+
+/** Thrown when a 401 could not be recovered because the refresh endpoint was unreachable. */
+function sessionRefreshUnavailableError(path: string): ApiError {
+  return new ApiError({
+    status: 503,
+    errorCode: 'SESSION_REFRESH_UNAVAILABLE',
+    code: 'SESSION_REFRESH_UNAVAILABLE',
+    message: 'Could not renew the session. Check your connection and try again.',
+    retryable: true,
+    path,
+  })
 }
 
 /**
@@ -119,6 +196,7 @@ export async function apiResponse(path: string, options: RequestOptions = {}): P
     skipRefresh = false,
     signal,
     rawBody = false,
+    onUploadProgress,
   } = options
 
   const url = path.startsWith('http') ? path : `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`
@@ -128,10 +206,8 @@ export async function apiResponse(path: string, options: RequestOptions = {}): P
     ...headers,
   }
 
-  if (!skipAuth) {
-    const token = useAuthStore.getState().accessToken
-    if (token) reqHeaders.Authorization = `Bearer ${token}`
-  }
+  const tokenUsed = skipAuth ? null : useAuthStore.getState().accessToken
+  if (tokenUsed) reqHeaders.Authorization = `Bearer ${tokenUsed}`
 
   let payload: BodyInit | undefined
   if (body !== undefined && body !== null) {
@@ -144,12 +220,16 @@ export async function apiResponse(path: string, options: RequestOptions = {}): P
   }
 
   // credentials: login/register/google-exchange responses set the refresh cookie.
-  const res = await fetch(url, { method, headers: reqHeaders, body: payload, signal, credentials: 'include' })
+  const init: RequestInit = { method, headers: reqHeaders, body: payload, signal, credentials: 'include' }
+  const res = onUploadProgress ? await xhrFetch(url, init, onUploadProgress) : await fetch(url, init)
 
   if (res.status === 401 && !skipAuth && !skipRefresh) {
-    const refreshed = await tryRefreshAccessToken()
-    if (refreshed) {
+    const next = await recoverFromUnauthorized(tokenUsed)
+    if (next === 'retry') {
       return apiResponse(path, { ...options, skipRefresh: true })
+    }
+    if (next === 'unavailable') {
+      throw sessionRefreshUnavailableError(url)
     }
     clearAuthAndRedirect()
     throw new ApiError({

@@ -111,6 +111,10 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER required}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD required}
+      # consumer_timeout mặc định 30 phút = đúng bằng budget dài nhất của stage AI (TTS/tách âm)
+      # => stage chạy sát budget bị broker đóng channel (PRECONDITION_FAILED 406) và gửi lại message.
+      # 1 giờ để watchdog (retry sau budget) luôn xử lý trước broker.
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit consumer_timeout 3600000"
     ports:
       - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:
@@ -241,6 +245,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required}
       JWT_ACCESS_TTL_MINUTES: ${JWT_ACCESS_TTL_MINUTES:-30}
       JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS:-14}
+      JWT_SESSION_MAX_DAYS: ${JWT_SESSION_MAX_DAYS:-30}
       JWT_ISSUER: ${JWT_ISSUER:-transflow}
       PROVIDER_KEY_ENC_SECRET: ${PROVIDER_KEY_ENC_SECRET:?PROVIDER_KEY_ENC_SECRET required}
       LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}

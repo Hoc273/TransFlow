@@ -25,6 +25,7 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { StageBadge } from '@/components/media-studio/StageBadge'
 import {
   exportTransformationJobApi,
+  getOutputPackageApi,
   getTransformationRenderConfigApi,
   rerunTransformationStageApi,
 } from '@/api/transformation'
@@ -122,6 +123,7 @@ export function JobsTable({
     loading: boolean
     error: string | null
   } | null>(null)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadingJobId, setDownloadingJobId] = useState<string | null>(null)
   const [rerunningJobId, setRerunningJobId] = useState<string | null>(null)
   const [rerunConfirmJob, setRerunConfirmJob] = useState<{
@@ -211,7 +213,9 @@ export function JobsTable({
       const url =
         view === 'source'
           ? (await getTransformationRenderConfigApi(workspaceId, job.id)).sourceVideoUrl
-          : (await exportTransformationJobApi(workspaceId, job.id, 'VIDEO')).downloadUrl
+          : // Viewing is not publishing: output-package (like the job detail Export tab) is not
+            // held by BLOCK_PUBLISH QA issues; downloading still goes through the gated export.
+            (await getOutputPackageApi(workspaceId, job.id)).primaryVideoDownloadUrl
       setPreviewJob((prev) => {
         if (!prev || prev.job.id !== job.id) return prev
         const urls = url ? { ...prev.urls, [view]: url } : prev.urls
@@ -227,8 +231,32 @@ export function JobsTable({
     }
   }
 
+  const downloadPreview = async (job: MediaJob, view: PreviewView, url: string, title: string) => {
+    setDownloadError(null)
+    let href = url
+    if (view === 'output') {
+      try {
+        const res = await exportTransformationJobApi(workspaceId, job.id, 'VIDEO')
+        if (!res.downloadUrl) return
+        href = res.downloadUrl
+      } catch (err) {
+        setDownloadError(err instanceof Error ? err.message : t('media:previewFailed'))
+        return
+      }
+    }
+    const a = document.createElement('a')
+    a.href = href
+    a.download = `${title || 'video'}.mp4`
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
   const openPreview = (e: React.MouseEvent, job: MediaJob, title: string, view: PreviewView) => {
     e.stopPropagation()
+    setDownloadError(null)
     setPreviewJob({ job, title, view, urls: {}, loading: true, error: null })
     void loadPreview(job, view)
   }
@@ -758,20 +786,16 @@ export function JobsTable({
                   <button
                     type="button"
                     className="btn-secondary btn-sm inline-flex items-center gap-1.5"
-                    onClick={() => {
-                      const a = document.createElement('a')
-                      a.href = previewUrl
-                      a.download = `${previewJob.title || 'video'}.mp4`
-                      a.target = '_blank'
-                      a.rel = 'noopener noreferrer'
-                      document.body.appendChild(a)
-                      a.click()
-                      document.body.removeChild(a)
-                    }}
+                    onClick={() =>
+                      void downloadPreview(previewJob.job, previewJob.view, previewUrl, previewJob.title)
+                    }
                   >
                     <IconDownload size={14} />
                     <span>{t('media:actions.download')}</span>
                   </button>
+                )}
+                {downloadError && (
+                  <p className="m-0 mt-1 text-xs text-[var(--color-error)]">{downloadError}</p>
                 )}
               </div>
               <button

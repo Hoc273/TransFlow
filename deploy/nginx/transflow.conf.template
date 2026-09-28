@@ -3,6 +3,25 @@
 # rồi ghi vào /etc/nginx/conf.d/transflow.conf. Chứng chỉ Let's Encrypt (1 cert cho cả 3 domain)
 # nằm ở /etc/letsencrypt/live/transflow/, gia hạn bằng certbot timer qua webroot bên dưới.
 
+# ── Chống lạm dụng / L7 flood theo IP client ──
+# File nằm trong conf.d nên các zone này ở ngữ cảnh http. $binary_remote_addr là IP thật
+# (DNS only: IP kết nối; bật proxy Cloudflare: realip lấy từ CF-Connecting-IP).
+# Chỉ chặn được flood từ ít IP; volumetric DDoS (băng thông / SYN flood) phải chặn ở tầng
+# mạng (Cloudflare proxy / AWS Shield) — nginx không cứu được khi đường truyền đã bão hoà.
+limit_req_zone  $binary_remote_addr zone=tf_api:10m     rate=20r/s;
+limit_req_zone  $binary_remote_addr zone=tf_auth:10m    rate=10r/m;
+limit_req_zone  $binary_remote_addr zone=tf_storage:10m rate=30r/s;
+limit_conn_zone $binary_remote_addr zone=tf_conn:10m;
+limit_conn_zone $binary_remote_addr zone=tf_upload:10m;
+limit_req_status  429;
+limit_conn_status 429;
+
+# Slowloris: đóng kết nối gửi header/body quá chậm (body timeout là khoảng nghỉ giữa 2 lần đọc,
+# không phải tổng thời gian upload nên upload chậm nhưng liên tục vẫn chạy).
+client_header_timeout 15s;
+client_body_timeout   30s;
+send_timeout          60s;
+
 # HTTP: chỉ phục vụ ACME challenge (gia hạn cert), còn lại redirect HTTPS.
 server {
     listen 80;
@@ -50,8 +69,9 @@ server {
     ssl_session_cache shared:TransflowSSL:10m;
     ssl_session_timeout 1d;
 
-    # Upload video ≤500MB (SRS §5.2) — khớp frontend nginx + spring multipart (520MB).
-    client_max_body_size 520m;
+    # 10MB cho mọi path: video đi theo chunk 8MB. Không mở body lớn ở đâu cả — nginx đệm body ra
+    # đĩa trước khi Spring kiểm tra JWT, nên body lớn cho phép người chưa đăng nhập làm đầy đĩa.
+    client_max_body_size 10m;
     # KHÔNG tắt proxy_request_buffering ở đây: với HTTP/2 + unbuffered, nginx chỉ mở cửa sổ
     # flow-control bằng client_body_buffer_size mỗi RTT => upload chỉ ~100-200KB/s. Đệm ra đĩa
     # (EBS nhanh) rồi đẩy qua loopback; frontend nginx phía sau stream thẳng sang Spring.
@@ -60,9 +80,55 @@ server {
     proxy_send_timeout 600s;
     proxy_read_timeout 600s;
 
+    # HTTP/2: mỗi stream đang chạy tính là 1 kết nối.
+    limit_conn tf_conn 64;
+
     # Callback worker chỉ đi trong docker network, không bao giờ qua cổng public.
     location /internal/ {
         return 404;
+    }
+
+    # Upload video chia chunk 8MB (PUT .../media/uploads/{id}/chunks/{n}) — lọt dưới 10MB ở trên và
+    # dưới 100MB của Cloudflare Free. Tối đa 6 chunk đang gửi / IP (FE gửi song song 3).
+    location ~ ^/api/workspaces/[^/]+/media/uploads/[^/]+/chunks/ {
+        limit_conn tf_upload 6;
+        limit_req zone=tf_api burst=80 nodelay;
+
+        proxy_pass http://127.0.0.1:__FRONTEND_PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
+    # Endpoint không cần đăng nhập mà bot hay dò (login, đăng ký, OTP). Backend còn giới hạn
+    # 30 lần/5 phút/IP; ở đây chặn sớm để flood không chạm tới bcrypt/Redis/SMTP.
+    location ~ ^/api/auth/(login|register|forgot-password/|google/exchange) {
+        limit_req zone=tf_auth burst=10 nodelay;
+
+        proxy_pass http://127.0.0.1:__FRONTEND_PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
+    # API còn lại (kể cả /api/auth/refresh). Burst lớn vì SPA bắn nhiều query song song khi mở trang;
+    # frontend coi 429 ở refresh là lỗi tạm thời, không logout người dùng.
+    location /api/ {
+        limit_req zone=tf_api burst=80 nodelay;
+
+        proxy_pass http://127.0.0.1:__FRONTEND_PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
     }
 
     location / {
@@ -90,12 +156,18 @@ server {
     ssl_session_cache shared:TransflowSSL:10m;
     ssl_session_timeout 1d;
 
-    client_max_body_size 520m;
+    # Chỉ phục vụ GET qua presigned URL (backend không cấp presigned PUT) => không nhận body lớn.
+    client_max_body_size 1m;
     proxy_buffering off;
     proxy_request_buffering off;
     proxy_connect_timeout 30s;
     proxy_send_timeout 600s;
     proxy_read_timeout 600s;
+
+    # Video phát/tải qua presigned URL: mỗi lần tua là 1 Range request. Giới hạn theo IP để 1 máy
+    # không kéo liên tục file lớn (băng thông ra của EC2 tính tiền theo GB).
+    limit_conn tf_conn 32;
+    limit_req zone=tf_storage burst=100 nodelay;
 
     location / {
         proxy_pass http://127.0.0.1:__MINIO_PORT__;

@@ -19,7 +19,11 @@ public interface AuthService {
 
     AuthResponse login(LoginRequest req);
 
+    /** Rotates the refresh token (reuse of a superseded token revokes the session). */
     TokenRefreshResponse refresh(RefreshRequest req);
+
+    /** Revokes the session behind this refresh token; no-op for a missing/invalid token. */
+    void logout(String refreshToken);
 
     UserResponse me(UUID userId);
 
@@ -27,7 +31,8 @@ public interface AuthService {
 
     UserResponse deleteAvatar(UUID userId);
 
-    void changePassword(UUID userId, ChangePasswordRequest req);
+    /** Signs out every other session; {@code currentRefreshToken} (may be null) identifies the one to keep. */
+    void changePassword(UUID userId, ChangePasswordRequest req, String currentRefreshToken);
 
     Optional<UserResponse> findUserById(UUID userId);
 

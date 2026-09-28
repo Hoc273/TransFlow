@@ -5,6 +5,7 @@ export type BlockingAction =
   | 'BLOCK_TM_WRITEBACK'
   | 'BLOCK_APPROVAL'
   | 'BLOCK_EXPORT'
+  | 'BLOCK_PUBLISH'
   | 'BLOCK_RENDER'
   | string
 

@@ -324,12 +324,12 @@
     "starter": {
       "name": "Starter",
       "desc": "Gói khởi động để creator thử trên video thật",
-      "price": "50.000 ₫",
-      "credits": "/ 500 Credit (100 ₫/Credit)",
+      "price": "250.000 ₫",
+      "credits": "/ 2.500 Credit (100 ₫/Credit)",
       "cta": "Chọn gói Starter",
       "featuresTitle": "Quyền lợi bao gồm:",
       "features": [
-        "~75 phút phụ đề dịch, hoặc ~37 phút lồng tiếng giữ nhạc nền",
+        "~185 phút phụ đề dịch, hoặc ~90 phút lồng tiếng giữ nhạc nền",
         "Phù hợp video ngắn (Shorts, Reels, TikTok)",
         "Tóm tắt video bằng AI, tinh chỉnh tối đa 5 vòng",
         "Xuất hard-sub và file phụ đề rời (.srt, .vtt)"
@@ -340,13 +340,13 @@
       "badge": "Phổ biến",
       "name": "Creator",
       "desc": "Cho creator và biên tập viên ra video đều đặn",
-      "price": "190.000 ₫",
-      "credits": "2.000 Credit",
+      "price": "500.000 ₫",
+      "credits": "5.250 Credit",
       "bonus": "95 ₫/Credit",
-      "cta": "Nạp 190.000 VNĐ",
+      "cta": "Nạp 500.000 VNĐ",
       "featuresTitle": "Bao gồm toàn bộ Starter và:",
       "features": [
-        "~300 phút phụ đề dịch, hoặc ~150 phút lồng tiếng giữ nhạc nền",
+        "~390 phút phụ đề dịch, hoặc ~195 phút lồng tiếng giữ nhạc nền",
         "Xử lý hàng loạt tối đa 20 video mỗi lô",
         "Tách giọng khỏi nhạc nền để lồng tiếng (chế độ Studio)",
         "Bảng thuật ngữ giữ đúng tên thương hiệu",
@@ -363,7 +363,7 @@
       "cta": "Nạp 900.000 VNĐ",
       "featuresTitle": "Bao gồm toàn bộ Freelancer, thêm:",
       "features": [
-        "~1.500 phút phụ đề dịch, hoặc ~750 phút lồng tiếng giữ nhạc nền",
+        "~745 phút phụ đề dịch, hoặc ~370 phút lồng tiếng giữ nhạc nền",
         "Video tối đa 500MB và 30 phút mỗi file",
         "Phân tích ngữ cảnh hình ảnh bằng AI khi tóm tắt",
         "Lead trả chung cho cả Workspace hoặc ai dùng nấy trả",

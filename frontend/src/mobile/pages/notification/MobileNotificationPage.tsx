@@ -19,7 +19,7 @@ import {
   useUnreadNotificationCount,
 } from '@/hooks/useNotifications'
 import { formatRelativeTime } from '@/lib/format'
-import { notificationHref, notificationTitle } from '@/lib/notifications'
+import { notificationHref, notificationMessage, notificationTitle } from '@/lib/notifications'
 import type { NotificationItem } from '@/types/notification'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
@@ -133,7 +133,7 @@ export function MobileNotificationPage() {
 
                 {n.message && (
                   <p className="min-w-0 pl-6 text-xs leading-relaxed break-words text-neutral-600 dark:text-neutral-400 line-clamp-3">
-                    {n.message}
+                    {notificationMessage(t, n)}
                   </p>
                 )}
               </MobileCard>
