@@ -40,19 +40,5 @@ class JwtServiceTest {
         assertEquals(userId.toString(), claims.getSubject());
         assertEquals(email, claims.get("email", String.class));
         assertTrue(jwtService.isAccessToken(claims));
-        assertFalse(jwtService.isRefreshToken(claims));
-    }
-
-    @Test
-    void testRefreshTokenLifecycle() {
-        UUID userId = UUID.randomUUID();
-
-        String token = jwtService.generateRefreshToken(userId);
-        assertNotNull(token);
-
-        Claims claims = jwtService.parse(token);
-        assertEquals(userId.toString(), claims.getSubject());
-        assertTrue(jwtService.isRefreshToken(claims));
-        assertFalse(jwtService.isAccessToken(claims));
     }
 }

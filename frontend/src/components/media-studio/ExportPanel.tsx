@@ -14,7 +14,7 @@ import {
   IconVideo,
 } from '@tabler/icons-react'
 import { exportTransformationJobApi } from '@/api/transformation'
-import { useExportMediaJob, useMediaLinkedJob, useOutputPackage } from '@/hooks/useMedia'
+import { useExportMediaJob, useMediaJobQaIssues, useOutputPackage } from '@/hooks/useMedia'
 import {
   downloadTextFile,
   hasEffectiveBlockExport,
@@ -22,7 +22,6 @@ import {
 } from '@/lib/media'
 import { ApiError } from '@/types/api'
 import { MEDIA_ERROR_CODES, type MediaExportFormat, type MediaJob } from '@/types/media'
-import type { QaIssue } from '@/types/qa'
 import { useStableMediaUrl } from '@/hooks/useStableMediaUrl'
 
 type Props = {
@@ -44,7 +43,8 @@ const INTERNAL_FILE_NAME_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-
 export function ExportPanel({ workspaceId, job }: Props) {
   const { t } = useTranslation(['media', 'common'])
   const exportJob = useExportMediaJob(workspaceId, job.id)
-  const { data: linkedJob } = useMediaLinkedJob(workspaceId, job.translationJobId)
+  // Same cache as the job page (refetched on stage transitions), so the gate matches the backend.
+  const { data: qaIssues } = useMediaJobQaIssues(workspaceId, job.id)
   const [error, setError] = useState<string | null>(null)
   const [lastOk, setLastOk] = useState<string | null>(null)
   const [activeDownloadFormat, setActiveDownloadFormat] = useState<MediaExportFormat | null>(null)
@@ -61,11 +61,7 @@ export function ExportPanel({ workspaceId, job }: Props) {
   })
   const pendingPreview = useRef<'SRT' | 'VTT' | null>(null)
 
-  const issues: QaIssue[] = useMemo(
-    () => linkedJob?.segments?.flatMap((s) => s.qaIssues ?? []) ?? [],
-    [linkedJob],
-  )
-  const blocked = hasEffectiveBlockExport(issues)
+  const blocked = hasEffectiveBlockExport(qaIssues)
   const renderStage = stageByName(job, 'RENDER')
   const renderDone = String(renderStage?.status).toUpperCase() === 'COMPLETED'
   const hasRenderArtifact = !!renderStage?.outputRef?.trim()

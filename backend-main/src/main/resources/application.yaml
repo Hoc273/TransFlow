@@ -100,6 +100,15 @@ app:
   pipeline:
     enabled: ${MEDIA_PIPELINE_ENABLED:true}
   # Cronjob (@Scheduled) — một instance duy nhất (VPS all-in-one), không cần distributed lock.
+  # Upload video chia chunk (API_Contract §4): mỗi chunk < 10MB (nginx host) và < 100MB (Cloudflare Free).
+  # Chunk được ghép trên đĩa backend-main => chỉ đúng khi chạy 1 instance backend-main.
+  media:
+    upload:
+      staging-dir: ${MEDIA_UPLOAD_STAGING_DIR:${java.io.tmpdir}/transflow-uploads}
+      chunk-size-bytes: ${MEDIA_UPLOAD_CHUNK_SIZE_BYTES:8388608}
+      session-ttl: ${MEDIA_UPLOAD_SESSION_TTL:PT24H}
+      max-active-per-user: ${MEDIA_UPLOAD_MAX_ACTIVE_PER_USER:3}
+      min-free-disk-bytes: ${MEDIA_UPLOAD_MIN_FREE_DISK_BYTES:1073741824}
   maintenance:
     enabled: ${MAINTENANCE_ENABLED:true}
     initial-delay: PT2M
@@ -123,7 +132,9 @@ app:
   jwt:
     secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LWNoYW5nZS1tZS0zMi1ieXRlcy1sb25nISE=}
     access-ttl-minutes: ${JWT_ACCESS_TTL_MINUTES:30}
+    # Hết phiên nếu không dùng quá refresh-ttl-days, và luôn hết sau session-max-days kể từ lúc đăng nhập.
     refresh-ttl-days: ${JWT_REFRESH_TTL_DAYS:14}
+    session-max-days: ${JWT_SESSION_MAX_DAYS:30}
     issuer: ${JWT_ISSUER:transflow}
   oauth:
     google:

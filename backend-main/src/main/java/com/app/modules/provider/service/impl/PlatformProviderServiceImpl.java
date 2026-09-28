@@ -10,12 +10,14 @@ import com.app.modules.provider.dto.TestConnectionResponse;
 import com.app.modules.provider.dto.UpdatePlatformAiProviderRequest;
 import com.app.modules.provider.entity.PlatformAiProvider;
 import com.app.modules.provider.entity.TtsVoice;
+import com.app.modules.provider.event.TtsVoiceSyncRequested;
 import com.app.modules.provider.repository.PlatformAiProviderRepository;
 import com.app.modules.provider.repository.TtsVoiceRepository;
 import com.app.modules.provider.service.PlatformProviderService;
 import com.app.modules.provider.service.ProviderHealthService;
 import com.app.modules.provider.util.ProviderProtocolCapabilities;
 import com.app.modules.provider.util.TtsVoiceCatalog;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,17 +48,20 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
     private final CryptoService cryptoService;
     private final AiGatewayClient aiGatewayClient;
     private final ProviderHealthService healthService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public PlatformProviderServiceImpl(PlatformAiProviderRepository repository,
                                        TtsVoiceRepository voiceRepository,
                                        CryptoService cryptoService,
                                        AiGatewayClient aiGatewayClient,
-                                       ProviderHealthService healthService) {
+                                       ProviderHealthService healthService,
+                                       ApplicationEventPublisher eventPublisher) {
         this.repository = repository;
         this.voiceRepository = voiceRepository;
         this.cryptoService = cryptoService;
         this.aiGatewayClient = aiGatewayClient;
         this.healthService = healthService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -85,7 +90,9 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
         provider.setWeight((short) (request.weight() == null ? 1 : request.weight()));
         provider.setTier(tier(request.tier(), PlatformAiProvider.Tier.PAID));
         provider.setActive(request.isActive() == null || request.isActive());
-        return toResponse(repository.save(provider));
+        PlatformAiProvider saved = repository.save(provider);
+        requestVoiceSync(saved, true);
+        return toResponse(saved);
     }
 
     @Override
@@ -93,6 +100,8 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
     public PlatformAiProviderResponse update(UUID id, UpdatePlatformAiProviderRequest request) {
         PlatformAiProvider provider = require(id);
         boolean credentialsChanged = false;
+        boolean hadTts = provider.hasCapability("TTS");
+        boolean wasActive = provider.isActive();
         if (request.name() != null && !request.name().isBlank()) {
             provider.setName(request.name().trim());
         }
@@ -129,7 +138,16 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
             provider.setHealthStatus(PlatformAiProvider.HealthStatus.UNKNOWN);
             provider.setLastErrorCode(null);
         }
-        return toResponse(repository.save(provider));
+        PlatformAiProvider saved = repository.save(provider);
+        requestVoiceSync(saved, credentialsChanged || !hadTts || !wasActive);
+        return toResponse(saved);
+    }
+
+    /** New key, endpoint or TTS capability: reload the voice catalog after commit (job picker reads it). */
+    private void requestVoiceSync(PlatformAiProvider provider, boolean catalogMayBeStale) {
+        if (catalogMayBeStale && provider.isActive() && provider.hasCapability("TTS")) {
+            eventPublisher.publishEvent(TtsVoiceSyncRequested.platform(provider.getId()));
+        }
     }
 
     @Override

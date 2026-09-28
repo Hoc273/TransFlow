@@ -90,7 +90,11 @@ export function MediaJobPage() {
 
   // QA summary for the review tab (count + worst tone).
   const { data: linkedJobForQa } = useMediaLinkedJob(workspaceId, job?.translationJobId)
-  const { data: realQaIssues = [] } = useMediaJobQaIssues(workspaceId, jobId)
+  // Refetch QA issues on every stage transition: they are written by the pipeline, not by this page.
+  const stageSignature = job?.stages
+    .map((s) => `${s.stageName}:${s.status}:${s.errorCode ?? ''}`)
+    .join('|')
+  const { data: realQaIssues = [] } = useMediaJobQaIssues(workspaceId, jobId, undefined, stageSignature)
   const qaBadge = useMemo(() => {
     if (linkedJobForQa?.segments && linkedJobForQa.segments.length > 0) {
       return qaBadgeSummary(

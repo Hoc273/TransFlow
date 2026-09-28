@@ -7,7 +7,7 @@
  *
  * This module is the single entry point for the FE —
  * `hooks/useMedia.ts` re-imports from here. `api/media.ts` is kept solely for:
- *   - The upload XHR `UploadMediaOptions` type (re-exported below),
+ *   - The chunked upload `UploadMediaOptions` type (re-exported below),
  *   - The legacy `segments/{id}` edit route (translation_segments).
  *
  * Create-job contract (BE `CreateMediaJobRequest` + `MediaJobServiceImpl`):
@@ -22,9 +22,7 @@
  * `enableVlm`) are currently ignored by the backend — see
  * `docs/PHASE3_BACKEND_GAPS_NOTE.md`.
  */
-import { useAuthStore, clearAuthAndRedirect } from '@/store/authStore'
-import { ApiError, type SpringApiErrorBody } from '@/types/api'
-import { apiBaseUrl } from '@/config/featureFlags'
+import { ApiError } from '@/types/api'
 import { apiRequest, buildWorkspacePath } from '@/lib/api/client'
 import type {
   CreateCustomProposalBody,
@@ -523,13 +521,52 @@ export function updatePublishPackageApi(
   )
 }
 
-// ---------- upload (XHR with real progress) ----------
+// ---------- upload (chunked, API_Contract §4) ----------
+
+type UploadSession = {
+  uploadId: string
+  chunkSizeBytes: number
+  totalChunks: number
+  receivedChunks: number
+}
+
+/** Chunks in flight at once: enough to fill the pipe without flooding the rate limit. */
+const UPLOAD_CONCURRENCY = 3
+/** Attempts per chunk for transient failures (network, 5xx, 429). */
+const CHUNK_ATTEMPTS = 4
+const CHUNK_RETRY_BASE_MS = 1000
+
+function isTransientUploadError(err: unknown): boolean {
+  if (err instanceof ApiError) return err.status === 0 || err.status === 408 || err.status === 429 || err.status >= 500
+  // fetch rejects with TypeError on network loss.
+  return err instanceof TypeError
+}
+
+function abortError() {
+  return new DOMException('Upload aborted', 'AbortError')
+}
+
+function waitOrAbort(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(abortError())
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(abortError())
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
 
 /**
- * Multipart upload with real progress events (XHR).
- * Falls back to 0→100 when the browser cannot report loaded/total.
+ * Chunked upload: every request stays below the 10MB host-nginx and 100MB Cloudflare body caps,
+ * and each chunk carries its own (fresh) access token, so a long upload can no longer outlive
+ * the token. Progress is reported per finished chunk; 100% only after `complete` returns.
  */
-export function uploadTransformationMediaApi(
+export async function uploadTransformationMediaApi(
   workspaceId: string,
   projectId: string,
   file: File,
@@ -537,131 +574,100 @@ export function uploadTransformationMediaApi(
 ): Promise<MediaUploadResponse> {
   const opts: UploadMediaOptions =
     typeof options === 'string' ? { name: options } : (options ?? {})
+  if (opts.signal?.aborted) throw abortError()
 
-  const form = new FormData()
-  form.append('file', file)
-  if (opts.name?.trim()) form.append('name', opts.name.trim())
+  // One controller for the whole upload: the caller's abort or the first failed chunk stops every worker.
+  const controller = new AbortController()
+  const onCallerAbort = () => controller.abort()
+  opts.signal?.addEventListener('abort', onCallerAbort, { once: true })
+  const signal = controller.signal
 
-  const path = buildWorkspacePath(workspaceId, `/projects/${projectId}/media/assets`)
-  const url = `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`
+  opts.onProgress?.(0)
+  const session = await apiRequest<UploadSession>(
+    buildWorkspacePath(workspaceId, `/projects/${projectId}/media/uploads`),
+    {
+      method: 'POST',
+      body: { fileName: file.name, fileSizeBytes: file.size, contentType: file.type },
+      signal,
+    },
+  )
+  const sessionPath = buildWorkspacePath(workspaceId, `/media/uploads/${session.uploadId}`)
 
-  return new Promise<MediaUploadResponse>((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', url)
-    xhr.responseType = 'json'
-    xhr.setRequestHeader('Accept', 'application/json')
-
-    const token = useAuthStore.getState().accessToken
-    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-
-    xhr.upload.onprogress = (event) => {
-      if (!opts.onProgress) return
-      // Cap at 99% while bytes are in flight — 100% only after the server responds
-      // (MinIO write + duration probe still run after the upload body finishes).
-      if (event.lengthComputable && event.total > 0) {
-        const pct = Math.round((event.loaded / event.total) * 100)
-        opts.onProgress(Math.min(99, pct))
-      } else {
-        opts.onProgress(Math.min(95, Math.round((event.loaded / Math.max(file.size, 1)) * 100)))
+  const withRetry = async <T,>(send: () => Promise<T>): Promise<T> => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await send()
+      } catch (err) {
+        if (signal.aborted) throw abortError()
+        if (attempt >= CHUNK_ATTEMPTS || !isTransientUploadError(err)) throw err
+        await waitOrAbort(CHUNK_RETRY_BASE_MS * 2 ** (attempt - 1), signal)
       }
     }
+  }
 
-    const onAbort = () => xhr.abort()
-    if (opts.signal) {
-      if (opts.signal.aborted) {
-        reject(new DOMException('Upload aborted', 'AbortError'))
-        return
+  const sendChunk = async (index: number) => {
+    const start = index * session.chunkSizeBytes
+    const blob = file.slice(start, Math.min(file.size, start + session.chunkSizeBytes))
+    await withRetry(() =>
+      apiRequest(`${sessionPath}/chunks/${index}`, {
+        method: 'PUT',
+        body: blob,
+        rawBody: true,
+        headers: { 'Content-Type': 'application/octet-stream' },
+        signal,
+      }),
+    )
+    return blob.size
+  }
+
+  try {
+    let nextIndex = 0
+    let sentBytes = 0
+    const worker = async () => {
+      while (nextIndex < session.totalChunks && !signal.aborted) {
+        const index = nextIndex++
+        sentBytes += await sendChunk(index)
+        // Cap at 99% — the server still probes and stores the file on `complete`.
+        opts.onProgress?.(Math.min(99, Math.round((sentBytes / Math.max(file.size, 1)) * 100)))
       }
-      opts.signal.addEventListener('abort', onAbort, { once: true })
     }
+    const workers = Array.from({ length: Math.min(UPLOAD_CONCURRENCY, session.totalChunks) }, () =>
+      worker().catch((err) => {
+        controller.abort()
+        throw err
+      }),
+    )
+    const results = await Promise.allSettled(workers)
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+    if (failed) throw failed.reason
+    if (signal.aborted) throw abortError()
 
-    xhr.onload = () => {
-      opts.signal?.removeEventListener('abort', onAbort)
-      opts.onProgress?.(100)
+    // `complete` is idempotent server-side: a retry after a proxy timeout (Cloudflare 524 at 100s)
+    // waits for the running one and gets the same asset instead of losing it.
+    const asset = await withRetry(() =>
+      apiRequest<Record<string, unknown>>(`${sessionPath}/complete`, {
+        method: 'POST',
+        body: opts.name?.trim() ? { name: opts.name.trim() } : undefined,
+        signal,
+      }),
+    )
+    opts.onProgress?.(100)
 
-      const parseBody = (): unknown => {
-        if (xhr.response != null && typeof xhr.response === 'object') return xhr.response
-        const text = xhr.responseText?.trim()
-        if (!text) return undefined
-        try {
-          return JSON.parse(text) as unknown
-        } catch {
-          return undefined
-        }
-      }
-      const body = parseBody()
-
-      if (xhr.status === 401) {
-        clearAuthAndRedirect()
-        reject(
-          new ApiError({
-            status: 401,
-            errorCode: 'UNAUTHORIZED',
-            code: 'UNAUTHORIZED',
-            message: 'Session expired',
-            path,
-          }),
-        )
-        return
-      }
-
-      if (xhr.status < 200 || xhr.status >= 300) {
-        const errBody = (body ?? undefined) as SpringApiErrorBody | undefined
-        reject(
-          new ApiError({
-            status: xhr.status,
-            errorCode: errBody?.errorCode || `HTTP_${xhr.status}`,
-            code: errBody?.errorCode || `HTTP_${xhr.status}`,
-            title: errBody?.title,
-            message: errBody?.message || xhr.statusText || 'Upload failed',
-            details: errBody?.details ?? undefined,
-            path: errBody?.path || path,
-          }),
-        )
-        return
-      }
-
-      const rawData =
-        body && typeof body === 'object' && typeof (body as any).code === 'number' && 'data' in body
-          ? (body as any).data
-          : (body ?? {})
-      const assetId = (rawData.assetId || rawData.id || '') as string
-      const documentId = (rawData.documentId || assetId) as string
-      const fileName = (rawData.fileName || rawData.originalFilename || file.name || '') as string
-      const fileSizeBytes = typeof rawData.fileSizeBytes === 'number' ? rawData.fileSizeBytes : file.size
-      const durationMs = typeof rawData.durationMs === 'number' ? rawData.durationMs : null
-      const consented = Boolean(rawData.consented)
-
-      resolve({
-        assetId,
-        documentId,
-        fileName,
-        fileSizeBytes,
-        durationMs,
-        consented,
-        ...rawData,
-      } as MediaUploadResponse)
-    }
-
-    xhr.onerror = () => {
-      opts.signal?.removeEventListener('abort', onAbort)
-      reject(
-        new ApiError({
-          status: 0,
-          errorCode: 'NETWORK_ERROR',
-          code: 'NETWORK_ERROR',
-          message: 'Network error during upload',
-          path,
-        }),
-      )
-    }
-
-    xhr.onabort = () => {
-      opts.signal?.removeEventListener('abort', onAbort)
-      reject(new DOMException('Upload aborted', 'AbortError'))
-    }
-
-    opts.onProgress?.(0)
-    xhr.send(form)
-  })
+    const assetId = String(asset.assetId ?? asset.id ?? '')
+    return {
+      ...asset,
+      assetId,
+      documentId: String(asset.documentId ?? assetId),
+      fileName: String(asset.fileName ?? file.name),
+      fileSizeBytes: typeof asset.fileSizeBytes === 'number' ? asset.fileSizeBytes : file.size,
+      durationMs: typeof asset.durationMs === 'number' ? asset.durationMs : null,
+      consented: Boolean(asset.consented),
+    } as MediaUploadResponse
+  } catch (err) {
+    // Free the staged bytes and the per-user upload slot right away (best effort).
+    void apiRequest(sessionPath, { method: 'DELETE' }).catch(() => undefined)
+    throw err
+  } finally {
+    opts.signal?.removeEventListener('abort', onCallerAbort)
+  }
 }

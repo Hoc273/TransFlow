@@ -75,9 +75,10 @@ public class AuthController {
                 .build();
     }
 
-    /** Clears the refresh cookie. Public so an expired session can still sign out cleanly. */
+    /** Revokes the session and clears the cookie. Public so an expired session can still sign out cleanly. */
     @PostMapping("/logout")
-    public ApiResponse<Void> logout(HttpServletResponse response) {
+    public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        authService.logout(authCookieService.readRefreshCookie(request).orElse(null));
         authCookieService.clearRefreshCookie(response);
         return ApiResponse.<Void>builder().build();
     }
@@ -106,8 +107,10 @@ public class AuthController {
 
     @PutMapping("/password")
     public ApiResponse<Void> changePassword(@AuthenticationPrincipal AuthenticatedUser user,
-                                            @Valid @RequestBody ChangePasswordRequest req) {
-        authService.changePassword(user.id(), req);
+                                            @Valid @RequestBody ChangePasswordRequest req,
+                                            HttpServletRequest request) {
+        // The refresh cookie (path /api/auth) identifies this device's session, which stays signed in.
+        authService.changePassword(user.id(), req, authCookieService.readRefreshCookie(request).orElse(null));
         return ApiResponse.<Void>builder().build();
     }
 

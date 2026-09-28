@@ -10,11 +10,13 @@ import com.app.modules.provider.dto.UpdateUserAiProviderRequest;
 import com.app.modules.provider.dto.UserAiProviderResponse;
 import com.app.modules.provider.entity.UserAiProvider;
 import com.app.modules.provider.entity.UserAiProviderDefault;
+import com.app.modules.provider.event.TtsVoiceSyncRequested;
 import com.app.modules.provider.repository.TtsVoiceRepository;
 import com.app.modules.provider.repository.UserAiProviderDefaultRepository;
 import com.app.modules.provider.repository.UserAiProviderRepository;
 import com.app.modules.provider.service.UserAiProviderService;
 import com.app.modules.provider.util.ProviderProtocolCapabilities;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,17 +50,20 @@ public class UserAiProviderServiceImpl implements UserAiProviderService {
     private final UserAiProviderDefaultRepository providerDefaultRepository;
     private final CryptoService cryptoService;
     private final AiGatewayClient aiGatewayClient;
+    private final ApplicationEventPublisher eventPublisher;
 
     public UserAiProviderServiceImpl(UserAiProviderRepository providerRepository,
                                      TtsVoiceRepository ttsVoiceRepository,
                                      UserAiProviderDefaultRepository providerDefaultRepository,
                                      CryptoService cryptoService,
-                                     AiGatewayClient aiGatewayClient) {
+                                     AiGatewayClient aiGatewayClient,
+                                     ApplicationEventPublisher eventPublisher) {
         this.providerRepository = providerRepository;
         this.ttsVoiceRepository = ttsVoiceRepository;
         this.providerDefaultRepository = providerDefaultRepository;
         this.cryptoService = cryptoService;
         this.aiGatewayClient = aiGatewayClient;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -108,6 +113,7 @@ public class UserAiProviderServiceImpl implements UserAiProviderService {
 
         provider = providerRepository.save(provider);
         replaceDefaults(userId, provider, defaults);
+        requestVoiceSync(userId, provider, true);
         return UserAiProviderResponse.from(provider, defaults);
     }
 
@@ -116,6 +122,9 @@ public class UserAiProviderServiceImpl implements UserAiProviderService {
     public UserAiProviderResponse updateProvider(UUID userId, UUID id, UpdateUserAiProviderRequest request) {
         UserAiProvider provider = providerRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.PROVIDER_NOT_FOUND));
+        String previousConnection = connectionFingerprint(provider);
+        boolean hadTts = provider.hasCapability("TTS");
+        boolean wasActive = provider.isActive();
 
         if (request.protocol() != null && !request.protocol().isBlank()) {
             validateProtocol(request.protocol());
@@ -135,7 +144,8 @@ public class UserAiProviderServiceImpl implements UserAiProviderService {
         if (request.defaultModel() != null) {
             provider.setDefaultModel(request.defaultModel().trim());
         }
-        if (request.apiKey() != null && !request.apiKey().isBlank()) {
+        boolean keyChanged = request.apiKey() != null && !request.apiKey().isBlank();
+        if (keyChanged) {
             provider.setApiKeyEnc(cryptoService.encrypt(request.apiKey()));
             provider.setApiKeyHint(CryptoService.hint(request.apiKey()));
         }
@@ -153,7 +163,20 @@ public class UserAiProviderServiceImpl implements UserAiProviderService {
         } else {
             removeInvalidDefaults(provider);
         }
+        requestVoiceSync(userId, provider, keyChanged || !hadTts || !wasActive
+                || !previousConnection.equals(connectionFingerprint(provider)));
         return UserAiProviderResponse.from(provider, defaultsFor(provider.getId()));
+    }
+
+    /** New key, endpoint or TTS capability: reload the voice catalog after commit (job picker reads it). */
+    private void requestVoiceSync(UUID userId, UserAiProvider provider, boolean catalogMayBeStale) {
+        if (catalogMayBeStale && provider.isActive() && provider.hasCapability("TTS")) {
+            eventPublisher.publishEvent(TtsVoiceSyncRequested.user(userId, provider.getId()));
+        }
+    }
+
+    private static String connectionFingerprint(UserAiProvider provider) {
+        return provider.getProtocol() + "|" + provider.getBaseUrl() + "|" + provider.getDefaultModel();
     }
 
     @Override

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import type { MediaAsset, MediaJob } from '@/types/media'
 import {
   exportTransformationJobApi,
+  getOutputPackageApi,
   getTransformationRenderConfigApi,
   rerunTransformationStageApi,
 } from '@/api/transformation'
@@ -41,6 +42,9 @@ vi.mock('@/api/transformation', () => ({
   exportTransformationJobApi: vi.fn().mockResolvedValue({
     downloadUrl: 'https://cdn.example.com/rendered.mp4',
     fileName: 'rendered.mp4',
+  }),
+  getOutputPackageApi: vi.fn().mockResolvedValue({
+    primaryVideoDownloadUrl: 'https://cdn.example.com/rendered.mp4',
   }),
   getTransformationRenderConfigApi: vi.fn().mockResolvedValue({
     sourceVideoUrl: 'https://cdn.example.com/source.mp4',
@@ -302,12 +306,45 @@ describe('JobsTable — Action column buttons', () => {
       </MemoryRouter>,
     )
 
+    vi.mocked(exportTransformationJobApi).mockClear()
     const previewBtn = screen.getByTestId(`preview-job-${mockJob.id}`)
     fireEvent.click(previewBtn)
 
-    expect(exportTransformationJobApi).toHaveBeenCalledWith('ws', mockJob.id, 'VIDEO')
+    // Viewing uses the output package (not held by BLOCK_PUBLISH), like the job detail page.
+    expect(getOutputPackageApi).toHaveBeenCalledWith('ws', mockJob.id)
+    expect(exportTransformationJobApi).not.toHaveBeenCalled()
     const modalEl = await screen.findByRole('dialog')
     expect(modalEl).toBeTruthy()
+  })
+
+  it('downloads the processed video through the QA-gated export and shows a publish block', async () => {
+    vi.mocked(exportTransformationJobApi).mockRejectedValueOnce(
+      new Error('Blocking QA issues must be resolved or overridden first'),
+    )
+    render(
+      <MemoryRouter>
+        <JobsTable
+          workspaceId="ws"
+          projectId="prj-1"
+          jobs={[mockJob]}
+          assets={[mockAsset]}
+          isLoading={false}
+          language="vi"
+          page={0}
+          pageSize={8}
+          onPageChange={() => {}}
+          onOpen={() => {}}
+        />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId(`preview-job-${mockJob.id}`))
+    await waitFor(() =>
+      expect(document.querySelector('video')?.getAttribute('src')).toBe('https://cdn.example.com/rendered.mp4'),
+    )
+    fireEvent.click(screen.getByText('media:actions.download'))
+    await screen.findByText('Blocking QA issues must be resolved or overridden first')
+    expect(exportTransformationJobApi).toHaveBeenCalledWith('ws', mockJob.id, 'VIDEO')
   })
 
   it('opens the original video and switches to the processed one in the preview modal', async () => {

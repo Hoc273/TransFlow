@@ -82,8 +82,15 @@ public record AppProperties(
             String secret,
             long accessTtlMinutes,
             long refreshTtlDays,
-            String issuer
+            String issuer,
+            /** Absolute session lifetime from sign-in; refreshTtlDays is the idle timeout. */
+            long sessionMaxDays
     ) {
+        public Jwt(String secret, long accessTtlMinutes, long refreshTtlDays, String issuer) {
+            this(secret, accessTtlMinutes, refreshTtlDays, issuer, 0);
+        }
+
+        @org.springframework.boot.context.properties.bind.ConstructorBinding
         public Jwt {
             if (secret == null || secret.isBlank()) {
                 secret = "ZGV2LW9ubHktc2VjcmV0LWNoYW5nZS1tZS0zMi1ieXRlcy1sb25nISE=";
@@ -96,6 +103,12 @@ public record AppProperties(
             }
             if (issuer == null || issuer.isBlank()) {
                 issuer = "transflow";
+            }
+            if (sessionMaxDays <= 0) {
+                sessionMaxDays = 30;
+            }
+            if (sessionMaxDays < refreshTtlDays) {
+                sessionMaxDays = refreshTtlDays;
             }
         }
     }

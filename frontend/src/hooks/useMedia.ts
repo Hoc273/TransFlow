@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   batchEditTransformationSegmentsApi,
@@ -126,12 +127,25 @@ export function useMediaSubtitles(
   })
 }
 
-/** QA issues for a media job (API Contract §8, QaController:31). */
+/**
+ * QA issues for a media job (API Contract §8, QaController:31).
+ *
+ * The pipeline writes issues after TRANSLATE while the page only polls the job, so a list
+ * fetched on mount stays empty. Pass `refreshKey` (e.g. a stage-status signature) to refetch
+ * the job's issue lists whenever it changes — notably when RENDER turns QA_BLOCKED.
+ */
 export function useMediaJobQaIssues(
   workspaceId: string | undefined,
   jobId: string | null | undefined,
   resolved?: boolean,
+  refreshKey?: string,
 ) {
+  const qc = useQueryClient()
+  useEffect(() => {
+    if (!refreshKey || !workspaceId || !jobId) return
+    void qc.invalidateQueries({ queryKey: ['mediaQaIssues', workspaceId, jobId] })
+  }, [refreshKey, qc, workspaceId, jobId])
+
   return useQuery({
     queryKey: queryKeys.mediaQaIssues(workspaceId ?? '', jobId ?? '', resolved),
     queryFn: () => listMediaJobQaIssuesApi(workspaceId!, jobId!, resolved),

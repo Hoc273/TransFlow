@@ -594,6 +594,98 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value(1000));
     }
 
+    private jakarta.servlet.http.Cookie loginCookie(String email, String password) throws Exception {
+        return mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest(email, password))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getCookie("tf_refresh");
+    }
+
+    private MvcResult refresh(jakarta.servlet.http.Cookie cookie) throws Exception {
+        return mockMvc.perform(post("/api/auth/refresh").cookie(cookie)).andReturn();
+    }
+
+    @Test
+    void testLogoutRevokesTheSessionServerSide() throws Exception {
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("logout_rev@transflow.com", "Password123!", "Out User"));
+        jakarta.servlet.http.Cookie cookie = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reg)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getCookie("tf_refresh");
+        jakarta.servlet.http.Cookie otherDevice = loginCookie("logout_rev@transflow.com", "Password123!");
+
+        mockMvc.perform(post("/api/auth/logout").cookie(cookie)).andExpect(status().isOk());
+
+        // A copy of the cookie kept after logout is useless; the other device is untouched.
+        assertEquals(401, refresh(cookie).getResponse().getStatus());
+        assertEquals(200, refresh(otherDevice).getResponse().getStatus());
+    }
+
+    @Test
+    void testRefreshTokenReplayRevokesTheSession() throws Exception {
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("replay@transflow.com", "Password123!", "Replay User"));
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reg)))
+                .andExpect(status().isCreated());
+        jakarta.servlet.http.Cookie t1 = loginCookie("replay@transflow.com", "Password123!");
+
+        jakarta.servlet.http.Cookie t2 = refresh(t1).getResponse().getCookie("tf_refresh");
+        jakarta.servlet.http.Cookie t3 = refresh(t2).getResponse().getCookie("tf_refresh");
+        assertNotEquals(t1.getValue(), t2.getValue());
+
+        // t1 is two generations old: replay → whole session revoked, t3 dies too.
+        assertEquals(401, refresh(t1).getResponse().getStatus());
+        assertEquals(401, refresh(t3).getResponse().getStatus());
+    }
+
+    @Test
+    void testChangePasswordSignsOutOtherDevicesOnly() throws Exception {
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("pw_sessions@transflow.com", "Password123!", "Pw Sessions"));
+        MvcResult regRes = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reg)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String accessToken = objectMapper.readTree(regRes.getResponse().getContentAsString()).path("data").path("accessToken").asText();
+        jakarta.servlet.http.Cookie current = regRes.getResponse().getCookie("tf_refresh");
+        jakarta.servlet.http.Cookie otherDevice = loginCookie("pw_sessions@transflow.com", "Password123!");
+
+        mockMvc.perform(put("/api/auth/password")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .cookie(current)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new com.app.modules.auth.dto.ChangePasswordRequest("Password123!", "NewPassword123!"))))
+                .andExpect(status().isOk());
+
+        assertEquals(200, refresh(current).getResponse().getStatus());
+        assertEquals(401, refresh(otherDevice).getResponse().getStatus());
+    }
+
+    @Test
+    void testResetPasswordSignsOutEveryDevice() throws Exception {
+        RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("reset_sessions@transflow.com", "Password123!", "Reset Sessions"));
+        jakarta.servlet.http.Cookie first = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reg)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getCookie("tf_refresh");
+        jakarta.servlet.http.Cookie second = loginCookie("reset_sessions@transflow.com", "Password123!");
+
+        forgotPasswordOtpStore.saveOtp("reset_sessions@transflow.com", "654321");
+        mockMvc.perform(post("/api/auth/forgot-password/reset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new com.app.modules.auth.dto.ResetPasswordOtpRequest(
+                                "reset_sessions@transflow.com", "654321", "NewPassword123!"))))
+                .andExpect(status().isOk());
+
+        assertEquals(401, refresh(first).getResponse().getStatus());
+        assertEquals(401, refresh(second).getResponse().getStatus());
+    }
+
     @Test
     void testAvatar_UpdateAndDelete() throws Exception {
         RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest("avatar_test@transflow.com", "Password123!", "Avatar User"));

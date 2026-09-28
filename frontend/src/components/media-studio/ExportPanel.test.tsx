@@ -4,8 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 afterEach(() => cleanup())
 
-const { linkedJobData, exportMutate, outputPackageData, outputPackageCalls, openSpy } = vi.hoisted(() => ({
-  linkedJobData: { data: undefined as unknown, isLoading: false },
+const { qaIssuesData, exportMutate, outputPackageData, outputPackageCalls, openSpy } = vi.hoisted(() => ({
+  qaIssuesData: { data: undefined as unknown },
   exportMutate: vi.fn(),
   outputPackageData: { data: undefined as unknown, error: undefined as unknown, isError: false, isPending: false },
   outputPackageCalls: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 vi.mock('@/hooks/useMedia', () => ({
-  useMediaLinkedJob: () => linkedJobData,
+  useMediaJobQaIssues: () => qaIssuesData,
   useExportMediaJob: () => ({ isPending: false, mutateAsync: exportMutate }),
   useOutputPackage: (workspaceId: string, jobId: string, enabled: boolean) => {
     outputPackageCalls(workspaceId, jobId, enabled)
@@ -33,7 +33,7 @@ vi.mock('@/api/transformation', () => ({
 
 const { ExportPanel } = await import('./ExportPanel')
 import { ApiError } from '@/types/api'
-import type { MediaJob, JobDetail } from '@/types/media'
+import type { MediaJob } from '@/types/media'
 import type { QaIssue } from '@/types/qa'
 
 function job(partial: Partial<MediaJob>): MediaJob {
@@ -76,18 +76,6 @@ function job(partial: Partial<MediaJob>): MediaJob {
   }
 }
 
-function linkedJob(segments: JobDetail['segments']): JobDetail {
-  return {
-    id: 'linked-1',
-    documentId: 'doc-1',
-    targetLang: 'vi',
-    status: 'COMPLETED',
-    providerUsed: null,
-    modelUsed: null,
-    segments,
-  }
-}
-
 function blockingIssue(): QaIssue {
   return {
     id: 'i1',
@@ -98,15 +86,14 @@ function blockingIssue(): QaIssue {
     targetSpan: null,
     suggestion: null,
     resolved: false,
-    blockingActions: ['BLOCK_EXPORT'],
+    blockingActions: ['BLOCK_PUBLISH'],
   }
 }
 
 describe('ExportPanel — video deliverables list with 2-column view', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    linkedJobData.data = undefined
-    linkedJobData.isLoading = false
+    qaIssuesData.data = undefined
     outputPackageData.data = undefined
     outputPackageData.error = undefined
     outputPackageData.isError = false
@@ -129,7 +116,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('renders the video deliverables list with video info and quick download buttons', () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     render(<ExportPanel workspaceId="ws" job={job({})} />)
 
     expect(screen.getByTestId('export-video-list')).toBeTruthy()
@@ -141,7 +128,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('details stay collapsed until a row is clicked, then opens 2-column view', () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     render(<ExportPanel workspaceId="ws" job={job({})} />)
 
     expect(screen.queryByTestId('export-video-detail')).toBeNull()
@@ -182,7 +169,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('uses a completed RENDER storage ref for package loading and the displayed file name', () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     outputPackageData.data = {
       jobId: 'job-1',
       primaryVideoRef: 'transflow-media/rendered/j/abc.mp4',
@@ -217,7 +204,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('checks output-package when RENDER is done without a stage output ref', () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     outputPackageData.data = {
       jobId: 'job-1',
       primaryVideoRef: 'transflow-media/rendered/j/abc.mp4',
@@ -252,7 +239,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('shows the missing-artifact message only when output-package reports STAGE_NOT_READY', () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     outputPackageData.error = new ApiError({
       status: 409,
       code: '2902',
@@ -282,7 +269,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('does not show the missing-artifact message for another output-package error', () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     outputPackageData.error = new ApiError({
       status: 500,
       code: 'INTERNAL_ERROR',
@@ -313,7 +300,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('primary video download button in detail runs the VIDEO export', async () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     render(<ExportPanel workspaceId="ws" job={job({})} />)
 
     fireEvent.click(screen.getByTestId('export-video-row'))
@@ -322,7 +309,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('quick download video button on the row runs the VIDEO export directly', async () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     render(<ExportPanel workspaceId="ws" job={job({})} />)
 
     fireEvent.click(screen.getByTestId('export-quick-download-video'))
@@ -330,7 +317,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('opens the presigned video URL in a new tab after VIDEO export', async () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     render(<ExportPanel workspaceId="ws" job={job({})} />)
 
     fireEvent.click(screen.getByTestId('export-quick-download-video'))
@@ -344,7 +331,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('subtitle download buttons in right column run SRT and VTT export', async () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     render(<ExportPanel workspaceId="ws" job={job({})} />)
 
     fireEvent.click(screen.getByTestId('export-video-row'))
@@ -356,7 +343,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('lazy-loads the SRT content preview when preview button is clicked (no file download)', async () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     render(<ExportPanel workspaceId="ws" job={job({})} />)
 
     fireEvent.click(screen.getByTestId('export-video-row'))
@@ -369,20 +356,8 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
     expect(openSpy).not.toHaveBeenCalled()
   })
 
-  it('disables every download while BLOCK_EXPORT is effective and surfaces the blocked banner', () => {
-    linkedJobData.data = linkedJob([
-      {
-        id: 'seg-1',
-        seq: 1,
-        sourceText: 'Hello',
-        targetText: 'Xin chào',
-        status: 'TRANSLATED',
-        tmScore: null,
-        startMs: null,
-        endMs: null,
-        qaIssues: [blockingIssue()],
-      },
-    ])
+  it('disables every download while BLOCK_PUBLISH is effective and surfaces the blocked banner', () => {
+    qaIssuesData.data = [blockingIssue()]
     render(<ExportPanel workspaceId="ws" job={job({})} />)
 
     expect(screen.getByText('media:export.blockedTitle')).not.toBeNull()
@@ -400,8 +375,16 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
     expect(exportMutate).not.toHaveBeenCalled()
   })
 
+  it('keeps downloads enabled once the BLOCK_PUBLISH issue is resolved or overridden', () => {
+    qaIssuesData.data = [{ ...blockingIssue(), resolved: true }]
+    render(<ExportPanel workspaceId="ws" job={job({})} />)
+
+    expect(screen.queryByText('media:export.blockedTitle')).toBeNull()
+    expect((screen.getByTestId('export-quick-download-video') as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('subtitle downloads stay disabled before TRANSLATE produced segments', () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     render(
       <ExportPanel
         workspaceId="ws"
@@ -421,7 +404,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('subtitle downloads unlock as soon as TRANSLATE is done, before RENDER / job completion', () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     render(
       <ExportPanel
         workspaceId="ws"
@@ -447,7 +430,7 @@ describe('ExportPanel — video deliverables list with 2-column view', () => {
   })
 
   it('subtitle downloads unlock from the TRANSLATE stage without a legacy translationJobId', () => {
-    linkedJobData.data = linkedJob([])
+    qaIssuesData.data = []
     render(<ExportPanel workspaceId="ws" job={job({ translationJobId: null })} />)
 
     expect((screen.getByTestId('export-quick-download-srt') as HTMLButtonElement).disabled).toBe(false)

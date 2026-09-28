@@ -5,10 +5,12 @@ import com.app.common.exception.AppException;
 import com.app.common.exception.ErrorCode;
 import com.app.common.security.JwtService;
 import com.app.modules.auth.dto.*;
+import com.app.modules.auth.entity.AuthSessionRevokeReason;
 import com.app.modules.auth.entity.User;
 import com.app.modules.auth.entity.UserStatus;
 import com.app.modules.auth.repository.UserRepository;
 import com.app.modules.auth.service.AuthService;
+import com.app.modules.auth.service.AuthSessionService;
 import com.app.modules.auth.service.AvatarPolicy;
 import com.app.modules.auth.service.EmailNormalizer;
 import com.app.modules.auth.service.LoginAttemptService;
@@ -19,8 +21,6 @@ import com.app.modules.project.entity.Project;
 import com.app.modules.project.service.ProjectService;
 import com.app.modules.workspace.entity.Workspace;
 import com.app.modules.workspace.service.WorkspaceService;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +55,7 @@ public class AuthServiceImpl implements AuthService {
     private final RegisterOtpStore registerOtpStore;
     private final EmailService emailService;
     private final LoginAttemptService loginAttemptService;
+    private final AuthSessionService authSessionService;
     /** Hash compared against when the email is unknown, so response time does not reveal registered emails. */
     private volatile String dummyPasswordHash;
 
@@ -69,7 +70,8 @@ public class AuthServiceImpl implements AuthService {
                            ForgotPasswordOtpRateLimiter otpRateLimiter,
                            RegisterOtpStore registerOtpStore,
                            EmailService emailService,
-                           LoginAttemptService loginAttemptService) {
+                           LoginAttemptService loginAttemptService,
+                           AuthSessionService authSessionService) {
         this.userRepository = userRepository;
         this.workspaceService = workspaceService;
         this.projectService = projectService;
@@ -82,6 +84,7 @@ public class AuthServiceImpl implements AuthService {
         this.registerOtpStore = registerOtpStore;
         this.emailService = emailService;
         this.loginAttemptService = loginAttemptService;
+        this.authSessionService = authSessionService;
     }
 
     @Override
@@ -163,31 +166,31 @@ public class AuthServiceImpl implements AuthService {
         return issueAuthTokens(user, init.workspaceId(), init.projectId());
     }
 
+    /** noRollbackFor: keep a replay / disabled-account revocation even though the call fails. */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(noRollbackFor = AppException.class)
     public TokenRefreshResponse refresh(RefreshRequest req) {
-        Claims claims;
-        try {
-            claims = jwtService.parse(req.refreshToken());
-        } catch (JwtException | IllegalArgumentException ex) {
-            throw new AppException(ErrorCode.INVALID_REFRESH_TOKEN);
+        AuthSessionService.Rotation rotation = authSessionService.rotate(req.refreshToken());
+
+        Optional<User> found = userRepository.findById(rotation.userId());
+        if (found.isEmpty()) {
+            throw new AppException(ErrorCode.USER_NOT_FOUND);
         }
-
-        if (!jwtService.isRefreshToken(claims)) {
-            throw new AppException(ErrorCode.INVALID_REFRESH_TOKEN);
-        }
-
-        UUID userId = UUID.fromString(claims.getSubject());
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
+        User user = found.get();
         if (user.getStatus() != UserStatus.ACTIVE) {
+            authSessionService.revokeSession(rotation.sessionId(), AuthSessionRevokeReason.ACCOUNT_DISABLED);
             throw new AppException(ErrorCode.ACCOUNT_DISABLED);
         }
 
         String access = jwtService.generateAccessToken(user.getId(), user.getEmail());
-        String refresh = jwtService.generateRefreshToken(user.getId());
-        return new TokenRefreshResponse(access, refresh);
+        return new TokenRefreshResponse(access, rotation.refreshToken());
+    }
+
+    @Override
+    public void logout(String refreshToken) {
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            authSessionService.revoke(refreshToken);
+        }
     }
 
     @Override
@@ -223,7 +226,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public void changePassword(UUID userId, ChangePasswordRequest req) {
+    public void changePassword(UUID userId, ChangePasswordRequest req, String currentRefreshToken) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
@@ -237,6 +240,8 @@ public class AuthServiceImpl implements AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
         userRepository.save(user);
+        // Keep the device that changed the password signed in; sign out every other one.
+        authSessionService.revokeOthers(userId, currentRefreshToken, AuthSessionRevokeReason.PASSWORD_CHANGED);
     }
 
     @Override
@@ -303,7 +308,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AuthResponse issueAuthTokens(User user, UUID workspaceId, UUID projectId) {
         String access = jwtService.generateAccessToken(user.getId(), user.getEmail());
-        String refresh = jwtService.generateRefreshToken(user.getId());
+        String refresh = authSessionService.open(user.getId());
         return new AuthResponse(access, refresh, UserResponse.from(user), workspaceId, projectId);
     }
 
@@ -355,6 +360,8 @@ public class AuthServiceImpl implements AuthService {
         user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
         userRepository.save(user);
         loginAttemptService.recordSuccess(email);
+        // Whoever reset the password may be recovering a compromised account: end every session.
+        authSessionService.revokeAll(user.getId(), AuthSessionRevokeReason.PASSWORD_RESET);
 
         return new OtpMessageResponse("Mật khẩu đã được cập nhật thành công.");
     }
