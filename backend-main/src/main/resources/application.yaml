@@ -63,6 +63,12 @@ spring:
       simple:
         acknowledge-mode: auto
         default-requeue-rejected: false
+        # AI stages (STT/TTS/separation) run in the listener thread for up to their budget
+        # (≤30 min). With one consumer a single long TTS stalled every other job's stage and its
+        # prefetched messages went overdue in the queue. prefetch 1 = an idle consumer takes the
+        # next message instead of it waiting behind a busy one.
+        concurrency: ${MEDIA_STAGE_CONSUMERS:3}
+        prefetch: 1
         retry:
           enabled: true
           initial-interval: 500ms

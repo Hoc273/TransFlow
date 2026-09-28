@@ -564,7 +564,7 @@ function waitOrAbort(ms: number, signal: AbortSignal): Promise<void> {
 /**
  * Chunked upload: every request stays below the 10MB host-nginx and 100MB Cloudflare body caps,
  * and each chunk carries its own (fresh) access token, so a long upload can no longer outlive
- * the token. Progress is reported per finished chunk; 100% only after `complete` returns.
+ * the token. Progress counts bytes on the wire (XHR upload events); 100% only after `complete` returns.
  */
 export async function uploadTransformationMediaApi(
   workspaceId: string,
@@ -605,30 +605,53 @@ export async function uploadTransformationMediaApi(
     }
   }
 
+  // Bytes of finished chunks + bytes already sent of the chunks in flight, so the bar moves while
+  // an 8MB chunk is on the wire instead of jumping once per chunk.
+  let doneBytes = 0
+  const inFlight = new Map<number, number>()
+  let reported = 0
+  const report = () => {
+    let sent = doneBytes
+    for (const loaded of inFlight.values()) sent += loaded
+    // Cap at 99% — the server still probes and stores the file on `complete`. Never go backwards
+    // (a retried chunk restarts from 0).
+    const pct = Math.min(99, Math.floor((sent / Math.max(file.size, 1)) * 100))
+    if (pct > reported) {
+      reported = pct
+      opts.onProgress?.(pct)
+    }
+  }
+
   const sendChunk = async (index: number) => {
     const start = index * session.chunkSizeBytes
     const blob = file.slice(start, Math.min(file.size, start + session.chunkSizeBytes))
-    await withRetry(() =>
-      apiRequest(`${sessionPath}/chunks/${index}`, {
-        method: 'PUT',
-        body: blob,
-        rawBody: true,
-        headers: { 'Content-Type': 'application/octet-stream' },
-        signal,
-      }),
-    )
-    return blob.size
+    try {
+      await withRetry(() => {
+        inFlight.set(index, 0)
+        return apiRequest(`${sessionPath}/chunks/${index}`, {
+          method: 'PUT',
+          body: blob,
+          rawBody: true,
+          headers: { 'Content-Type': 'application/octet-stream' },
+          signal,
+          onUploadProgress: (loaded) => {
+            inFlight.set(index, Math.min(loaded, blob.size))
+            report()
+          },
+        })
+      })
+    } finally {
+      inFlight.delete(index)
+    }
+    doneBytes += blob.size
+    report()
   }
 
   try {
     let nextIndex = 0
-    let sentBytes = 0
     const worker = async () => {
       while (nextIndex < session.totalChunks && !signal.aborted) {
-        const index = nextIndex++
-        sentBytes += await sendChunk(index)
-        // Cap at 99% — the server still probes and stores the file on `complete`.
-        opts.onProgress?.(Math.min(99, Math.round((sentBytes / Math.max(file.size, 1)) * 100)))
+        await sendChunk(nextIndex++)
       }
     }
     const workers = Array.from({ length: Math.min(UPLOAD_CONCURRENCY, session.totalChunks) }, () =>

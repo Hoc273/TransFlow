@@ -17,6 +17,46 @@ export type RequestOptions = {
   signal?: AbortSignal
   /** When true, do not JSON-stringify body (FormData / Blob). */
   rawBody?: boolean
+  /**
+   * Bytes of the request body sent so far. fetch() cannot report upload progress, so a request
+   * with this callback goes through XMLHttpRequest; auth/refresh handling stays the same.
+   */
+  onUploadProgress?: (loadedBytes: number) => void
+}
+
+/** fetch()-compatible transport over XHR, only to observe upload progress. */
+function xhrFetch(url: string, init: RequestInit, onUploadProgress: (loaded: number) => void): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const signal = init.signal
+    if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'))
+    const xhr = new XMLHttpRequest()
+    xhr.open(init.method ?? 'GET', url)
+    xhr.withCredentials = init.credentials === 'include'
+    xhr.responseType = 'blob'
+    for (const [name, value] of Object.entries((init.headers ?? {}) as Record<string, string>)) {
+      xhr.setRequestHeader(name, value)
+    }
+    xhr.upload.onprogress = (e) => onUploadProgress(e.loaded)
+    const onAbort = () => xhr.abort()
+    signal?.addEventListener('abort', onAbort, { once: true })
+    const done = () => signal?.removeEventListener('abort', onAbort)
+    xhr.onload = () => {
+      done()
+      const headers = new Headers()
+      for (const row of xhr.getAllResponseHeaders().trim().split(/[\r\n]+/)) {
+        const at = row.indexOf(':')
+        if (at > 0) headers.append(row.slice(0, at).trim(), row.slice(at + 1).trim())
+      }
+      // Null-body statuses (204/205/304) reject a body in the Response constructor.
+      const body = [204, 205, 304].includes(xhr.status) ? null : (xhr.response as Blob)
+      resolve(new Response(body, { status: xhr.status, statusText: xhr.statusText, headers }))
+    }
+    // Same failure shapes as fetch: TypeError on network loss, AbortError on abort.
+    xhr.onerror = () => { done(); reject(new TypeError('Network request failed')) }
+    xhr.ontimeout = xhr.onerror
+    xhr.onabort = () => { done(); reject(new DOMException('Aborted', 'AbortError')) }
+    xhr.send((init.body ?? null) as XMLHttpRequestBodyInit | null)
+  })
 }
 
 function codeFromStatus(status: number): string {
@@ -156,6 +196,7 @@ export async function apiResponse(path: string, options: RequestOptions = {}): P
     skipRefresh = false,
     signal,
     rawBody = false,
+    onUploadProgress,
   } = options
 
   const url = path.startsWith('http') ? path : `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`
@@ -179,7 +220,8 @@ export async function apiResponse(path: string, options: RequestOptions = {}): P
   }
 
   // credentials: login/register/google-exchange responses set the refresh cookie.
-  const res = await fetch(url, { method, headers: reqHeaders, body: payload, signal, credentials: 'include' })
+  const init: RequestInit = { method, headers: reqHeaders, body: payload, signal, credentials: 'include' }
+  const res = onUploadProgress ? await xhrFetch(url, init, onUploadProgress) : await fetch(url, init)
 
   if (res.status === 401 && !skipAuth && !skipRefresh) {
     const next = await recoverFromUnauthorized(tokenUsed)

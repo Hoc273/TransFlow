@@ -109,6 +109,12 @@ public class MediaStageExecutionService {
     private final AiUsageLogService aiUsageLogService;
     private final GlossaryService glossaryService;
     private long ttsSegmentRetryDelayMs = 10_000L;
+    /**
+     * Attempts running on this instance. RabbitMQ redelivers a message whose handler outlives the
+     * broker's consumer_timeout even though the first run is still going; that redelivery carries
+     * the same correlation and must not start the stage a second time (double provider cost).
+     */
+    private final java.util.Set<UUID> runningAttempts = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private NarrationPacingEstimator narrationPacingEstimator;
     private ProviderHealthService providerHealth;
     private MediaStageRecoveryService recoveryService;
@@ -230,9 +236,16 @@ public class MediaStageExecutionService {
         if (stage.getStatus() != MediaJobStage.StageStatus.PROCESSING) {
             return;
         }
+        if (!runningAttempts.add(message.correlationId())) {
+            log.warn("Ignoring redelivery of an attempt still running job={} stage={} correlation={}",
+                    message.jobId(), stage.getStageName(), message.correlationId());
+            return;
+        }
         // Scope = stage id: providers that fail during this stage are skipped by its later attempts.
         try (ProviderUsageScope ignored = ProviderUsageScope.open(stage.getId().toString())) {
             executeInScope(job, stage, message);
+        } finally {
+            runningAttempts.remove(message.correlationId());
         }
     }
 

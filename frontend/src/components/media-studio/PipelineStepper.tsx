@@ -14,6 +14,7 @@ import {
 import { StageBadge } from '@/components/media-studio/StageBadge'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { cn } from '@/lib/cn'
+import { stageErrorText } from '@/lib/stageErrors'
 import {
   isExtractiveRecipe,
   orderedMediaStages,
@@ -77,21 +78,6 @@ function renderRecoveryKey(stage: MediaJobStage): string | null {
     return 'pipeline.recovery.durationMismatch'
   }
   return null
-}
-
-const PROVIDER_ERROR_KEYS: Record<string, string> = {
-  PROVIDER_QUOTA_EXCEEDED: 'pipeline.providerErrors.quotaExceeded',
-  PROVIDER_AUTH_FAILED: 'pipeline.providerErrors.authFailed',
-  PROVIDER_PERMISSION_DENIED: 'pipeline.providerErrors.permissionDenied',
-  PROVIDER_RATE_LIMITED: 'pipeline.providerErrors.rateLimited',
-  PROVIDER_TIMEOUT: 'pipeline.providerErrors.timeout',
-  PROVIDER_UNAVAILABLE: 'pipeline.providerErrors.unavailable',
-  PROVIDER_MODEL_NOT_FOUND: 'pipeline.providerErrors.modelNotFound',
-  PROVIDER_UNSUPPORTED_MODEL: 'pipeline.providerErrors.unsupportedModel',
-  PROVIDER_BAD_REQUEST: 'pipeline.providerErrors.badRequest',
-  PROVIDER_RESPONSE_MALFORMED: 'pipeline.providerErrors.responseMalformed',
-  INSUFFICIENT_CREDIT: 'pipeline.providerErrors.insufficientCredit',
-  TTS_SEGMENTS_INCOMPLETE: 'pipeline.providerErrors.ttsIncomplete',
 }
 
 /** Localized reason for a PENDING stage that the backend will retry by itself. */
@@ -259,12 +245,8 @@ export function PipelineStepper({ job, className }: Props) {
             {st === 'FAILED' && (stage.errorCode || stage.errorMessage || stage.errorDetail) && (
               <div className="media-stage-reason error">
                 {(() => {
-                  const key = stage.errorCode ? PROVIDER_ERROR_KEYS[stage.errorCode] : null
-                  if (!key) return stage.errorDetail?.message || stage.errorMessage
-                  const stageLabel = t(`stages.${stage.stageName}`, {
-                    defaultValue: String(stage.stageName).replaceAll('_', ' '),
-                  })
-                  return t(key, { stage: stageLabel })
+                  return stageErrorText(t, String(stage.stageName), stage.errorCode)
+                    ?? (stage.errorDetail?.message || stage.errorMessage)
                 })()}
                 {stage.errorDetail?.missingSegments ? (
                   <div data-testid={`stage-tts-partial-${stage.stageName}`}>

@@ -193,3 +193,67 @@ describe('401 refresh via HttpOnly cookie', () => {
     expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer rotated')
   })
 })
+
+describe('upload progress transport', () => {
+  class FakeXhr {
+    static last: FakeXhr
+    upload: { onprogress: ((e: { loaded: number }) => void) | null } = { onprogress: null }
+    status = 0
+    statusText = ''
+    response: Blob | null = null
+    withCredentials = false
+    responseType = ''
+    headers: Record<string, string> = {}
+    method = ''
+    url = ''
+    onload: (() => void) | null = null
+    onerror: (() => void) | null = null
+    ontimeout: (() => void) | null = null
+    onabort: (() => void) | null = null
+    constructor() { FakeXhr.last = this }
+    open(method: string, url: string) { this.method = method; this.url = url }
+    setRequestHeader(name: string, value: string) { this.headers[name] = value }
+    getAllResponseHeaders() { return 'content-type: application/json\r\n' }
+    abort() { this.onabort?.() }
+    send() {
+      this.upload.onprogress?.({ loaded: 2 })
+      this.upload.onprogress?.({ loaded: 4 })
+      this.status = 200
+      this.statusText = 'OK'
+      this.response = new Blob([JSON.stringify({ code: 1000, data: { receivedChunks: 1 } })])
+      this.onload?.()
+    }
+  }
+
+  it('reports sent bytes through XHR and still unwraps the envelope with auth', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const progress: number[] = []
+
+    const res = await apiRequest('/chunks/0', {
+      method: 'PUT',
+      body: new Blob(['abcd']),
+      rawBody: true,
+      onUploadProgress: (loaded) => progress.push(loaded),
+    })
+
+    expect(res).toEqual({ receivedChunks: 1 })
+    expect(progress).toEqual([2, 4])
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(FakeXhr.last.method).toBe('PUT')
+    expect(FakeXhr.last.withCredentials).toBe(true)
+    expect(FakeXhr.last.headers.Authorization).toBe('Bearer token')
+  })
+
+  it('rejects like fetch on network loss', async () => {
+    class OfflineXhr extends FakeXhr {
+      send() { this.onerror?.() }
+    }
+    vi.stubGlobal('XMLHttpRequest', OfflineXhr)
+
+    await expect(
+      apiRequest('/chunks/0', { method: 'PUT', body: 'x', rawBody: true, onUploadProgress: () => {} }),
+    ).rejects.toBeInstanceOf(TypeError)
+  })
+})

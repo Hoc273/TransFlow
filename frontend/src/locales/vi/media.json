@@ -208,8 +208,16 @@
       "badRequest": "Nhà cung cấp AI từ chối yêu cầu ở bước {{stage}}. Kiểm tra model và cấu hình capability.",
       "responseMalformed": "Model trả về dữ liệu không đúng định dạng ở bước {{stage}}. Kiểm tra model hoặc chọn provider khác.",
       "insufficientCredit": "Không đủ credit để chạy bước {{stage}}. Nạp thêm credit rồi chạy lại bước này — các bước đã xong không bị tính lại.",
-      "ttsIncomplete": "Bước {{stage}} chưa tạo được giọng cho mọi câu. Chạy lại bước này để tạo nốt phần còn thiếu."
+      "ttsIncomplete": "Bước {{stage}} chưa tạo được giọng cho mọi câu. Chạy lại bước này để tạo nốt phần còn thiếu.",
+      "platformNotConfigured": "Chưa có nhà cung cấp AI nào cho bước {{stage}}. Thêm API key của bạn trong Cài đặt → API keys, hoặc liên hệ quản trị viên để bật provider của nền tảng.",
+      "defaultNotConfigured": "Bạn có nhiều API key cho bước {{stage}} nhưng chưa chọn key mặc định. Vào Cài đặt → API keys và bấm \"Đặt mặc định\".",
+      "modelNotConfigured": "API key dùng cho bước {{stage}} chưa chọn model. Vào Cài đặt → API keys để chọn model.",
+      "keyUnreadable": "Không đọc được API key đã lưu cho bước {{stage}}. Nhập lại API key trong Cài đặt → API keys.",
+      "capabilityNotSupported": "Nhà cung cấp AI đã chọn không hỗ trợ bước {{stage}}. Chọn provider khác.",
+      "stageTimeout": "Bước {{stage}} chạy quá lâu và đã dừng. Chạy lại bước này; nếu vẫn lỗi, hãy liên hệ quản trị viên.",
+      "fileExpired": "Video gốc đã bị xoá sau thời hạn lưu trữ. Hãy tải video lên lại."
     },
+    "stageFailed": "Bước {{stage}} thất bại. Mở job để xem chi tiết và chạy lại bước này.",
     "recovery": {
       "emptyCues": "Timeline phụ đề không có cue hợp lệ — hãy khôi phục hoặc chỉnh lại nội dung bản dịch và timing, sau đó Lưu và chạy lại Lồng tiếng & Render.",
       "durationMismatch": "Timeline phụ đề chưa phủ đủ video — hãy kiểm tra timing các dòng phụ đề, đặc biệt khu vực gần cuối, sau đó Lưu và chạy lại Lồng tiếng & Render.",

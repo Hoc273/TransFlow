@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { notificationHref } from './notifications'
+import { notificationHref, notificationMessage } from './notifications'
 import type { NotificationItem } from '@/types/notification'
 
 function item(type: string, relatedEntityId: string | null = 'ref-1'): NotificationItem {
@@ -35,5 +35,25 @@ describe('notificationHref', () => {
     expect(notificationHref('ws', item('JOB_FAILED', null))).toBeNull()
     expect(notificationHref('ws', item('SOMETHING_ELSE'))).toBeNull()
     expect(notificationHref('', item('JOB_FAILED'))).toBeNull()
+  })
+})
+
+describe('notificationMessage', () => {
+  const t = ((key: string, opts?: Record<string, unknown>) =>
+    `${key}${opts?.stage ? `|${opts.stage}` : ''}`) as unknown as import('i18next').TFunction
+
+  it('localizes a failed stage with a known error code', () => {
+    const n = { ...item('JOB_FAILED'), message: 'Stage STT failed (PLATFORM_PROVIDER_NOT_CONFIGURED): No platform AI provider configured for this capability' }
+    expect(notificationMessage(t, n)).toBe('pipeline.providerErrors.platformNotConfigured|stages.STT')
+  })
+
+  it('falls back to a generic localized failure for an unknown code', () => {
+    const n = { ...item('JOB_FAILED'), message: 'Stage RENDER failed (FFMPEG_CRASHED): exit 1' }
+    expect(notificationMessage(t, n)).toBe('pipeline.stageFailed|stages.RENDER')
+  })
+
+  it('keeps messages it does not recognise', () => {
+    expect(notificationMessage(t, { ...item('JOB_FAILED'), message: 'Something else' })).toBe('Something else')
+    expect(notificationMessage(t, { ...item('JOB_COMPLETED'), message: 'Media job completed' })).toBe('Media job completed')
   })
 })

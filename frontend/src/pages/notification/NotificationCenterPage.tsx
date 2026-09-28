@@ -17,7 +17,7 @@ import {
   useUnreadNotificationCount,
 } from '@/hooks/useNotifications'
 import { formatDateTime, formatRelativeTime } from '@/lib/format'
-import { notificationHref, notificationTitle } from '@/lib/notifications'
+import { notificationHref, notificationMessage, notificationTitle } from '@/lib/notifications'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
 import type { NotificationItem } from '@/types/notification'
@@ -179,7 +179,7 @@ export function NotificationCenterPage() {
                       </div>
                       {n.message && (
                         <p className="mt-0.5 text-[12px] text-[var(--color-text-secondary)]">
-                          {n.message}
+                          {notificationMessage(t, n)}
                         </p>
                       )}
                     </button>

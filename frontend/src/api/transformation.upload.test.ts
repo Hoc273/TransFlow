@@ -71,6 +71,23 @@ describe('uploadTransformationMediaApi (chunked)', () => {
     expect(Math.max(...progress.slice(0, -1))).toBeLessThanOrEqual(99)
   })
 
+  it('moves the bar while a chunk is still on the wire', async () => {
+    fakeServer()
+    const base = apiRequest.getMockImplementation()!
+    apiRequest.mockImplementation(async (path: string, opts: { onUploadProgress?: (n: number) => void } = {}) => {
+      opts.onUploadProgress?.(2) // half of a 4-byte chunk
+      return base(path, opts)
+    })
+    const progress: number[] = []
+
+    await uploadTransformationMediaApi('ws', 'p', file, { onProgress: (p) => progress.push(p) })
+
+    // 10-byte file: first chunk half sent = 20%, before any chunk has finished.
+    expect(progress[1]).toBe(20)
+    expect(progress).toEqual([...progress].sort((a, b) => a - b))
+    expect(progress.at(-1)).toBe(100)
+  })
+
   it('retries a chunk after a transient failure', async () => {
     vi.useFakeTimers()
     const { attempts } = fakeServer((index, attempt) =>

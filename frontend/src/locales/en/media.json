@@ -208,8 +208,16 @@
       "badRequest": "The AI provider rejected the {{stage}} request. Check the model and capability configuration.",
       "responseMalformed": "The model returned an invalid response for {{stage}}. Check the model or choose another provider.",
       "insufficientCredit": "Not enough credit to run {{stage}}. Top up, then rerun this stage — finished stages are not charged again.",
-      "ttsIncomplete": "{{stage}} could not voice every line. Rerun this stage to generate the missing ones."
+      "ttsIncomplete": "{{stage}} could not voice every line. Rerun this stage to generate the missing ones.",
+      "platformNotConfigured": "No AI provider is available for the {{stage}} step. Add your own API key in Settings → API keys, or ask an administrator to enable a platform provider.",
+      "defaultNotConfigured": "You have several API keys for the {{stage}} step but none is the default. Open Settings → API keys and click \"Set as default\".",
+      "modelNotConfigured": "The API key used for the {{stage}} step has no model selected. Choose a model in Settings → API keys.",
+      "keyUnreadable": "The stored API key for the {{stage}} step can no longer be read. Re-enter it in Settings → API keys.",
+      "capabilityNotSupported": "The selected AI provider does not support the {{stage}} step. Choose another provider.",
+      "stageTimeout": "The {{stage}} step took too long and was stopped. Rerun this step; if it keeps failing, contact an administrator.",
+      "fileExpired": "The source video was deleted after the retention period. Upload the video again."
     },
+    "stageFailed": "The {{stage}} step failed. Open the job for details and rerun this step.",
     "recovery": {
       "emptyCues": "Subtitle timeline has no usable cues — restore or edit the translated text and timing, then Save and re-run Voice Dub & Render.",
       "durationMismatch": "Subtitle timing does not cover the video sufficiently — check the timing of your subtitle lines, especially around the ending, then Save and re-run Voice Dub & Render.",
