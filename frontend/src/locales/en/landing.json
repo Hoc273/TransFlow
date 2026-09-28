@@ -324,12 +324,12 @@
     "starter": {
       "name": "Starter",
       "desc": "Starter pack for creators to try on real videos",
-      "price": "50,000 ₫",
-      "credits": "/ 500 Credits (100 ₫/Credit)",
+      "price": "250,000 ₫",
+      "credits": "/ 2,500 Credits (100 ₫/Credit)",
       "cta": "Get Starter",
       "featuresTitle": "What's included:",
       "features": [
-        "~75 mins of translated subtitles, or ~37 mins of dubbing that keeps the background music",
+        "~185 mins of translated subtitles, or ~90 mins of dubbing that keeps the background music",
         "Ideal for short-form clips (Shorts, Reels, TikTok)",
         "AI video summaries with up to 5 refine rounds",
         "Export hard-subbed video and standalone subtitles (.srt, .vtt)"
@@ -340,13 +340,13 @@
       "badge": "Popular",
       "name": "Creator",
       "desc": "For creators and editors publishing regularly",
-      "price": "190,000 ₫",
-      "credits": "2,000 Credits",
+      "price": "500,000 ₫",
+      "credits": "5,250 Credits",
       "bonus": "95 ₫/Credit",
-      "cta": "Purchase 190,000 VND",
+      "cta": "Purchase 500,000 VND",
       "featuresTitle": "Everything in Starter, plus:",
       "features": [
-        "~300 mins of translated subtitles, or ~150 mins of dubbing that keeps the background music",
+        "~390 mins of translated subtitles, or ~195 mins of dubbing that keeps the background music",
         "Batch processing up to 20 videos per batch",
         "Voice/music separation for dubbing (Studio mode)",
         "Glossaries keep brand names consistent",
@@ -363,7 +363,7 @@
       "cta": "Purchase 900,000 VND",
       "featuresTitle": "Everything in Freelancer, plus:",
       "features": [
-        "~1,500 mins of translated subtitles, or ~750 mins of dubbing that keeps the background music",
+        "~745 mins of translated subtitles, or ~370 mins of dubbing that keeps the background music",
         "Videos up to 500MB and 30 mins per file",
         "AI visual context analysis for summaries",
         "Lead pays for the whole Workspace, or each member pays their own",
