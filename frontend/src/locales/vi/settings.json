@@ -1,4 +1,30 @@
 {
+  "billing": {
+    "title": "Chế độ trả credit",
+    "subtitle": "Quyết định ví credit của ai bị trừ khi thành viên chạy các công đoạn AI (STT, dịch, TTS, render…) trong workspace này.",
+    "leadOnly": "Chỉ Lead được thay đổi",
+    "mode": {
+      "PAY_PER_USER": {
+        "label": "Mỗi người tự trả",
+        "desc": "Credit bị trừ vào ví của người tạo job. Mặc định cho workspace mới."
+      },
+      "LEAD_PAYS_ALL": {
+        "label": "Lead trả toàn bộ",
+        "desc": "Mọi job trong workspace, kể cả do Member tạo, đều trừ vào ví của Lead."
+      }
+    },
+    "confirm": {
+      "PAY_PER_USER": "Chuyển sang \"Mỗi người tự trả\"? Từ bây giờ mỗi thành viên sẽ bị trừ credit vào ví của chính họ, kể cả các công đoạn còn lại của job đang chạy.",
+      "LEAD_PAYS_ALL": "Chuyển sang \"Lead trả toàn bộ\"? Từ bây giờ mọi công đoạn AI của mọi thành viên sẽ trừ vào ví của Lead, kể cả các công đoạn còn lại của job đang chạy."
+    },
+    "notes": {
+      "title": "Lưu ý",
+      "leadBalance": "Ở chế độ Lead trả toàn bộ, chỉ số dư của Lead được kiểm tra: khi ví Lead hết credit, job của mọi thành viên sẽ dừng với lỗi thiếu credit dù ví riêng của họ còn credit.",
+      "immediate": "Thay đổi có hiệu lực ngay cho mỗi công đoạn tiếp theo — kể cả các công đoạn còn lại của job đang chạy. Các công đoạn đã hoàn thành không bị tính lại.",
+      "pricing": "Chế độ chỉ đổi người trả, không đổi đơn giá: dùng API key cá nhân (BYOK) tính x × đơn vị, dùng provider của nền tảng tính (x + y) × đơn vị.",
+      "history": "Lịch sử giao dịch của người trả vẫn ghi lại thành viên nào đã thực hiện từng lần sử dụng."
+    }
+  },
   "members": {
     "title": "Thành viên",
     "subtitle": "Nhóm workspace và vai trò",

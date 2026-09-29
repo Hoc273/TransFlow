@@ -11,6 +11,7 @@ import { MobileCard } from '../../components/MobileCard'
 import { BottomSheet } from '../../components/BottomSheet'
 import { MobileEmptyState } from '../../components/MobileEmptyState'
 import { MobileSearchFilter } from '../../components/MobileSearchFilter'
+import { WorkspaceBillingCard } from '@/components/settings/WorkspaceBillingCard'
 import { useAddMember, useMembers, useRemoveMember, useUpdateMemberRole } from '@/hooks/useMembers'
 import { usePermission } from '@/hooks/usePermission'
 import { type Role } from '@/lib/permissions'
@@ -152,6 +153,8 @@ export function MobileMembersPage() {
           </button>
         )}
       </div>
+
+      <WorkspaceBillingCard workspaceId={workspaceId} />
 
       {rowError && (
         <div role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-300">
