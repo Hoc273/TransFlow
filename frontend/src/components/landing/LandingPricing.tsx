@@ -2,9 +2,10 @@ import { useState, useRef, useEffect, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/store/authStore'
+import { planPrice } from '@/lib/pricing'
 
 export function LandingPricing() {
-  const { t } = useTranslation('landing')
+  const { t, i18n } = useTranslation('landing')
   const accessToken = useAuthStore((s) => s.accessToken)
   const currentWorkspace = useAuthStore((s) => s.currentWorkspace)
 
@@ -16,6 +17,10 @@ export function LandingPricing() {
 
   const sectionRef = useRef<HTMLElement>(null)
   const [isVisible, setIsVisible] = useState(false)
+
+  const starterPrice = planPrice('starter', i18n.language)
+  const freelancerPrice = planPrice('freelancer', i18n.language)
+  const proStudioPrice = planPrice('proStudio', i18n.language)
 
   const starterFeatures = (t('pricing.starter.features', { returnObjects: true }) as string[]) || []
   const freelancerFeatures = (t('pricing.freelancer.features', { returnObjects: true }) as string[]) || []
@@ -97,12 +102,12 @@ export function LandingPricing() {
               </p>
 
               {/* Price Display */}
-              <div className="flex items-baseline gap-2 mb-6">
-                <span className="text-3xl sm:text-4xl font-bold text-neutral-900 dark:text-white">
-                  {t('pricing.starter.price')}
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-6">
+                <span className="text-3xl sm:text-4xl font-bold text-neutral-900 dark:text-white whitespace-nowrap shrink-0">
+                  {starterPrice.price}
                 </span>
                 <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {t('pricing.starter.credits')}
+                  {t('pricing.starter.credits', { rate: starterPrice.rate })}
                 </span>
               </div>
 
@@ -114,7 +119,7 @@ export function LandingPricing() {
                 {/* Shimmer sweep */}
                 <div className="absolute inset-0 -translate-x-full group-hover/btn:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none" />
                 <span className="inline-flex items-center justify-center gap-1.5">
-                  <span>{t('pricing.starter.cta')}</span>
+                  <span>{t('pricing.starter.cta', { price: starterPrice.price })}</span>
                   <span className="inline-block transition-transform duration-200 group-hover/btn:translate-x-1">→</span>
                 </span>
               </Link>
@@ -194,13 +199,13 @@ export function LandingPricing() {
               </p>
 
               {/* Price Display */}
-              <div className="flex items-baseline gap-2 mb-6">
-                <span className="text-3xl sm:text-4xl font-bold text-neutral-900 dark:text-white">
-                  {t('pricing.freelancer.price')}
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-6">
+                <span className="text-3xl sm:text-4xl font-bold text-neutral-900 dark:text-white whitespace-nowrap shrink-0">
+                  {freelancerPrice.price}
                 </span>
                 <div className="text-xs text-neutral-500 dark:text-neutral-400 leading-tight">
-                  <div>{t('pricing.freelancer.credits')}</div>
-                  <div className="text-blue-600 dark:text-blue-400 font-medium">{t('pricing.freelancer.bonus')}</div>
+                  <div>{t('pricing.freelancer.credits', { rate: freelancerPrice.rate })}</div>
+                  <div className="text-blue-600 dark:text-blue-400 font-medium">{t('pricing.freelancer.bonus', { rate: freelancerPrice.rate })}</div>
                 </div>
               </div>
 
@@ -212,7 +217,7 @@ export function LandingPricing() {
                 {/* Shimmer sweep */}
                 <div className="absolute inset-0 -translate-x-full group-hover/btn:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/25 dark:via-black/10 to-transparent pointer-events-none" />
                 <span className="inline-flex items-center justify-center gap-1.5">
-                  <span>{t('pricing.freelancer.cta')}</span>
+                  <span>{t('pricing.freelancer.cta', { price: freelancerPrice.price })}</span>
                   <span className="inline-block transition-transform duration-200 group-hover/btn:translate-x-1.5">→</span>
                 </span>
               </Link>
@@ -293,13 +298,13 @@ export function LandingPricing() {
               </p>
 
               {/* Price Display */}
-              <div className="flex items-baseline gap-2 mb-6">
-                <span className="text-3xl sm:text-4xl font-bold text-neutral-900 dark:text-white">
-                  {t('pricing.proStudio.price')}
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-6">
+                <span className="text-3xl sm:text-4xl font-bold text-neutral-900 dark:text-white whitespace-nowrap shrink-0">
+                  {proStudioPrice.price}
                 </span>
                 <div className="text-xs text-neutral-500 dark:text-neutral-400 leading-tight">
-                  <div>{t('pricing.proStudio.credits')}</div>
-                  <div className="text-emerald-600 dark:text-emerald-400 font-medium">{t('pricing.proStudio.bonus')}</div>
+                  <div>{t('pricing.proStudio.credits', { rate: proStudioPrice.rate })}</div>
+                  <div className="text-emerald-600 dark:text-emerald-400 font-medium">{t('pricing.proStudio.bonus', { rate: proStudioPrice.rate })}</div>
                 </div>
               </div>
 
@@ -311,7 +316,7 @@ export function LandingPricing() {
                 {/* Shimmer sweep */}
                 <div className="absolute inset-0 -translate-x-full group-hover/btn:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/25 dark:via-black/10 to-transparent pointer-events-none" />
                 <span className="inline-flex items-center justify-center gap-1.5">
-                  <span>{t('pricing.proStudio.cta')}</span>
+                  <span>{t('pricing.proStudio.cta', { price: proStudioPrice.price })}</span>
                   <span className="inline-block transition-transform duration-200 group-hover/btn:translate-x-1.5">→</span>
                 </span>
               </Link>
