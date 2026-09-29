@@ -68,6 +68,14 @@ import {
   reasonI18nKey,
 } from '@/lib/transformationCapabilities'
 import { useUiStore } from '@/store/uiStore'
+import {
+  removedStagedKeys,
+  selectStaged,
+  stagedScope,
+  uploadAborts,
+  useStagedUploadStore,
+  type StagedVideo,
+} from '@/store/stagedUploadStore'
 import { ApiError } from '@/types/api'
 import type { MediaRecipeId, WorkflowMode } from '@/types/media'
 import type { AudioExecutionMode } from '@/types/transformation'
@@ -88,20 +96,6 @@ type Props = {
  * Uploads start immediately per file (same as the old flow); create fans out
  * over every ready row with the shared right-column config.
  */
-type StagedVideo = {
-  key: string
-  fileName: string
-  fileSizeBytes: number
-  durationMs: number | null
-  assetId: string | null
-  documentId: string | null
-  consented: boolean
-  uploadStatus: 'uploading' | 'ready' | 'failed'
-  progress: number
-  createStatus: 'idle' | 'creating' | 'created' | 'failed'
-  jobId: string | null
-  error: string | null
-}
 
 let stagedKeySeq = 0
 function nextStagedKey(): string {
@@ -206,10 +200,21 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     },
   })
 
-  const [staged, setStaged] = useState<StagedVideo[]>([])
+  // Held in a store so a layout switch (mobile <-> desktop shell) that remounts this panel keeps
+  // the staged videos and the uploads still reporting into them.
+  const scope = stagedScope(workspaceId, projectId)
+  const staged = useStagedUploadStore(selectStaged(scope))
+  const setStaged = (updater: (prev: StagedVideo[]) => StagedVideo[]) =>
+    useStagedUploadStore.getState().update(scope, updater)
+  const clearStaged = () => useStagedUploadStore.getState().clear(scope)
   // One confirmation covers every staged video; derived so rows added later
   // automatically reopen the consent step (same as the old reset-on-new-file).
-  const consented = staged.length > 0 && staged.every((s) => s.consented)
+  // Consent (and everything after it) opens only once every upload has settled: an asset that is
+  // still uploading has nothing to consent to. Failed rows are ignored — they cannot be created
+  // anyway and must not keep the step locked while the user decides to remove them.
+  const uploading = staged.some((s) => s.uploadStatus === 'uploading')
+  const readyStaged = staged.filter((s) => s.uploadStatus === 'ready')
+  const consented = !uploading && readyStaged.length > 0 && readyStaged.every((s) => s.consented)
   const [consentChecked, setConsentChecked] = useState(false)
   const [consenting, setConsenting] = useState(false)
   const [batchCreating, setBatchCreating] = useState(false)
@@ -228,9 +233,8 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
   const [requestedMode, setRequestedMode] = useState<AudioExecutionMode | null>('FAST')
   const [showAudioMode, setShowAudioMode] = useState(false)
   // Target languages as an inline checkbox set (no separate batch view):
-  // exactly one checked keeps the legacy single flow; several checked fans
-  // out 1 video → N jobs. Several staged videos lock this to one language
-  // (N×N cartesian is banned in v1).
+  // exactly one video + one language keeps the legacy single flow; anything
+  // else fans out one job per (video, language) pair. Keyed by `jobKey`.
   const [selectedTargets, setSelectedTargets] = useState<string[]>(['vi'])
   // Per-target voice selections for the multi-target shape (same
   // all-or-nothing pair rule as single-create, resolved per language).
@@ -318,8 +322,14 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
   const patchStaged = (key: string, patch: Partial<StagedVideo>) =>
     setStaged((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)))
 
+  // One controller per row still uploading, so removing the row cancels just that file (its staged
+  // session is deleted by the upload API on abort).
+
   const removeStaged = (key: string) => {
     if (batchCreating) return
+    removedStagedKeys.add(key)
+    uploadAborts.get(key)?.abort()
+    uploadAborts.delete(key)
     setBatchSummary(null)
     setStaged((prev) => prev.filter((s) => s.key !== key))
   }
@@ -342,6 +352,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     }, 1000)
 
     const timeoutId = window.setTimeout(() => {
+      useStagedUploadStore.getState().clear(scope)
       onCreated?.('')
       navigate(`/w/${workspaceId}/media?project=${projectId}#overview`)
     }, 3000)
@@ -350,12 +361,16 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
       window.clearInterval(intervalId)
       window.clearTimeout(timeoutId)
     }
-  }, [batchSummary, navigate, onCreated, projectId, workspaceId])
+  }, [batchSummary, navigate, onCreated, projectId, scope, workspaceId])
 
   const isMultiTarget = selectedTargets.length > 1
-  // N videos × N languages is banned in v1 — with several staged videos the
-  // target set stays locked to one language.
-  const isNxN = staged.length > 1 && isMultiTarget
+  const jobKey = (rowKey: string, lang: string) => `${rowKey}|${lang}`
+  const totalJobs = readyStaged.length * selectedTargets.length
+  // Per-video / per-language views over the (video × language) job matrix.
+  const jobsOfRow = (rowKey: string) =>
+    selectedTargets.map((lang) => ({ lang, ...targetJobs[jobKey(rowKey, lang)] }))
+  const jobsOfLang = (lang: string) =>
+    staged.map((s) => targetJobs[jobKey(s.key, lang)]).filter((j) => j != null)
 
   const toggleTarget = (lang: string) => {
     if (batchCreating) return
@@ -365,7 +380,6 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
         if (prev.length === 1) return prev // keep at least one target
         return prev.filter((l) => l !== lang)
       }
-      if (staged.length > 1) return prev // multi-video locks to one target
       return [...prev, lang]
     })
   }
@@ -488,6 +502,10 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
       files.map((file, index) => ({ file, row: fresh[index] })),
       BATCH_CONCURRENCY,
       async ({ file, row }) => {
+        const abort = new AbortController()
+        uploadAborts.set(row.key, abort)
+        // Removed while still queued behind other uploads: never start it.
+        if (removedStagedKeys.has(row.key)) return
         const code = validateMediaFile(file)
         if (code === 'FILE_TOO_LARGE' || code === 'INVALID_TYPE') {
           patchStaged(row.key, {
@@ -502,6 +520,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
           const res = await upload.mutateAsync({
             file,
             name: file.name,
+            signal: abort.signal,
             onProgress: (pct) => {
               patchStaged(row.key, { progress: pct })
               setUploadingName(file.name)
@@ -528,6 +547,8 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
             uploadStatus: 'failed',
             error: e instanceof ApiError ? e.message : t('common:error.generic'),
           })
+        } finally {
+          uploadAborts.delete(row.key)
         }
       },
     )
@@ -593,21 +614,11 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
       return
     }
 
-    const multiVideo = readyRows.length > 1
-    if (!multiVideo && !isMultiTarget) {
+    if (readyRows.length === 1 && !isMultiTarget) {
       await createSingleJob(readyRows[0], selectedTargets[0], guard.requestedMode, seconds)
       return
     }
-    if (multiVideo && !isMultiTarget) {
-      await createBatchJobs(readyRows, selectedTargets[0], guard.requestedMode, seconds)
-      return
-    }
-    if (!multiVideo && isMultiTarget) {
-      await createMultiTargetJobs(readyRows[0], guard.requestedMode, seconds)
-      return
-    }
-    // N×N is banned in v1 (the submit button stays disabled with a hint).
-    setError(t('media:batch.noNxN'))
+    await createMatrixJobs(readyRows, guard.requestedMode, seconds)
   }
 
   const selectionForRow = (
@@ -648,6 +659,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
           navigate,
         },
       })
+      clearStaged()
       onCreated?.(job.id)
       navigate(`/w/${workspaceId}/media/jobs/${job.id}`)
     } catch (e) {
@@ -668,76 +680,35 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     }
   }
 
-  // N videos → 1 language with the shared right-column config. Partial
-  // failure never rolls back siblings; retry reuses uploaded documents and
-  // only re-runs rows that did not create.
-  const createBatchJobs = async (
+  // M videos × N languages (either side may be 1) with the shared right-column config. One job per
+  // (video, language) pair. Partial failure never rolls back siblings; retry reuses the uploaded
+  // documents and only re-runs pairs that did not create. Multi-language shapes carry an explicit
+  // voice pair per language (a preset pair can never fit every language, and JOB explicit fields
+  // win over the preset); a single language uses the shared voice selection.
+  const createMatrixJobs = async (
     rows: StagedVideo[],
-    lang: string,
-    snapshotMode: AudioExecutionMode,
-    seconds: number | null,
-  ) => {
-    setBatchCreating(true)
-    try {
-      const alreadyCreated = rows.filter((s) => s.createStatus === 'created').length
-      let newlyCreated = 0
-      const attempted = rows.filter((s) => s.createStatus !== 'created').length
-      await mapWithConcurrency(
-        rows.filter((s) => s.createStatus !== 'created'),
-        BATCH_CONCURRENCY,
-        async (s) => {
-          patchStaged(s.key, { createStatus: 'creating', error: null })
-          try {
-            const job = await createTransformationJobApi(
-              workspaceId,
-              createJobApiBody(buildLocalizationCreateJobInput(selectionForRow(s, lang, snapshotMode, seconds, voiceSelection, presetProvidesVoice))),
-            )
-            void qc.setQueryData(queryKeys.mediaJob(workspaceId, job.id), job)
-            patchStaged(s.key, { createStatus: 'created', jobId: job.id })
-            newlyCreated += 1
-          } catch (e) {
-            const presetVoiceKey = presetVoiceLangMismatchKey(e)
-            patchStaged(s.key, {
-              createStatus: 'failed',
-              error: presetVoiceKey ? t(presetVoiceKey) : e instanceof ApiError ? e.message : t('common:error.generic'),
-            })
-          }
-        },
-      )
-      setBatchSummary({ created: alreadyCreated + newlyCreated, failed: attempted - newlyCreated })
-    } finally {
-      void qc.invalidateQueries({ queryKey: queryKeys.mediaJobs(workspaceId, projectId) })
-      setBatchCreating(false)
-    }
-  }
-
-  // 1 video → N languages on the SAME document. Each target carries its own
-  // explicit voice pair (a preset pair can never fit every language, and JOB
-  // explicit fields win over the preset). Partial failure never rolls back
-  // siblings; retry reuses the uploaded document and only re-runs targets
-  // that did not create.
-  const createMultiTargetJobs = async (
-    row: StagedVideo,
     snapshotMode: AudioExecutionMode,
     seconds: number | null,
   ) => {
     setBatchCreating(true)
     try {
       const langs = selectedTargets
-      const alreadyCreated = langs.filter((lang) => targetJobs[lang]?.status === 'created').length
-      const pending = langs.filter((lang) => targetJobs[lang]?.status !== 'created')
+      const pairs = rows.flatMap((row) => langs.map((lang) => ({ row, lang })))
+      const isDone = ({ row, lang }: { row: StagedVideo; lang: string }) =>
+        targetJobs[jobKey(row.key, lang)]?.status === 'created'
+      const alreadyCreated = pairs.filter(isDone).length
+      const pending = pairs.filter((pair) => !isDone(pair))
       let newlyCreated = 0
-      await mapWithConcurrency(pending, BATCH_CONCURRENCY, async (lang) => {
-        setTargetJob(lang, { status: 'creating', error: null })
+      await mapWithConcurrency(pending, BATCH_CONCURRENCY, async ({ row, lang }) => {
+        const key = jobKey(row.key, lang)
+        setTargetJob(key, { status: 'creating', error: null })
         try {
-          const sel = targetVoices[lang] ?? { providerId: null, voiceId: null }
-          // Multi-target dubbed rows send their own explicit pair, so the
-          // preset flag must be off for them (else the payload would send
-          // null/null and the backend would apply a wrong-language preset
-          // voice). Untouched rows still fall back to the preset pair.
-          const rowPresetVoice = presetProvidesVoice
-            && sel.providerId == null
-            && sel.voiceId == null
+          const sel = isMultiTarget
+            ? (targetVoices[lang] ?? { providerId: null, voiceId: null })
+            : voiceSelection
+          const rowPresetVoice = isMultiTarget
+            ? presetProvidesVoice && sel.providerId == null && sel.voiceId == null
+            : presetProvidesVoice
           const job = await createTransformationJobApi(
             workspaceId,
             createJobApiBody(buildLocalizationCreateJobInput(
@@ -745,11 +716,11 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
             )),
           )
           void qc.setQueryData(queryKeys.mediaJob(workspaceId, job.id), job)
-          setTargetJob(lang, { status: 'created', jobId: job.id })
+          setTargetJob(key, { status: 'created', jobId: job.id })
           newlyCreated += 1
         } catch (e) {
           const presetVoiceKey = presetVoiceLangMismatchKey(e)
-          setTargetJob(lang, {
+          setTargetJob(key, {
             status: 'failed',
             error: presetVoiceKey ? t(presetVoiceKey) : e instanceof ApiError ? e.message : t('common:error.generic'),
           })
@@ -850,7 +821,6 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 'media-dropzone media-dropzone-aside',
                 dragOver && 'drag-over',
                 staged.length > 0 && 'has-file !border-none !bg-transparent !p-0',
-                upload.isPending && 'pointer-events-none opacity-80',
               )}
               onDragOver={(e) => {
                 e.preventDefault()
@@ -862,7 +832,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 setDragOver(false)
                 void handleFiles(Array.from(e.dataTransfer.files ?? []))
               }}
-              onClick={() => !upload.isPending && staged.length === 0 && fileRef.current?.click()}
+              onClick={() => staged.length === 0 && fileRef.current?.click()}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
@@ -887,7 +857,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                     <IconUpload size={22} />
                   </div>
                   <div className="font-semibold text-xs text-[var(--color-text-primary)]">
-                    {upload.isPending
+                    {uploading
                       ? uploadPercent >= 99
                         ? t('media:upload.processing')
                         : t('media:upload.uploading')
@@ -899,7 +869,9 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 </div>
               ) : (
                 <div className="flex flex-col gap-0.25">
-                  {staged.map((s) => (
+                  {staged.map((s) => {
+                    const rowJobs = jobsOfRow(s.key)
+                    return (
                     <div
                       key={s.key}
                       className="media-uploaded-preview batch-file-row group relative flex items-center gap-3 p-3 rounded-xl bg-[var(--color-media-soft)] transition-colors"
@@ -918,29 +890,35 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                           {s.durationMs != null && ` · ${formatDurationMs(s.durationMs)}`}
                           {s.uploadStatus === 'uploading' && ` · ${s.progress}%`}
                         </div>
-                        {s.error && (
-                          <div className="text-[11px] text-[var(--color-error)]">{s.error}</div>
+                        {(s.error || rowJobs.find((j) => j.error)?.error) && (
+                          <div className="text-[11px] text-[var(--color-error)]">
+                            {s.error || rowJobs.find((j) => j.error)?.error}
+                          </div>
                         )}
-                        {s.jobId && (
-                          <div className="mt-0.5">
-                            <Link
-                              to={`/w/${workspaceId}/media/jobs/${s.jobId}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-[11px] font-semibold text-[var(--color-media)]"
-                            >
-                              {t('media:batch.viewJob')}
-                            </Link>
+                        {rowJobs.some((j) => j.jobId) && (
+                          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                            {rowJobs.filter((j) => j.jobId).map((j) => (
+                              <Link
+                                key={j.lang}
+                                to={`/w/${workspaceId}/media/jobs/${j.jobId}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-[11px] font-semibold text-[var(--color-media)]"
+                              >
+                                {t('media:batch.viewJob')}
+                                {selectedTargets.length > 1 && ` · ${j.lang.toUpperCase()}`}
+                              </Link>
+                            ))}
                           </div>
                         )}
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
-                        {s.createStatus === 'created' && (
+                        {rowJobs.length > 0 && rowJobs.every((j) => j.status === 'created') && (
                           <IconCheck size={16} className="shrink-0 text-[var(--color-status-completed)]" />
                         )}
-                        {!batchCreating && s.uploadStatus !== 'uploading' && s.createStatus !== 'creating' && (
+                        {!batchCreating && (
                           <button
                             type="button"
-                            className="batch-file-remove opacity-0 group-hover:opacity-100 focus-visible:opacity-100 inline-flex items-center justify-center w-7 h-7 rounded-lg text-[var(--color-text-secondary)] hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950/50 dark:hover:text-red-400 transition-colors cursor-pointer"
+                            className={cn('batch-file-remove focus-visible:opacity-100 inline-flex items-center justify-center w-7 h-7 rounded-lg text-[var(--color-text-secondary)] hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950/50 dark:hover:text-red-400 transition-colors cursor-pointer', s.uploadStatus !== 'ready' ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}
                             aria-label={t('media:batch.removeRow')}
                             onClick={(e) => {
                               e.stopPropagation()
@@ -952,12 +930,13 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                         )}
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
 
-            {upload.isPending && (
+            {uploading && (
               <div className="media-upload-progress mt-3" aria-live="polite">
                 <div className="media-upload-progress-head">
                   <span className="media-upload-progress-label">
@@ -999,7 +978,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
           <div className="my-3.5 border-t border-[var(--color-border)]" />
 
           {/* Step 2: Consent */}
-          <div className={cn('media-aside-subcard', staged.length === 0 && 'opacity-60')}>
+          <div className={cn('media-aside-subcard', (staged.length === 0 || uploading) && 'opacity-60')}>
             <header className="media-aside-card-header">
               <div className="flex items-center gap-2">
                 <span className="media-step-badge">2</span>
@@ -1029,7 +1008,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                   type="checkbox"
                   className="mt-0.5"
                   checked={consentChecked}
-                  disabled={staged.length === 0 || consented}
+                  disabled={staged.length === 0 || uploading || consented}
                   data-testid="consent-check"
                   onChange={(e) => setConsentChecked(e.target.checked)}
                 />
@@ -1041,7 +1020,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 <button
                   type="button"
                   className="btn-secondary btn-sm w-full mt-2.5 py-1.5 font-medium"
-                  disabled={staged.length === 0 || !consentChecked || consenting}
+                  disabled={staged.length === 0 || uploading || !consentChecked || consenting}
                   data-testid="consent-confirm"
                   onClick={() => void handleConsent()}
                 >
@@ -1328,9 +1307,8 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                       <div className="space-y-0.5">
                         {LANG_OPTIONS.map((lang) => {
                           const checked = selectedTargets.includes(lang)
-                          const locked = staged.length > 1 && !checked
                           const isOnlyChecked = checked && selectedTargets.length === 1
-                          const disabled = batchCreating || locked || isOnlyChecked
+                          const disabled = batchCreating || isOnlyChecked
 
                           return (
                             <label
@@ -1342,13 +1320,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                                   : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-surface-2)] hover:text-[var(--color-text-primary)]',
                                 disabled && 'opacity-60 cursor-not-allowed',
                               )}
-                              title={
-                                locked
-                                  ? t('media:batch.multiVideoLocksTarget')
-                                  : isOnlyChecked
-                                    ? t('media:createPanel.minOneTarget')
-                                    : undefined
-                              }
+                              title={isOnlyChecked ? t('media:createPanel.minOneTarget') : undefined}
                             >
                               <input
                                 type="checkbox"
@@ -1402,11 +1374,6 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                   <span className="field-help text-[11px] mt-1 block">
                     {t('media:createPanel.targetHelp')}
                   </span>
-                  {staged.length > 1 && (
-                    <span className="field-help text-[11px] mt-1 block">
-                      {t('media:batch.multiVideoLocksTarget')}
-                    </span>
-                  )}
                 </div>
               </div>
             </div>
@@ -1474,7 +1441,13 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                       </span>
                     </label>
                     <div className="mt-3 space-y-3">
-                      {selectedTargets.map((lang) => (
+                      {selectedTargets.map((lang) => {
+                        const langJobs = jobsOfLang(lang)
+                        const langCreated = langJobs.filter((j) => j.status === 'created')
+                        const allCreated = staged.length > 0 && langCreated.length === staged.length
+                        const soleJobId = staged.length === 1 ? langJobs[0]?.jobId : null
+                        const langError = langJobs.find((j) => j.error)?.error
+                        return (
                         <div
                           key={lang}
                           className="media-config-block"
@@ -1486,22 +1459,25 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                               {formatLanguageOption(lang, language)}
                             </span>
                             <span className="text-[11px] text-[var(--color-text-tertiary)]">
-                              {targetJobs[lang]?.status === 'created'
+                              {allCreated
                                 ? t('media:batch.status.created')
-                                : targetJobs[lang]?.status === 'failed'
+                                : langJobs.some((j) => j.status === 'failed')
                                   ? t('media:batch.status.failed')
                                   : null}
+                              {staged.length > 1 && langCreated.length > 0 && !allCreated
+                                ? ` ${langCreated.length}/${staged.length}`
+                                : null}
                             </span>
                             <span className="flex-1" />
-                            {targetJobs[lang]?.jobId && (
+                            {soleJobId && (
                               <Link
-                                to={`/w/${workspaceId}/media/jobs/${targetJobs[lang]?.jobId}`}
+                                to={`/w/${workspaceId}/media/jobs/${soleJobId}`}
                                 className="text-xs font-semibold text-[var(--color-media)]"
                               >
                                 {t('media:batch.viewJob')}
                               </Link>
                             )}
-                            {targetJobs[lang]?.status === 'created' && (
+                            {allCreated && (
                               <IconCheck size={15} className="shrink-0 text-[var(--color-status-completed)]" />
                             )}
                           </div>
@@ -1526,13 +1502,14 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                               }
                             />
                           )}
-                          {targetJobs[lang]?.error && (
+                          {langError && (
                             <div className="mt-1 text-[11px] text-[var(--color-error)]">
-                              {targetJobs[lang]?.error}
+                              {langError}
                             </div>
                           )}
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </>
                 )}
@@ -1750,7 +1727,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                   <span>
                     {t('media:createPanel.jobsCreated', {
                       created: batchSummary.created,
-                      total: staged.length > 1 ? staged.length : selectedTargets.length,
+                      total: totalJobs,
                     })}
                   </span>
                 </span>
@@ -1764,6 +1741,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 <button
                   type="button"
                   onClick={() => {
+                    clearStaged()
                     onCreated?.('')
                     navigate(`/w/${workspaceId}/media?project=${projectId}#overview`)
                   }}
@@ -1803,12 +1781,6 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                   {t('media:createForm.ready')}
                 </span>
               )}
-              {isNxN && (
-                <span className="text-[var(--color-warning)] flex items-center gap-1" data-testid="nxn-hint">
-                  <IconAlertTriangle size={14} />
-                  {t('media:batch.noNxN')}
-                </span>
-              )}
               {noTtsProviders && recipeId !== 'summary.generative' && !keepOriginalAudio && (
                 <span className="text-[var(--color-error)] flex items-center gap-1">
                   <IconAlertCircle size={14} />
@@ -1827,7 +1799,6 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 || createJob.isPending
                 || batchCreating
                 || selectedModeBlock.kind !== 'ok'
-                || isNxN
                 || (isMultiTarget
                   ? selectedTargets.some((lang) => targetBlocked(lang))
                   : missingVoicePair)

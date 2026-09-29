@@ -196,12 +196,12 @@ sequenceDiagram
 
 | Bước | Kiểm tra / xử lý |
 |---|---|
-| `start` | Quyền ghi project · 0 < kích thước ≤ 500MB · content-type là video · tối đa 3 phiên đang mở / người dùng · đĩa staging còn ≥ kích thước file + 1GB · tạo `<staging>/<uploadId>/{meta.json, data.bin, parts/}` |
+| `start` | Quyền ghi project · 0 < kích thước ≤ 500MB · content-type là video · tối đa 10 phiên đang mở / người dùng · đĩa staging còn ≥ kích thước file + 1GB · tạo `<staging>/<uploadId>/{meta.json, data.bin, parts/}` |
 | `putChunk` | Chỉ chủ phiên · index hợp lệ · độ dài chunk khớp chính xác · ghi thẳng vào `data.bin` tại offset · tạo marker `parts/n`; gửi lại cùng chunk không lỗi |
 | `complete` | Khoá theo `uploadId` · đã có asset thì trả lại (idempotent) · đủ chunk · kiểm tra lại quyền · ffprobe (`MediaAssetServiceImpl`): không phải video thật → xoá, > 30 phút → từ chối · `putObject` key `source/<uuid>` · xoá dữ liệu staging, giữ `meta.json` |
 | Dọn dẹp | Phiên quá 24h không hoạt động bị xoá (`session-ttl PT24H`) |
 
-Cấu hình (`application.yaml`, `app.media.upload.*`): `chunk-size-bytes=8388608`, `session-ttl=PT2H`, `stale-after=PT5M`, `max-active-per-user=3`, `min-free-disk-bytes=1GB`. Staging nằm trên đĩa backend-main → chỉ đúng khi chạy **1 instance** backend-main.
+Cấu hình (`application.yaml`, `app.media.upload.*`): `chunk-size-bytes=8388608`, `session-ttl=PT2H`, `stale-after=PT5M`, `max-active-per-user=10`, `min-free-disk-bytes=1GB`. Staging nằm trên đĩa backend-main → chỉ đúng khi chạy **1 instance** backend-main.
 
 ### 6.3 Sự cố upload treo (29/09/2026) và số đo
 
@@ -270,7 +270,7 @@ sequenceDiagram
 | Security Group | Mọi cổng ngoài 80/443; SSH chỉ từ IP quản trị | |
 | fail2ban | IP flood liên tục bị chặn ở firewall, nginx không phải xử lý nữa | Botnet nhiều IP, mỗi IP dưới ngưỡng |
 | nginx host | Flood L7 từ ít IP (`limit_req` / `limit_conn`), slowloris, body lớn trước khi xác thực | |
-| Spring | Brute-force đăng nhập, lạm dụng upload (3 phiên/người, kiểm tra đĩa, ffprobe), RBAC tại service | |
+| Spring | Brute-force đăng nhập, lạm dụng upload (10 phiên/người, kiểm tra đĩa, ffprobe), RBAC tại service | |
 | SeaweedFS | Tải video không có chữ ký hợp lệ (403) | |
 
 Một EC2 lộ IP **không chống được** tấn công làm bão hoà băng thông hoặc botnet L7 lớn — cần một lớp edge (§9.3).

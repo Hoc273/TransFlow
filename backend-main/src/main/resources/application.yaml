@@ -122,7 +122,7 @@ app:
       session-ttl: ${MEDIA_UPLOAD_SESSION_TTL:PT2H}
       # Khi user chạm max-active-per-user, phiên của chính user không nhận chunk nào trong khoảng này bị dọn nhường chỗ.
       stale-after: ${MEDIA_UPLOAD_STALE_AFTER:PT5M}
-      max-active-per-user: ${MEDIA_UPLOAD_MAX_ACTIVE_PER_USER:3}
+      max-active-per-user: ${MEDIA_UPLOAD_MAX_ACTIVE_PER_USER:10}
       min-free-disk-bytes: ${MEDIA_UPLOAD_MIN_FREE_DISK_BYTES:1073741824}
   maintenance:
     enabled: ${MAINTENANCE_ENABLED:true}

@@ -959,8 +959,6 @@
     "removeRow": "Remove",
     "missingVoice": "Please select both Provider and Voice before creating the batch.",
     "noTtsProviders": "No TTS providers available in this workspace.",
-    "noNxN": "Batch v1 creates either N videos × 1 language or 1 video × N languages — never both at once.",
-    "multiVideoLocksTarget": "With several videos staged, every job shares this one target language.",
     "status": {
       "queued": "Queued",
       "uploading": "Uploading",

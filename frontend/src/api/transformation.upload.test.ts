@@ -131,6 +131,26 @@ describe('uploadTransformationMediaApi (chunked)', () => {
     expect(progress.at(-1)).toBe(100)
   })
 
+  it('shares one chunk budget across parallel uploads (host nginx caps connections per IP)', async () => {
+    fakeServer()
+    const base = apiRequest.getMockImplementation()!
+    let inFlight = 0
+    let peak = 0
+    apiRequest.mockImplementation(async (path: string, opts?: unknown) => {
+      if (!/\/chunks\/\d+$/.test(path)) return base(path, opts)
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await new Promise((r) => setTimeout(r, 5))
+      inFlight -= 1
+      return base(path, opts)
+    })
+    const files = [1, 2, 3, 4].map((n) => new File(['0123456789'], `v${n}.mp4`, { type: 'video/mp4' }))
+
+    await Promise.all(files.map((f) => uploadTransformationMediaApi('ws', 'p', f)))
+
+    expect(peak).toBeLessThanOrEqual(3)
+  })
+
   it('retries a chunk after a transient failure', async () => {
     vi.useFakeTimers()
     const { attempts } = fakeServer((index, attempt) =>

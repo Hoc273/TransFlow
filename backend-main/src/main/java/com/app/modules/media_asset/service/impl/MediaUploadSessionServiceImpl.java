@@ -75,7 +75,7 @@ public class MediaUploadSessionServiceImpl implements MediaUploadSessionService 
                                          @Value("${app.media.upload.staging-dir:${java.io.tmpdir}/transflow-uploads}") String stagingDir,
                                          @Value("${app.media.upload.chunk-size-bytes:8388608}") long chunkSize,
                                          @Value("${app.media.upload.session-ttl:PT2H}") Duration sessionTtl,
-                                         @Value("${app.media.upload.max-active-per-user:3}") int maxActivePerUser,
+                                         @Value("${app.media.upload.max-active-per-user:10}") int maxActivePerUser,
                                          @Value("${app.media.upload.min-free-disk-bytes:1073741824}") long minFreeBytes,
                                          @Value("${app.media.upload.stale-after:PT5M}") Duration staleAfter) {
         this(mediaAssetService, access, objectMapper, Path.of(stagingDir), chunkSize, sessionTtl,

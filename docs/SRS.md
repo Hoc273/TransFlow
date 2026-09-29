@@ -431,6 +431,11 @@ ngôn ngữ đó.
 - Màn hình theo dõi hiển thị dạng danh sách video kèm trạng thái xử lý của từng video (không còn là ma trận
   video × ngôn ngữ vì chỉ có 1 ngôn ngữ đích).
 - Một yêu cầu con bị lỗi không làm dừng hay ảnh hưởng đến các yêu cầu con khác trong cùng lô.
+
+> **Bổ sung (form tạo job Media Studio):** khi người dùng chọn nhiều video × nhiều ngôn ngữ đích cùng lúc, giao
+> diện tạo **mỗi cặp (video, ngôn ngữ) một Media Job độc lập** qua endpoint tạo job thông thường (không tạo bản
+> ghi Batch). Ràng buộc "Batch = N video × 1 ngôn ngữ" ở trên chỉ áp dụng cho thực thể Batch/API batch. Mỗi job
+> trừ credit và được kiểm tra quyền riêng như job tạo lẻ.
 - Người dùng có thể chạy lại riêng từng yêu cầu con bị lỗi, không cần chạy lại toàn bộ lô.
 - Có thể tải về toàn bộ kết quả đã hoàn thành dưới dạng một gói nén, hoặc xuất riêng từng kết quả.
 - Có thể huỷ toàn bộ lô xử lý hoặc huỷ riêng từng yêu cầu con.
