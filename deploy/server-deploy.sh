@@ -152,7 +152,7 @@ while :; do
   sleep 5
 done
 
-# frontend chờ backend-main healthy mới start — đảm bảo nó đã lên.
+# frontend không phụ thuộc backend-main nên đã chạy từ `up -d` ở trên; lệnh này chỉ phòng hờ (idempotent).
 compose up -d frontend
 
 # ───────────────────────── 4. Verify + cleanup ─────────────────────────
