@@ -26,7 +26,7 @@ export function Logo({
       )}
     >
       <img
-        src="/favicon.svg"
+        src="/favicon.png"
         alt="TransFlow Logo"
         className="h-full w-full object-contain drop-shadow-[0_0_10px_rgba(0,192,255,0.5)] transition-transform hover:scale-105"
       />

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
+import { LazyVideo } from '@/components/shared/LazyVideo'
 
 /**
  * Boosts sampled video pixel colors to luminous, high-contrast HSL values
@@ -113,7 +114,7 @@ export function LandingCtaBanner() {
 
       <div className="relative rounded-2xl sm:rounded-[32px] overflow-hidden border border-neutral-200/80 dark:border-white/10 aspect-auto sm:aspect-[24/8] min-h-[280px] sm:min-h-[360px] flex flex-col items-center justify-center text-center p-5 sm:p-12 shadow-sm dark:shadow-2xl bg-neutral-100 dark:bg-[#13151b] group">
         {/* Ambient Video Background (Darkskip in dark mode, footer_brand in light mode) */}
-        <video
+        <LazyVideo
           ref={videoRef}
           key={theme}
           src={
@@ -121,10 +122,6 @@ export function LandingCtaBanner() {
               ? '/landing/videos/Darkskip.mp4'
               : '/landing/videos/footer_brand.mp4'
           }
-          autoPlay
-          loop
-          muted
-          playsInline
           className="absolute inset-0 w-full h-full object-cover pointer-events-none group-hover:scale-105 transition-transform duration-1000 ease-out"
         />
 

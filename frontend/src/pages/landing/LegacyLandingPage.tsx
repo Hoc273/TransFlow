@@ -25,9 +25,9 @@ import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { getLastWorkspaceId, useAuthStore } from '@/store/authStore'
 
-const HERO_IMG = '/land_pic_1.jpeg'
-const MEDIA_IMG = '/land_pic_2.png'
-const CREATIVE_IMG = '/land_pic_3.png'
+const HERO_IMG = '/land_pic_1.webp'
+const MEDIA_IMG = '/land_pic_2.webp'
+const CREATIVE_IMG = '/land_pic_3.webp'
 
 const LANG_PILLS = [
   '🇻🇳 Tiếng Việt',

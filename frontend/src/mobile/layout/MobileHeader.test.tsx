@@ -34,7 +34,7 @@ describe('MobileHeader', () => {
       </MemoryRouter>,
     )
     const logo = screen.getByRole('img', { name: 'TransFlow' })
-    expect(logo.getAttribute('src')).toBe('/favicon.svg')
+    expect(logo.getAttribute('src')).toBe('/favicon.png')
     expect(screen.queryByText('TransFlow')).toBeNull()
     expect(screen.getByTestId('ws-switcher')).toBeTruthy()
   })

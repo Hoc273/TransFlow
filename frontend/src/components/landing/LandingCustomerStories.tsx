@@ -25,7 +25,7 @@ function getCustomerStories(t: (key: string) => string): TestimonialStory[] {
       content: t('stories.items.freelancer1.content'),
       author: t('stories.items.freelancer1.author'),
       role: t('stories.items.freelancer1.role'),
-      image: '/landing/images/asset_19.jpg',
+      image: '/landing/images/asset_19.webp',
       highlightMetric: t('stories.items.freelancer1.metric'),
       highlightMetricLabel: t('stories.items.freelancer1.metricLabel')
     },
@@ -37,7 +37,7 @@ function getCustomerStories(t: (key: string) => string): TestimonialStory[] {
       content: t('stories.items.freelancer2.content'),
       author: t('stories.items.freelancer2.author'),
       role: t('stories.items.freelancer2.role'),
-      image: '/landing/images/asset_20.png',
+      image: '/landing/images/asset_20.webp',
       highlightMetric: t('stories.items.freelancer2.metric'),
       highlightMetricLabel: t('stories.items.freelancer2.metricLabel')
     },
@@ -49,7 +49,7 @@ function getCustomerStories(t: (key: string) => string): TestimonialStory[] {
       content: t('stories.items.freelancer3.content'),
       author: t('stories.items.freelancer3.author'),
       role: t('stories.items.freelancer3.role'),
-      image: '/landing/images/asset_23.jpg',
+      image: '/landing/images/asset_23.webp',
       highlightMetric: t('stories.items.freelancer3.metric'),
       highlightMetricLabel: t('stories.items.freelancer3.metricLabel')
     },
@@ -61,7 +61,7 @@ function getCustomerStories(t: (key: string) => string): TestimonialStory[] {
       content: t('stories.items.freelancer4.content'),
       author: t('stories.items.freelancer4.author'),
       role: t('stories.items.freelancer4.role'),
-      image: '/landing/images/asset_24.png',
+      image: '/landing/images/asset_24.webp',
       highlightMetric: t('stories.items.freelancer4.metric'),
       highlightMetricLabel: t('stories.items.freelancer4.metricLabel')
     },
@@ -73,7 +73,7 @@ function getCustomerStories(t: (key: string) => string): TestimonialStory[] {
       content: t('stories.items.creator1.content'),
       author: t('stories.items.creator1.author'),
       role: t('stories.items.creator1.role'),
-      image: '/landing/images/asset_25.png',
+      image: '/landing/images/asset_25.webp',
       highlightMetric: t('stories.items.creator1.metric'),
       highlightMetricLabel: t('stories.items.creator1.metricLabel')
     },
@@ -85,7 +85,7 @@ function getCustomerStories(t: (key: string) => string): TestimonialStory[] {
       content: t('stories.items.creator2.content'),
       author: t('stories.items.creator2.author'),
       role: t('stories.items.creator2.role'),
-      image: '/landing/images/asset_26.jpg',
+      image: '/landing/images/asset_26.webp',
       highlightMetric: t('stories.items.creator2.metric'),
       highlightMetricLabel: t('stories.items.creator2.metricLabel')
     },
@@ -97,7 +97,7 @@ function getCustomerStories(t: (key: string) => string): TestimonialStory[] {
       content: t('stories.items.creator3.content'),
       author: t('stories.items.creator3.author'),
       role: t('stories.items.creator3.role'),
-      image: '/landing/images/asset_27.png',
+      image: '/landing/images/asset_27.webp',
       highlightMetric: t('stories.items.creator3.metric'),
       highlightMetricLabel: t('stories.items.creator3.metricLabel')
     }

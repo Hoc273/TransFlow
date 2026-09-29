@@ -70,7 +70,7 @@ export function TopNav({ onMobileMenu }: TopNavProps) {
           to={`/w/${workspaceId}`}
           className="flex items-center gap-2.5 no-underline text-[var(--color-accent)] shrink-0"
         >
-          <img src="/favicon.svg" alt="TransFlow" className="h-7 w-7 object-contain drop-shadow-[0_0_8px_rgba(0,192,255,0.45)]" />
+          <img src="/favicon.png" alt="TransFlow" className="h-7 w-7 object-contain drop-shadow-[0_0_8px_rgba(0,192,255,0.45)]" />
           <span className="text-[16px] font-bold tracking-tight text-[var(--color-text-primary)]">
             {t('appName')}
           </span>

@@ -1,4 +1,3 @@
-import { useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -9,14 +8,13 @@ import {
 } from '@tabler/icons-react'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
+import { LazyVideo } from '@/components/shared/LazyVideo'
 
 const DARK_HERO_VIDEO = '/landing/videos/dark1.mp4'
 const LIGHT_HERO_VIDEO = '/landing/videos/hero_slide_1.mp4'
 
 export function LandingHero() {
   const { t } = useTranslation('landing')
-  const darkVideoRef = useRef<HTMLVideoElement | null>(null)
-  const lightVideoRef = useRef<HTMLVideoElement | null>(null)
   const theme = useUiStore((s) => s.theme)
   const isDark = theme === 'dark'
 
@@ -29,37 +27,20 @@ export function LandingHero() {
       : '/dashboard'
     : '/login'
 
-  // Ensure active video auto-plays seamlessly
-  useEffect(() => {
-    if (isDark && darkVideoRef.current) {
-      darkVideoRef.current.play()?.catch?.(() => {})
-    } else if (!isDark && lightVideoRef.current) {
-      lightVideoRef.current.play()?.catch?.(() => {})
-    }
-  }, [isDark])
-
   return (
     <section className="relative w-full overflow-hidden bg-white dark:bg-[#09090a] pt-28 pb-16 min-h-[560px] sm:min-h-[640px] lg:min-h-[720px] flex flex-col justify-between transition-colors duration-700 ease-in-out">
       {/* Edge-to-Edge Full Width Ambient Video Background (No poster flash, smooth cross-fade) */}
       <div className="absolute inset-0 w-full h-full overflow-hidden bg-white dark:bg-[#09090a] transition-colors duration-700 ease-in-out">
-        <video
-          ref={darkVideoRef}
+        <LazyVideo
           src={DARK_HERO_VIDEO}
-          autoPlay
-          loop
-          muted
-          playsInline
+          active={isDark}
           className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-in-out ${
             isDark ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
           }`}
         />
-        <video
-          ref={lightVideoRef}
+        <LazyVideo
           src={LIGHT_HERO_VIDEO}
-          autoPlay
-          loop
-          muted
-          playsInline
+          active={!isDark}
           className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-in-out ${
             !isDark ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
           }`}

@@ -29,6 +29,7 @@ import {
   IconChevronUp
 } from '@tabler/icons-react'
 import { useAuthStore } from '@/store/authStore'
+import { LazyVideo } from '@/components/shared/LazyVideo'
 
 export type WorkflowType = 'localization' | 'summarization'
 
@@ -1465,12 +1466,8 @@ function AnimationStep5QA({
         {/* Video Canvas Simulation with Safe-Zone Reticle and Playhead */}
         <div className="h-44 sm:h-52 rounded-xl bg-gradient-to-b from-[#080a12] via-[#05060a] to-black border border-white/15 flex flex-col justify-between p-3 sm:p-3.5 relative overflow-hidden select-none shadow-inner">
           {/* Real Video Footage Playing in Background */}
-          <video
+          <LazyVideo
             src="/landing/videos/hero_slide_2.mp4"
-            autoPlay
-            loop
-            muted
-            playsInline
             className="absolute inset-0 w-full h-full object-cover opacity-55 filter brightness-90 contrast-110 pointer-events-none"
           />
 
@@ -1662,12 +1659,8 @@ function AnimationSumStep1() {
       {/* Video Monitor with Topic Analysis */}
       <div className="h-36 sm:h-44 rounded-xl bg-gradient-to-b from-[#0a0814] via-[#07050f] to-black border border-white/15 flex flex-col justify-between p-3 relative overflow-hidden select-none shadow-inner">
         {/* Real Video Footage Playing in Background */}
-        <video
+        <LazyVideo
           src="/landing/videos/agent_docs.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
           className="absolute inset-0 w-full h-full object-cover opacity-50 filter brightness-90 contrast-110 pointer-events-none"
         />
 
@@ -1881,12 +1874,8 @@ function AnimationSumStep2() {
       {/* Video Monitor with Splicing Simulation and Sequentially Appearing Moments */}
       <div className="h-44 sm:h-52 rounded-xl bg-gradient-to-b from-[#140e08] via-[#0f0a06] to-black border border-white/15 flex flex-col justify-between p-3 relative overflow-hidden select-none shadow-inner">
         {/* Real Video Footage Playing in Background */}
-        <video
+        <LazyVideo
           src="/landing/videos/agent_try_ai.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
           className="absolute inset-0 w-full h-full object-cover opacity-55 filter brightness-90 contrast-110 pointer-events-none"
         />
 
@@ -2095,12 +2084,8 @@ function AnimationSumStep3() {
       {/* Video Monitor: Real 120s Recap Reel */}
       <div className="h-40 sm:h-48 rounded-xl bg-gradient-to-b from-[#08120e] via-[#050d09] to-black border border-white/15 flex flex-col justify-between p-3 relative overflow-hidden select-none shadow-inner">
         {/* Real Video Footage Playing in Background */}
-        <video
+        <LazyVideo
           src="/landing/videos/footer_brand.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
           className="absolute inset-0 w-full h-full object-cover opacity-60 filter brightness-95 contrast-110 pointer-events-none"
         />
 
