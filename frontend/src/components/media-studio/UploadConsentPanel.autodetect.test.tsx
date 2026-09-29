@@ -404,32 +404,72 @@ describe('UploadConsentPanel — staged multi-file upload card', () => {
     expect(apiCreateMock).toHaveBeenCalledTimes(3)
   })
 
-  it('bans N×N: staged videos lock targets and block submit with a hint', async () => {
+  it('creates one job per (video, language) pair when several videos meet several targets', async () => {
     render(<UploadConsentPanel workspaceId="ws" projectId="prj" />)
-    // Pick two targets first, then stage a second video → N×N dead-end.
     fireEvent.click(screen.getByTestId('target-check-en'))
     expect(await screen.findAllByTestId('multi-target-row')).toHaveLength(2)
     fireEvent.change(screen.getByTestId('single-file-input'), {
       target: { files: [videoFile('a.mp4'), videoFile('b.mp4')] },
     })
     expect(await screen.findAllByTestId('staged-row')).toHaveLength(2)
-    expect(screen.getByTestId('nxn-hint')).toBeTruthy()
-    expect((screen.getByTestId('create-submit') as HTMLButtonElement).disabled).toBe(true)
-    // Escape hatch: unchecking a target re-enables submit.
-    fireEvent.click(screen.getByTestId('target-check-en'))
-    expect(screen.queryByTestId('nxn-hint')).toBeNull()
+    // Targets stay editable with several videos staged.
+    expect((screen.getByTestId('target-check-en') as HTMLInputElement).disabled).toBe(false)
+    fireEvent.click(screen.getByTestId('multi-keep-original'))
+    fireEvent.click(screen.getByTestId('consent-check'))
+    fireEvent.click(screen.getByTestId('consent-confirm'))
+    await waitForConsentSettled()
+    fireEvent.click(screen.getByTestId('create-submit'))
+    const summary = await screen.findByTestId('staged-summary')
+    expect(summary.textContent).toContain('4/4 jobs created')
+    const pairs = apiCreateMock.mock.calls.map((c) => {
+      const body = c[1] as Record<string, unknown>
+      return `${body.documentId ?? body.rootAssetId}:${body.targetLang}`
+    })
+    expect(new Set(pairs).size).toBe(4)
   })
 
-  it('locks target checkboxes to one language once several videos are staged', async () => {
+  it('keeps staged videos and finishes a running upload when the panel is remounted', async () => {
+    // A layout switch (mobile <-> desktop shell) unmounts the panel mid-upload.
+    let finishUpload: (() => void) | undefined
+    uploadHookMock.mutateAsync.mockImplementation(
+      ({ file }: { file: File }) =>
+        new Promise((resolve) => {
+          finishUpload = () =>
+            resolve({
+              assetId: `asset-${file.name}`,
+              documentId: `doc-${file.name}`,
+              fileName: file.name,
+              fileSizeBytes: file.size,
+              durationMs: 60000,
+              consented: false,
+            })
+        }),
+    )
+    const first = render(<UploadConsentPanel workspaceId="ws" projectId="prj" />)
+    fireEvent.change(screen.getByTestId('single-file-input'), {
+      target: { files: [videoFile('a.mp4')] },
+    })
+    expect((await screen.findByTestId('staged-row')).getAttribute('data-status')).toBe('uploading')
+
+    first.unmount()
+    render(<UploadConsentPanel workspaceId="ws" projectId="prj" />)
+    expect((await screen.findByTestId('staged-row')).getAttribute('data-status')).toBe('uploading')
+
+    finishUpload?.()
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('staged-row').getAttribute('data-status')).toBe('ready')
+    })
+  })
+
+  it('lets a second language be added after several videos are staged', async () => {
     render(<UploadConsentPanel workspaceId="ws" projectId="prj" />)
     fireEvent.change(screen.getByTestId('single-file-input'), {
       target: { files: [videoFile('a.mp4'), videoFile('b.mp4')] },
     })
     expect(await screen.findAllByTestId('staged-row')).toHaveLength(2)
-    // Checking a second target is refused while several videos are staged.
     fireEvent.click(screen.getByTestId('target-check-en'))
-    expect((screen.getByTestId('target-check-en') as HTMLInputElement).checked).toBe(false)
-    expect(screen.queryByTestId('multi-target-row')).toBeNull()
+    expect((screen.getByTestId('target-check-en') as HTMLInputElement).checked).toBe(true)
+    expect(await screen.findAllByTestId('multi-target-row')).toHaveLength(2)
   })
 
   it('toggles target dropdown, removes targets via chip remove button, and closes on Escape', async () => {

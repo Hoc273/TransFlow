@@ -10,3 +10,8 @@ process.env.NODE_ENV = 'test'
 let objectUrlSeq = 0
 URL.createObjectURL = () => `blob:vitest/${++objectUrlSeq}`
 URL.revokeObjectURL = () => {}
+
+// The staged-upload store is module state; keep it from leaking between tests.
+import { afterEach } from 'vitest'
+import { useStagedUploadStore } from '@/store/stagedUploadStore'
+afterEach(() => useStagedUploadStore.setState({ byScope: {} }))

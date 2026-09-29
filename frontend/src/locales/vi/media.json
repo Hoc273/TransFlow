@@ -959,8 +959,6 @@
     "removeRow": "Xóa",
     "missingVoice": "Vui lòng chọn đủ Provider và Giọng đọc trước khi tạo batch.",
     "noTtsProviders": "Chưa có nhà cung cấp TTS nào khả dụng trong workspace.",
-    "noNxN": "Batch v1 chỉ tạo N video × 1 ngôn ngữ hoặc 1 video × N ngôn ngữ — không bao giờ cả hai cùng lúc.",
-    "multiVideoLocksTarget": "Với nhiều video, mọi job dùng chung một ngôn ngữ đích này.",
     "status": {
       "queued": "Đang chờ",
       "uploading": "Đang tải lên",
