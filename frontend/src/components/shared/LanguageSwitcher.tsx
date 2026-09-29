@@ -29,24 +29,31 @@ export function LanguageSwitcher({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
   const menuId = useId()
+  // Only move focus into the menu for keyboard users: on iOS Safari a tap never focuses a
+  // button, so programmatic focus + blur-to-close made the menu close before a tap registered.
+  const keyboardOpenRef = useRef(false)
   const selectedIndex = LANGUAGES.findIndex((option) => option.value === language)
   const selectedLanguage = LANGUAGES[selectedIndex] ?? LANGUAGES[0]
 
   useEffect(() => {
     if (!open) return
 
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: Event) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
         setOpen(false)
       }
     }
 
-    document.addEventListener('mousedown', onPointerDown)
-    return () => document.removeEventListener('mousedown', onPointerDown)
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('touchstart', onPointerDown, { passive: true })
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('touchstart', onPointerDown)
+    }
   }, [open])
 
   useEffect(() => {
-    if (open) optionRefs.current[selectedIndex]?.focus()
+    if (open && keyboardOpenRef.current) optionRefs.current[selectedIndex]?.focus()
   }, [open, selectedIndex])
 
   const change = (lang: Language) => {
@@ -75,6 +82,7 @@ export function LanguageSwitcher({
 
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
     event.preventDefault()
+    keyboardOpenRef.current = true
     setOpen(true)
   }
 
@@ -108,14 +116,20 @@ export function LanguageSwitcher({
       ref={rootRef}
       className="language-select"
       onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+        // relatedTarget is null when focus goes nowhere (iOS taps): outside taps close via pointerdown.
+        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) {
+          setOpen(false)
+        }
       }}
     >
       <button
         ref={triggerRef}
         type="button"
         className={cn('language-select-trigger', className)}
-        onClick={() => setOpen((current) => !current)}
+        onClick={(event) => {
+          keyboardOpenRef.current = event.detail === 0
+          setOpen((current) => !current)
+        }}
         onKeyDown={handleTriggerKeyDown}
         aria-label={`Select language. Current language: ${selectedLanguage.name}.`}
         aria-controls={menuId}
