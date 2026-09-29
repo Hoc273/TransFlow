@@ -74,7 +74,7 @@ public class MediaAssetController {
                 .build();
     }
 
-    // ---- Chunked upload: each request stays below the 100MB Cloudflare / 10MB nginx body caps ----
+    // ---- Chunked upload: each request stays below the 10MB nginx body cap (and 100MB Cloudflare if proxied) ----
 
     @PostMapping("/projects/{projectId}/media/uploads")
     @ResponseStatus(HttpStatus.CREATED)
@@ -84,6 +84,14 @@ public class MediaAssetController {
                                                           @Valid @RequestBody UploadSessionRequest req) {
         var session = uploadSessions.start(workspaceId, user.id(), projectId,
                 req.fileName(), req.fileSizeBytes(), req.contentType());
+        return ApiResponse.<UploadSessionResponse>builder().data(UploadSessionResponse.from(session)).build();
+    }
+
+    @GetMapping("/media/uploads/{uploadId}")
+    public ApiResponse<UploadSessionResponse> getUpload(@AuthenticationPrincipal AuthenticatedUser user,
+                                                        @PathVariable UUID workspaceId,
+                                                        @PathVariable UUID uploadId) {
+        var session = uploadSessions.status(workspaceId, user.id(), uploadId);
         return ApiResponse.<UploadSessionResponse>builder().data(UploadSessionResponse.from(session)).build();
     }
 

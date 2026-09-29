@@ -528,6 +528,50 @@ type UploadSession = {
   chunkSizeBytes: number
   totalChunks: number
   receivedChunks: number
+  /** Chunks the server already stores (present on start/status/chunk responses of newer backends). */
+  receivedIndexes?: number[]
+  /** `complete` already produced the asset — only a repeated `complete` call is left. */
+  completed?: boolean
+}
+
+// A reload kills the tab's JS (and the `File`), but the server keeps the staged chunks. The session id
+// is remembered per file so picking the same file again continues instead of restarting.
+const RESUME_KEY_PREFIX = 'tf-upload:'
+
+function resumeKey(workspaceId: string, projectId: string, file: File) {
+  return `${RESUME_KEY_PREFIX}${workspaceId}:${projectId}:${file.name}:${file.size}:${file.lastModified}`
+}
+
+function readResumeId(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeResumeId(key: string, uploadId: string | null) {
+  try {
+    if (uploadId) localStorage.setItem(key, uploadId)
+    else localStorage.removeItem(key)
+  } catch {
+    // storage unavailable (private mode): the upload just is not resumable
+  }
+}
+
+let activeUploads = 0
+function warnBeforeUnload(event: BeforeUnloadEvent) {
+  event.preventDefault()
+  event.returnValue = ''
+}
+function trackActiveUpload(delta: 1 | -1) {
+  if (typeof window === 'undefined') return
+  activeUploads += delta
+  if (delta === 1 && activeUploads === 1) window.addEventListener('beforeunload', warnBeforeUnload)
+  if (activeUploads <= 0) {
+    activeUploads = 0
+    window.removeEventListener('beforeunload', warnBeforeUnload)
+  }
 }
 
 /** Chunks in flight at once: enough to fill the pipe without flooding the rate limit. */
@@ -562,7 +606,7 @@ function waitOrAbort(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /**
- * Chunked upload: every request stays below the 10MB host-nginx and 100MB Cloudflare body caps,
+ * Chunked upload: every request stays below the 10MB host-nginx body cap (and 100MB Cloudflare if proxied),
  * and each chunk carries its own (fresh) access token, so a long upload can no longer outlive
  * the token. Progress counts bytes on the wire (XHR upload events); 100% only after `complete` returns.
  */
@@ -582,16 +626,10 @@ export async function uploadTransformationMediaApi(
   opts.signal?.addEventListener('abort', onCallerAbort, { once: true })
   const signal = controller.signal
 
+  const storeKey = resumeKey(workspaceId, projectId, file)
+  let sessionPath: string | null = null
   opts.onProgress?.(0)
-  const session = await apiRequest<UploadSession>(
-    buildWorkspacePath(workspaceId, `/projects/${projectId}/media/uploads`),
-    {
-      method: 'POST',
-      body: { fileName: file.name, fileSizeBytes: file.size, contentType: file.type },
-      signal,
-    },
-  )
-  const sessionPath = buildWorkspacePath(workspaceId, `/media/uploads/${session.uploadId}`)
+  trackActiveUpload(1)
 
   const withRetry = async <T,>(send: () => Promise<T>): Promise<T> => {
     for (let attempt = 1; ; attempt++) {
@@ -605,56 +643,102 @@ export async function uploadTransformationMediaApi(
     }
   }
 
-  // Bytes of finished chunks + bytes already sent of the chunks in flight, so the bar moves while
-  // an 8MB chunk is on the wire instead of jumping once per chunk.
-  let doneBytes = 0
-  const inFlight = new Map<number, number>()
-  let reported = 0
-  const report = () => {
-    let sent = doneBytes
-    for (const loaded of inFlight.values()) sent += loaded
-    // Cap at 99% — the server still probes and stores the file on `complete`. Never go backwards
-    // (a retried chunk restarts from 0).
-    const pct = Math.min(99, Math.floor((sent / Math.max(file.size, 1)) * 100))
-    if (pct > reported) {
-      reported = pct
-      opts.onProgress?.(pct)
-    }
-  }
-
-  const sendChunk = async (index: number) => {
-    const start = index * session.chunkSizeBytes
-    const blob = file.slice(start, Math.min(file.size, start + session.chunkSizeBytes))
-    try {
-      await withRetry(() => {
-        inFlight.set(index, 0)
-        return apiRequest(`${sessionPath}/chunks/${index}`, {
-          method: 'PUT',
-          body: blob,
-          rawBody: true,
-          headers: { 'Content-Type': 'application/octet-stream' },
-          signal,
-          onUploadProgress: (loaded) => {
-            inFlight.set(index, Math.min(loaded, blob.size))
-            report()
-          },
-        })
-      })
-    } finally {
-      inFlight.delete(index)
-    }
-    doneBytes += blob.size
-    report()
-  }
-
   try {
-    let nextIndex = 0
-    const worker = async () => {
-      while (nextIndex < session.totalChunks && !signal.aborted) {
-        await sendChunk(nextIndex++)
+    // Continue an interrupted upload of this exact file if the server still holds its session.
+    let session: UploadSession | null = null
+    const resumeId = readResumeId(storeKey)
+    if (resumeId) {
+      try {
+        const previous = await apiRequest<UploadSession>(
+          buildWorkspacePath(workspaceId, `/media/uploads/${resumeId}`),
+          { signal },
+        )
+        if (previous.totalChunks === Math.ceil(file.size / previous.chunkSizeBytes)) session = previous
+      } catch (err) {
+        if (signal.aborted) throw abortError()
+        // Network trouble is not proof the session is gone — do not silently start a second one.
+        if (isTransientUploadError(err)) throw err
+      }
+      if (!session) writeResumeId(storeKey, null)
+    }
+    if (!session) {
+      session = await apiRequest<UploadSession>(
+        buildWorkspacePath(workspaceId, `/projects/${projectId}/media/uploads`),
+        {
+          method: 'POST',
+          body: { fileName: file.name, fileSizeBytes: file.size, contentType: file.type },
+          signal,
+        },
+      )
+      writeResumeId(storeKey, session.uploadId)
+    }
+    const active = session
+    const basePath = buildWorkspacePath(workspaceId, `/media/uploads/${active.uploadId}`)
+    sessionPath = basePath
+
+    const chunkBytes = (index: number) => {
+      const start = index * active.chunkSizeBytes
+      return Math.min(file.size, start + active.chunkSizeBytes) - start
+    }
+
+    // Chunks the server already holds (resume) are skipped and count as sent.
+    const alreadyStored = new Set(active.completed ? [] : (active.receivedIndexes ?? []))
+    const pending: number[] = []
+    let doneBytes = 0
+    for (let i = 0; i < active.totalChunks; i++) {
+      if (alreadyStored.has(i)) doneBytes += chunkBytes(i)
+      else if (!active.completed) pending.push(i)
+    }
+
+    // Bytes of finished chunks + bytes already sent of the chunks in flight, so the bar moves while
+    // an 8MB chunk is on the wire instead of jumping once per chunk.
+    const inFlight = new Map<number, number>()
+    let reported = 0
+    const report = () => {
+      let sent = doneBytes
+      for (const loaded of inFlight.values()) sent += loaded
+      // Cap at 99% — the server still probes and stores the file on `complete`. Never go backwards
+      // (a retried chunk restarts from 0).
+      const pct = Math.min(99, Math.floor((sent / Math.max(file.size, 1)) * 100))
+      if (pct > reported) {
+        reported = pct
+        opts.onProgress?.(pct)
       }
     }
-    const workers = Array.from({ length: Math.min(UPLOAD_CONCURRENCY, session.totalChunks) }, () =>
+    report()
+
+    const sendChunk = async (index: number) => {
+      const start = index * active.chunkSizeBytes
+      const blob = file.slice(start, Math.min(file.size, start + active.chunkSizeBytes))
+      try {
+        await withRetry(() => {
+          inFlight.set(index, 0)
+          return apiRequest(`${basePath}/chunks/${index}`, {
+            method: 'PUT',
+            body: blob,
+            rawBody: true,
+            headers: { 'Content-Type': 'application/octet-stream' },
+            signal,
+            onUploadProgress: (loaded) => {
+              inFlight.set(index, Math.min(loaded, blob.size))
+              report()
+            },
+          })
+        })
+      } finally {
+        inFlight.delete(index)
+      }
+      doneBytes += blob.size
+      report()
+    }
+
+    let next = 0
+    const worker = async () => {
+      while (next < pending.length && !signal.aborted) {
+        await sendChunk(pending[next++])
+      }
+    }
+    const workers = Array.from({ length: Math.min(UPLOAD_CONCURRENCY, pending.length) }, () =>
       worker().catch((err) => {
         controller.abort()
         throw err
@@ -665,15 +749,16 @@ export async function uploadTransformationMediaApi(
     if (failed) throw failed.reason
     if (signal.aborted) throw abortError()
 
-    // `complete` is idempotent server-side: a retry after a proxy timeout (Cloudflare 524 at 100s)
+    // `complete` is idempotent server-side: a retry after a proxy/network timeout
     // waits for the running one and gets the same asset instead of losing it.
     const asset = await withRetry(() =>
-      apiRequest<Record<string, unknown>>(`${sessionPath}/complete`, {
+      apiRequest<Record<string, unknown>>(`${basePath}/complete`, {
         method: 'POST',
         body: opts.name?.trim() ? { name: opts.name.trim() } : undefined,
         signal,
       }),
     )
+    writeResumeId(storeKey, null)
     opts.onProgress?.(100)
 
     const assetId = String(asset.assetId ?? asset.id ?? '')
@@ -687,10 +772,15 @@ export async function uploadTransformationMediaApi(
       consented: Boolean(asset.consented),
     } as MediaUploadResponse
   } catch (err) {
-    // Free the staged bytes and the per-user upload slot right away (best effort).
-    void apiRequest(sessionPath, { method: 'DELETE' }).catch(() => undefined)
+    // Lost connection / retries exhausted: keep the staged chunks so the same file can resume.
+    // Cancelled or rejected (validation, expired session): free the bytes and the upload slot now.
+    if (sessionPath && (signal.aborted || !isTransientUploadError(err))) {
+      writeResumeId(storeKey, null)
+      void apiRequest(sessionPath, { method: 'DELETE' }).catch(() => undefined)
+    }
     throw err
   } finally {
+    trackActiveUpload(-1)
     opts.signal?.removeEventListener('abort', onCallerAbort)
   }
 }

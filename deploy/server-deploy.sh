@@ -7,7 +7,7 @@
 # Trong APP_DIR phải có: docker-compose.prod.yml, deploy/, .env (secret ENV_PROD), .env.deploy (IMAGE_*).
 # Các bước (idempotent, chạy lại bao nhiêu lần cũng được):
 #   1. Kiểm tra công cụ + biến bắt buộc
-#   2. nginx + Let's Encrypt (lần đầu: cấu hình HTTP tạm -> certbot webroot -> cấu hình HTTPS)
+#   2. nginx + Let's Encrypt (lần đầu: cấu hình HTTP tạm -> certbot webroot -> cấu hình HTTPS), fail2ban
 #   3. Pull image, `compose up -d`, chờ backend-main healthy
 #   4. Smoke test qua HTTPS, dọn image cũ
 set -Eeuo pipefail
@@ -131,6 +131,31 @@ $SUDO chmod 755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 
 render_nginx deploy/nginx/transflow.conf.template
 reload_nginx
+
+# fail2ban: chặn ở firewall IP liên tục vượt rate-limit nginx (deploy/fail2ban/). Lớp phụ — lỗi ở
+# đây (apt bận, thiếu mạng) chỉ cảnh báo, không làm hỏng deploy.
+install_fail2ban() {
+  if ! command -v fail2ban-client >/dev/null 2>&1; then
+    log "Installing fail2ban"
+    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -qq \
+      && $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq fail2ban >/dev/null \
+      || { echo "WARN: fail2ban install failed — skipping"; return 0; }
+  fi
+  $SUDO install -m 644 deploy/fail2ban/filter.d/transflow-nginx-limit.conf /etc/fail2ban/filter.d/
+  $SUDO install -m 644 deploy/fail2ban/jail.d/transflow.local /etc/fail2ban/jail.d/
+  if ! $SUDO fail2ban-client -t >/dev/null; then
+    echo "WARN: fail2ban config test failed — jail not (re)loaded"
+    return 0
+  fi
+  if $SUDO systemctl is-active --quiet fail2ban; then
+    $SUDO fail2ban-client reload >/dev/null || echo "WARN: fail2ban reload failed"
+  else
+    $SUDO systemctl enable --now fail2ban || echo "WARN: fail2ban did not start"
+  fi
+  $SUDO fail2ban-client status transflow-nginx-limit 2>/dev/null | grep -E 'Currently banned' || true
+}
+log "fail2ban"
+install_fail2ban
 
 # ───────────────────────── 3. Containers ─────────────────────────
 log "Pulling images ($(env_value IMAGE_TAG .env.deploy))"

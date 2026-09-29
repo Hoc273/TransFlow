@@ -44,12 +44,55 @@ function fakeServer(failChunk: (index: number, attempt: number) => unknown = () 
 
 const file = new File(['0123456789'], 'v.mp4', { type: 'video/mp4' })
 
+const storage = new Map<string, string>()
+
 beforeEach(() => {
+  storage.clear()
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => storage.get(k) ?? null,
+    setItem: (k: string, v: string) => void storage.set(k, v),
+    removeItem: (k: string) => void storage.delete(k),
+  })
   apiRequest.mockReset()
   vi.useRealTimers()
 })
 
 describe('uploadTransformationMediaApi (chunked)', () => {
+  it('resumes the stored session after a reload and sends only the missing chunks', async () => {
+    const { calls, received } = fakeServer()
+    const base = apiRequest.getMockImplementation()!
+    apiRequest.mockImplementation(async (path: string, opts: { method?: string } = {}) => {
+      if (path === '/workspaces/ws/media/uploads/up-1' && !opts.method) {
+        return { uploadId: 'up-1', chunkSizeBytes: 4, totalChunks: 3, receivedChunks: 2, receivedIndexes: [0, 1] }
+      }
+      return base(path, opts)
+    })
+    localStorage.setItem(`tf-upload:ws:p:v.mp4:${file.size}:${file.lastModified}`, 'up-1')
+
+    await uploadTransformationMediaApi('ws', 'p', file)
+
+    expect(calls.some((c) => c.path.endsWith('/projects/p/media/uploads'))).toBe(false)
+    expect([...received.keys()]).toEqual([2])
+    expect(calls.at(-1)).toMatchObject({ path: `${SESSION}/complete` })
+    expect(localStorage.getItem(`tf-upload:ws:p:v.mp4:${file.size}:${file.lastModified}`)).toBeNull()
+  })
+
+  it('starts a new session when the remembered one is gone', async () => {
+    const { calls } = fakeServer()
+    const base = apiRequest.getMockImplementation()!
+    apiRequest.mockImplementation(async (path: string, opts: { method?: string } = {}) => {
+      if (path === '/workspaces/ws/media/uploads/stale' && !opts.method) {
+        throw new ApiError({ status: 404, errorCode: 'UPLOAD_SESSION_NOT_FOUND', code: 'UPLOAD_SESSION_NOT_FOUND', message: 'gone' })
+      }
+      return base(path, opts)
+    })
+    localStorage.setItem(`tf-upload:ws:p:v.mp4:${file.size}:${file.lastModified}`, 'stale')
+
+    await uploadTransformationMediaApi('ws', 'p', file)
+
+    expect(calls.some((c) => c.path.endsWith('/projects/p/media/uploads') && c.method === 'POST')).toBe(true)
+  })
+
   it('starts a session, sends every chunk slice, then completes', async () => {
     const { calls, received } = fakeServer()
     const progress: number[] = []

@@ -71,6 +71,36 @@ class MediaUploadSessionServiceImplTest {
     }
 
     @Test
+    void staleSessionsAreEvictedWhenTheUserHitsTheCap() {
+        UploadSession first = start(user);
+        UploadSession second = start(user);
+        // Both were abandoned (e.g. the tab was reloaded) but are still inside the session TTL.
+        now = now.plus(Duration.ofMinutes(10));
+
+        UploadSession third = assertDoesNotThrow(() -> start(user));
+
+        assertNotNull(third);
+        // Only as many as needed are dropped, oldest first.
+        long alive = java.util.stream.Stream.of(first, second)
+                .filter(x -> Files.isDirectory(staging.resolve(x.uploadId().toString()))).count();
+        assertEquals(1, alive);
+    }
+
+    @Test
+    void statusReportsReceivedChunksForResume() {
+        UploadSession s = start(user);
+        service.putChunk(ws, user, s.uploadId(), 2, 2, new ByteArrayInputStream(new byte[]{9, 9}));
+        service.putChunk(ws, user, s.uploadId(), 0, 4, new ByteArrayInputStream(new byte[4]));
+
+        UploadSession status = service.status(ws, user, s.uploadId());
+
+        assertEquals(java.util.List.of(0, 2), status.receivedIndexes());
+        assertEquals(2, status.receivedChunks());
+        assertFalse(status.completed());
+        assertThrows(AppException.class, () -> service.status(ws, UUID.randomUUID(), s.uploadId()));
+    }
+
+    @Test
     void idleSessionsExpireAndAreCleanedUp() {
         UploadSession s = start(user);
         now = now.plus(Duration.ofHours(25));

@@ -325,7 +325,7 @@
       "name": "Starter",
       "desc": "Starter pack for creators to try on real videos",
       "price": "250,000 ₫",
-      "credits": "/ 2,500 Credits (100 ₫/Credit)",
+      "credits": "/ 2,500 Credits ({{rate}}/Credit)",
       "cta": "Get Starter",
       "featuresTitle": "What's included:",
       "features": [
@@ -342,8 +342,8 @@
       "desc": "For creators and editors publishing regularly",
       "price": "500,000 ₫",
       "credits": "5,250 Credits",
-      "bonus": "95 ₫/Credit",
-      "cta": "Purchase 500,000 VND",
+      "bonus": "{{rate}}/Credit",
+      "cta": "Purchase {{price}}",
       "featuresTitle": "Everything in Starter, plus:",
       "features": [
         "~520 mins of translated subtitles, or ~260 mins of dubbing that keeps the background music",
@@ -359,8 +359,8 @@
       "desc": "For studios, media teams and large projects",
       "price": "900,000 ₫",
       "credits": "10,000 Credits",
-      "bonus": "90 ₫/Credit",
-      "cta": "Purchase 900,000 VND",
+      "bonus": "{{rate}}/Credit",
+      "cta": "Purchase {{price}}",
       "featuresTitle": "Everything in Freelancer, plus:",
       "features": [
         "~995 mins of translated subtitles, or ~495 mins of dubbing that keeps the background music",

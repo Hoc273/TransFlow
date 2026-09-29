@@ -27,6 +27,9 @@ import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -61,6 +64,7 @@ public class MediaUploadSessionServiceImpl implements MediaUploadSessionService 
     private final Duration sessionTtl;
     private final int maxActivePerUser;
     private final long minFreeBytes;
+    private final Duration staleAfter;
     private final Clock clock;
     private final ConcurrentHashMap<UUID, Object> completeLocks = new ConcurrentHashMap<>();
 
@@ -70,16 +74,25 @@ public class MediaUploadSessionServiceImpl implements MediaUploadSessionService 
                                          ObjectMapper objectMapper,
                                          @Value("${app.media.upload.staging-dir:${java.io.tmpdir}/transflow-uploads}") String stagingDir,
                                          @Value("${app.media.upload.chunk-size-bytes:8388608}") long chunkSize,
-                                         @Value("${app.media.upload.session-ttl:PT24H}") Duration sessionTtl,
+                                         @Value("${app.media.upload.session-ttl:PT2H}") Duration sessionTtl,
                                          @Value("${app.media.upload.max-active-per-user:3}") int maxActivePerUser,
-                                         @Value("${app.media.upload.min-free-disk-bytes:1073741824}") long minFreeBytes) {
+                                         @Value("${app.media.upload.min-free-disk-bytes:1073741824}") long minFreeBytes,
+                                         @Value("${app.media.upload.stale-after:PT5M}") Duration staleAfter) {
         this(mediaAssetService, access, objectMapper, Path.of(stagingDir), chunkSize, sessionTtl,
-                maxActivePerUser, minFreeBytes, Clock.systemUTC());
+                maxActivePerUser, minFreeBytes, Clock.systemUTC(), staleAfter);
     }
 
     MediaUploadSessionServiceImpl(MediaAssetService mediaAssetService, WorkspaceAccessService access,
                                   ObjectMapper objectMapper, Path stagingDir, long chunkSize, Duration sessionTtl,
                                   int maxActivePerUser, long minFreeBytes, Clock clock) {
+        this(mediaAssetService, access, objectMapper, stagingDir, chunkSize, sessionTtl,
+                maxActivePerUser, minFreeBytes, clock, Duration.ofMinutes(5));
+    }
+
+    MediaUploadSessionServiceImpl(MediaAssetService mediaAssetService, WorkspaceAccessService access,
+                                  ObjectMapper objectMapper, Path stagingDir, long chunkSize, Duration sessionTtl,
+                                  int maxActivePerUser, long minFreeBytes, Clock clock, Duration staleAfter) {
+        this.staleAfter = staleAfter;
         this.mediaAssetService = mediaAssetService;
         this.access = access;
         this.objectMapper = objectMapper;
@@ -106,7 +119,12 @@ public class MediaUploadSessionServiceImpl implements MediaUploadSessionService 
         try {
             Files.createDirectories(stagingDir);
             if (activeSessions(userId) >= maxActivePerUser) {
-                throw new AppException(ErrorCode.UPLOAD_SESSION_LIMIT);
+                // Abandoned uploads (reloaded/closed tabs) must not lock the user out: drop this user's
+                // sessions that received nothing for a while, oldest first, until there is room.
+                evictStaleSessions(userId);
+                if (activeSessions(userId) >= maxActivePerUser) {
+                    throw new AppException(ErrorCode.UPLOAD_SESSION_LIMIT);
+                }
             }
             if (Files.getFileStore(stagingDir).getUsableSpace() < fileSizeBytes + minFreeBytes) {
                 log.warn("Upload staging disk is low on space; refusing a {} byte upload", fileSizeBytes);
@@ -121,7 +139,7 @@ public class MediaUploadSessionServiceImpl implements MediaUploadSessionService 
             Files.createDirectories(dir.resolve(PARTS));
             Files.createFile(dir.resolve(DATA));
             writeMeta(dir, meta);
-            return view(dir, meta, 0);
+            return view(dir, meta);
         } catch (IOException ex) {
             log.error("Failed to create upload session: {}", ex.toString());
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -169,7 +187,13 @@ public class MediaUploadSessionServiceImpl implements MediaUploadSessionService 
             log.error("Failed to write chunk {} of upload {}: {}", index, uploadId, ex.toString());
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
-        return view(dir, meta, countParts(dir));
+        return view(dir, meta);
+    }
+
+    @Override
+    public UploadSession status(UUID workspaceId, UUID userId, UUID uploadId) {
+        Path dir = sessionDir(uploadId);
+        return view(dir, loadOwned(dir, workspaceId, userId));
     }
 
     @Override
@@ -236,6 +260,31 @@ public class MediaUploadSessionServiceImpl implements MediaUploadSessionService 
         }
         if (deleted > 0) {
             log.info("Deleted {} expired upload sessions", deleted);
+        }
+    }
+
+    /** Deletes the user's unfinished sessions idle for {@code staleAfter}, oldest first, until one slot is free. */
+    private void evictStaleSessions(UUID userId) throws IOException {
+        List<Path> stale = new ArrayList<>();
+        try (DirectoryStream<Path> dirs = Files.newDirectoryStream(stagingDir)) {
+            for (Path dir : dirs) {
+                if (!Files.isDirectory(dir)) {
+                    continue;
+                }
+                Optional<Meta> meta = readMeta(dir);
+                if (meta.isPresent() && meta.get().userId().equals(userId) && meta.get().assetId() == null
+                        && lastActivity(dir).plus(staleAfter).isBefore(clock.instant())) {
+                    stale.add(dir);
+                }
+            }
+        }
+        stale.sort(Comparator.comparing(this::lastActivity));
+        for (Path dir : stale) {
+            if (activeSessions(userId) < maxActivePerUser) {
+                break;
+            }
+            log.info("Evicting stale upload session {} of user {}", dir.getFileName(), userId);
+            deleteQuietly(dir);
         }
     }
 
@@ -309,9 +358,22 @@ public class MediaUploadSessionServiceImpl implements MediaUploadSessionService 
         }
     }
 
-    private UploadSession view(Path dir, Meta meta, int received) {
-        return new UploadSession(meta.uploadId(), meta.chunkSize(), meta.totalChunks(), received,
-                lastActivity(dir).plus(sessionTtl));
+    private static List<Integer> receivedIndexes(Path dir) {
+        try (var parts = Files.list(dir.resolve(PARTS))) {
+            return parts.map(p -> p.getFileName().toString())
+                    .filter(n -> n.chars().allMatch(Character::isDigit))
+                    .map(Integer::valueOf)
+                    .sorted()
+                    .toList();
+        } catch (IOException ex) {
+            return List.of();
+        }
+    }
+
+    private UploadSession view(Path dir, Meta meta) {
+        List<Integer> indexes = receivedIndexes(dir);
+        return new UploadSession(meta.uploadId(), meta.chunkSize(), meta.totalChunks(), indexes.size(),
+                indexes, meta.assetId() != null, lastActivity(dir).plus(sessionTtl));
     }
 
     private static void deleteQuietly(Path dir) {

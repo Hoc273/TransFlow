@@ -325,7 +325,7 @@
       "name": "Starter",
       "desc": "Gói khởi động để creator thử trên video thật",
       "price": "250.000 ₫",
-      "credits": "/ 2.500 Credit (100 ₫/Credit)",
+      "credits": "/ 2.500 Credit ({{rate}}/Credit)",
       "cta": "Chọn gói Starter",
       "featuresTitle": "Quyền lợi bao gồm:",
       "features": [
@@ -342,8 +342,8 @@
       "desc": "Cho creator và biên tập viên ra video đều đặn",
       "price": "500.000 ₫",
       "credits": "5.250 Credit",
-      "bonus": "95 ₫/Credit",
-      "cta": "Nạp 500.000 VNĐ",
+      "bonus": "{{rate}}/Credit",
+      "cta": "Nạp {{price}}",
       "featuresTitle": "Bao gồm toàn bộ Starter và:",
       "features": [
         "~520 phút phụ đề dịch, hoặc ~260 phút lồng tiếng giữ nhạc nền",
@@ -359,8 +359,8 @@
       "desc": "Cho studio, media team và dự án lớn",
       "price": "900.000 ₫",
       "credits": "10.000 Credit",
-      "bonus": "90 ₫/Credit",
-      "cta": "Nạp 900.000 VNĐ",
+      "bonus": "{{rate}}/Credit",
+      "cta": "Nạp {{price}}",
       "featuresTitle": "Bao gồm toàn bộ Freelancer, thêm:",
       "features": [
         "~995 phút phụ đề dịch, hoặc ~495 phút lồng tiếng giữ nhạc nền",
