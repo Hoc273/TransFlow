@@ -46,7 +46,7 @@ flowchart LR
 
 | Tầng | Xử lý |
 |---|---|
-| nginx host | Terminate TLS, `limit_conn 64`/IP, proxy sang `127.0.0.1:8081` |
+| nginx host | Terminate TLS, `limit_conn 128`/IP, proxy sang `127.0.0.1:8081` |
 | frontend nginx | Phục vụ file tĩnh, route lạ trả `index.html` (SPA), gắn header bảo mật (CSP, HSTS, X-Frame-Options…). `/assets/*` (có hash): `Cache-Control` 1 năm, `immutable`. Ảnh/video trong `public/`: 1 ngày |
 | React | Video landing dùng `LazyVideo`: chỉ tải khi sắp cuộn tới, dừng khi ra khỏi màn hình; hero chỉ tải video của theme đang dùng |
 
@@ -56,9 +56,9 @@ Không còn cache edge: lần tải đầu của mỗi người dùng tính vào
 
 | Tầng | Xử lý |
 |---|---|
-| nginx host | Rate-limit theo IP: `/api/*` 20r/s burst 80; `/api/auth/(login\|register\|forgot-password/\|google/exchange)` 10r/phút burst 10. Body ≤ 10MB. `/internal/` → 404. Vượt ngưỡng → 429, lặp lại nhiều → fail2ban chặn IP (§5.5) |
+| nginx host | Rate-limit 2 tầng cho `/api/*`: theo người dùng (chữ ký JWT; chưa đăng nhập thì theo IP) 20r/s burst 80, và trần theo IP 100r/s burst 400 cho nhiều người chung 1 IP. `/api/auth/(login\|register\|forgot-password/\|google/exchange)` 30r/phút burst 30 theo IP. Body ≤ 10MB. `/internal/` → 404. Vượt ngưỡng → 429; chỉ vượt vùng theo IP nhiều lần mới bị fail2ban chặn IP (§5.5) |
 | frontend nginx | Proxy sang `backend-main:8080`, resolve DNS Docker lúc request (`resolver 127.0.0.11 valid=10s`); `proxy_request_buffering off`; timeout 600s |
-| Spring Boot | JWT + RBAC tại service; throttle đăng nhập 30 lần / 5 phút / IP; khoá tài khoản sau 5 lần sai (15 phút). Frontend polling job ~5s, thông báo 30s |
+| Spring Boot | JWT + RBAC tại service; throttle đăng nhập 100 lần / 5 phút / IP (prod, `AUTH_THROTTLE_MAX_REQUESTS`); khoá tài khoản sau 5 lần sai (15 phút). Frontend polling job ~5s, thông báo 30s |
 
 ### 3.3 Upload video
 
@@ -106,7 +106,7 @@ Giới hạn Cloudflare Free vẫn được code tôn trọng để bật lại 
 | Chung | `cloudflare-realip.conf` (chỉ tác dụng khi bật proxy); `client_header_timeout 15s`, `client_body_timeout 30s`, `send_timeout 60s` | Rate-limit theo người dùng thật; chống slowloris |
 | `:80` | Chỉ ACME challenge, còn lại 301 → HTTPS | Gia hạn chứng chỉ |
 | `www.transflow.cloud` | 301 → `transflow.cloud` | |
-| `transflow.cloud` | `client_max_body_size 10m`; `client_body_buffer_size 1m` (đệm body ra đĩa); timeout proxy 600s; `limit_conn 64`/IP. Chunk upload `limit_conn 6`/IP; API 20r/s burst 80; auth 10r/phút burst 10 | Body lớn không lọt vào trước khi Spring kiểm tra JWT. Đệm ra đĩa tránh upload HTTP/2 chỉ đạt 100–200KB/s (`692e44a`) |
+| `transflow.cloud` | `client_max_body_size 10m`; `client_body_buffer_size 1m` (đệm body ra đĩa); timeout proxy 600s; `limit_conn 128`/IP. Chunk upload `limit_conn 12`/người dùng; API 20r/s burst 80/người dùng + 100r/s burst 400/IP; auth 30r/phút burst 30/IP | Body lớn không lọt vào trước khi Spring kiểm tra JWT. Đệm ra đĩa tránh upload HTTP/2 chỉ đạt 100–200KB/s (`692e44a`) |
 | `storage.transflow.cloud` | `client_max_body_size 1m` (chỉ GET); `proxy_buffering off`; `limit_conn 32`/IP; 30r/s burst 100; giữ nguyên `Host` | Stream video, hỗ trợ tua (Range). Chữ ký presigned tính cả Host |
 
 ### 5.3 Container — `docker-compose.prod.yml`
@@ -145,10 +145,10 @@ Nhờ resolve lúc request, frontend khởi động được khi backend-main ch
 
 | File | Nội dung |
 |---|---|
-| `filter.d/transflow-nginx-limit.conf` | Bắt dòng `limiting requests, excess: …` / `limiting connections` trong `/var/log/nginx/error.log` (request đã bị trả 429). `delaying request` và vùng `tf_upload` (giới hạn chunk upload cùng lúc) không tính |
-| `jail.d/transflow.local` | ≥ 30 lần vượt ngưỡng trong 60s → chặn IP ở cổng 80/443 trong 1 giờ. Bỏ qua `127.0.0.1`, `::1` |
+| `filter.d/transflow-nginx-limit.conf` | Bắt dòng `limiting requests, excess: …` / `limiting connections` trong `/var/log/nginx/error.log` (request đã bị trả 429). Chỉ tính vùng khoá theo IP (`tf_api`, `tf_auth`, `tf_storage`, `tf_conn`). `delaying request` và vùng theo người dùng `tf_user_*` không tính — chặn IP vì 1 người vượt ngưỡng sẽ chặn cả mạng dùng chung (CGNAT, văn phòng) |
+| `jail.d/transflow.local` | ≥ 30 lần vượt ngưỡng trong 60s → chặn IP ở cổng 80/443 10 phút; tái phạm gấp đôi mỗi lần, tối đa 1 ngày (`bantime.increment`). Bỏ qua `127.0.0.1`, `::1` |
 
-Ngưỡng cao hơn nhiều so với người dùng thật (SPA mở trang, upload 3 chunk song song). Jail `sshd` mặc định của Ubuntu cũng bật khi cài gói.
+Trần theo IP đủ cho khoảng 5 người sau 1 NAT cùng mở trang một lúc và vài chục người dùng bình thường (polling 5s, upload 3 chunk song song mỗi tab). Jail `sshd` mặc định của Ubuntu cũng bật khi cài gói.
 
 ```bash
 sudo fail2ban-client status transflow-nginx-limit      # IP đang bị chặn

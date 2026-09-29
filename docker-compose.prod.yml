@@ -250,7 +250,9 @@ services:
       PROVIDER_KEY_ENC_SECRET: ${PROVIDER_KEY_ENC_SECRET:?PROVIDER_KEY_ENC_SECRET required}
       LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}
       LOGIN_LOCK_DURATION: ${LOGIN_LOCK_DURATION:-PT15M}
-      AUTH_THROTTLE_MAX_REQUESTS: ${AUTH_THROTTLE_MAX_REQUESTS:-30}
+      # Theo IP: nhiều người dùng chung 1 IP (CGNAT, văn phòng, phòng lab) đăng nhập cùng lúc.
+      # Dò mật khẩu từng tài khoản vẫn bị khoá sau LOGIN_MAX_FAILURES lần sai.
+      AUTH_THROTTLE_MAX_REQUESTS: ${AUTH_THROTTLE_MAX_REQUESTS:-100}
       AUTH_THROTTLE_WINDOW: ${AUTH_THROTTLE_WINDOW:-PT5M}
       # ── URL công khai ──
       FE_ORIGIN: https://${DOMAIN:?DOMAIN required}
