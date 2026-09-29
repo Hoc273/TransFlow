@@ -145,7 +145,7 @@ Nhờ resolve lúc request, frontend khởi động được khi backend-main ch
 
 | File | Nội dung |
 |---|---|
-| `filter.d/transflow-nginx-limit.conf` | Bắt dòng `limiting requests, excess: …` / `limiting connections` trong `/var/log/nginx/error.log` (request đã bị trả 429). `delaying request` không tính |
+| `filter.d/transflow-nginx-limit.conf` | Bắt dòng `limiting requests, excess: …` / `limiting connections` trong `/var/log/nginx/error.log` (request đã bị trả 429). `delaying request` và vùng `tf_upload` (giới hạn chunk upload cùng lúc) không tính |
 | `jail.d/transflow.local` | ≥ 30 lần vượt ngưỡng trong 60s → chặn IP ở cổng 80/443 trong 1 giờ. Bỏ qua `127.0.0.1`, `::1` |
 
 Ngưỡng cao hơn nhiều so với người dùng thật (SPA mở trang, upload 3 chunk song song). Jail `sshd` mặc định của Ubuntu cũng bật khi cài gói.
