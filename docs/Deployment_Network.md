@@ -201,7 +201,7 @@ sequenceDiagram
 | `complete` | Khoá theo `uploadId` · đã có asset thì trả lại (idempotent) · đủ chunk · kiểm tra lại quyền · ffprobe (`MediaAssetServiceImpl`): không phải video thật → xoá, > 30 phút → từ chối · `putObject` key `source/<uuid>` · xoá dữ liệu staging, giữ `meta.json` |
 | Dọn dẹp | Phiên quá 24h không hoạt động bị xoá (`session-ttl PT24H`) |
 
-Cấu hình (`application.yaml`, `app.media.upload.*`): `chunk-size-bytes=8388608`, `session-ttl=PT24H`, `max-active-per-user=3`, `min-free-disk-bytes=1GB`. Staging nằm trên đĩa backend-main → chỉ đúng khi chạy **1 instance** backend-main.
+Cấu hình (`application.yaml`, `app.media.upload.*`): `chunk-size-bytes=8388608`, `session-ttl=PT2H`, `stale-after=PT5M`, `max-active-per-user=3`, `min-free-disk-bytes=1GB`. Staging nằm trên đĩa backend-main → chỉ đúng khi chạy **1 instance** backend-main.
 
 ### 6.3 Sự cố upload treo (29/09/2026) và số đo
 

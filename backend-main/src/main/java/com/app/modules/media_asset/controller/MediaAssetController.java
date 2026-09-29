@@ -87,6 +87,14 @@ public class MediaAssetController {
         return ApiResponse.<UploadSessionResponse>builder().data(UploadSessionResponse.from(session)).build();
     }
 
+    @GetMapping("/media/uploads/{uploadId}")
+    public ApiResponse<UploadSessionResponse> getUpload(@AuthenticationPrincipal AuthenticatedUser user,
+                                                        @PathVariable UUID workspaceId,
+                                                        @PathVariable UUID uploadId) {
+        var session = uploadSessions.status(workspaceId, user.id(), uploadId);
+        return ApiResponse.<UploadSessionResponse>builder().data(UploadSessionResponse.from(session)).build();
+    }
+
     @PutMapping(value = "/media/uploads/{uploadId}/chunks/{index}", consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     public ApiResponse<UploadSessionResponse> putChunk(@AuthenticationPrincipal AuthenticatedUser user,
                                                        @PathVariable UUID workspaceId,

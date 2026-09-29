@@ -118,7 +118,10 @@ app:
     upload:
       staging-dir: ${MEDIA_UPLOAD_STAGING_DIR:${java.io.tmpdir}/transflow-uploads}
       chunk-size-bytes: ${MEDIA_UPLOAD_CHUNK_SIZE_BYTES:8388608}
-      session-ttl: ${MEDIA_UPLOAD_SESSION_TTL:PT24H}
+      # Phiên chưa hoàn tất sống tối đa từng này kể từ lần nhận chunk cuối (đủ để resume sau reload/mất mạng).
+      session-ttl: ${MEDIA_UPLOAD_SESSION_TTL:PT2H}
+      # Khi user chạm max-active-per-user, phiên của chính user không nhận chunk nào trong khoảng này bị dọn nhường chỗ.
+      stale-after: ${MEDIA_UPLOAD_STALE_AFTER:PT5M}
       max-active-per-user: ${MEDIA_UPLOAD_MAX_ACTIVE_PER_USER:3}
       min-free-disk-bytes: ${MEDIA_UPLOAD_MIN_FREE_DISK_BYTES:1073741824}
   maintenance:
