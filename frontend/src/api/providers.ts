@@ -353,11 +353,13 @@ type PlatformTtsProviderDto = {
   id: string
   name: string | null
   protocol: ProviderConfig['protocol']
+  keyIds?: string[] | null
 }
 
 /**
- * GET /api/tts-voices/providers — shared platform TTS keys, so a user without
- * BYOK can still pick a voice. Mapped to ProviderConfig with source=PLATFORM.
+ * GET /api/tts-voices/providers — shared platform TTS providers (one entry per
+ * key group), so a user without BYOK can still pick a voice. Mapped to
+ * ProviderConfig with source=PLATFORM.
  */
 export async function listPlatformTtsProvidersApi(): Promise<ProviderConfig[]> {
   const rows = await apiRequest<PlatformTtsProviderDto[]>('/tts-voices/providers')
@@ -372,5 +374,6 @@ export async function listPlatformTtsProvidersApi(): Promise<ProviderConfig[]> {
     defaultModel: '',
     enabled: true,
     source: 'PLATFORM',
+    keyIds: row.keyIds ?? [row.id],
   }))
 }

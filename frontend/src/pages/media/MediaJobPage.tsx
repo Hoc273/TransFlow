@@ -48,6 +48,7 @@ import {
 } from '@/hooks/useWorkflowAutoScroll'
 import {
   filterCompatibleActiveVoices,
+  findProviderEntry,
   isTtsProvider,
 } from '@/lib/media/voiceSelection'
 import type { ProviderConfig, TtsVoice } from '@/types/provider'
@@ -159,7 +160,7 @@ export function MediaJobPage() {
   // the workspace default for display only; they stay unbound until the user
   // explicitly changes the selection.
   const voiceProviderId = resolveJobVoiceProviderId(job, ttsProviders)
-  const voiceProvider = ttsProviders.find((p) => p.id === voiceProviderId)
+  const voiceProvider = findProviderEntry(ttsProviders, voiceProviderId)
   const { data: voices = [] } = useTtsVoices(workspaceId, voiceProviderId ?? undefined, voiceProvider?.source)
   const availableVoices = filterCompatibleActiveVoices(voices, job?.targetLang)
 

@@ -17,19 +17,24 @@ public interface ProviderResolverService {
     /**
      * Resolves one specific provider (the TTS provider a job's voice belongs to): the user's own
      * active provider or an active platform provider with {@code capability}. Voices are bound to
-     * their provider, so TTS must not be load-balanced to another key of the pool.
+     * their provider, so TTS is never load-balanced across the whole pool (only inside the key's
+     * group when a voice is given, see the 4-argument overload).
      */
     ProviderResolution resolveBoundProvider(UUID userId, UUID providerId, String capability);
 
     /**
-     * Like {@link #resolveBoundProvider(UUID, UUID, String)}, but when the bound provider is a
-     * platform key that is unavailable (DOWN, cooling down or already failed in this stage), another
-     * platform key of the same protocol that serves the exact same {@code voiceIdentifier} is used,
-     * so the voice stays identical. Personal providers are never swapped.
+     * Like {@link #resolveBoundProvider(UUID, UUID, String)}, but a bound platform key stands for
+     * its key group ({@link com.app.modules.provider.util.ProviderKeyGroup}): every active key of
+     * the group whose catalog lists {@code voiceIdentifier} is a candidate, picked like the pool
+     * (priority, weight, skipping DOWN / cooling / already failed keys), so the voice stays
+     * identical while load spreads over the vendor's keys. Personal providers are never swapped.
      */
     ProviderResolution resolveBoundProvider(UUID userId, UUID providerId, String capability, String voiceIdentifier);
 
-    /** True when another available platform key of the same protocol serves {@code voiceIdentifier}. */
+    /**
+     * True when a key of the bound platform key's group (the bound key included) serving
+     * {@code voiceIdentifier} is still available — the key that just failed is already excluded.
+     */
     boolean hasVoiceSibling(UUID providerId, String voiceIdentifier);
 
     /**

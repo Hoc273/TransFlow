@@ -5,6 +5,7 @@ import {
   splitVoicesByLanguage,
   defaultTtsProvider,
   filterCompatibleActiveVoices,
+  findProviderEntry,
   groupVoicesForPicker,
   isNativeVoice,
   isCompleteVoicePair,
@@ -339,5 +340,22 @@ describe('language names follow the web language', () => {
     expect(en.map((l) => l.label)).toEqual(['English', 'Korean', 'Vietnamese'])
     expect(en.find((l) => l.code === 'ko')).toMatchObject({ nativeCount: 1, multilingualCount: 1 })
     expect(listVoiceLanguages(voices, 'vi').map((l) => l.code)).toEqual(['en', 'ko', 'vi'])
+  })
+})
+
+describe('findProviderEntry', () => {
+  const azure = { id: 'azure-1', keyIds: ['azure-1', 'azure-2'] }
+  const own = { id: 'byok' }
+
+  it('maps a job bound to any key of a platform key group to the group entry', () => {
+    expect(findProviderEntry([own, azure], 'azure-2')).toBe(azure)
+    expect(findProviderEntry([own, azure], 'azure-1')).toBe(azure)
+    expect(findProviderEntry([own, azure], 'byok')).toBe(own)
+  })
+
+  it('returns undefined for an unknown or empty id', () => {
+    expect(findProviderEntry([own, azure], 'gone')).toBeUndefined()
+    expect(findProviderEntry([own, azure], null)).toBeUndefined()
+    expect(findProviderEntry(undefined, 'azure-1')).toBeUndefined()
   })
 })

@@ -291,7 +291,12 @@
     "empty": "Chưa có key nào trong pool.",
     "loadError": "Không tải được danh sách provider.",
     "inactive": "Tắt",
-    "poolHint": "Kiểm tra sức khỏe tự động mỗi 30 phút. Key bị từ chối xác thực/hết quota sẽ chuyển DOWN và bị loại khỏi pool cho tới lần kiểm tra đạt.",
+    "poolHint": "Kiểm tra sức khỏe tự động theo chu kỳ. Key bị từ chối xác thực/hết quota sẽ chuyển DOWN và bị loại khỏi pool cho tới lần kiểm tra đạt. Các key cùng protocol và cùng máy chủ (Azure, Google, ElevenLabs: cùng hãng) được gộp thành một provider: người dùng chỉ thấy một mục, tải được chia đều, key lỗi thì tự chuyển sang key khác.",
+    "group": {
+      "keys": "{{count}} key",
+      "healthy": "{{healthy}}/{{active}} khả dụng",
+      "addKey": "Thêm key"
+    },
     "dismiss": "Đóng",
     "test": "Kiểm tra key",
     "testTitle": "Kết quả kiểm tra — {{name}}",

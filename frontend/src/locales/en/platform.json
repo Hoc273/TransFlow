@@ -291,7 +291,12 @@
     "empty": "The pool has no keys yet.",
     "loadError": "Could not load providers.",
     "inactive": "Off",
-    "poolHint": "Health is checked automatically every 30 minutes. Keys rejected by the provider or out of quota go DOWN and leave the pool until a check passes.",
+    "poolHint": "Health is checked automatically on a schedule. Keys rejected by the provider or out of quota go DOWN and leave the pool until a check passes. Keys with the same protocol and host (Azure, Google, ElevenLabs: the same vendor) form one provider: users see one entry, load is spread over the keys and a failing key hands over to another.",
+    "group": {
+      "keys": "{{count}} key(s)",
+      "healthy": "{{healthy}}/{{active}} available",
+      "addKey": "Add key"
+    },
     "dismiss": "Dismiss",
     "test": "Test key",
     "testTitle": "Test result — {{name}}",

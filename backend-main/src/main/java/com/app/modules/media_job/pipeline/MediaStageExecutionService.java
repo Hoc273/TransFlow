@@ -289,7 +289,7 @@ public class MediaStageExecutionService {
     /**
      * Shared platform pool failover: when a platform key fails with a provider-side error and
      * the pool still has another available key, the stage is re-queued instead of failing.
-     * TTS only fails over to a key of the same protocol serving the exact same voice, because a
+     * TTS only fails over to a key of the same key group serving the exact same voice, because a
      * job's voice must not change mid-track.
      */
     private boolean failOverToAnotherProvider(MediaJob job, MediaJobStage stage, MediaStageMessage message,

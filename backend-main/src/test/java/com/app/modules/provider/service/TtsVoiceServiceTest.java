@@ -143,6 +143,10 @@ class TtsVoiceServiceTest {
         multilingual.setLanguage("vi");
         multilingual.setLanguages(List.of("vi", "en"));
 
+        PlatformAiProvider key = platformProvider();
+        regional.setPlatformProviderId(key.getId());
+        multilingual.setPlatformProviderId(key.getId());
+        when(platformAiProviderRepository.findByIsActiveTrue()).thenReturn(List.of(key));
         when(ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM"))
                 .thenReturn(List.of(regional, multilingual));
 
@@ -271,6 +275,9 @@ class TtsVoiceServiceTest {
         pv.setLanguage("en");
         pv.setLanguages(List.of("en"));
 
+        PlatformAiProvider key = platformProvider();
+        pv.setPlatformProviderId(key.getId());
+        when(platformAiProviderRepository.findByIsActiveTrue()).thenReturn(List.of(key));
         when(ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM"))
                 .thenReturn(List.of(pv));
 
@@ -280,17 +287,54 @@ class TtsVoiceServiceTest {
     }
 
     @Test
-    void testListPlatformVoicesNarrowsToOnePlatformKey() {
-        UUID wanted = UUID.randomUUID();
-        TtsVoice mine = platformVoice(wanted);
-        TtsVoice other = platformVoice(UUID.randomUUID());
+    void testListPlatformVoicesNarrowsToOneKeyGroup() {
+        PlatformAiProvider wanted = platformProvider();
+        PlatformAiProvider otherVendor = platformProvider();
+        otherVendor.setBaseUrl("http://freellmapi:3001/v1");
+        TtsVoice mine = platformVoice(wanted.getId());
+        TtsVoice other = platformVoice(otherVendor.getId());
         other.setVoiceId("echo");
+        when(platformAiProviderRepository.findById(wanted.getId())).thenReturn(Optional.of(wanted));
+        when(platformAiProviderRepository.findByIsActiveTrue()).thenReturn(List.of(wanted, otherVendor));
         when(ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM")).thenReturn(List.of(mine, other));
 
-        List<TtsVoiceResponse> voices = service.listPlatformVoices(null, wanted);
+        List<TtsVoiceResponse> voices = service.listPlatformVoices(null, wanted.getId());
 
         assertEquals(List.of("alloy"), voices.stream().map(TtsVoiceResponse::voiceId).toList());
         verify(ttsVoiceRepository, never()).findByProviderSourceAndIsActiveTrue("USER");
+    }
+
+    @Test
+    void testKeysOfOneVendorAreOneProviderWithDeduplicatedVoices() {
+        PlatformAiProvider first = platformProvider();
+        first.setProtocol("azure_speech");
+        first.setName("Azure Speech");
+        first.setCreatedAt(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        PlatformAiProvider second = platformProvider();
+        second.setProtocol("azure_speech");
+        second.setName("Azure Speech #2");
+        second.setBaseUrl("https://southeastasia.api.cognitive.microsoft.com/");
+        second.setCreatedAt(java.time.Instant.parse("2026-02-01T00:00:00Z"));
+        TtsVoice firstHoaiMy = platformVoice(first.getId());
+        firstHoaiMy.setVoiceId("vi-VN-HoaiMyNeural");
+        TtsVoice secondHoaiMy = platformVoice(second.getId());
+        secondHoaiMy.setVoiceId("vi-VN-HoaiMyNeural");
+        TtsVoice secondOnly = platformVoice(second.getId());
+        secondOnly.setVoiceId("vi-VN-NamMinhNeural");
+        when(platformAiProviderRepository.findByIsActiveTrue()).thenReturn(List.of(second, first));
+        when(platformAiProviderRepository.findById(second.getId())).thenReturn(Optional.of(second));
+        when(ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM"))
+                .thenReturn(List.of(secondHoaiMy, firstHoaiMy, secondOnly));
+
+        var providers = service.listPlatformTtsProviders();
+        List<TtsVoiceResponse> voices = service.listPlatformVoices(null, second.getId());
+
+        assertEquals(1, providers.size());
+        assertEquals(first.getId(), providers.get(0).id(), "the oldest key names the group");
+        assertEquals(List.of(first.getId(), second.getId()), providers.get(0).keyIds());
+        assertEquals(2, voices.size(), "a voice both keys list appears once");
+        assertTrue(voices.stream().allMatch(v -> second.getId().equals(v.platformProviderId())),
+                "rows of the requested key are preferred");
     }
 
     @Test

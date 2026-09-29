@@ -13,6 +13,7 @@ import com.app.modules.provider.repository.UserAiProviderRepository;
 import com.app.modules.provider.service.ProviderHealthService;
 import com.app.modules.provider.service.ProviderResolverService;
 import com.app.modules.provider.service.ProviderUsageScope;
+import com.app.modules.provider.util.ProviderKeyGroup;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -147,41 +148,41 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
                         cryptoService.decrypt(p.getApiKeyEnc()), p.getDefaultModel(), true));
             }
         }
+        // A deactivated bound key still names its group, so the job keeps its voice on another key.
         PlatformAiProvider bound = platformAiProviderRepository.findById(providerId)
-                .filter(PlatformAiProvider::isActive)
-                .filter(candidate -> candidate.hasCapability(normCap))
                 .orElseThrow(() -> new AppException(ErrorCode.PROVIDER_NOT_FOUND));
-        PlatformAiProvider p = bound;
-        if (!isAvailable(bound)) {
-            p = selectPlatform(voiceSiblings(bound, normCap, voiceIdentifier).stream()
-                            .filter(this::isAvailable).toList(),
-                    candidate -> true, range -> ThreadLocalRandom.current().nextInt(range))
-                    .orElse(bound);
+        List<PlatformAiProvider> candidates = voiceKeys(bound, normCap, voiceIdentifier);
+        if (candidates.isEmpty() && bound.isActive() && bound.hasCapability(normCap)) {
+            candidates = List.of(bound); // voice not in any synced catalog yet: keep the bound key
         }
+        PlatformAiProvider p = selectPlatform(candidates, this::isAvailable,
+                        range -> ThreadLocalRandom.current().nextInt(range))
+                .orElseThrow(() -> new AppException(ErrorCode.PROVIDER_NOT_FOUND));
         return record(normCap, platformResolution(p));
     }
 
     @Override
     @Transactional(readOnly = true)
     public boolean hasVoiceSibling(UUID providerId, String voiceIdentifier) {
-        if (providerId == null) {
+        if (providerId == null || voiceIdentifier == null || voiceIdentifier.isBlank()) {
             return false;
         }
         return platformAiProviderRepository.findById(providerId)
-                .map(bound -> voiceSiblings(bound, "TTS", voiceIdentifier).stream().anyMatch(this::isAvailable))
+                .map(bound -> voiceKeys(bound, "TTS", voiceIdentifier).stream().anyMatch(this::isAvailable))
                 .orElse(false);
     }
 
-    /** Other active platform keys of the same protocol that list the same vendor voice. */
-    private List<PlatformAiProvider> voiceSiblings(PlatformAiProvider bound, String capability, String voiceIdentifier) {
+    /**
+     * Active keys of {@code bound}'s group with {@code capability} that can serve the voice: those
+     * whose catalog lists {@code voiceIdentifier}. Without a voice only the bound key itself qualifies.
+     */
+    private List<PlatformAiProvider> voiceKeys(PlatformAiProvider bound, String capability, String voiceIdentifier) {
         if (voiceIdentifier == null || voiceIdentifier.isBlank()) {
-            return List.of();
+            return bound.isActive() && bound.hasCapability(capability) ? List.of(bound) : List.of();
         }
         return platformAiProviderRepository.findByIsActiveTrue().stream()
-                .filter(candidate -> !candidate.getId().equals(bound.getId()))
                 .filter(candidate -> candidate.hasCapability(capability))
-                .filter(candidate -> candidate.getProtocol() != null
-                        && candidate.getProtocol().equalsIgnoreCase(bound.getProtocol()))
+                .filter(candidate -> ProviderKeyGroup.sameGroup(candidate, bound))
                 .filter(candidate -> ttsVoiceRepository.findByPlatformProviderId(candidate.getId()).stream()
                         .anyMatch(voice -> voice.isActive() && voiceIdentifier.equals(voice.getVoiceId())))
                 .toList();
@@ -347,11 +348,17 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
                     .isPresent();
         }
         if ("PLATFORM".equalsIgnoreCase(voice.getProviderSource())) {
-            return providerId.equals(voice.getPlatformProviderId())
-                    && platformAiProviderRepository.findById(providerId)
-                    .filter(PlatformAiProvider::isActive)
-                    .filter(provider -> provider.hasCapability("TTS"))
+            // The picker lists a key group as one provider: the voice row may come from any key of
+            // the group, as long as some active TTS key of that group still serves the voice.
+            Optional<PlatformAiProvider> requested = platformAiProviderRepository.findById(providerId);
+            if (requested.isEmpty() || voice.getPlatformProviderId() == null) {
+                return false;
+            }
+            boolean sameGroup = providerId.equals(voice.getPlatformProviderId())
+                    || platformAiProviderRepository.findById(voice.getPlatformProviderId())
+                    .filter(owner -> ProviderKeyGroup.sameGroup(owner, requested.get()))
                     .isPresent();
+            return sameGroup && !voiceKeys(requested.get(), "TTS", voice.getVoiceId()).isEmpty();
         }
         return false;
     }

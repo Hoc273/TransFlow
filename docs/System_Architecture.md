@@ -368,8 +368,14 @@ mở §14). Số dư không đủ → mặc định thiết kế `BLOCK_UPFRONT`
 - **Failover:** mỗi attempt stage mở một `ProviderUsageScope` (thread-bound). Key nền tảng lỗi phía provider
   (rate limit, quota, auth, timeout, output hỏng…) bị loại khỏi scope + cooldown; nếu pool còn key khác, stage
   được xếp lại `PENDING` dưới job lock (`retryOnAnotherProvider`, tối đa 4 attempt) thay vì FAILED. Key BYOK
-  lỗi không bao giờ rơi sang pool. TTS dùng đúng provider gắn với voice của job (`resolveBoundProvider`); chỉ
-  failover sang key nền tảng **cùng protocol có đúng vendor voice đó** (giọng không đổi giữa track).
+  lỗi không bao giờ rơi sang pool.
+- **Nhóm key (provider nhiều key):** key cùng `protocol` + host `baseUrl` là một nhóm (`ProviderKeyGroup`;
+  Azure/Google/ElevenLabs gộp theo hãng, mọi region). STT/TRANSLATE/VISION vốn đã chọn trong pool nên nhóm chỉ
+  đổi cách hiển thị. TTS: user thấy **một** provider cho mỗi nhóm (voice trùng gộp lại); job gắn với key/voice
+  nhưng `resolveBoundProvider` chọn trong **mọi key của nhóm có đúng vendor voice đó** theo `priority`/`weight`
+  như pool — tải được chia đều, key lỗi bị loại rồi chạy lại trên key khác (giọng không đổi giữa track). Key
+  gắn với job đã bị tắt vẫn dùng được nhóm của nó; `openai_compatible` khác host (OpenAI vs FreeLLMAPI) là hai
+  hãng khác nhau vì cùng tên voice ("alloy") nhưng khác giọng.
 - **Chờ rồi thử lại (deferred retry):** lỗi tạm thời (`PROVIDER_RATE_LIMITED`, `UNAVAILABLE`, `TIMEOUT`,
   `INTERNAL_ERROR`, lỗi mạng) mà không còn key khác → stage về `PENDING` và được dispatch lại sau
   `Retry-After` của provider (FastAPI chuyển thành `details.retryAfterSeconds`, kẹp 15 s–5 phút) hoặc backoff

@@ -194,6 +194,8 @@ export type PlatformProvider = {
   id: string
   name: string
   protocol: string
+  /** Keys with the same groupKey are one provider: users see one entry, load spreads over the keys. */
+  groupKey: string
   capabilities: string[]
   baseUrl: string
   apiKeyHint: string | null
