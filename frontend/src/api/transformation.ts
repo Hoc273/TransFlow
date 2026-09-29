@@ -562,7 +562,7 @@ function waitOrAbort(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /**
- * Chunked upload: every request stays below the 10MB host-nginx and 100MB Cloudflare body caps,
+ * Chunked upload: every request stays below the 10MB host-nginx body cap (and 100MB Cloudflare if proxied),
  * and each chunk carries its own (fresh) access token, so a long upload can no longer outlive
  * the token. Progress counts bytes on the wire (XHR upload events); 100% only after `complete` returns.
  */
@@ -665,7 +665,7 @@ export async function uploadTransformationMediaApi(
     if (failed) throw failed.reason
     if (signal.aborted) throw abortError()
 
-    // `complete` is idempotent server-side: a retry after a proxy timeout (Cloudflare 524 at 100s)
+    // `complete` is idempotent server-side: a retry after a proxy/network timeout
     // waits for the running one and gets the same asset instead of losing it.
     const asset = await withRetry(() =>
       apiRequest<Record<string, unknown>>(`${sessionPath}/complete`, {

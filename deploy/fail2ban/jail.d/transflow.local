@@ -1,0 +1,16 @@
+# TransFlow — chặn ở firewall (cổng 80/443) IP liên tục vượt rate-limit của nginx host.
+# nginx đã trả 429 cho từng request vượt ngưỡng; jail này cắt hẳn IP flood để nginx không phải
+# xử lý tiếp. Ngưỡng cao hơn nhiều so với một người dùng thật (SPA mở trang, upload 3 chunk song song).
+# Chỉ có tác dụng khi DNS only (IP kết nối là IP client). Nếu bật lại proxy Cloudflare, kết nối
+# đến từ IP Cloudflare nên lệnh chặn theo IP thật không có hiệu lực — phải chặn ở Cloudflare.
+[transflow-nginx-limit]
+enabled  = true
+filter   = transflow-nginx-limit
+logpath  = /var/log/nginx/error.log
+# Ubuntu mặc định backend = systemd (đọc journal); jail này đọc file log.
+backend  = auto
+port     = http,https
+maxretry = 30
+findtime = 60
+bantime  = 3600
+ignoreip = 127.0.0.1/8 ::1

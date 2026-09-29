@@ -74,7 +74,7 @@ public class MediaAssetController {
                 .build();
     }
 
-    // ---- Chunked upload: each request stays below the 100MB Cloudflare / 10MB nginx body caps ----
+    // ---- Chunked upload: each request stays below the 10MB nginx body cap (and 100MB Cloudflare if proxied) ----
 
     @PostMapping("/projects/{projectId}/media/uploads")
     @ResponseStatus(HttpStatus.CREATED)

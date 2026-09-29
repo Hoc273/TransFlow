@@ -112,7 +112,7 @@ app:
   pipeline:
     enabled: ${MEDIA_PIPELINE_ENABLED:true}
   # Cronjob (@Scheduled) — một instance duy nhất (VPS all-in-one), không cần distributed lock.
-  # Upload video chia chunk (API_Contract §4): mỗi chunk < 10MB (nginx host) và < 100MB (Cloudflare Free).
+  # Upload video chia chunk (API_Contract §4): mỗi chunk < 10MB (nginx host; cũng < 100MB nếu bật lại proxy Cloudflare Free).
   # Chunk được ghép trên đĩa backend-main => chỉ đúng khi chạy 1 instance backend-main.
   media:
     upload:

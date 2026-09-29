@@ -137,10 +137,11 @@ jobs:
 
       - name: Upload compose + deploy files
         run: |
-          ssh prod "mkdir -p '$APP_DIR/deploy/nginx'"
+          ssh prod "mkdir -p '$APP_DIR/deploy/nginx' '$APP_DIR/deploy/fail2ban'"
           scp docker-compose.prod.yml "prod:$APP_DIR/docker-compose.prod.yml"
           scp deploy/server-deploy.sh "prod:$APP_DIR/deploy/server-deploy.sh"
           scp deploy/nginx/*.template deploy/nginx/*.conf "prod:$APP_DIR/deploy/nginx/"
+          scp -r deploy/fail2ban/filter.d deploy/fail2ban/jail.d "prod:$APP_DIR/deploy/fail2ban/"
 
       - name: Write .env and .env.deploy
         env:

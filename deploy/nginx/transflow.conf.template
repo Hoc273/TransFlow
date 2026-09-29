@@ -88,8 +88,9 @@ server {
         return 404;
     }
 
-    # Upload video chia chunk 8MB (PUT .../media/uploads/{id}/chunks/{n}) — lọt dưới 10MB ở trên và
-    # dưới 100MB của Cloudflare Free. Tối đa 6 chunk đang gửi / IP (FE gửi song song 3).
+    # Upload video chia chunk 8MB (PUT .../media/uploads/{id}/chunks/{n}) — lọt dưới 10MB ở trên.
+    # Tối đa 6 chunk đang gửi / IP (FE gửi song song 3). Domain để DNS only: qua proxy Cloudflare
+    # Free, người dùng Viettel chỉ upload được 7–90KB/s (docs/Deployment_Network.md §6.3).
     location ~ ^/api/workspaces/[^/]+/media/uploads/[^/]+/chunks/ {
         limit_conn tf_upload 6;
         limit_req zone=tf_api burst=80 nodelay;
