@@ -461,6 +461,27 @@ describe('UploadConsentPanel — staged multi-file upload card', () => {
     })
   })
 
+  it('dims the consent card while an upload is running, like before any video is staged', async () => {
+    let finishUpload: (() => void) | undefined
+    uploadHookMock.mutateAsync.mockImplementation(
+      ({ file }: { file: File }) =>
+        new Promise((resolve) => {
+          finishUpload = () =>
+            resolve({ assetId: 'a1', documentId: 'd1', fileName: file.name, fileSizeBytes: file.size, durationMs: 60000, consented: false })
+        }),
+    )
+    render(<UploadConsentPanel workspaceId="ws" projectId="prj" />)
+    const card = () => screen.getByTestId('consent-check').closest('.media-aside-subcard') as HTMLElement
+    expect(card().className).toContain('opacity-60')
+
+    fireEvent.change(screen.getByTestId('single-file-input'), { target: { files: [videoFile('a.mp4')] } })
+    await screen.findByTestId('staged-row')
+    expect(card().className).toContain('opacity-60')
+
+    finishUpload?.()
+    await vi.waitFor(() => expect(card().className).not.toContain('opacity-60'))
+  })
+
   it('lets a second language be added after several videos are staged', async () => {
     render(<UploadConsentPanel workspaceId="ws" projectId="prj" />)
     fireEvent.change(screen.getByTestId('single-file-input'), {

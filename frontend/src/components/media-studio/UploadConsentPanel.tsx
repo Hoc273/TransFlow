@@ -978,7 +978,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
           <div className="my-3.5 border-t border-[var(--color-border)]" />
 
           {/* Step 2: Consent */}
-          <div className={cn('media-aside-subcard', staged.length === 0 && 'opacity-60')}>
+          <div className={cn('media-aside-subcard', (staged.length === 0 || uploading) && 'opacity-60')}>
             <header className="media-aside-card-header">
               <div className="flex items-center gap-2">
                 <span className="media-step-badge">2</span>
