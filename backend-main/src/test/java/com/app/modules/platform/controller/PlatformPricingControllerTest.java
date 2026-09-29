@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -47,6 +48,8 @@ class PlatformPricingControllerTest {
     private CreditPricingConfigRepository pricingRepository;
     @Autowired
     private PlatformAdminAuditLogRepository auditLogRepository;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private User adminUser;
     private User normalUser;
@@ -153,6 +156,29 @@ class PlatformPricingControllerTest {
 
         assertThat(auditLogRepository.findAll())
                 .anyMatch(log -> log.getAction() == PlatformAdminAuditAction.CREATE_PRICING);
+    }
+
+    @Test
+    void newVersionReplacesTheOpenRowUnderTheOneOpenVersionIndex() throws Exception {
+        // H2 has no partial index; emulate ux_credit_pricing_open (one effective_to IS NULL row per pair)
+        // with a generated key that is NULL for closed rows, so the old row must be closed before the insert.
+        jdbcTemplate.execute("ALTER TABLE credit_pricing_config ADD COLUMN open_pair_key VARCHAR(200) "
+                + "GENERATED ALWAYS AS (CASE WHEN effective_to IS NULL "
+                + "THEN capability || '|' || COALESCE(provider_scope, '') END)");
+        jdbcTemplate.execute("CREATE UNIQUE INDEX ux_test_credit_pricing_open ON credit_pricing_config(open_pair_key)");
+        try {
+            authenticateAs(adminUser);
+            create("STT", null, "0.054313", "0.039000", null, null).andExpect(status().isOk());
+            create("STT", null, "0.081469", "0.058500", null, null)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.closedVersion").exists());
+
+            assertThat(pricingRepository.resolve("STT", null, Instant.now().plusSeconds(1)).orElseThrow()
+                    .getInfraCoefficientX()).isEqualByComparingTo("0.081469");
+        } finally {
+            jdbcTemplate.execute("DROP INDEX IF EXISTS ux_test_credit_pricing_open");
+            jdbcTemplate.execute("ALTER TABLE credit_pricing_config DROP COLUMN IF EXISTS open_pair_key");
+        }
     }
 
     @Test
