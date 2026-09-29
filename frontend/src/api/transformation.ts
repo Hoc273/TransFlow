@@ -574,8 +574,43 @@ function trackActiveUpload(delta: 1 | -1) {
   }
 }
 
-/** Chunks in flight at once: enough to fill the pipe without flooding the rate limit. */
+/**
+ * Chunk requests in flight at once across ALL uploads of this tab. Host nginx allows 6 concurrent
+ * chunk connections per IP (`limit_conn tf_upload 6`, answered with 429), so several files uploading
+ * in parallel must share this budget instead of each opening its own set of connections.
+ */
 const UPLOAD_CONCURRENCY = 3
+
+const chunkSlots = {
+  free: UPLOAD_CONCURRENCY,
+  waiters: [] as Array<() => void>,
+}
+
+function acquireChunkSlot(signal: AbortSignal): Promise<() => void> {
+  const release = () => {
+    const nextWaiter = chunkSlots.waiters.shift()
+    if (nextWaiter) nextWaiter()
+    else chunkSlots.free += 1
+  }
+  if (signal.aborted) return Promise.reject(abortError())
+  if (chunkSlots.free > 0) {
+    chunkSlots.free -= 1
+    return Promise.resolve(release)
+  }
+  return new Promise((resolve, reject) => {
+    const grant = () => {
+      signal.removeEventListener('abort', onAbort)
+      resolve(release)
+    }
+    const onAbort = () => {
+      const at = chunkSlots.waiters.indexOf(grant)
+      if (at >= 0) chunkSlots.waiters.splice(at, 1)
+      reject(abortError())
+    }
+    chunkSlots.waiters.push(grant)
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
 /** Attempts per chunk for transient failures (network, 5xx, 429). */
 const CHUNK_ATTEMPTS = 4
 const CHUNK_RETRY_BASE_MS = 1000
@@ -711,19 +746,25 @@ export async function uploadTransformationMediaApi(
       const start = index * active.chunkSizeBytes
       const blob = file.slice(start, Math.min(file.size, start + active.chunkSizeBytes))
       try {
-        await withRetry(() => {
-          inFlight.set(index, 0)
-          return apiRequest(`${basePath}/chunks/${index}`, {
-            method: 'PUT',
-            body: blob,
-            rawBody: true,
-            headers: { 'Content-Type': 'application/octet-stream' },
-            signal,
-            onUploadProgress: (loaded) => {
-              inFlight.set(index, Math.min(loaded, blob.size))
-              report()
-            },
-          })
+        await withRetry(async () => {
+          // The slot is held only while the request is on the wire, not during retry backoff.
+          const release = await acquireChunkSlot(signal)
+          try {
+            inFlight.set(index, 0)
+            return await apiRequest(`${basePath}/chunks/${index}`, {
+              method: 'PUT',
+              body: blob,
+              rawBody: true,
+              headers: { 'Content-Type': 'application/octet-stream' },
+              signal,
+              onUploadProgress: (loaded) => {
+                inFlight.set(index, Math.min(loaded, blob.size))
+                report()
+              },
+            })
+          } finally {
+            release()
+          }
         })
       } finally {
         inFlight.delete(index)
