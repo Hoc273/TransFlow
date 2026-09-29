@@ -353,6 +353,13 @@
       "model": "기본 모델",
       "capabilities": "기능",
       "modelUnusedHint": "Azure / Google TTS에는 선택할 모델이 없습니다 — 라벨로만 사용되며 음성은 작업별로 선택합니다.",
+      "modelOverrides": "작업별 모델",
+      "modelOverridesHint": "선택 사항. 요약, 수정(Refine), QA는 이 TRANSLATE 키에서 실행됩니다. 비워 두면 위의 기본 모델을 사용합니다. FreeLLMAPI 예: auto:script.",
+      "modelOverride": {
+        "SUMMARIZE_SCRIPT": "요약 스크립트",
+        "REFINE": "수정(Refine)",
+        "QA": "QA 검사"
+      },
       "capabilityUnsupported": "{{protocol}}은(는) {{capability}}을(를) 지원하지 않습니다",
       "capabilitiesRequired": "기능을 하나 이상 선택하세요.",
       "priority": "우선순위",

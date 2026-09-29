@@ -407,6 +407,10 @@ platform_ai_providers(
   api_key_enc BYTEA NOT NULL,
   api_key_hint VARCHAR(20),
   default_model VARCHAR(200),
+  -- V5: model riêng theo thao tác cho key TRANSLATE (Tóm tắt/Refine/QA chạy trên key TRANSLATE).
+  -- Khoá hợp lệ: SUMMARIZE_SCRIPT | REFINE | QA; thiếu khoá = dùng default_model. Chỉ key platform.
+  -- Vd FreeLLMAPI: default_model='auto:translate', {"SUMMARIZE_SCRIPT":"auto:script","QA":"auto:script"}
+  model_overrides JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(model_overrides) = 'object'),
   is_active BOOLEAN NOT NULL DEFAULT true,
   priority SMALLINT NOT NULL DEFAULT 100 CHECK (priority BETWEEN 0 AND 1000),   -- nhỏ = dùng trước
   weight SMALLINT NOT NULL DEFAULT 1 CHECK (weight BETWEEN 1 AND 100),          -- chia tải cùng priority

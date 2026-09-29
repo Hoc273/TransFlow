@@ -1,6 +1,8 @@
 package com.app.modules.provider.service;
 
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -58,12 +60,35 @@ public interface ProviderResolverService {
             String language
     ) {}
 
+    /**
+     * Text operations that run on the TRANSLATE key but may use another model of the same
+     * platform key (e.g. a FreeLLMAPI chain {@code auto:script}). Personal keys never override.
+     */
+    Set<String> MODEL_OVERRIDE_OPERATIONS = Set.of("SUMMARIZE_SCRIPT", "REFINE", "QA");
+
+    /** {@code modelOverrides}: operation → model, from the platform key; empty for personal keys. */
     record ProviderResolution(
             UUID providerId,
             String providerType,
             String baseUrl,
             String apiKey,
             String model,
-            boolean isPersonalApiKey
-    ) {}
+            boolean isPersonalApiKey,
+            Map<String, String> modelOverrides
+    ) {
+        public ProviderResolution {
+            modelOverrides = modelOverrides == null ? Map.of() : Map.copyOf(modelOverrides);
+        }
+
+        public ProviderResolution(UUID providerId, String providerType, String baseUrl, String apiKey,
+                                  String model, boolean isPersonalApiKey) {
+            this(providerId, providerType, baseUrl, apiKey, model, isPersonalApiKey, Map.of());
+        }
+
+        /** Model to send for {@code operation}: its override when the key has one, else {@link #model()}. */
+        public String modelFor(String operation) {
+            String override = operation == null ? null : modelOverrides.get(operation);
+            return override == null || override.isBlank() ? model : override;
+        }
+    }
 }

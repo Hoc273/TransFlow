@@ -353,6 +353,13 @@
       "model": "Model mặc định",
       "capabilities": "Năng lực",
       "modelUnusedHint": "Azure / Google TTS không có model để chọn — giá trị chỉ là nhãn; giọng đọc chọn theo từng job.",
+      "modelOverrides": "Model riêng theo thao tác",
+      "modelOverridesHint": "Tuỳ chọn. Tóm tắt, Refine và QA chạy trên key TRANSLATE này; để trống = dùng model mặc định ở trên. Ví dụ FreeLLMAPI: auto:script.",
+      "modelOverride": {
+        "SUMMARIZE_SCRIPT": "Tóm tắt kịch bản",
+        "REFINE": "Tinh chỉnh (Refine)",
+        "QA": "Kiểm tra QA"
+      },
       "capabilityUnsupported": "{{protocol}} không hỗ trợ {{capability}}",
       "capabilitiesRequired": "Chọn ít nhất một năng lực.",
       "priority": "Ưu tiên",

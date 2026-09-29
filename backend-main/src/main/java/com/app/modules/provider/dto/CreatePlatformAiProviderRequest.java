@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
+import java.util.Map;
 
 public record CreatePlatformAiProviderRequest(
         @NotBlank(message = "name is required")
@@ -41,6 +42,14 @@ public record CreatePlatformAiProviderRequest(
         /** PAID or FREE. */
         String tier,
 
-        Boolean isActive
+        Boolean isActive,
+
+        /** Optional operation → model (SUMMARIZE_SCRIPT, REFINE, QA) on a TRANSLATE key. */
+        Map<String, String> modelOverrides
 ) {
+    public CreatePlatformAiProviderRequest(String name, String protocol, List<String> capabilities, String baseUrl,
+                                           String apiKey, String defaultModel, Integer priority, Integer weight,
+                                           String tier, Boolean isActive) {
+        this(name, protocol, capabilities, baseUrl, apiKey, defaultModel, priority, weight, tier, isActive, null);
+    }
 }

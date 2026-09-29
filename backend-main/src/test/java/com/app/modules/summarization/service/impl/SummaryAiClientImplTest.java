@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -55,6 +56,30 @@ class SummaryAiClientImplTest {
                         """, MediaType.APPLICATION_JSON));
 
         client.generateScript("[]", null, 5, "vi", UUID.randomUUID(), userId, 17.4);
+
+        server.verify();
+    }
+
+    @Test
+    void platformKeyUsesItsSummaryAndRefineModelOverrides() {
+        UUID userId = UUID.randomUUID();
+        when(providerResolver.resolveForCapability(userId, "TRANSLATE")).thenReturn(
+                new ProviderResolverService.ProviderResolution(UUID.randomUUID(), "openai_compatible",
+                        "http://freellmapi:3001/v1", "secret", "auto:translate", false,
+                        Map.of("SUMMARIZE_SCRIPT", "auto:script", "REFINE", "auto:refine")));
+        String completed = """
+                {"correlation_id":"c","status":"COMPLETED","script_content":"Kịch bản.",
+                 "segments":[{"start_ms":0,"end_ms":5000,"script_excerpt":"Kịch bản."}]}
+                """;
+        server.expect(requestTo("http://ai.test/media/summarize/script"))
+                .andExpect(jsonPath("$.provider.model").value("auto:script"))
+                .andRespond(withSuccess(completed, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://ai.test/media/summarize/refine"))
+                .andExpect(jsonPath("$.provider.model").value("auto:refine"))
+                .andRespond(withSuccess(completed, MediaType.APPLICATION_JSON));
+
+        client.generateScript("[]", null, 5, "vi", UUID.randomUUID(), userId);
+        client.refineScript("Kịch bản.", "Ngắn hơn", "vi", 5, UUID.randomUUID(), userId);
 
         server.verify();
     }

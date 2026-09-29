@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     # parity with summarize so reasoning-capable models emit JSON directly
     # into ``content`` instead of ``reasoning_content``.
     disable_thinking_for_translate: bool = True
+    # Whole /ai/translate (segments) wall-clock budget. backend-main stops waiting after
+    # 10 minutes; ending first returns a clean retryable PROVIDER_TIMEOUT and stops the
+    # batches still running, instead of calling the provider for a request nobody reads.
+    translate_time_budget_seconds: float = 540.0
+    # Subtitle batches in flight at once. Batches are independent (their context lines
+    # are source text), so this only trades wall-clock time against provider rate limits.
+    translate_batch_concurrency: int = 2
     max_retries: int = 3
     backoff_base_ms: int = 250
 

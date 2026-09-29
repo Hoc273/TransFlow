@@ -71,7 +71,7 @@ public class SummaryAiClientImpl implements SummaryAiClient, UserAwareSummaryAiC
     public ScriptProposalResult generateScript(String transcript, String visualContext,
                                                int requestedDurationSeconds, String targetLang,
                                                UUID mediaJobId, UUID userId, Double narrationCps) {
-        Map<String, Object> body = baseRequest(mediaJobId, userId);
+        Map<String, Object> body = baseRequest(mediaJobId, userId, "SUMMARIZE_SCRIPT");
         body.put("transcript", parseTranscript(transcript, requestedDurationSeconds));
         body.put("requested_duration_seconds", requestedDurationSeconds);
         body.put("target_lang", targetLang);
@@ -111,7 +111,7 @@ public class SummaryAiClientImpl implements SummaryAiClient, UserAwareSummaryAiC
     private ScriptProposalResult refineScriptInternal(String previousScript, String feedbackText,
                                                       String targetLang, Integer requestedDurationSeconds,
                                                       UUID mediaJobId, UUID userId) {
-        Map<String, Object> body = baseRequest(mediaJobId, userId);
+        Map<String, Object> body = baseRequest(mediaJobId, userId, "REFINE");
         body.put("previous_script", previousScript);
         body.put("feedback_text", feedbackText);
         body.put("target_lang", targetLang);
@@ -121,7 +121,8 @@ public class SummaryAiClientImpl implements SummaryAiClient, UserAwareSummaryAiC
         return post("/media/summarize/refine", body);
     }
 
-    private Map<String, Object> baseRequest(UUID mediaJobId, UUID userId) {
+    /** {@code operation} picks the platform key's per-operation model (SUMMARIZE_SCRIPT or REFINE). */
+    private Map<String, Object> baseRequest(UUID mediaJobId, UUID userId, String operation) {
         UUID correlationId = UUID.randomUUID();
         ProviderResolverService.ProviderResolution provider =
                 providerResolver.resolveForCapability(userId, TEXT_PROVIDER_CAPABILITY);
@@ -133,7 +134,7 @@ public class SummaryAiClientImpl implements SummaryAiClient, UserAwareSummaryAiC
                 "protocol", valueOrEmpty(provider.providerType()),
                 "base_url", valueOrEmpty(provider.baseUrl()),
                 "api_key", valueOrEmpty(provider.apiKey()),
-                "model", provider.model(),
+                "model", provider.modelFor(operation),
                 "capabilities", List.of("TEXT")));
         return body;
     }

@@ -353,6 +353,13 @@
       "model": "Default model",
       "capabilities": "Capabilities",
       "modelUnusedHint": "Azure / Google TTS have no model to choose — this is only a label; the voice is picked per job.",
+      "modelOverrides": "Per-operation model",
+      "modelOverridesHint": "Optional. Summary, Refine and QA run on this TRANSLATE key; leave empty to use the default model above. FreeLLMAPI example: auto:script.",
+      "modelOverride": {
+        "SUMMARIZE_SCRIPT": "Summary script",
+        "REFINE": "Refine",
+        "QA": "QA check"
+      },
       "capabilityUnsupported": "{{protocol}} does not support {{capability}}",
       "capabilitiesRequired": "Pick at least one capability.",
       "priority": "Priority",

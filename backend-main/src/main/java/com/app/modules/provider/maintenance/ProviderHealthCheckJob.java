@@ -22,7 +22,8 @@ import java.time.Instant;
 /**
  * Periodic provider checks:
  * <ul>
- *   <li>platform pool keys (every 30 min): auth + per-capability probe, broken keys leave the pool;</li>
+ *   <li>platform pool keys (every 30 min): auth + per-capability probe, broken keys leave the pool;
+ *       FREE keys (FreeLLMAPI) auth only, so the check spends no free-tier quota;</li>
  *   <li>platform TTS voice catalog (daily): upsert, dropped voices are deactivated;</li>
  *   <li>personal BYOK keys (daily): auth only (no billed probe); the owner is notified once when a
  *       key starts failing.</li>
@@ -75,7 +76,7 @@ public class ProviderHealthCheckJob {
         }
         for (PlatformAiProvider provider : platformRepository.findByIsActiveTrue()) {
             try {
-                var result = platformProviderService.test(provider.getId());
+                var result = platformProviderService.healthCheck(provider.getId());
                 if (!result.success()) {
                     log.warn("Platform provider '{}' check failed (auth={}); see last_error_code",
                             provider.getName(), result.authSuccess());

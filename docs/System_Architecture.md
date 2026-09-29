@@ -396,7 +396,7 @@ mở §14). Số dư không đủ → mặc định thiết kế `BLOCK_UPFRONT`
 | `MediaJobReconciler` | 5 phút | (1) Job mở có source đã purge → FAILED `MEDIA_FILE_EXPIRED`. (2) Job mở không đổi ≥5 phút, không stage đang chạy/`STALE` → gọi lại `dispatchNext` (idempotent; tôn trọng checkpoint & QA gate). |
 | `BatchStatusReconciler` | 10 phút | Tính lại trạng thái lô `PENDING`/`PROCESSING` từ job con. |
 | `MediaRetentionSweeper` | mỗi giờ (:15) | Xoá mọi object bucket media cũ hơn 3 ngày (trừ prefix `generated-assets/` do backend-ai tự quản TTL, và file của job đang chạy — nhận diện qua jobId/correlationId trong key); đặt `media_assets.purged_at`. |
-| `ProviderHealthCheckJob.checkPlatformProviders` | 30 phút | Test auth + probe từng capability cho key pool; lỗi credential/quota/model → `DOWN`, lỗi tạm thời giữ trạng thái. Bỏ qua cả vòng khi backend-ai down. |
+| `ProviderHealthCheckJob.checkPlatformProviders` | 30 phút | Test auth + probe từng capability cho key pool (key `FREE` như FreeLLMAPI chỉ test auth, không gọi completion để không tốn quota free); lỗi credential/quota/model → `DOWN`, lỗi tạm thời giữ trạng thái. Bỏ qua cả vòng khi backend-ai down. |
 | `ProviderHealthCheckJob.syncPlatformVoices` | 04:30 hằng ngày | Upsert voice TTS của key nền tảng; voice bị gỡ → inactive (không xoá vì job còn tham chiếu). |
 | `ProviderHealthCheckJob.checkUserProviders` | 04:00 hằng ngày | Probe auth key BYOK; chuyển sang `DOWN` → notification `PROVIDER_KEY_INVALID`. |
 | `NotificationCleanupJob` | CN 03:30 | Xoá thông báo đã đọc >30 ngày, mọi thông báo >90 ngày. |

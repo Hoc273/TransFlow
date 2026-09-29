@@ -39,7 +39,9 @@ import type {
   PlatformProviderInput,
   PlatformProviderTier,
   ProviderTestResult,
+  ModelOverrideOperation,
 } from '@/types/platform'
+import { MODEL_OVERRIDE_OPERATIONS } from '@/types/platform'
 
 const CAPABILITIES = ['STT', 'TRANSLATE', 'TTS', 'VISION'] as const
 
@@ -50,6 +52,7 @@ type FormState = {
   baseUrl: string
   apiKey: string
   defaultModel: string
+  modelOverrides: Record<ModelOverrideOperation, string>
   priority: string
   weight: string
   tier: PlatformProviderTier
@@ -63,6 +66,7 @@ const EMPTY_FORM: FormState = {
   baseUrl: defaultBaseUrlFor('openai_compatible'),
   apiKey: '',
   defaultModel: defaultModelFor('openai_compatible', ['TRANSLATE']),
+  modelOverrides: { SUMMARIZE_SCRIPT: '', REFINE: '', QA: '' },
   priority: '100',
   weight: '1',
   tier: 'PAID',
@@ -77,6 +81,11 @@ function toForm(p: PlatformProvider): FormState {
     baseUrl: p.baseUrl,
     apiKey: '',
     defaultModel: p.defaultModel ?? '',
+    modelOverrides: {
+      SUMMARIZE_SCRIPT: p.modelOverrides?.SUMMARIZE_SCRIPT ?? '',
+      REFINE: p.modelOverrides?.REFINE ?? '',
+      QA: p.modelOverrides?.QA ?? '',
+    },
     priority: String(p.priority),
     weight: String(p.weight),
     tier: p.tier,
@@ -160,6 +169,12 @@ export function PlatformProvidersPage() {
       capabilities: form.capabilities,
       baseUrl: url.value,
       defaultModel: form.defaultModel.trim(),
+      // Only a TRANSLATE key runs these operations; any other key sends an empty map.
+      modelOverrides: Object.fromEntries(
+        form.capabilities.includes('TRANSLATE')
+          ? MODEL_OVERRIDE_OPERATIONS.map((op) => [op, form.modelOverrides[op].trim()]).filter(([, m]) => m)
+          : [],
+      ),
       priority: Number(form.priority),
       weight: Number(form.weight),
       tier: form.tier,
@@ -504,6 +519,27 @@ export function PlatformProvidersPage() {
               })}
             </div>
           </Field>
+
+          {form.capabilities.includes('TRANSLATE') && !isModelUnused(form.protocol) && (
+            <Field label={t('providers.form.modelOverrides')} hint={t('providers.form.modelOverridesHint')}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {MODEL_OVERRIDE_OPERATIONS.map((op) => (
+                  <label key={op} className="flex flex-col gap-1 text-[11px] text-[var(--color-text-tertiary)]">
+                    {t(`providers.form.modelOverride.${op}`)}
+                    <input
+                      className="input w-full font-mono text-[13px]"
+                      maxLength={200}
+                      placeholder={form.defaultModel || defaultModelFor(form.protocol, form.capabilities)}
+                      value={form.modelOverrides[op]}
+                      onChange={(e) =>
+                        setForm({ ...form, modelOverrides: { ...form.modelOverrides, [op]: e.target.value } })
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+            </Field>
+          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field label={t('providers.form.priority')} hint={t('providers.form.priorityHint')}>

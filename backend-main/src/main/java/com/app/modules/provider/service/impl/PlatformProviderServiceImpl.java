@@ -15,6 +15,7 @@ import com.app.modules.provider.repository.PlatformAiProviderRepository;
 import com.app.modules.provider.repository.TtsVoiceRepository;
 import com.app.modules.provider.service.PlatformProviderService;
 import com.app.modules.provider.service.ProviderHealthService;
+import com.app.modules.provider.service.ProviderResolverService;
 import com.app.modules.provider.util.ProviderProtocolCapabilities;
 import com.app.modules.provider.util.TtsVoiceCatalog;
 import org.springframework.context.ApplicationEventPublisher;
@@ -25,8 +26,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -90,6 +93,7 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
         provider.setWeight((short) (request.weight() == null ? 1 : request.weight()));
         provider.setTier(tier(request.tier(), PlatformAiProvider.Tier.PAID));
         provider.setActive(request.isActive() == null || request.isActive());
+        provider.setModelOverrides(modelOverrides(request.modelOverrides(), provider));
         PlatformAiProvider saved = repository.save(provider);
         requestVoiceSync(saved, true);
         return toResponse(saved);
@@ -132,6 +136,12 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
         }
         if (request.isActive() != null) {
             provider.setActive(request.isActive());
+        }
+        if (request.modelOverrides() != null) {
+            provider.setModelOverrides(modelOverrides(request.modelOverrides(), provider));
+        } else if (!provider.hasCapability("TRANSLATE")) {
+            // Overrides only apply to text operations of a TRANSLATE key.
+            provider.setModelOverrides(new LinkedHashMap<>());
         }
         if (credentialsChanged) {
             // A rotated key or new model must earn its health again.
@@ -188,6 +198,22 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
                 success ? "Provider authentication and model probes passed"
                         : authOk ? "One or more capability probes failed" : "Provider authentication failed",
                 authOk, results);
+    }
+
+    @Override
+    @Transactional
+    public TestConnectionResponse healthCheck(UUID id) {
+        PlatformAiProvider provider = require(id);
+        if (provider.getTier() != PlatformAiProvider.Tier.FREE) {
+            return test(id);
+        }
+        boolean authOk = aiGatewayClient.testConnection(provider.getProtocol(), provider.getBaseUrl(),
+                cryptoService.decrypt(provider.getApiKeyEnc()));
+        applyHealth(provider, authOk, List.of());
+        return new TestConnectionResponse(authOk,
+                authOk ? "Provider authentication passed (FREE key: capability probes skipped)"
+                        : "Provider authentication failed",
+                authOk, List.of());
     }
 
     @Override
@@ -264,6 +290,34 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
             throw new AppException(ErrorCode.PROVIDER_CAPABILITY_NOT_SUPPORTED);
         }
         return new ArrayList<>(normalized);
+    }
+
+    /**
+     * Normalizes operation → model overrides: upper-case keys from
+     * {@link ProviderResolverService#MODEL_OVERRIDE_OPERATIONS}, blank models dropped. Only a
+     * TRANSLATE key runs those operations, so any other key must not carry overrides.
+     */
+    static Map<String, String> modelOverrides(Map<String, String> raw, PlatformAiProvider provider) {
+        Map<String, String> normalized = new LinkedHashMap<>();
+        if (raw == null) {
+            return normalized;
+        }
+        raw.forEach((operation, model) -> {
+            String key = operation == null ? "" : operation.trim().toUpperCase(Locale.ROOT);
+            if (!ProviderResolverService.MODEL_OVERRIDE_OPERATIONS.contains(key)) {
+                throw new AppException(ErrorCode.VALIDATION_ERROR);
+            }
+            if (model != null && !model.isBlank()) {
+                if (model.trim().length() > 200) {
+                    throw new AppException(ErrorCode.VALIDATION_ERROR);
+                }
+                normalized.put(key, model.trim());
+            }
+        });
+        if (!normalized.isEmpty() && !provider.hasCapability("TRANSLATE")) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR);
+        }
+        return normalized;
     }
 
     private static PlatformAiProvider.Tier tier(String raw, PlatformAiProvider.Tier fallback) {

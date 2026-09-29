@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
+import java.util.Map;
 
 /** Partial update: null fields are left unchanged; a non-blank {@code apiKey} rotates the key. */
 public record UpdatePlatformAiProviderRequest(
@@ -31,6 +32,14 @@ public record UpdatePlatformAiProviderRequest(
 
         String tier,
 
-        Boolean isActive
+        Boolean isActive,
+
+        /** Replaces the operation → model map when present; {@code {}} clears it, null keeps it. */
+        Map<String, String> modelOverrides
 ) {
+    public UpdatePlatformAiProviderRequest(String name, List<String> capabilities, String baseUrl, String apiKey,
+                                           String defaultModel, Integer priority, Integer weight, String tier,
+                                           Boolean isActive) {
+        this(name, capabilities, baseUrl, apiKey, defaultModel, priority, weight, tier, isActive, null);
+    }
 }

@@ -12,6 +12,7 @@ caught by the global handler in main.py.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -34,7 +35,7 @@ from app.schemas.contract import (
 )
 from app.services import llm_gateway
 from app.services.segment_translation import translate_segments
-from app.services.provider_errors import ProviderErrorCode, ProviderException
+from app.services.provider_errors import ProviderErrorCode, ProviderException, ProviderTimeout
 
 _int_log = get_internal_logger("routes")
 _fe_log = get_frontend_logger("routes")
@@ -72,8 +73,19 @@ def _classify_text_failure(raw_text: str, finish_reason: str) -> tuple[str, str]
 @router.post("/ai/translate", response_model=None)
 async def translate(req: TranslateRequest) -> TranslateResponse | StreamingResponse:
     if req.segments:
+        budget = settings.translate_time_budget_seconds
         try:
-            return await translate_segments(req)
+            return await asyncio.wait_for(translate_segments(req), timeout=budget)
+        except asyncio.TimeoutError:
+            _int_log.warning(
+                "segment translation exceeded budget request_id=%s model=%s segments=%d budget_s=%.0f",
+                req.request_id, req.provider.model, len(req.segments), budget,
+            )
+            return _translate_failed(req, ProviderTimeout(
+                f"Subtitle translation did not finish within {budget:.0f} s",
+                provider=req.provider.base_url, protocol=req.provider.protocol,
+                capability="TEXT", model=req.provider.model,
+            ))
         except ProviderException as exc:
             return _translate_failed(req, exc)
     system, user = build_translate_prompt(

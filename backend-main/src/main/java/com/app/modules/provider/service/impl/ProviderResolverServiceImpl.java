@@ -116,10 +116,7 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
                 bound -> ThreadLocalRandom.current().nextInt(bound));
 
         if (matchingPlatform.isPresent()) {
-            PlatformAiProvider p = matchingPlatform.get();
-            String rawApiKey = cryptoService.decrypt(p.getApiKeyEnc());
-            return record(normCap, userResolution(p.getId(), p.getProtocol(), p.getBaseUrl(), rawApiKey,
-                    p.getDefaultModel(), false));
+            return record(normCap, platformResolution(matchingPlatform.get()));
         }
 
         // 3. No active provider configured for capability
@@ -161,8 +158,7 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
                     candidate -> true, range -> ThreadLocalRandom.current().nextInt(range))
                     .orElse(bound);
         }
-        return record(normCap, userResolution(p.getId(), p.getProtocol(), p.getBaseUrl(),
-                cryptoService.decrypt(p.getApiKeyEnc()), p.getDefaultModel(), false));
+        return record(normCap, platformResolution(p));
     }
 
     @Override
@@ -240,6 +236,13 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
         ProviderUsageScope.recordResolution(capability, resolution.providerId(), !resolution.isPersonalApiKey(),
                 resolution.providerType(), resolution.model());
         return resolution;
+    }
+
+    private ProviderResolution platformResolution(PlatformAiProvider p) {
+        ProviderResolution base = userResolution(p.getId(), p.getProtocol(), p.getBaseUrl(),
+                cryptoService.decrypt(p.getApiKeyEnc()), p.getDefaultModel(), false);
+        return new ProviderResolution(base.providerId(), base.providerType(), base.baseUrl(), base.apiKey(),
+                base.model(), false, p.getModelOverrides());
     }
 
     private ProviderResolution userResolution(UUID providerId, String protocol, String baseUrl,
