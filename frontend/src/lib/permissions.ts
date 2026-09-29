@@ -14,6 +14,7 @@ export type Role =
 export type PermissionAction =
   | 'workspace.manage_members'
   | 'workspace.manage_providers'
+  | 'workspace.manage_billing'
   | 'project.create'
   | 'project.manage'
   | 'document.upload'
@@ -41,6 +42,7 @@ const MATRIX: Record<PermissionAction, Role[]> = {
   'workspace.view': ALL_ROLES,
   'workspace.manage_members': ['ADMIN', 'LEAD'],
   'workspace.manage_providers': ['ADMIN', 'LEAD'],
+  'workspace.manage_billing': ['ADMIN', 'LEAD'],
   'project.create': ADMIN_PM,
   'project.manage': ADMIN_PM,
   'document.upload': ADMIN_PM_TRANSLATOR,

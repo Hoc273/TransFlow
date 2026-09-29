@@ -48,6 +48,11 @@ vi.mock('@/hooks/useMembers', () => ({
   useUpdateMemberRole: () => ({ mutate: mockUpdateRoleMutation, isPending: false }),
 }))
 
+vi.mock('@/hooks/useWorkspaceBilling', () => ({
+  useWorkspaceBillingConfig: () => ({ data: { costMode: 'PAY_PER_USER' }, isLoading: false, isError: false }),
+  useUpdateWorkspaceBillingConfig: () => ({ mutate: vi.fn(), isPending: false }),
+}))
+
 vi.mock('@/hooks/usePermission', () => ({
   usePermission: () => mockCanManage,
 }))

@@ -41,6 +41,8 @@
         <rabbit-amqp-client.version>5.34.0</rabbit-amqp-client.version>
         <postgresql.version>42.7.12</postgresql.version>
         <bouncycastle.version>1.85.2</bouncycastle.version>
+        <!-- CVE-2026-68497 (jackson-databind 2.21.4: CPU DoS khi parse số không giới hạn). -->
+        <jackson-bom.version>2.21.6</jackson-bom.version>
     </properties>
 
     <!--

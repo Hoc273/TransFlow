@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Modal } from '@/components/shared/Modal'
+import { WorkspaceBillingCard } from '@/components/settings/WorkspaceBillingCard'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
   useAddMember,
@@ -119,6 +120,8 @@ export function MembersPage() {
           </button>
         )}
       </div>
+
+      <WorkspaceBillingCard workspaceId={workspaceId} />
 
       {rowError && (
         <div className="mb-3 rounded-lg border border-[var(--color-error)] bg-[var(--color-error-bg)] px-3 py-2 text-xs text-[var(--color-error)]">

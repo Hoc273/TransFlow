@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/store/authStore'
+import { LazyVideo } from '@/components/shared/LazyVideo'
 
 export function LandingProductivity() {
   const { t } = useTranslation('landing')
@@ -62,12 +63,8 @@ export function LandingProductivity() {
 
           {/* Media View (Video dải sóng đỏ tím nguyên bản + Hover Zoom & Live Badge) */}
           <div className="relative rounded-2xl overflow-hidden aspect-[16/9] border border-neutral-200/70 dark:border-white/10 bg-[#09090a] dark:bg-[#09090a] shadow-inner group/video">
-            <video
+            <LazyVideo
               src="/landing/videos/agent_try_ai.mp4"
-              autoPlay
-              loop
-              muted
-              playsInline
               className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
             />
             {/* Glassmorphic Status Pill */}
@@ -122,12 +119,8 @@ export function LandingProductivity() {
 
           {/* Media View (Video dải sóng xanh dương nguyên bản + Hover Zoom & Live Badge) */}
           <div className="relative rounded-2xl overflow-hidden aspect-[16/9] border border-neutral-200/70 dark:border-white/10 bg-[#09090a] dark:bg-[#09090a] shadow-inner group/video">
-            <video
+            <LazyVideo
               src="/landing/videos/agent_docs.mp4"
-              autoPlay
-              loop
-              muted
-              playsInline
               className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
             />
             {/* Glassmorphic Status Pill */}

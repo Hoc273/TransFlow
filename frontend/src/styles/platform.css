@@ -324,6 +324,13 @@
 .platform-table tbody tr[aria-selected='true'] td {
   background: var(--table-selected);
 }
+/* Key-group header (Super Admin providers): one vendor account family, its keys follow. */
+.platform-table tbody tr.platform-group-row td,
+.platform-table tbody tr.platform-group-row:hover td {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  background: var(--table-header);
+}
 
 .platform-dot-pulse {
   position: relative;

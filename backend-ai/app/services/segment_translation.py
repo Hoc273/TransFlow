@@ -9,6 +9,7 @@ never depends on how well a particular model follows the batch format.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -117,6 +118,31 @@ async def _translate_batch(req: TranslateRequest, batch: list[tuple[int, str]],
     return {batch[int(key) - 1][0]: value for key, value in found.items()}, result.usage
 
 
+async def _run_batches(req: TranslateRequest, lines: list[tuple[int, str]],
+                       batches: list[list[tuple[int, str]]]) -> list[tuple[dict[int, str], Usage | None]]:
+    """Translate ``batches`` with at most ``translate_batch_concurrency`` calls in flight.
+
+    Results keep batch order. The first failure cancels the batches still running so a
+    failed or timed-out request stops calling the provider.
+    """
+    limit = asyncio.Semaphore(max(1, settings.translate_batch_concurrency))
+
+    async def run(batch: list[tuple[int, str]]) -> tuple[dict[int, str], Usage | None]:
+        async with limit:
+            first = batch[0][0]
+            previous = [text for _, text in lines[max(0, first - CONTEXT_LINES):first] if text]
+            return await _translate_batch(req, batch, previous)
+
+    tasks = [asyncio.ensure_future(run(batch)) for batch in batches]
+    try:
+        return await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+
+
 async def _translate_single(req: TranslateRequest, text: str) -> tuple[str | None, Usage | None]:
     system, user = build_translate_prompt(req.source_lang, req.target_lang, text, req.glossary, req.context)
     result = await llm_gateway.chat(
@@ -160,12 +186,11 @@ async def translate_segments(req: TranslateRequest) -> TranslateResponse:
         if not pending:
             break
         missing: list[tuple[int, str]] = []
-        for batch in _batches(pending) if round_index == 0 else [
+        batches = _batches(pending) if round_index == 0 else [
             pending[i:i + 5] for i in range(0, len(pending), 5)
-        ]:
-            first = batch[0][0]
-            previous = [text for _, text in lines[max(0, first - CONTEXT_LINES):first] if text]
-            found, batch_usage = await _translate_batch(req, batch, previous)
+        ]
+        results = await _run_batches(req, lines, batches)
+        for batch, (found, batch_usage) in zip(batches, results):
             usage = _add_usage(usage, batch_usage)
             translations.update(found)
             missing.extend(line for line in batch if line[0] not in found)

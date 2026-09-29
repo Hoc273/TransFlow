@@ -11,7 +11,9 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -48,6 +50,11 @@ public class PlatformAiProvider {
 
     @Column(name = "default_model", length = 200)
     private String defaultModel;
+
+    /** Operation → model for text operations on this TRANSLATE key (SUMMARIZE_SCRIPT, REFINE, QA). */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "model_overrides", nullable = false)
+    private Map<String, String> modelOverrides = new LinkedHashMap<>();
 
     @Column(name = "api_key_hint", length = 20)
     private String apiKeyHint;

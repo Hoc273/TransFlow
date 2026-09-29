@@ -70,7 +70,7 @@ export function PlatformShell() {
       <header className="platform-topbar">
         <div className="flex min-w-0 items-center gap-4">
           <div className="flex items-center gap-2">
-            <img src="/favicon.svg" alt="TransFlow" className="h-7 w-7 object-contain drop-shadow-[0_0_8px_rgba(0,192,255,0.45)]" />
+            <img src="/favicon.png" alt="TransFlow" className="h-7 w-7 object-contain drop-shadow-[0_0_8px_rgba(0,192,255,0.45)]" />
             <div className="leading-tight">
               <div className="text-[15px] font-bold tracking-tight text-[var(--color-text-primary)]">
                 TransFlow

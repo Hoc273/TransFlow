@@ -10,6 +10,7 @@ import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import { Link } from 'react-router-dom'
 import '@/pages/auth/auth.css'
+import { LazyVideo } from '@/components/shared/LazyVideo'
 
 interface AuthLayoutProps {
   children: ReactNode
@@ -28,12 +29,8 @@ export function AuthLayout({ children }: AuthLayoutProps) {
   return (
     <div className="auth-shell">
       <aside className="hidden lg:flex auth-brand-panel">
-        <video
+        <LazyVideo
           src="/auth_circle_loop.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
           className="auth-circle-video"
           aria-hidden="true"
         />
@@ -45,7 +42,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             className="flex items-center gap-3 text-[19px] font-bold tracking-tight text-white no-underline transition-opacity hover:opacity-90"
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-[12px] border border-white/20 bg-white/10 backdrop-blur-md shadow-sm overflow-hidden p-1">
-              <img src="/favicon.svg" alt="TransFlow" className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(0,192,255,0.6)]" />
+              <img src="/favicon.png" alt="TransFlow" className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(0,192,255,0.6)]" />
             </div>
             <span>TransFlow</span>
           </Link>
@@ -105,7 +102,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
               className="flex items-center gap-2.5 text-[17px] font-bold tracking-tight text-[var(--color-text-primary)] no-underline transition-opacity hover:opacity-90"
             >
               <div className="flex h-9 w-9 items-center justify-center rounded-[10px] overflow-hidden p-0.5">
-                <img src="/favicon.svg" alt="TransFlow" className="h-full w-full object-contain drop-shadow-[0_0_6px_rgba(0,192,255,0.5)]" />
+                <img src="/favicon.png" alt="TransFlow" className="h-full w-full object-contain drop-shadow-[0_0_6px_rgba(0,192,255,0.5)]" />
               </div>
               <span>TransFlow</span>
             </Link>

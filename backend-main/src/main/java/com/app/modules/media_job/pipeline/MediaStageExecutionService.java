@@ -289,7 +289,7 @@ public class MediaStageExecutionService {
     /**
      * Shared platform pool failover: when a platform key fails with a provider-side error and
      * the pool still has another available key, the stage is re-queued instead of failing.
-     * TTS only fails over to a key of the same protocol serving the exact same voice, because a
+     * TTS only fails over to a key of the same key group serving the exact same voice, because a
      * job's voice must not change mid-track.
      */
     private boolean failOverToAnotherProvider(MediaJob job, MediaJobStage stage, MediaStageMessage message,
@@ -1118,7 +1118,7 @@ public class MediaStageExecutionService {
         body.put("transcript", segments);
         body.put("requested_duration_seconds", duration);
         body.put("duration_tolerance", Map.of("lower_seconds", 20, "upper_seconds", 20));
-        ProviderContext provider = provider(job, "TRANSLATE");
+        ProviderContext provider = provider(job, "TRANSLATE", "SUMMARIZE_SCRIPT");
         requireCredit(job, "SUMMARIZE_SCRIPT", serializedLength(segments), provider.personalApiKey());
         body.put("provider", provider.payload());
         JsonNode result = mediaAiClient.post().uri("/media/summarize").contentType(MediaType.APPLICATION_JSON)
@@ -1565,8 +1565,13 @@ public class MediaStageExecutionService {
     }
 
     ProviderContext provider(MediaJob job, String capability) {
+        return provider(job, capability, null);
+    }
+
+    /** {@code operation} (SUMMARIZE_SCRIPT, QA) selects the platform key's per-operation model, if any. */
+    private ProviderContext provider(MediaJob job, String capability, String operation) {
         return providerContext(capability, providerResolver.resolveForCapability(
-                job.getCreatedByUserId(), capability));
+                job.getCreatedByUserId(), capability), operation);
     }
 
     private ProviderContext boundProvider(MediaJob job, UUID providerId, String capability, String voiceIdentifier) {
@@ -1574,21 +1579,23 @@ public class MediaStageExecutionService {
             return provider(job, capability);
         }
         return providerContext(capability, providerResolver.resolveBoundProvider(
-                job.getCreatedByUserId(), providerId, capability, voiceIdentifier));
+                job.getCreatedByUserId(), providerId, capability, voiceIdentifier), null);
     }
 
-    private ProviderContext providerContext(String capability, ProviderResolverService.ProviderResolution p) {
-        if (p.model() == null || p.model().isBlank()) {
+    private ProviderContext providerContext(String capability, ProviderResolverService.ProviderResolution p,
+                                            String operation) {
+        String model = p.modelFor(operation);
+        if (model == null || model.isBlank()) {
             throw new AppException(com.app.common.exception.ErrorCode.PROVIDER_MODEL_NOT_CONFIGURED);
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("protocol", p.providerType());
         payload.put("base_url", p.baseUrl());
         payload.put("api_key", p.apiKey());
-        payload.put("model", p.model());
+        payload.put("model", model);
         payload.put("capabilities", List.of(providerCapability(capability)));
-        log.info("Resolved provider protocol={} capability={} model={} personal={}",
-                p.providerType(), capability, p.model(), p.isPersonalApiKey());
+        log.info("Resolved provider protocol={} capability={} operation={} model={} personal={}",
+                p.providerType(), capability, operation, model, p.isPersonalApiKey());
         return new ProviderContext(payload, p.isPersonalApiKey());
     }
 
@@ -2094,7 +2101,7 @@ public class MediaStageExecutionService {
             body.put("translated_text", joinSegmentText(segments, false));
             body.put("glossary", glossary(job));
             body.put("checks", List.of("accuracy", "fluency", "terminology", "length", "timing"));
-            body.put("provider", provider(job, "TRANSLATE").payload());
+            body.put("provider", provider(job, "TRANSLATE", "QA").payload());
             JsonNode response = mediaAiClient.post().uri("/ai/qa")
                     .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(JsonNode.class);
             if (response != null && "COMPLETED".equalsIgnoreCase(response.path("status").asText())

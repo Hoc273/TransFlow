@@ -28,7 +28,7 @@ export function MobileHeader({ workspaceId, onOpenSearch }: MobileHeaderProps) {
             aria-label={t('mobile:header.home')}
           >
             <img
-              src="/favicon.svg"
+              src="/favicon.png"
               alt="TransFlow"
               className="h-7 w-7 object-contain drop-shadow-[0_0_8px_rgba(0,192,255,0.45)]"
             />

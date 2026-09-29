@@ -47,6 +47,8 @@ export type ProviderConfig = {
   keyHealth?: 'UNKNOWN' | 'HEALTHY' | 'DOWN'
   /** PLATFORM = shared key configured by the platform admin (voice picker only); absent = the user's BYOK. */
   source?: 'USER' | 'PLATFORM'
+  /** PLATFORM only: every key of this provider's key group; `id` is the group's oldest key. */
+  keyIds?: string[]
 }
 
 export type CreateProviderRequest = {

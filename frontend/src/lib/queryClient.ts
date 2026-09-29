@@ -36,6 +36,7 @@ export const queryKeys = {
   workspaces: ['workspaces'] as const,
   workspace: (id: string) => ['workspaces', id] as const,
   members: (wsId: string) => ['members', wsId] as const,
+  billingConfig: (wsId: string) => ['billingConfig', wsId] as const,
   providers: (wsId: string) => ['providers', wsId] as const,
   providerPresets: (wsId: string, category?: string) =>
     ['providerPresets', wsId, category ?? 'all'] as const,

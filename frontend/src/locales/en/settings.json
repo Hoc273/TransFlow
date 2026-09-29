@@ -1,4 +1,30 @@
 {
+  "billing": {
+    "title": "Credit payment mode",
+    "subtitle": "Decides whose credit wallet is charged when members run AI stages (STT, translation, TTS, render…) in this workspace.",
+    "leadOnly": "Only the Lead can change this",
+    "mode": {
+      "PAY_PER_USER": {
+        "label": "Each user pays",
+        "desc": "Credit is deducted from the wallet of the job creator. Default for new workspaces."
+      },
+      "LEAD_PAYS_ALL": {
+        "label": "Lead pays all",
+        "desc": "Every job in the workspace, including those created by Members, is charged to the Lead's wallet."
+      }
+    },
+    "confirm": {
+      "PAY_PER_USER": "Switch to \"Each user pays\"? From now on each member is charged from their own wallet, including the remaining stages of running jobs.",
+      "LEAD_PAYS_ALL": "Switch to \"Lead pays all\"? From now on every AI stage run by any member is charged to the Lead's wallet, including the remaining stages of running jobs."
+    },
+    "notes": {
+      "title": "Things to know",
+      "leadBalance": "In Lead pays all mode only the Lead's balance is checked: when the Lead runs out of credit, every member's jobs stop with an insufficient-credit error even if their own wallets still have credit.",
+      "immediate": "The change applies immediately to every next stage — including the remaining stages of running jobs. Completed stages are never re-charged.",
+      "pricing": "The mode only changes who pays, not the rate: a personal API key (BYOK) costs x × units, a platform provider costs (x + y) × units.",
+      "history": "The payer's transaction history still records which member performed each usage."
+    }
+  },
   "members": {
     "title": "Members",
     "subtitle": "Workspace team and roles",

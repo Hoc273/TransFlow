@@ -309,9 +309,8 @@ services:
     <<: *default-service
     image: ${IMAGE_REGISTRY}/transflow-frontend:${IMAGE_TAG}
     container_name: transflow-frontend
-    depends_on:
-      backend-main:
-        condition: service_healthy
+    # Không depends_on backend-main: nginx resolve backend-main lúc request (frontend/nginx.conf),
+    # nên SPA vẫn phục vụ trong ~90s Spring khởi động mỗi lần deploy thay vì toàn site 502.
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-8081}:8080"
 

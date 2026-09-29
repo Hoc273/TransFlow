@@ -1,20 +1,27 @@
 package com.app.modules.provider.dto;
 
 import com.app.modules.provider.entity.PlatformAiProvider;
+import com.app.modules.provider.util.ProviderKeyGroup;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
-/** Super Admin view of a shared platform key. The key itself is never returned, only its hint. */
+/**
+ * Super Admin view of a shared platform key. The key itself is never returned, only its hint.
+ * {@code groupKey}: keys with the same value are one provider (see {@code ProviderKeyGroup}).
+ */
 public record PlatformAiProviderResponse(
         UUID id,
         String name,
         String protocol,
+        String groupKey,
         List<String> capabilities,
         String baseUrl,
         String apiKeyHint,
         String defaultModel,
+        Map<String, String> modelOverrides,
         boolean isActive,
         int priority,
         int weight,
@@ -27,9 +34,10 @@ public record PlatformAiProviderResponse(
         Instant updatedAt
 ) {
     public static PlatformAiProviderResponse from(PlatformAiProvider p, boolean coolingDown) {
-        return new PlatformAiProviderResponse(p.getId(), p.getName(), p.getProtocol(),
+        return new PlatformAiProviderResponse(p.getId(), p.getName(), p.getProtocol(), ProviderKeyGroup.of(p),
                 p.getCapabilities() == null ? List.of() : List.copyOf(p.getCapabilities()),
-                p.getBaseUrl(), p.getApiKeyHint(), p.getDefaultModel(), p.isActive(), p.getPriority(),
+                p.getBaseUrl(), p.getApiKeyHint(), p.getDefaultModel(),
+                p.getModelOverrides() == null ? Map.of() : Map.copyOf(p.getModelOverrides()), p.isActive(), p.getPriority(),
                 p.getWeight(), p.getTier().name(), p.getHealthStatus().name(), coolingDown,
                 p.getLastCheckedAt(), p.getLastErrorCode(), p.getCreatedAt(), p.getUpdatedAt());
     }

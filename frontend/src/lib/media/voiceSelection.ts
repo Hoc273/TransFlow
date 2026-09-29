@@ -212,6 +212,18 @@ export function listVoiceLanguages(voices: readonly TtsVoice[] | undefined, uiLa
   return [...byCode.values()].sort((a, b) => collator.compare(a.label, b.label))
 }
 
+/**
+ * The picker entry standing for `id`: the provider itself, or the platform key
+ * group that `id` belongs to (a job may be bound to any key of the group).
+ */
+export function findProviderEntry<T extends Pick<ProviderConfig, 'id' | 'keyIds'>>(
+  providers: readonly T[] | undefined,
+  id: string | null | undefined,
+): T | undefined {
+  if (id == null) return undefined
+  return (providers ?? []).find((p) => p.id === id) ?? (providers ?? []).find((p) => p.keyIds?.includes(id))
+}
+
 /** A provider usable for TTS (capability flag only — not enabled/disabled). */
 export function isTtsProvider(provider: ProviderConfig): boolean {
   return provider.capabilities.includes('TTS')

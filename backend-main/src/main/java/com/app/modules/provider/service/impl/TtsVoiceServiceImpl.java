@@ -19,6 +19,7 @@ import com.app.modules.provider.repository.UserAiProviderRepository;
 import com.app.modules.provider.service.TtsVoicePreviewRateLimiter;
 import com.app.modules.provider.service.TtsVoiceService;
 import com.app.modules.provider.util.AudioContentDetector;
+import com.app.modules.provider.util.ProviderKeyGroup;
 import com.app.modules.provider.util.TtsVoiceCatalog;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,9 +27,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.ByteArrayInputStream;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class TtsVoiceServiceImpl implements TtsVoiceService {
@@ -111,24 +116,54 @@ public class TtsVoiceServiceImpl implements TtsVoiceService {
     @Transactional(readOnly = true)
     public List<TtsVoiceResponse> listPlatformVoices(String language, UUID platformProviderId) {
         // Always PLATFORM: BYOK voices belong to their owner and are listed via /users/me/providers.
-        List<TtsVoice> voices = ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM");
+        // A key stands for its whole key group; a voice several keys list appears once, taken from
+        // the requested key when it has it, else from the group's oldest key.
+        List<PlatformAiProvider> keys = activeTtsKeys();
         if (platformProviderId != null) {
-            voices = voices.stream()
-                    .filter(v -> platformProviderId.equals(v.getPlatformProviderId()))
+            PlatformAiProvider requested = platformAiProviderRepository.findById(platformProviderId).orElse(null);
+            if (requested == null) {
+                return List.of();
+            }
+            keys = keys.stream()
+                    .filter(k -> ProviderKeyGroup.sameGroup(k, requested))
+                    .sorted(Comparator.comparing((PlatformAiProvider k) -> !k.getId().equals(platformProviderId))
+                            .thenComparing(ProviderKeyGroup.OLDEST_FIRST))
                     .toList();
+        } else {
+            keys = keys.stream().sorted(ProviderKeyGroup.OLDEST_FIRST).toList();
         }
-        return sortedForLanguage(voices, language);
+        Map<UUID, Integer> rank = new HashMap<>();
+        Map<UUID, String> group = new HashMap<>();
+        for (PlatformAiProvider key : keys) {
+            rank.put(key.getId(), rank.size());
+            group.put(key.getId(), ProviderKeyGroup.of(key));
+        }
+        Map<String, TtsVoice> unique = new LinkedHashMap<>();
+        ttsVoiceRepository.findByProviderSourceAndIsActiveTrue("PLATFORM").stream()
+                .filter(v -> v.getPlatformProviderId() != null && rank.containsKey(v.getPlatformProviderId()))
+                .sorted(Comparator.comparingInt(v -> rank.get(v.getPlatformProviderId())))
+                .forEach(v -> unique.putIfAbsent(group.get(v.getPlatformProviderId()) + "\n" + v.getVoiceId(), v));
+        return sortedForLanguage(List.copyOf(unique.values()), language);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<PlatformTtsProviderResponse> listPlatformTtsProviders() {
+        // One entry per key group, identified by its oldest key so the id survives added keys.
+        Map<String, List<PlatformAiProvider>> groups = activeTtsKeys().stream()
+                .sorted(ProviderKeyGroup.OLDEST_FIRST)
+                .collect(Collectors.groupingBy(ProviderKeyGroup::of, LinkedHashMap::new, Collectors.toList()));
+        return groups.values().stream()
+                .sorted(Comparator.comparingInt((List<PlatformAiProvider> g) ->
+                                g.stream().mapToInt(PlatformAiProvider::getPriority).min().orElse(Integer.MAX_VALUE))
+                        .thenComparing(g -> g.get(0).getName(), Comparator.nullsLast(String::compareToIgnoreCase)))
+                .map(PlatformTtsProviderResponse::from)
+                .toList();
+    }
+
+    private List<PlatformAiProvider> activeTtsKeys() {
         return platformAiProviderRepository.findByIsActiveTrue().stream()
                 .filter(p -> p.hasCapability("TTS"))
-                .sorted(Comparator.comparingInt((PlatformAiProvider p) -> p.getPriority())
-                        .thenComparing(PlatformAiProvider::getName,
-                                Comparator.nullsLast(String::compareToIgnoreCase)))
-                .map(PlatformTtsProviderResponse::from)
                 .toList();
     }
 

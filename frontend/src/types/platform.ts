@@ -186,14 +186,22 @@ export type AdminCreditAdjustResponse = {
 export type PlatformProviderTier = 'PAID' | 'FREE'
 export type ProviderHealthStatus = 'UNKNOWN' | 'HEALTHY' | 'DOWN'
 
+/** Text operations that run on the TRANSLATE key but may use their own model. */
+export const MODEL_OVERRIDE_OPERATIONS = ['SUMMARIZE_SCRIPT', 'REFINE', 'QA'] as const
+export type ModelOverrideOperation = (typeof MODEL_OVERRIDE_OPERATIONS)[number]
+
 export type PlatformProvider = {
   id: string
   name: string
   protocol: string
+  /** Keys with the same groupKey are one provider: users see one entry, load spreads over the keys. */
+  groupKey: string
   capabilities: string[]
   baseUrl: string
   apiKeyHint: string | null
   defaultModel: string | null
+  /** Per-operation model on a TRANSLATE key (SUMMARIZE_SCRIPT, REFINE, QA); missing = defaultModel. */
+  modelOverrides: Partial<Record<ModelOverrideOperation, string>>
   isActive: boolean
   priority: number
   weight: number
@@ -213,6 +221,8 @@ export type PlatformProviderInput = {
   baseUrl?: string
   apiKey?: string
   defaultModel?: string
+  /** Replaces the whole map; `{}` clears it. */
+  modelOverrides?: Partial<Record<ModelOverrideOperation, string>>
   priority?: number
   weight?: number
   tier?: PlatformProviderTier

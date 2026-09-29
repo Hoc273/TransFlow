@@ -567,7 +567,7 @@ hình API key cá nhân hay không. Điều này hoàn toàn độc lập với 
 Trong đó: `x` = hệ số phí hạ tầng (áp dụng mọi trường hợp), `y` = hệ số quy đổi chi phí token thực tế sang
 Credit (chỉ áp dụng ở Trường hợp 2).
 
-**Hệ số x, y (đã chốt 2026-09-27):** "Số token" được hiểu là **số đơn vị sử dụng của từng thao tác**: STT và tách
+**Hệ số x, y (đã chốt 2026-09-28):** "Số token" được hiểu là **số đơn vị sử dụng của từng thao tác**: STT và tách
 âm tính theo giây audio nguồn, dịch/tóm tắt/phân tích hình ảnh theo token, TTS theo ký tự, xuất video (RENDER) theo
 giây video output. Giá trị x, y theo từng thao tác và từng model nằm ở `Credit_Coefficient_Calculation.md` §7.2,
 lưu trong `credit_pricing_config` và chỉ Super Admin đổi được (có version, không hồi tố). Tách âm và xuất video chạy

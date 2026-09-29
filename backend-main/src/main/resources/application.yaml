@@ -95,6 +95,12 @@ management:
   endpoint:
     health:
       show-details: never
+  health:
+    # /actuator/health là healthcheck Docker (15s/lần). Mail indicator đăng nhập SMTP mỗi lần gọi:
+    # Gmail bị login liên tục sẽ throttle => timeout => cả app báo DOWN (frontend chờ service_healthy
+    # không khởi động được). Mail gửi @Async và tự log lỗi khi gửi, không cần nằm trong liveness.
+    mail:
+      enabled: false
 
 logging:
   level:

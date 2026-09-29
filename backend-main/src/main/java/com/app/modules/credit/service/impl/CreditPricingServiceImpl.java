@@ -133,7 +133,9 @@ public class CreditPricingServiceImpl implements CreditPricingService {
             for (CreditPricingConfig row : open) {
                 row.setEffectiveTo(from);
             }
-            repository.saveAll(open);
+            // Flush the close now: Hibernate runs INSERTs before UPDATEs at flush, so the new open row
+            // would otherwise hit ux_credit_pricing_open while the old one is still open.
+            repository.saveAllAndFlush(open);
         }
 
         CreditPricingConfig version = new CreditPricingConfig();

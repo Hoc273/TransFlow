@@ -11,6 +11,7 @@ import {
 import { useTtsVoices, useVoicePreview } from '@/hooks/useProviders'
 import {
   filterCompatibleActiveVoices,
+  findProviderEntry,
   formatVoiceLanguage,
   groupVoicesForPicker,
   isNativeVoice,
@@ -135,10 +136,10 @@ export function VoiceSelector({
   // workspace) — keep showing it as a read-only notice instead of falling back.
   const boundProviderMissing =
     selectedProviderId != null
-    && !selectableProviders.some((p) => p.id === selectedProviderId)
+    && findProviderEntry(selectableProviders, selectedProviderId) == null
 
   const [providerId, setProviderId] = useState<string | null>(
-    selectedProviderId != null && selectableProviders.some((p) => p.id === selectedProviderId)
+    selectedProviderId != null && findProviderEntry(selectableProviders, selectedProviderId) != null
       ? selectedProviderId
       : null,
   )
@@ -173,7 +174,7 @@ export function VoiceSelector({
     if (originalSelected === false) {
       setKeepOriginal(false)
     }
-    if (selectedProviderId != null && selectableProviders.some((p) => p.id === selectedProviderId)) {
+    if (selectedProviderId != null && findProviderEntry(selectableProviders, selectedProviderId) != null) {
       setProviderId(selectedProviderId)
     }
   }, [allowOriginal, originalSelected, selectedProviderId, selectedVoiceId, selectableProviders])
@@ -188,7 +189,7 @@ export function VoiceSelector({
   const voicesQuery = useTtsVoices(
     workspaceId,
     activeProviderId ?? undefined,
-    providers.find((p) => p.id === activeProviderId)?.source,
+    findProviderEntry(providers, activeProviderId)?.source,
   )
 
   const compatibleVoices = useMemo(
@@ -348,7 +349,8 @@ export function VoiceSelector({
   }
 
 
-  const activeProvider = selectableProviders.find((p) => p.id === providerId) ?? null
+  // A job bound to any key of a platform key group shows as that group's entry.
+  const activeProvider = findProviderEntry(selectableProviders, providerId) ?? null
   const showTtsControls = !(allowOriginal && keepOriginal)
 
   return (
@@ -412,7 +414,7 @@ export function VoiceSelector({
               ref={providerSelectRef}
               className="field-input mt-1 w-full"
               data-testid="voice-provider-select"
-              value={providerId ?? ''}
+              value={activeProvider?.id ?? providerId ?? ''}
               disabled={disabled || loading || boundProviderMissing || keepOriginal}
               onChange={(e) => handleProviderChange(e.target.value)}
             >

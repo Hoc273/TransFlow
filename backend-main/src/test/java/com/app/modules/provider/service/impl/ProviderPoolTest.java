@@ -177,7 +177,7 @@ class ProviderPoolTest {
     private ProviderResolverServiceImpl voiceResolver(com.app.modules.provider.repository.TtsVoiceRepository voices,
                                                      com.app.modules.provider.service.ProviderHealthService health) {
         com.app.common.crypto.CryptoService crypto = mock(com.app.common.crypto.CryptoService.class);
-        when(crypto.decrypt(any())).thenReturn("secret");
+        lenient().when(crypto.decrypt(any())).thenReturn("secret");
         return new ProviderResolverServiceImpl(
                 mock(com.app.modules.provider.repository.UserAiProviderRepository.class), platformRepository, voices,
                 mock(com.app.modules.provider.repository.UserAiProviderDefaultRepository.class), crypto, health);
@@ -212,6 +212,7 @@ class ProviderPoolTest {
         PlatformAiProvider otherProtocol = ttsKey("other-protocol", "azure_speech");
         when(platformRepository.findById(bound.getId())).thenReturn(Optional.of(bound));
         when(platformRepository.findByIsActiveTrue()).thenReturn(List.of(bound, sameVoice, otherVoice, otherProtocol));
+        when(voices.findByPlatformProviderId(bound.getId())).thenReturn(List.of(voice(bound, "Cherry")));
         when(voices.findByPlatformProviderId(sameVoice.getId())).thenReturn(List.of(voice(sameVoice, "Cherry")));
         when(voices.findByPlatformProviderId(otherVoice.getId())).thenReturn(List.of(voice(otherVoice, "Ethan")));
         lenient().when(voices.findByPlatformProviderId(otherProtocol.getId())).thenReturn(List.of(voice(otherProtocol, "Cherry")));
@@ -226,7 +227,7 @@ class ProviderPoolTest {
     }
 
     @Test
-    void availableTtsKeyOrNoSameVoiceSiblingKeepsTheBoundKey() {
+    void voiceMissingFromEveryCatalogKeepsTheBoundKey() {
         var voices = mock(com.app.modules.provider.repository.TtsVoiceRepository.class);
         var health = mock(com.app.modules.provider.service.ProviderHealthService.class);
         PlatformAiProvider bound = ttsKey("bound", "dashscope_native");
@@ -237,7 +238,64 @@ class ProviderPoolTest {
         assertEquals(bound.getId(), resolver.resolveBoundProvider(null, bound.getId(), "TTS", "Cherry").providerId());
         when(health.isCoolingDown(bound.getId())).thenReturn(true);
         assertEquals(bound.getId(), resolver.resolveBoundProvider(null, bound.getId(), "TTS", "Cherry").providerId(),
-                "no sibling: the job's own key is still tried");
+                "no other key: the job's own key is still tried");
+    }
+
+    @Test
+    void ttsLoadSpreadsOverEveryKeyOfTheGroupServingTheVoice() {
+        var voices = mock(com.app.modules.provider.repository.TtsVoiceRepository.class);
+        var health = mock(com.app.modules.provider.service.ProviderHealthService.class);
+        PlatformAiProvider eastus = ttsKey("azure-1", "azure_speech");
+        eastus.setBaseUrl("https://eastus.api.cognitive.microsoft.com/");
+        PlatformAiProvider sea = ttsKey("azure-2", "azure_speech");
+        sea.setBaseUrl("https://southeastasia.api.cognitive.microsoft.com/");
+        when(platformRepository.findById(eastus.getId())).thenReturn(Optional.of(eastus));
+        when(platformRepository.findByIsActiveTrue()).thenReturn(List.of(eastus, sea));
+        when(voices.findByPlatformProviderId(eastus.getId())).thenReturn(List.of(voice(eastus, "vi-VN-HoaiMyNeural")));
+        when(voices.findByPlatformProviderId(sea.getId())).thenReturn(List.of(voice(sea, "vi-VN-HoaiMyNeural")));
+        ProviderResolverServiceImpl resolver = voiceResolver(voices, health);
+
+        Set<UUID> picked = new java.util.HashSet<>();
+        for (int i = 0; i < 64; i++) {
+            picked.add(resolver.resolveBoundProvider(null, eastus.getId(), "TTS", "vi-VN-HoaiMyNeural").providerId());
+        }
+
+        assertEquals(Set.of(eastus.getId(), sea.getId()), picked, "both regions of one vendor share the load");
+    }
+
+    @Test
+    void failedBoundKeyStillHasAnAlternativeWhenTheOtherKeyWasTheOneThatFailed() {
+        var voices = mock(com.app.modules.provider.repository.TtsVoiceRepository.class);
+        var health = mock(com.app.modules.provider.service.ProviderHealthService.class);
+        PlatformAiProvider bound = ttsKey("azure-1", "azure_speech");
+        PlatformAiProvider other = ttsKey("azure-2", "azure_speech");
+        when(platformRepository.findById(bound.getId())).thenReturn(Optional.of(bound));
+        when(platformRepository.findByIsActiveTrue()).thenReturn(List.of(bound, other));
+        when(voices.findByPlatformProviderId(bound.getId())).thenReturn(List.of(voice(bound, "v")));
+        when(voices.findByPlatformProviderId(other.getId())).thenReturn(List.of(voice(other, "v")));
+        when(health.isCoolingDown(any())).thenAnswer(inv -> other.getId().equals(inv.getArgument(0))); // the load-balanced pick failed
+        ProviderResolverServiceImpl resolver = voiceResolver(voices, health);
+
+        assertTrue(resolver.hasVoiceSibling(bound.getId(), "v"), "the bound key itself is the alternative");
+        assertEquals(bound.getId(), resolver.resolveBoundProvider(null, bound.getId(), "TTS", "v").providerId());
+    }
+
+    @Test
+    void sameProtocolOnAnotherHostIsAnotherVendor() {
+        var voices = mock(com.app.modules.provider.repository.TtsVoiceRepository.class);
+        var health = mock(com.app.modules.provider.service.ProviderHealthService.class);
+        PlatformAiProvider openai = ttsKey("openai", "openai_compatible");
+        openai.setBaseUrl("https://api.openai.com/v1");
+        PlatformAiProvider proxy = ttsKey("freellmapi", "openai_compatible");
+        proxy.setBaseUrl("http://freellmapi:3001/v1");
+        when(platformRepository.findById(openai.getId())).thenReturn(Optional.of(openai));
+        when(platformRepository.findByIsActiveTrue()).thenReturn(List.of(openai, proxy));
+        when(voices.findByPlatformProviderId(openai.getId())).thenReturn(List.of(voice(openai, "alloy")));
+        lenient().when(voices.findByPlatformProviderId(proxy.getId())).thenReturn(List.of(voice(proxy, "alloy")));
+        when(health.isCoolingDown(any())).thenAnswer(inv -> openai.getId().equals(inv.getArgument(0)));
+        ProviderResolverServiceImpl resolver = voiceResolver(voices, health);
+
+        assertFalse(resolver.hasVoiceSibling(openai.getId(), "alloy"), "\"alloy\" on a proxy is another voice");
     }
 
     @Test

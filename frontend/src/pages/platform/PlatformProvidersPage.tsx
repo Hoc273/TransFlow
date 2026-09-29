@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconEdit,
@@ -39,7 +39,9 @@ import type {
   PlatformProviderInput,
   PlatformProviderTier,
   ProviderTestResult,
+  ModelOverrideOperation,
 } from '@/types/platform'
+import { MODEL_OVERRIDE_OPERATIONS } from '@/types/platform'
 
 const CAPABILITIES = ['STT', 'TRANSLATE', 'TTS', 'VISION'] as const
 
@@ -50,6 +52,7 @@ type FormState = {
   baseUrl: string
   apiKey: string
   defaultModel: string
+  modelOverrides: Record<ModelOverrideOperation, string>
   priority: string
   weight: string
   tier: PlatformProviderTier
@@ -63,6 +66,7 @@ const EMPTY_FORM: FormState = {
   baseUrl: defaultBaseUrlFor('openai_compatible'),
   apiKey: '',
   defaultModel: defaultModelFor('openai_compatible', ['TRANSLATE']),
+  modelOverrides: { SUMMARIZE_SCRIPT: '', REFINE: '', QA: '' },
   priority: '100',
   weight: '1',
   tier: 'PAID',
@@ -77,6 +81,11 @@ function toForm(p: PlatformProvider): FormState {
     baseUrl: p.baseUrl,
     apiKey: '',
     defaultModel: p.defaultModel ?? '',
+    modelOverrides: {
+      SUMMARIZE_SCRIPT: p.modelOverrides?.SUMMARIZE_SCRIPT ?? '',
+      REFINE: p.modelOverrides?.REFINE ?? '',
+      QA: p.modelOverrides?.QA ?? '',
+    },
     priority: String(p.priority),
     weight: String(p.weight),
     tier: p.tier,
@@ -125,8 +134,25 @@ export function PlatformProvidersPage() {
     }
   }, [providers])
 
+  // Keys of one vendor account family (same groupKey) are one provider for users: shown together.
+  const groups = useMemo(() => {
+    const byKey = new Map<string, PlatformProvider[]>()
+    for (const p of providers) {
+      const key = p.groupKey || p.id
+      byKey.set(key, [...(byKey.get(key) ?? []), p])
+    }
+    return [...byKey.entries()].map(([key, keys]) => ({ key, keys }))
+  }, [providers])
+
   const openCreate = () => {
     setForm(EMPTY_FORM)
+    setFormError(null)
+    setEditing('new')
+  }
+
+  /** Another key for the same provider: every setting copied except the key itself. */
+  const openAddKey = (template: PlatformProvider, groupSize: number) => {
+    setForm({ ...toForm(template), name: `${template.name} #${groupSize + 1}`, apiKey: '', isActive: true })
     setFormError(null)
     setEditing('new')
   }
@@ -160,6 +186,12 @@ export function PlatformProvidersPage() {
       capabilities: form.capabilities,
       baseUrl: url.value,
       defaultModel: form.defaultModel.trim(),
+      // Only a TRANSLATE key runs these operations; any other key sends an empty map.
+      modelOverrides: Object.fromEntries(
+        form.capabilities.includes('TRANSLATE')
+          ? MODEL_OVERRIDE_OPERATIONS.map((op) => [op, form.modelOverrides[op].trim()]).filter(([, m]) => m)
+          : [],
+      ),
       priority: Number(form.priority),
       weight: Number(form.weight),
       tier: form.tier,
@@ -323,83 +355,116 @@ export function PlatformProvidersPage() {
                   </td>
                 </tr>
               ) : (
-                providers.map((p) => (
-                  <tr key={p.id} className={p.isActive ? undefined : 'opacity-50'}>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{p.name}</span>
-                        <span
-                          className={`platform-action-badge ${
-                            p.tier === 'FREE' ? 'platform-action-success' : 'platform-action-slate'
-                          }`}
-                        >
-                          {t(`providers.tier.${p.tier}`)}
-                        </span>
-                        {!p.isActive && (
-                          <span className="platform-action-badge platform-action-slate">
-                            {t('providers.inactive')}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-0.5 font-mono text-[11px] text-[var(--color-text-tertiary)]">
-                        {p.protocol} · {p.apiKeyHint ?? '****'}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="flex flex-wrap gap-1">
-                        {p.capabilities.map((c) => (
-                          <span key={c} className="platform-action-badge platform-action-slate">
-                            {c}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="col-hide-mobile font-mono text-[12px] text-[var(--color-text-secondary)]">
-                      {p.defaultModel ?? '—'}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {p.priority}
-                      <span className="text-[var(--color-text-tertiary)]"> · ×{p.weight}</span>
-                    </td>
-                    <td>
-                      <HealthBadge provider={p} label={healthLabel(p, t)} />
-                    </td>
-                    <td className="col-hide-mobile text-[var(--color-text-secondary)]">
-                      {p.lastCheckedAt ? formatDateTime(p.lastCheckedAt, language) : '—'}
-                    </td>
-                    <td>
-                      <div className="flex justify-end gap-1">
-                        <IconButton
-                          label={t('providers.test')}
-                          disabled={busyId === p.id}
-                          onClick={() => void runTest(p)}
-                        >
-                          <IconPlayerPlay size={15} />
-                        </IconButton>
-                        {p.capabilities.includes('TTS') && (
-                          <IconButton
-                            label={t('providers.voices')}
-                            onClick={() => setVoiceProvider(p)}
+                groups.map((group) => (
+                  <Fragment key={group.key}>
+                    <tr className="platform-group-row">
+                      <td colSpan={7}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="font-mono text-[var(--color-text-secondary)]">
+                              {group.key.replace('@', ' · ')}
+                            </span>
+                            <span className="text-[var(--color-text-tertiary)]">
+                              {t('providers.group.keys', { count: group.keys.length })}
+                              {' · '}
+                              {t('providers.group.healthy', {
+                                healthy: group.keys.filter(
+                                  (k) => k.isActive && k.healthStatus !== 'DOWN' && !k.coolingDown,
+                                ).length,
+                                active: group.keys.filter((k) => k.isActive).length,
+                              })}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn-link inline-flex items-center gap-1 text-xs"
+                            onClick={() => openAddKey(group.keys[0], group.keys.length)}
                           >
-                            <IconMicrophone size={15} />
-                          </IconButton>
-                        )}
-                        <IconButton label={t('providers.edit')} onClick={() => openEdit(p)}>
-                          <IconEdit size={15} />
-                        </IconButton>
-                        <IconButton
-                          label={p.isActive ? t('providers.deactivate') : t('providers.activate')}
-                          disabled={busyId === p.id}
-                          onClick={() => void toggleActive(p)}
-                        >
-                          <IconPower size={15} />
-                        </IconButton>
-                        <IconButton label={t('providers.delete')} danger onClick={() => setConfirmDelete(p)}>
-                          <IconTrash size={15} />
-                        </IconButton>
-                      </div>
-                    </td>
-                  </tr>
+                            <IconPlus size={13} />
+                            {t('providers.group.addKey')}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {group.keys.map((p) => (
+                      <tr key={p.id} className={p.isActive ? undefined : 'opacity-50'}>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{p.name}</span>
+                            <span
+                              className={`platform-action-badge ${
+                                p.tier === 'FREE' ? 'platform-action-success' : 'platform-action-slate'
+                              }`}
+                            >
+                              {t(`providers.tier.${p.tier}`)}
+                            </span>
+                            {!p.isActive && (
+                              <span className="platform-action-badge platform-action-slate">
+                                {t('providers.inactive')}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-0.5 font-mono text-[11px] text-[var(--color-text-tertiary)]">
+                            {p.protocol} · {p.apiKeyHint ?? '****'}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="flex flex-wrap gap-1">
+                            {p.capabilities.map((c) => (
+                              <span key={c} className="platform-action-badge platform-action-slate">
+                                {c}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="col-hide-mobile font-mono text-[12px] text-[var(--color-text-secondary)]">
+                          {p.defaultModel ?? '—'}
+                        </td>
+                        <td className="text-right tabular-nums">
+                          {p.priority}
+                          <span className="text-[var(--color-text-tertiary)]"> · ×{p.weight}</span>
+                        </td>
+                        <td>
+                          <HealthBadge provider={p} label={healthLabel(p, t)} />
+                        </td>
+                        <td className="col-hide-mobile text-[var(--color-text-secondary)]">
+                          {p.lastCheckedAt ? formatDateTime(p.lastCheckedAt, language) : '—'}
+                        </td>
+                        <td>
+                          <div className="flex justify-end gap-1">
+                            <IconButton
+                              label={t('providers.test')}
+                              disabled={busyId === p.id}
+                              onClick={() => void runTest(p)}
+                            >
+                              <IconPlayerPlay size={15} />
+                            </IconButton>
+                            {p.capabilities.includes('TTS') && (
+                              <IconButton
+                                label={t('providers.voices')}
+                                onClick={() => setVoiceProvider(p)}
+                              >
+                                <IconMicrophone size={15} />
+                              </IconButton>
+                            )}
+                            <IconButton label={t('providers.edit')} onClick={() => openEdit(p)}>
+                              <IconEdit size={15} />
+                            </IconButton>
+                            <IconButton
+                              label={p.isActive ? t('providers.deactivate') : t('providers.activate')}
+                              disabled={busyId === p.id}
+                              onClick={() => void toggleActive(p)}
+                            >
+                              <IconPower size={15} />
+                            </IconButton>
+                            <IconButton label={t('providers.delete')} danger onClick={() => setConfirmDelete(p)}>
+                              <IconTrash size={15} />
+                            </IconButton>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))
               )}
             </tbody>
@@ -504,6 +569,27 @@ export function PlatformProvidersPage() {
               })}
             </div>
           </Field>
+
+          {form.capabilities.includes('TRANSLATE') && !isModelUnused(form.protocol) && (
+            <Field label={t('providers.form.modelOverrides')} hint={t('providers.form.modelOverridesHint')}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {MODEL_OVERRIDE_OPERATIONS.map((op) => (
+                  <label key={op} className="flex flex-col gap-1 text-[11px] text-[var(--color-text-tertiary)]">
+                    {t(`providers.form.modelOverride.${op}`)}
+                    <input
+                      className="input w-full font-mono text-[13px]"
+                      maxLength={200}
+                      placeholder={form.defaultModel || defaultModelFor(form.protocol, form.capabilities)}
+                      value={form.modelOverrides[op]}
+                      onChange={(e) =>
+                        setForm({ ...form, modelOverrides: { ...form.modelOverrides, [op]: e.target.value } })
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+            </Field>
+          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field label={t('providers.form.priority')} hint={t('providers.form.priorityHint')}>
