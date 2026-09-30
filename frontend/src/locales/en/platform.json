@@ -357,7 +357,7 @@
       "apiKeyKeep": "Leave empty to keep the current key.",
       "model": "Default model",
       "capabilities": "Capabilities",
-      "modelUnusedHint": "Azure / Google TTS have no model to choose — this is only a label; the voice is picked per job.",
+      "modelUnusedHint": "Azure / Google Speech have no model to pick — the value is only a label. Azure: use https://{region}.api.cognitive.microsoft.com for both TTS and STT.",
       "modelOverrides": "Per-operation model",
       "modelOverridesHint": "Optional. Summary, Refine and QA run on this TRANSLATE key; leave empty to use the default model above. FreeLLMAPI example: auto:script.",
       "modelOverride": {
@@ -373,7 +373,9 @@
       "weightHint": "Load share among keys of the same priority.",
       "tier": "Tier",
       "active": "Key is active",
-      "saveError": "Could not save the key."
+      "saveError": "Could not save the key.",
+      "capabilityModels": "Model per capability",
+      "capabilityModelsHint": "This key runs several capabilities; each may need its own model (e.g. OpenAI: STT whisper-1, TTS tts-1). Empty = use the default model above."
     }
   },
   "pricing": {

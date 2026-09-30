@@ -37,6 +37,9 @@ public class MediaPreset extends BaseEntity {
     @Column(name = "name", nullable = false)
     private String name;
 
+    @Column(name = "description")
+    private String description;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "subtitle_style", nullable = false)
     private JsonNode subtitleStyle;

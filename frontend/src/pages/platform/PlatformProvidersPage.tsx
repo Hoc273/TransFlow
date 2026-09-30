@@ -25,7 +25,9 @@ import { validateProviderBaseUrl } from '@/lib/providerBaseUrl'
 import {
   SELECTABLE_PROTOCOLS,
   defaultBaseUrlFor,
+  capabilityDefaultModel,
   defaultModelFor,
+  suggestedCapabilityModels,
   isModelUnused,
   protocolCapabilities,
   protocolSupports,
@@ -41,7 +43,7 @@ import type {
   ProviderTestResult,
   ModelOverrideOperation,
 } from '@/types/platform'
-import { MODEL_OVERRIDE_OPERATIONS } from '@/types/platform'
+import { MODEL_OVERRIDE_CAPABILITIES, MODEL_OVERRIDE_OPERATIONS } from '@/types/platform'
 
 const CAPABILITIES = ['STT', 'TRANSLATE', 'TTS', 'VISION'] as const
 
@@ -53,6 +55,8 @@ type FormState = {
   apiKey: string
   defaultModel: string
   modelOverrides: Record<ModelOverrideOperation, string>
+  /** Capability → model when this key runs several capabilities that need different models. */
+  capabilityModels: Record<string, string>
   priority: string
   weight: string
   tier: PlatformProviderTier
@@ -67,6 +71,7 @@ const EMPTY_FORM: FormState = {
   apiKey: '',
   defaultModel: defaultModelFor('openai_compatible', ['TRANSLATE']),
   modelOverrides: { SUMMARIZE_SCRIPT: '', REFINE: '', QA: '' },
+  capabilityModels: {},
   priority: '100',
   weight: '1',
   tier: 'PAID',
@@ -86,6 +91,9 @@ function toForm(p: PlatformProvider): FormState {
       REFINE: p.modelOverrides?.REFINE ?? '',
       QA: p.modelOverrides?.QA ?? '',
     },
+    capabilityModels: Object.fromEntries(
+      MODEL_OVERRIDE_CAPABILITIES.map((cap) => [cap, p.modelOverrides?.[cap] ?? '']).filter(([, m]) => m),
+    ),
     priority: String(p.priority),
     weight: String(p.weight),
     tier: p.tier,
@@ -186,12 +194,15 @@ export function PlatformProvidersPage() {
       capabilities: form.capabilities,
       baseUrl: url.value,
       defaultModel: form.defaultModel.trim(),
-      // Only a TRANSLATE key runs these operations; any other key sends an empty map.
-      modelOverrides: Object.fromEntries(
-        form.capabilities.includes('TRANSLATE')
-          ? MODEL_OVERRIDE_OPERATIONS.map((op) => [op, form.modelOverrides[op].trim()]).filter(([, m]) => m)
-          : [],
-      ),
+      // Operations only run on a TRANSLATE key; capability models only for checked capabilities.
+      modelOverrides: Object.fromEntries([
+        ...(form.capabilities.includes('TRANSLATE')
+          ? MODEL_OVERRIDE_OPERATIONS.map((op) => [op, form.modelOverrides[op].trim()])
+          : []),
+        ...(showCapabilityModels
+          ? form.capabilities.map((cap) => [cap, (form.capabilityModels[cap] ?? '').trim()])
+          : []),
+      ].filter(([, m]) => m)),
       priority: Number(form.priority),
       weight: Number(form.weight),
       tier: form.tier,
@@ -261,24 +272,37 @@ export function PlatformProvidersPage() {
       const kept = supportedSubset(protocol, f.capabilities)
       const first = protocolCapabilities(protocol)[0]
       const capabilities = kept.length ? kept : [first === 'TEXT' ? 'TRANSLATE' : first]
+      const defaultModel = defaultModelFor(protocol, capabilities)
       return {
         ...f,
         protocol,
         capabilities,
         baseUrl: defaultBaseUrlFor(protocol),
-        defaultModel: defaultModelFor(protocol, capabilities),
+        defaultModel,
+        capabilityModels: suggestedCapabilityModels(protocol, capabilities, defaultModel),
       }
     })
   }
 
   const toggleCapability = (cap: string) => {
-    setForm((f) => ({
-      ...f,
-      capabilities: f.capabilities.includes(cap)
-        ? f.capabilities.filter((c) => c !== cap)
-        : [...f.capabilities, cap],
-    }))
+    setForm((f) => {
+      if (f.capabilities.includes(cap)) {
+        const { [cap]: _dropped, ...capabilityModels } = f.capabilityModels
+        return { ...f, capabilities: f.capabilities.filter((c) => c !== cap), capabilityModels }
+      }
+      const suggested = suggestedCapabilityModels(f.protocol, [cap], f.defaultModel)[cap]
+      return {
+        ...f,
+        capabilities: [...f.capabilities, cap],
+        capabilityModels: suggested && !f.capabilityModels[cap]
+          ? { ...f.capabilityModels, [cap]: suggested }
+          : f.capabilityModels,
+      }
+    })
   }
+
+  // One key serving several capabilities may need a model per capability (OpenAI whisper-1 / tts-1).
+  const showCapabilityModels = form.capabilities.length > 1 && !isModelUnused(form.protocol)
 
   const saving = createMutation.isPending || updateMutation.isPending
 
@@ -419,6 +443,11 @@ export function PlatformProvidersPage() {
                         </td>
                         <td className="col-hide-mobile font-mono text-[12px] text-[var(--color-text-secondary)]">
                           {p.defaultModel ?? '—'}
+                          {MODEL_OVERRIDE_CAPABILITIES.filter((cap) => p.modelOverrides?.[cap]).map((cap) => (
+                            <div key={cap} className="text-[11px] text-[var(--color-text-tertiary)]">
+                              {cap}: {p.modelOverrides[cap]}
+                            </div>
+                          ))}
                         </td>
                         <td className="text-right tabular-nums">
                           {p.priority}
@@ -569,6 +598,28 @@ export function PlatformProvidersPage() {
               })}
             </div>
           </Field>
+
+          {showCapabilityModels && (
+            <Field label={t('providers.form.capabilityModels')} hint={t('providers.form.capabilityModelsHint')}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {form.capabilities.map((cap) => (
+                  <label key={cap} className="flex flex-col gap-1 text-[11px] text-[var(--color-text-tertiary)]">
+                    {cap}
+                    <input
+                      className="input w-full font-mono text-[13px]"
+                      maxLength={200}
+                      data-testid={`capability-model-${cap}`}
+                      placeholder={form.defaultModel || capabilityDefaultModel(form.protocol, cap)}
+                      value={form.capabilityModels[cap] ?? ''}
+                      onChange={(e) =>
+                        setForm({ ...form, capabilityModels: { ...form.capabilityModels, [cap]: e.target.value } })
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+            </Field>
+          )}
 
           {form.capabilities.includes('TRANSLATE') && !isModelUnused(form.protocol) && (
             <Field label={t('providers.form.modelOverrides')} hint={t('providers.form.modelOverridesHint')}>

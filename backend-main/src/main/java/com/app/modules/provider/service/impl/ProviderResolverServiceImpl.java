@@ -117,7 +117,7 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
                 bound -> ThreadLocalRandom.current().nextInt(bound));
 
         if (matchingPlatform.isPresent()) {
-            return record(normCap, platformResolution(matchingPlatform.get()));
+            return record(normCap, platformResolution(matchingPlatform.get(), normCap));
         }
 
         // 3. No active provider configured for capability
@@ -158,7 +158,7 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
         PlatformAiProvider p = selectPlatform(candidates, this::isAvailable,
                         range -> ThreadLocalRandom.current().nextInt(range))
                 .orElseThrow(() -> new AppException(ErrorCode.PROVIDER_NOT_FOUND));
-        return record(normCap, platformResolution(p));
+        return record(normCap, platformResolution(p, normCap));
     }
 
     @Override
@@ -239,9 +239,9 @@ public class ProviderResolverServiceImpl implements ProviderResolverService {
         return resolution;
     }
 
-    private ProviderResolution platformResolution(PlatformAiProvider p) {
+    private ProviderResolution platformResolution(PlatformAiProvider p, String capability) {
         ProviderResolution base = userResolution(p.getId(), p.getProtocol(), p.getBaseUrl(),
-                cryptoService.decrypt(p.getApiKeyEnc()), p.getDefaultModel(), false);
+                cryptoService.decrypt(p.getApiKeyEnc()), p.modelFor(capability), false);
         return new ProviderResolution(base.providerId(), base.providerType(), base.baseUrl(), base.apiKey(),
                 base.model(), false, p.getModelOverrides());
     }

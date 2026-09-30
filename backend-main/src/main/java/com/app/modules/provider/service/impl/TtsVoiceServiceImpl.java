@@ -227,7 +227,7 @@ public class TtsVoiceServiceImpl implements TtsVoiceService {
             throw new AppException(ErrorCode.PROVIDER_CAPABILITY_NOT_SUPPORTED);
         }
         return new ResolvedProvider(p.getProtocol(), p.getBaseUrl(),
-                cryptoService.decrypt(p.getApiKeyEnc()), p.getDefaultModel());
+                cryptoService.decrypt(p.getApiKeyEnc()), p.modelFor("TTS"));
     }
 
     /** Language-compatible voices (when a language is given) in picker order — first = default pick. */

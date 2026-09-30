@@ -30,7 +30,36 @@ class PlatformProviderModelOverridesTest {
     @Test
     void rejectsUnknownOperation() {
         assertThrows(AppException.class, () -> PlatformProviderServiceImpl.modelOverrides(
-                Map.of("TRANSLATE", "auto:other"), provider("TRANSLATE")));
+                Map.of("EMBEDDING", "auto:other"), provider("TRANSLATE")));
+    }
+
+    @Test
+    void acceptsCapabilityModelsOnlyForCapabilitiesTheKeyHas() {
+        PlatformAiProvider openAi = provider("TRANSLATE", "STT", "TTS");
+        assertEquals(Map.of("STT", "whisper-1", "TTS", "tts-1"), PlatformProviderServiceImpl.modelOverrides(
+                Map.of("stt", " whisper-1 ", "TTS", "tts-1"), openAi));
+        assertThrows(AppException.class, () -> PlatformProviderServiceImpl.modelOverrides(
+                Map.of("VISION", "gpt-4o-mini"), openAi));
+    }
+
+    @Test
+    void keyRunsEachCapabilityWithItsOwnModel() {
+        PlatformAiProvider openAi = provider("TRANSLATE", "STT", "TTS");
+        openAi.setDefaultModel("gpt-4o-mini");
+        openAi.setModelOverrides(new java.util.LinkedHashMap<>(Map.of("STT", "whisper-1", "TTS", "tts-1")));
+
+        assertEquals("whisper-1", openAi.modelFor("stt"));
+        assertEquals("tts-1", openAi.modelFor("TTS"));
+        assertEquals("gpt-4o-mini", openAi.modelFor("TRANSLATE"));
+        assertEquals("gpt-4o-mini", openAi.modelFor(null));
+    }
+
+    @Test
+    void capabilityChangeDropsOverridesTheKeyCanNoLongerUse() {
+        PlatformAiProvider key = provider("STT", "TTS");
+        key.setModelOverrides(new java.util.LinkedHashMap<>(Map.of("STT", "whisper-1", "TTS", "tts-1", "QA", "x")));
+
+        assertEquals(Map.of("STT", "whisper-1", "TTS", "tts-1"), PlatformProviderServiceImpl.applicableOverrides(key));
     }
 
     @Test
@@ -50,9 +79,9 @@ class PlatformProviderModelOverridesTest {
         assertEquals("auto:translate", resolution.modelFor(null));
     }
 
-    private static PlatformAiProvider provider(String capability) {
+    private static PlatformAiProvider provider(String... capabilities) {
         PlatformAiProvider provider = new PlatformAiProvider();
-        provider.setCapabilities(List.of(capability));
+        provider.setCapabilities(List.of(capabilities));
         return provider;
     }
 }

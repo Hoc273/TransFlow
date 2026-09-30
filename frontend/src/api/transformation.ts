@@ -575,9 +575,9 @@ function trackActiveUpload(delta: 1 | -1) {
 }
 
 /**
- * Chunk requests in flight at once across ALL uploads of this tab. Host nginx allows 6 concurrent
- * chunk connections per IP (`limit_conn tf_upload 6`, answered with 429), so several files uploading
- * in parallel must share this budget instead of each opening its own set of connections.
+ * Chunk requests in flight at once across ALL uploads of this tab. Host nginx allows 12 concurrent
+ * chunk connections per user (`limit_conn tf_user_upload 12`, answered with 429), so several files
+ * uploading in parallel must share this budget instead of each opening its own set of connections.
  */
 const UPLOAD_CONCURRENCY = 3
 

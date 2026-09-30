@@ -8,11 +8,24 @@
 # (DNS only: IP kết nối; bật proxy Cloudflare: realip lấy từ CF-Connecting-IP).
 # Chỉ chặn được flood từ ít IP; volumetric DDoS (băng thông / SYN flood) phải chặn ở tầng
 # mạng (Cloudflare proxy / AWS Shield) — nginx không cứu được khi đường truyền đã bão hoà.
-limit_req_zone  $binary_remote_addr zone=tf_api:10m     rate=20r/s;
-limit_req_zone  $binary_remote_addr zone=tf_auth:10m    rate=10r/m;
-limit_req_zone  $binary_remote_addr zone=tf_storage:10m rate=30r/s;
+#
+# Nhiều người dùng chung 1 IP (CGNAT nhà mạng di động, văn phòng, phòng lab trường) là bình thường,
+# nên /api giới hạn 2 tầng:
+#   - tf_user_*: theo người dùng — khoá là chữ ký JWT trong Authorization (≤ 86 ký tự với HS512,
+#     dưới giới hạn 255 byte của khoá limit_conn); request chưa đăng nhập dùng IP. Vượt ngưỡng chỉ
+#     trả 429 cho đúng người đó, fail2ban KHÔNG tính (chặn IP sẽ chặn luôn cả mạng dùng chung).
+#   - tf_api / tf_conn: trần theo IP, rộng hơn nhiều — đủ cho cả chục người sau 1 NAT, nhưng vẫn
+#     chặn kẻ gửi token giả ngẫu nhiên để lách giới hạn theo người dùng. fail2ban tính vùng này.
+map $http_authorization $tf_user_key {
+    "~^Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.(?<tf_jwt_sig>[A-Za-z0-9_-]{16,128})$" $tf_jwt_sig;
+    default $binary_remote_addr;
+}
+limit_req_zone  $tf_user_key        zone=tf_user_api:10m    rate=20r/s;
+limit_conn_zone $tf_user_key        zone=tf_user_upload:10m;
+limit_req_zone  $binary_remote_addr zone=tf_api:10m         rate=100r/s;
+limit_req_zone  $binary_remote_addr zone=tf_auth:10m        rate=30r/m;
+limit_req_zone  $binary_remote_addr zone=tf_storage:10m     rate=30r/s;
 limit_conn_zone $binary_remote_addr zone=tf_conn:10m;
-limit_conn_zone $binary_remote_addr zone=tf_upload:10m;
 limit_req_status  429;
 limit_conn_status 429;
 
@@ -80,8 +93,8 @@ server {
     proxy_send_timeout 600s;
     proxy_read_timeout 600s;
 
-    # HTTP/2: mỗi stream đang chạy tính là 1 kết nối.
-    limit_conn tf_conn 64;
+    # HTTP/2: mỗi stream đang chạy tính là 1 kết nối. Trần theo IP, chừa chỗ cho nhiều người sau 1 NAT.
+    limit_conn tf_conn 128;
 
     # Callback worker chỉ đi trong docker network, không bao giờ qua cổng public.
     location /internal/ {
@@ -89,11 +102,13 @@ server {
     }
 
     # Upload video chia chunk 8MB (PUT .../media/uploads/{id}/chunks/{n}) — lọt dưới 10MB ở trên.
-    # Tối đa 6 chunk đang gửi / IP (FE gửi song song 3). Domain để DNS only: qua proxy Cloudflare
-    # Free, người dùng Viettel chỉ upload được 7–90KB/s (docs/Deployment_Network.md §6.3).
+    # Tối đa 12 chunk đang gửi / người dùng (FE gửi song song 3 mỗi tab => đủ 4 tab). Domain để DNS
+    # only: qua proxy Cloudflare Free, người dùng Viettel chỉ upload được 7–90KB/s
+    # (docs/Deployment_Network.md §6.3).
     location ~ ^/api/workspaces/[^/]+/media/uploads/[^/]+/chunks/ {
-        limit_conn tf_upload 6;
-        limit_req zone=tf_api burst=80 nodelay;
+        limit_conn tf_user_upload 12;
+        limit_req zone=tf_user_api burst=80 nodelay;
+        limit_req zone=tf_api burst=400 nodelay;
 
         proxy_pass http://127.0.0.1:__FRONTEND_PORT__;
         proxy_http_version 1.1;
@@ -105,9 +120,11 @@ server {
     }
 
     # Endpoint không cần đăng nhập mà bot hay dò (login, đăng ký, OTP). Backend còn giới hạn
-    # 30 lần/5 phút/IP; ở đây chặn sớm để flood không chạm tới bcrypt/Redis/SMTP.
+    # AUTH_THROTTLE_MAX_REQUESTS lần/5 phút/IP; ở đây chặn sớm để flood không chạm tới bcrypt/Redis/SMTP.
+    # Chưa đăng nhập nên chỉ có IP để phân biệt: ngưỡng đủ cho cả lớp học sau 1 NAT đăng nhập cùng
+    # lúc; dò mật khẩu từng tài khoản đã bị LoginAttemptService khoá sau 5 lần sai.
     location ~ ^/api/auth/(login|register|forgot-password/|google/exchange) {
-        limit_req zone=tf_auth burst=10 nodelay;
+        limit_req zone=tf_auth burst=30 nodelay;
 
         proxy_pass http://127.0.0.1:__FRONTEND_PORT__;
         proxy_http_version 1.1;
@@ -121,7 +138,8 @@ server {
     # API còn lại (kể cả /api/auth/refresh). Burst lớn vì SPA bắn nhiều query song song khi mở trang;
     # frontend coi 429 ở refresh là lỗi tạm thời, không logout người dùng.
     location /api/ {
-        limit_req zone=tf_api burst=80 nodelay;
+        limit_req zone=tf_user_api burst=80 nodelay;
+        limit_req zone=tf_api burst=400 nodelay;
 
         proxy_pass http://127.0.0.1:__FRONTEND_PORT__;
         proxy_http_version 1.1;

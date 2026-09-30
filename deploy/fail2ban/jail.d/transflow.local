@@ -1,6 +1,8 @@
 # TransFlow — chặn ở firewall (cổng 80/443) IP liên tục vượt rate-limit của nginx host.
 # nginx đã trả 429 cho từng request vượt ngưỡng; jail này cắt hẳn IP flood để nginx không phải
-# xử lý tiếp. Ngưỡng cao hơn nhiều so với một người dùng thật (SPA mở trang, upload 3 chunk song song).
+# xử lý tiếp. Chỉ tính các vùng trần theo IP (filter), ngưỡng đủ cho nhiều người dùng sau 1 NAT.
+# Chặn 1 IP có thể chặn cả mạng dùng chung, nên lần đầu chỉ chặn 10 phút; IP tái phạm bị chặn
+# lâu gấp đôi mỗi lần, tối đa 1 ngày.
 # Chỉ có tác dụng khi DNS only (IP kết nối là IP client). Nếu bật lại proxy Cloudflare, kết nối
 # đến từ IP Cloudflare nên lệnh chặn theo IP thật không có hiệu lực — phải chặn ở Cloudflare.
 [transflow-nginx-limit]
@@ -12,5 +14,7 @@ backend  = auto
 port     = http,https
 maxretry = 30
 findtime = 60
-bantime  = 3600
+bantime  = 600
+bantime.increment = true
+bantime.maxtime   = 86400
 ignoreip = 127.0.0.1/8 ::1

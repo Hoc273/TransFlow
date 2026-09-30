@@ -825,6 +825,7 @@
     "active": "작업을 만들 때 이 프리셋 선택 허용",
     "isDefault": "기본 프리셋으로 설정",
     "defaultConflict": "이 범위에 이미 기본 프리셋이 있습니다. 먼저 현재 기본값을 해제하세요.",
+    "deleteDefaultBlocked": "이 프리셋은 해당 범위의 기본값입니다. 삭제하기 전에 편집에서 \"기본값\"을 해제하세요.",
     "projectFilter": "프로젝트로 필터",
     "projectFilterHint": "프리셋을 보려면 위 필터에서 프로젝트를 선택하세요.",
     "projectAll": "모든 프로젝트",

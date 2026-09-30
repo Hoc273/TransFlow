@@ -114,7 +114,7 @@ class PresetServiceTest {
     @DisplayName("createPreset with scope SYSTEM throws SYSTEM_PRESET_READ_ONLY")
     void createPreset_scopeSystem_throwsReadOnly() {
         CreateMediaPresetRequest req = new CreateMediaPresetRequest(
-                "SYSTEM", null, "Sys Preset",
+                "SYSTEM", null, "Sys Preset", null,
                 objectMapper.createObjectNode(), null, null, false
         );
 
@@ -132,7 +132,7 @@ class PresetServiceTest {
         when(mediaPresetRepository.save(any(MediaPreset.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CreateMediaPresetRequest req = new CreateMediaPresetRequest(
-                "WORKSPACE", null, "New Default Preset",
+                "WORKSPACE", null, "New Default Preset", null,
                 objectMapper.createObjectNode(), null, null, true
         );
 
@@ -140,7 +140,7 @@ class PresetServiceTest {
 
         verify(workspaceAccessService).requireWorkspaceLead(workspaceId, userId);
         assertThat(oldDefault.isDefault()).isFalse();
-        verify(mediaPresetRepository).save(oldDefault);
+        verify(mediaPresetRepository).saveAndFlush(oldDefault);
         assertThat(res.isDefault()).isTrue();
         assertThat(res.name()).isEqualTo("New Default Preset");
     }
@@ -149,7 +149,7 @@ class PresetServiceTest {
     @DisplayName("createPreset with scope PROJECT without projectId throws PRESET_SCOPE_INVALID")
     void createPreset_scopeProject_nullProjectId_throwsInvalid() {
         CreateMediaPresetRequest req = new CreateMediaPresetRequest(
-                "PROJECT", null, "Project Preset",
+                "PROJECT", null, "Project Preset", null,
                 objectMapper.createObjectNode(), null, null, false
         );
 
@@ -164,7 +164,7 @@ class PresetServiceTest {
         MediaPreset sysPreset = createPreset(presetId, MediaPresetScope.SYSTEM, null, null, true, true);
         when(mediaPresetRepository.findById(presetId)).thenReturn(Optional.of(sysPreset));
 
-        UpdateMediaPresetRequest req = new UpdateMediaPresetRequest("New Name", null, null, null, null, null);
+        UpdateMediaPresetRequest req = new UpdateMediaPresetRequest("New Name", null, null, null, null, null, null);
 
         assertThatThrownBy(() -> presetService.updatePreset(workspaceId, userId, presetId, req))
                 .isInstanceOf(AppException.class)

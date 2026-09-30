@@ -11,6 +11,9 @@ public record UpdateMediaPresetRequest(
         @Size(max = 200, message = "name must not exceed 200 characters")
         String name,
 
+        @Size(max = 1000, message = "description must not exceed 1000 characters")
+        String description,
+
         JsonNode subtitleStyle,
 
         JsonNode voiceConfig,

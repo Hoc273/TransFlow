@@ -114,6 +114,26 @@ class ProviderResolverServiceTest {
     }
 
     @Test
+    void platformKeyServingSeveralCapabilitiesSendsEachItsOwnModel() {
+        when(userAiProviderRepository.findByUserIdAndIsActiveTrue(userId)).thenReturn(List.of());
+        PlatformAiProvider shared = new PlatformAiProvider();
+        shared.setId(UUID.randomUUID());
+        shared.setProtocol("openai_compatible");
+        shared.setCapabilities(List.of("TRANSLATE", "STT", "TTS"));
+        shared.setBaseUrl("https://api.openai.com/v1");
+        shared.setApiKeyEnc(new byte[]{1});
+        shared.setDefaultModel("gpt-4o-mini");
+        shared.setModelOverrides(new java.util.LinkedHashMap<>(java.util.Map.of("STT", "whisper-1", "TTS", "tts-1")));
+        shared.setActive(true);
+        when(platformAiProviderRepository.findByIsActiveTrue()).thenReturn(List.of(shared));
+        when(cryptoService.decrypt(shared.getApiKeyEnc())).thenReturn("sk");
+
+        assertEquals("whisper-1", service.resolveForCapability(userId, "STT").model());
+        assertEquals("tts-1", service.resolveForCapability(userId, "TTS").model());
+        assertEquals("gpt-4o-mini", service.resolveForCapability(userId, "TRANSLATE").model());
+    }
+
+    @Test
     void testResolveForCapabilityNoProviderConfiguredThrows() {
         when(userAiProviderRepository.findByUserIdAndIsActiveTrue(userId)).thenReturn(List.of());
         when(platformAiProviderRepository.findByIsActiveTrue()).thenReturn(List.of());

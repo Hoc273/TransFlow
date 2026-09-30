@@ -51,7 +51,11 @@ public class PlatformAiProvider {
     @Column(name = "default_model", length = 200)
     private String defaultModel;
 
-    /** Operation → model for text operations on this TRANSLATE key (SUMMARIZE_SCRIPT, REFINE, QA). */
+    /**
+     * Model overrides keyed by operation (SUMMARIZE_SCRIPT, REFINE, QA on a TRANSLATE key) or by
+     * capability (TRANSLATE, STT, TTS, VISION) when one key serves several capabilities that need
+     * different models, e.g. whisper-1 for STT and tts-1 for TTS on one OpenAI key.
+     */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "model_overrides", nullable = false)
     private Map<String, String> modelOverrides = new LinkedHashMap<>();
@@ -110,6 +114,13 @@ public class PlatformAiProvider {
     @PreUpdate
     void preUpdate() {
         updatedAt = Instant.now();
+    }
+
+    /** Model this key runs {@code capability} with: its capability override, else the default model. */
+    public String modelFor(String capability) {
+        String key = capability == null ? "" : capability.trim().toUpperCase(java.util.Locale.ROOT);
+        String override = modelOverrides == null ? null : modelOverrides.get(key);
+        return override == null || override.isBlank() ? defaultModel : override;
     }
 
     public boolean hasCapability(String capability) {

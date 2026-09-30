@@ -138,10 +138,12 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
             provider.setActive(request.isActive());
         }
         if (request.modelOverrides() != null) {
-            provider.setModelOverrides(modelOverrides(request.modelOverrides(), provider));
-        } else if (!provider.hasCapability("TRANSLATE")) {
-            // Overrides only apply to text operations of a TRANSLATE key.
-            provider.setModelOverrides(new LinkedHashMap<>());
+            Map<String, String> overrides = modelOverrides(request.modelOverrides(), provider);
+            credentialsChanged |= !overrides.equals(provider.getModelOverrides());
+            provider.setModelOverrides(overrides);
+        } else {
+            // Drop overrides the key can no longer use after a capability change.
+            provider.setModelOverrides(applicableOverrides(provider));
         }
         if (credentialsChanged) {
             // A rotated key or new model must earn its health again.
@@ -180,8 +182,8 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
         String apiKey = cryptoService.decrypt(provider.getApiKeyEnc());
         boolean authOk = aiGatewayClient.testConnection(provider.getProtocol(), provider.getBaseUrl(), apiKey);
         List<TestConnectionResponse.CapabilityTestResult> results = new ArrayList<>();
-        String model = provider.getDefaultModel();
         for (String capability : provider.getCapabilities()) {
+            String model = provider.modelFor(capability);
             if (model == null || model.isBlank()) {
                 results.add(new TestConnectionResponse.CapabilityTestResult(capability, false, null,
                         ErrorCode.PROVIDER_MODEL_NOT_CONFIGURED.name(), ErrorCode.PROVIDER_MODEL_NOT_CONFIGURED.getMessage()));
@@ -224,7 +226,7 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
             throw new AppException(ErrorCode.PROVIDER_CAPABILITY_NOT_SUPPORTED);
         }
         List<AiGatewayClient.DiscoveredVoice> discovered = aiGatewayClient.fetchTtsVoices(provider.getProtocol(),
-                provider.getBaseUrl(), cryptoService.decrypt(provider.getApiKeyEnc()), provider.getDefaultModel());
+                provider.getBaseUrl(), cryptoService.decrypt(provider.getApiKeyEnc()), provider.modelFor("TTS"));
         if (discovered == null || discovered.isEmpty()) {
             // An empty or failed discovery must never wipe a working voice catalog.
             throw new AppException(ErrorCode.PROVIDER_VOICES_FETCH_FAILED);
@@ -293,31 +295,49 @@ public class PlatformProviderServiceImpl implements PlatformProviderService {
     }
 
     /**
-     * Normalizes operation → model overrides: upper-case keys from
-     * {@link ProviderResolverService#MODEL_OVERRIDE_OPERATIONS}, blank models dropped. Only a
-     * TRANSLATE key runs those operations, so any other key must not carry overrides.
+     * Normalizes model overrides: upper-case keys, blank models dropped. A key is either an operation
+     * from {@link ProviderResolverService#MODEL_OVERRIDE_OPERATIONS} (only a TRANSLATE key runs those)
+     * or a capability from {@link ProviderResolverService#MODEL_OVERRIDE_CAPABILITIES} the key has.
      */
     static Map<String, String> modelOverrides(Map<String, String> raw, PlatformAiProvider provider) {
         Map<String, String> normalized = new LinkedHashMap<>();
         if (raw == null) {
             return normalized;
         }
-        raw.forEach((operation, model) -> {
-            String key = operation == null ? "" : operation.trim().toUpperCase(Locale.ROOT);
-            if (!ProviderResolverService.MODEL_OVERRIDE_OPERATIONS.contains(key)) {
+        raw.forEach((rawKey, model) -> {
+            String key = rawKey == null ? "" : rawKey.trim().toUpperCase(Locale.ROOT);
+            if (model == null || model.isBlank()) {
+                return; // a cleared field removes the override
+            }
+            boolean operation = ProviderResolverService.MODEL_OVERRIDE_OPERATIONS.contains(key);
+            boolean capability = ProviderResolverService.MODEL_OVERRIDE_CAPABILITIES.contains(key);
+            if (!operation && !capability) {
                 throw new AppException(ErrorCode.VALIDATION_ERROR);
             }
-            if (model != null && !model.isBlank()) {
-                if (model.trim().length() > 200) {
-                    throw new AppException(ErrorCode.VALIDATION_ERROR);
-                }
-                normalized.put(key, model.trim());
+            if ((operation && !provider.hasCapability("TRANSLATE")) || (capability && !provider.hasCapability(key))) {
+                throw new AppException(ErrorCode.VALIDATION_ERROR);
+            }
+            if (model.trim().length() > 200) {
+                throw new AppException(ErrorCode.VALIDATION_ERROR);
+            }
+            normalized.put(key, model.trim());
+        });
+        return normalized;
+    }
+
+    /** The stored overrides the key's current capabilities can still use. */
+    static Map<String, String> applicableOverrides(PlatformAiProvider provider) {
+        Map<String, String> kept = new LinkedHashMap<>();
+        if (provider.getModelOverrides() == null) {
+            return kept;
+        }
+        provider.getModelOverrides().forEach((key, model) -> {
+            boolean operation = ProviderResolverService.MODEL_OVERRIDE_OPERATIONS.contains(key);
+            if (operation ? provider.hasCapability("TRANSLATE") : provider.hasCapability(key)) {
+                kept.put(key, model);
             }
         });
-        if (!normalized.isEmpty() && !provider.hasCapability("TRANSLATE")) {
-            throw new AppException(ErrorCode.VALIDATION_ERROR);
-        }
-        return normalized;
+        return kept;
     }
 
     private static PlatformAiProvider.Tier tier(String raw, PlatformAiProvider.Tier fallback) {

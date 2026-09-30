@@ -75,6 +75,7 @@ class PresetControllerTest {
                 "WORKSPACE",
                 null,
                 "WS Default Preset",
+                "Workspace default",
                 objectMapper.readTree("{\"fontFamily\":\"Inter\",\"fontSize\":24}"),
                 objectMapper.readTree("{\"stability\":0.8}"),
                 objectMapper.readTree("{\"outputAspectRatio\":\"16:9\"}"),
@@ -100,6 +101,7 @@ class PresetControllerTest {
                 "WORKSPACE",
                 null,
                 "WS Secondary Preset",
+                null,
                 objectMapper.readTree("{\"fontFamily\":\"Roboto\",\"fontSize\":20}"),
                 objectMapper.readTree("{}"),
                 objectMapper.readTree("{}"),
@@ -140,6 +142,7 @@ class PresetControllerTest {
                 null,
                 null,
                 null,
+                null,
                 true
         );
 
@@ -167,5 +170,25 @@ class PresetControllerTest {
                         .header("Authorization", "Bearer " + auth.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.isDefault").value(true));
+
+        // 9. Settings-page payload (no subtitleStyle) marked default while preset2 is the default:
+        // the old default must be demoted before the insert hits ux_preset_default_per_scope.
+        mockMvc.perform(post("/api/workspaces/{workspaceId}/presets", auth.workspaceId())
+                        .header("Authorization", "Bearer " + auth.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"scope":"WORKSPACE","name":"From settings page","description":"Shorts",
+                                 "renderConfig":{"subtitleMode":"HARD_SUB","outputAspectRatio":"9:16"},
+                                 "isDefault":true}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.description").value("Shorts"))
+                .andExpect(jsonPath("$.data.renderConfig.outputAspectRatio").value("9:16"))
+                .andExpect(jsonPath("$.data.isDefault").value(true));
+
+        mockMvc.perform(get("/api/workspaces/{workspaceId}/presets/{presetId}", auth.workspaceId(), preset2Id)
+                        .header("Authorization", "Bearer " + auth.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.isDefault").value(false));
     }
 }

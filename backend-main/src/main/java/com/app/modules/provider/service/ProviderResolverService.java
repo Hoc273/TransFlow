@@ -71,6 +71,12 @@ public interface ProviderResolverService {
      */
     Set<String> MODEL_OVERRIDE_OPERATIONS = Set.of("SUMMARIZE_SCRIPT", "REFINE", "QA");
 
+    /**
+     * Capabilities a platform key may map to their own model (see {@code PlatformAiProvider#modelFor}),
+     * so one key can serve e.g. STT and TTS with the model each needs.
+     */
+    Set<String> MODEL_OVERRIDE_CAPABILITIES = Set.of("TRANSLATE", "STT", "TTS", "VISION");
+
     /** {@code modelOverrides}: operation → model, from the platform key; empty for personal keys. */
     record ProviderResolution(
             UUID providerId,
