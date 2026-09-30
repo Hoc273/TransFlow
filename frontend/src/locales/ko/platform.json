@@ -357,7 +357,7 @@
       "apiKeyKeep": "현재 키를 유지하려면 비워 두세요.",
       "model": "기본 모델",
       "capabilities": "기능",
-      "modelUnusedHint": "Azure / Google TTS에는 선택할 모델이 없습니다 — 라벨로만 사용되며 음성은 작업별로 선택합니다.",
+      "modelUnusedHint": "Azure / Google Speech는 선택할 모델이 없으며 값은 라벨일 뿐입니다. Azure: TTS와 STT 모두 https://{region}.api.cognitive.microsoft.com 엔드포인트를 사용하세요.",
       "modelOverrides": "작업별 모델",
       "modelOverridesHint": "선택 사항. 요약, 수정(Refine), QA는 이 TRANSLATE 키에서 실행됩니다. 비워 두면 위의 기본 모델을 사용합니다. FreeLLMAPI 예: auto:script.",
       "modelOverride": {
@@ -373,7 +373,9 @@
       "weightHint": "같은 우선순위 키 간의 부하 분배 비율입니다.",
       "tier": "등급",
       "active": "키 활성화",
-      "saveError": "키를 저장할 수 없습니다."
+      "saveError": "키를 저장할 수 없습니다.",
+      "capabilityModels": "기능별 모델",
+      "capabilityModelsHint": "이 키는 여러 기능을 실행합니다. 기능마다 다른 모델이 필요할 수 있습니다(예: OpenAI STT whisper-1, TTS tts-1). 비워 두면 위의 기본 모델을 사용합니다."
     }
   },
   "pricing": {

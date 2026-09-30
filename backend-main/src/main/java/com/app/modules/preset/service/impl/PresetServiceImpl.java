@@ -184,16 +184,10 @@ public class PresetServiceImpl implements PresetService {
         if (isDefault) {
             if (scope == MediaPresetScope.WORKSPACE) {
                 mediaPresetRepository.findFirstByScopeAndWorkspaceIdAndIsDefaultTrue(MediaPresetScope.WORKSPACE, workspaceId)
-                        .ifPresent(oldDefault -> {
-                            oldDefault.setDefault(false);
-                            mediaPresetRepository.save(oldDefault);
-                        });
+                        .ifPresent(this::demoteDefault);
             } else {
                 mediaPresetRepository.findFirstByScopeAndProjectIdAndIsDefaultTrue(MediaPresetScope.PROJECT, projectId)
-                        .ifPresent(oldDefault -> {
-                            oldDefault.setDefault(false);
-                            mediaPresetRepository.save(oldDefault);
-                        });
+                        .ifPresent(this::demoteDefault);
             }
         }
 
@@ -202,7 +196,8 @@ public class PresetServiceImpl implements PresetService {
         preset.setWorkspaceId(workspaceId);
         preset.setProjectId(projectId);
         preset.setName(request.name().trim());
-        preset.setSubtitleStyle(request.subtitleStyle());
+        preset.setDescription(normalizeDescription(request.description()));
+        preset.setSubtitleStyle(request.subtitleStyle() != null ? request.subtitleStyle() : JsonNodeFactory.instance.objectNode());
         preset.setVoiceConfig(request.voiceConfig() != null ? request.voiceConfig() : JsonNodeFactory.instance.objectNode());
         preset.setRenderConfig(request.renderConfig() != null ? request.renderConfig() : JsonNodeFactory.instance.objectNode());
         preset.setDefault(isDefault);
@@ -238,17 +233,11 @@ public class PresetServiceImpl implements PresetService {
             if (preset.getScope() == MediaPresetScope.WORKSPACE) {
                 mediaPresetRepository.findFirstByScopeAndWorkspaceIdAndIsDefaultTrue(MediaPresetScope.WORKSPACE, workspaceId)
                         .filter(other -> !other.getId().equals(presetId))
-                        .ifPresent(oldDefault -> {
-                            oldDefault.setDefault(false);
-                            mediaPresetRepository.save(oldDefault);
-                        });
+                        .ifPresent(this::demoteDefault);
             } else if (preset.getScope() == MediaPresetScope.PROJECT) {
                 mediaPresetRepository.findFirstByScopeAndProjectIdAndIsDefaultTrue(MediaPresetScope.PROJECT, preset.getProjectId())
                         .filter(other -> !other.getId().equals(presetId))
-                        .ifPresent(oldDefault -> {
-                            oldDefault.setDefault(false);
-                            mediaPresetRepository.save(oldDefault);
-                        });
+                        .ifPresent(this::demoteDefault);
             }
             preset.setDefault(true);
         } else if (Boolean.FALSE.equals(request.isDefault())) {
@@ -257,6 +246,9 @@ public class PresetServiceImpl implements PresetService {
 
         if (request.name() != null && !request.name().isBlank()) {
             preset.setName(request.name().trim());
+        }
+        if (request.description() != null) {
+            preset.setDescription(normalizeDescription(request.description()));
         }
         if (request.subtitleStyle() != null) {
             preset.setSubtitleStyle(request.subtitleStyle());
@@ -316,11 +308,33 @@ public class PresetServiceImpl implements PresetService {
                 throw new AppException(ErrorCode.REPLACEMENT_PRESET_INVALID);
             }
 
+            // Remove the old default first: ux_preset_default_per_scope allows one default per scope,
+            // and Hibernate would otherwise flush the replacement's UPDATE before this DELETE.
+            mediaPresetRepository.delete(preset);
+            mediaPresetRepository.flush();
             replacement.setDefault(true);
             replacement.setUpdatedBy(userId);
             mediaPresetRepository.save(replacement);
+            return;
         }
 
         mediaPresetRepository.delete(preset);
+    }
+
+    /**
+     * Clears the current default and flushes right away: ux_preset_default_per_scope allows one default
+     * per scope, and Hibernate flushes INSERTs before UPDATEs, so a deferred demotion would collide with
+     * the new default row.
+     */
+    private void demoteDefault(MediaPreset oldDefault) {
+        oldDefault.setDefault(false);
+        mediaPresetRepository.saveAndFlush(oldDefault);
+    }
+
+    private static String normalizeDescription(String description) {
+        if (description == null || description.isBlank()) {
+            return null;
+        }
+        return description.trim();
     }
 }

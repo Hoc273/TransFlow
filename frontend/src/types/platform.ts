@@ -190,6 +190,14 @@ export type ProviderHealthStatus = 'UNKNOWN' | 'HEALTHY' | 'DOWN'
 export const MODEL_OVERRIDE_OPERATIONS = ['SUMMARIZE_SCRIPT', 'REFINE', 'QA'] as const
 export type ModelOverrideOperation = (typeof MODEL_OVERRIDE_OPERATIONS)[number]
 
+/**
+ * Capabilities a key may run with their own model, so one key can serve e.g. STT
+ * (whisper-1) and TTS (tts-1); a capability without an entry uses defaultModel.
+ */
+export const MODEL_OVERRIDE_CAPABILITIES = ['TRANSLATE', 'STT', 'TTS', 'VISION'] as const
+export type ModelOverrideCapability = (typeof MODEL_OVERRIDE_CAPABILITIES)[number]
+export type ModelOverrideKey = ModelOverrideOperation | ModelOverrideCapability
+
 export type PlatformProvider = {
   id: string
   name: string
@@ -200,8 +208,8 @@ export type PlatformProvider = {
   baseUrl: string
   apiKeyHint: string | null
   defaultModel: string | null
-  /** Per-operation model on a TRANSLATE key (SUMMARIZE_SCRIPT, REFINE, QA); missing = defaultModel. */
-  modelOverrides: Partial<Record<ModelOverrideOperation, string>>
+  /** Model per operation (SUMMARIZE_SCRIPT, REFINE, QA) or capability (STT, TTS…); missing = defaultModel. */
+  modelOverrides: Partial<Record<ModelOverrideKey, string>>
   isActive: boolean
   priority: number
   weight: number
@@ -222,7 +230,7 @@ export type PlatformProviderInput = {
   apiKey?: string
   defaultModel?: string
   /** Replaces the whole map; `{}` clears it. */
-  modelOverrides?: Partial<Record<ModelOverrideOperation, string>>
+  modelOverrides?: Partial<Record<ModelOverrideKey, string>>
   priority?: number
   weight?: number
   tier?: PlatformProviderTier

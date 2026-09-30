@@ -1,6 +1,13 @@
-"""ElevenLabs native protocol adapter (TTS + AUTO voice discovery)."""
+"""ElevenLabs native protocol adapter (TTS + STT + AUTO voice discovery).
+
+One key serves both: TTS on ``/text-to-speech/{voice}`` with an ``eleven_*``
+model, STT (Scribe) on ``/speech-to-text`` with a ``scribe_*`` model. A key row
+carries one default model, so each capability falls back to its own default
+when the configured model belongs to the other family.
+"""
 from __future__ import annotations
 
+from typing import Optional
 from urllib.parse import quote
 
 import httpx
@@ -11,8 +18,12 @@ from app.schemas.contract import ProviderPayload, TtsVoice
 from app.services.protocol.adapter import ProtocolAdapter
 from app.services.protocol.http_utils import join_url, raise_for_http_status
 from app.services.protocol.language_codes import normalize_language
+from app.services.protocol.speech_stt import TimedWord, detected_language, is_auto_language, segments_from_words
 from app.services.protocol.types import (
+    AudioInput,
     Capability,
+    TranscribeResult,
+    TtsCacheDescriptor,
     SynthesizeResult,
     ValidationPhaseResult,
     VoiceDiscoveryResult,
@@ -25,6 +36,21 @@ from app.services.provider_errors import (
 )
 
 _prov_log = get_provider_logger("adapter.elevenlabs")
+
+DEFAULT_TTS_MODEL = "eleven_multilingual_v2"
+DEFAULT_STT_MODEL = "scribe_v1"
+
+
+def tts_model(model: Optional[str]) -> str:
+    """The configured model when it is a TTS model, else the TTS default."""
+    value = (model or "").strip()
+    return value if value and not value.startswith("scribe") else DEFAULT_TTS_MODEL
+
+
+def stt_model(model: Optional[str]) -> str:
+    """The configured model when it is a Scribe (STT) model, else the STT default."""
+    value = (model or "").strip()
+    return value if value.startswith("scribe") else DEFAULT_STT_MODEL
 
 # GET /voices page size (provider maximum) and a hard loop cap so a broken
 # ``next_page_token`` can never spin forever. The catalog must be fetched in
@@ -128,7 +154,7 @@ def _extract_voice_languages(item: dict) -> list[str]:
 
 class ElevenLabsNativeAdapter(ProtocolAdapter):
     protocol = "elevenlabs_native"
-    supported_capabilities = frozenset({Capability.TTS.value})
+    supported_capabilities = frozenset({Capability.TTS.value, Capability.STT.value})
     voice_discovery_strategy = VoiceDiscoveryStrategy.AUTO
 
     def auth_headers(self, api_key: str) -> dict[str, str]:
@@ -144,7 +170,7 @@ class ElevenLabsNativeAdapter(ProtocolAdapter):
         voice_id: str,
     ) -> SynthesizeResult:
         self.require_provider_capability(provider, Capability.TTS)
-        payload = {"text": text, "model_id": provider.model}
+        payload = {"text": text, "model_id": tts_model(provider.model)}
         headers = {
             **self.auth_headers(provider.api_key),
             "Accept": "audio/mpeg",
@@ -253,6 +279,11 @@ class ElevenLabsNativeAdapter(ProtocolAdapter):
         provider: ProviderPayload,
         capability: str,
     ) -> ValidationPhaseResult:
+        if capability == Capability.STT.value:
+            return ValidationPhaseResult(
+                ok=True,
+                message="STT capability declared; use stt-probe for live check",
+            )
         if capability != Capability.TTS.value:
             return ValidationPhaseResult(
                 ok=False,
@@ -262,3 +293,98 @@ class ElevenLabsNativeAdapter(ProtocolAdapter):
             ok=True,
             message="TTS capability declared; use tts-probe for live check",
         )
+
+    def cache_descriptor(self, provider: ProviderPayload, voice_id: str) -> TtsCacheDescriptor:
+        return TtsCacheDescriptor(
+            resolved_model=tts_model(provider.model),
+            mime_type="audio/mpeg",
+            extension="mp3",
+            speed="1.0",
+        )
+
+    # ── STT (Scribe) ─────────────────────────────────────────────────────────
+
+    async def transcribe(
+        self,
+        provider: ProviderPayload,
+        audio: AudioInput,
+        *,
+        source_lang: Optional[str] = None,
+    ) -> TranscribeResult:
+        self.require_provider_capability(provider, Capability.STT)
+        try:
+            file_bytes = audio.as_bytes()
+        except ValueError as exc:
+            raise ProviderValidation(
+                "ElevenLabs STT requires local audio bytes",
+                code=ProviderErrorCode.PROVIDER_BAD_REQUEST,
+                protocol=provider.protocol,
+                capability="STT",
+            ) from exc
+        data = {
+            "model_id": stt_model(provider.model),
+            "timestamps_granularity": "word",
+            "tag_audio_events": "false",
+        }
+        language = None if is_auto_language(source_lang) else normalize_language(source_lang)
+        if language:
+            data["language_code"] = language
+        try:
+            async with httpx.AsyncClient(timeout=max(settings.request_timeout_seconds, 600.0)) as client:
+                response = await client.post(
+                    join_url(provider.base_url, "/speech-to-text"),
+                    headers=self.auth_headers(provider.api_key),
+                    data=data,
+                    files={"file": (audio.filename or "audio.wav", file_bytes, audio.mime_type or "audio/wav")},
+                )
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            raise ProviderTransport(
+                str(exc),
+                provider=provider.base_url,
+                protocol=provider.protocol,
+                capability="STT",
+            ) from exc
+
+        raise_for_http_status(response, provider, operation="transcription", capability="STT", log=_prov_log)
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ProviderValidation(
+                "ElevenLabs STT returned a non-JSON response",
+                code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+                provider=provider.base_url,
+                protocol=provider.protocol,
+                capability="STT",
+            ) from exc
+        return parse_scribe_transcript(payload)
+
+
+# Scripts written without spaces between words: Scribe returns no ``spacing``
+# tokens there, so words are joined directly.
+_NO_SPACE_LANGUAGES = {"zh", "ja", "th", "lo", "km", "my"}
+
+
+def parse_scribe_transcript(payload: object) -> TranscribeResult:
+    """Scribe JSON (word timings in seconds) -> sentence-level segments."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("words", []), list):
+        raise ProviderValidation(
+            "ElevenLabs STT response has an unsupported shape",
+            code=ProviderErrorCode.PROVIDER_RESPONSE_MALFORMED,
+            protocol="elevenlabs_native",
+            capability="STT",
+        )
+    words: list[TimedWord] = []
+    for item in payload.get("words") or []:
+        if not isinstance(item, dict) or item.get("type", "word") != "word":
+            continue
+        start, end = item.get("start"), item.get("end")
+        if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
+            continue
+        words.append(TimedWord(text=str(item.get("text") or ""), start_ms=int(start * 1000), end_ms=int(end * 1000)))
+    detected = detected_language(payload.get("language_code"))
+    segments = segments_from_words(words, joiner="" if detected in _NO_SPACE_LANGUAGES else " ")
+    return TranscribeResult(
+        segments=segments,
+        detected_lang=detected,
+        audio_seconds=segments[-1].end_ms / 1000.0 if segments else 0.0,
+    )

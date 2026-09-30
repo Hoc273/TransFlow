@@ -408,8 +408,10 @@ platform_ai_providers(
   api_key_hint VARCHAR(20),
   default_model VARCHAR(200),
   -- V5: model riêng theo thao tác cho key TRANSLATE (Tóm tắt/Refine/QA chạy trên key TRANSLATE).
-  -- Khoá hợp lệ: SUMMARIZE_SCRIPT | REFINE | QA; thiếu khoá = dùng default_model. Chỉ key platform.
-  -- Vd FreeLLMAPI: default_model='auto:translate', {"SUMMARIZE_SCRIPT":"auto:script","QA":"auto:script"}
+  -- Khoá hợp lệ: SUMMARIZE_SCRIPT | REFINE | QA, hoặc capability TRANSLATE | STT | TTS | VISION mà key có
+  -- (key phục vụ nhiều capability cần model khác nhau). Chọn: thao tác → capability → default_model.
+  -- Chỉ key platform. Vd FreeLLMAPI: default_model='auto:translate', {"SUMMARIZE_SCRIPT":"auto:script"};
+  -- OpenAI dùng chung: default_model='gpt-4o-mini', {"STT":"whisper-1","TTS":"tts-1"} (V7 điền cho key cũ).
   model_overrides JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(model_overrides) = 'object'),
   is_active BOOLEAN NOT NULL DEFAULT true,
   priority SMALLINT NOT NULL DEFAULT 100 CHECK (priority BETWEEN 0 AND 1000),   -- nhỏ = dùng trước
@@ -560,7 +562,7 @@ media_jobs(
 
   visual_context_enabled BOOLEAN NOT NULL DEFAULT false,
 
-  preset_id UUID REFERENCES media_presets(id),
+  preset_id UUID REFERENCES media_presets(id) ON DELETE SET NULL,  -- V6: xoá preset không chặn job cũ
   preset_snapshot JSONB NOT NULL DEFAULT '{}',
   render_config JSONB NOT NULL DEFAULT '{}',   -- Render Studio config của job (V9); {} = chưa cấu hình
   subtitle_style JSONB,                          -- snapshot 13 trường style phụ đề đã gán (V8); NULL = chưa gán
@@ -768,7 +770,8 @@ media_presets(
   workspace_id UUID REFERENCES workspaces(id),
   project_id UUID REFERENCES projects(id),
   name VARCHAR NOT NULL,
-  subtitle_style JSONB NOT NULL,
+  description VARCHAR(1000),                    -- V6: mô tả hiển thị trên trang Preset
+  subtitle_style JSONB NOT NULL,                -- API tạo không gửi → lưu '{}' (job giữ style mặc định)
   voice_config JSONB NOT NULL DEFAULT '{}',
   render_config JSONB NOT NULL DEFAULT '{}',
   is_default BOOLEAN NOT NULL DEFAULT false,
@@ -798,6 +801,9 @@ CREATE UNIQUE INDEX ux_preset_default_per_scope
   `subtitle_style` là `SubtitleStyleSnapshot` đủ 13 field snake_case. Khi tạo job, giá trị hợp lệ được chép vào
   `media_jobs.render_config` / `media_jobs.subtitle_style` (giá trị sai miền bị bỏ qua); `subtitleMode` gửi
   tường minh trong request thắng preset.
+- Đổi preset mặc định: bản ghi default cũ được hạ `is_default=false` và flush trước khi ghi default mới
+  (Hibernate flush INSERT trước UPDATE, sẽ đụng `ux_preset_default_per_scope`); xoá default có preset thay
+  thế thì DELETE bản cũ trước rồi mới nâng bản thay thế.
 - Không có preset `SYSTEM` mặc định (V8): job tạo không kèm preset giữ `SOFT_SUB` + khung hình gốc.
 - System template (V8): `Standard Subtitle & Dub` (HARD_SUB, 16:9, dòng phụ đề ở 80% chiều cao) và
   `Social Media Shorts / Reels` (HARD_SUB, 9:16, dòng phụ đề ở 75% chiều cao, chữ đậm cỡ 40). V10: cả hai dùng chữ đen trên nền vàng nhạt `#FFF59DE6`, viền trắng 4, phụ đề ngắt cụm ≤ 5 từ (`presentation.subtitle.displayMode=PHRASE`).

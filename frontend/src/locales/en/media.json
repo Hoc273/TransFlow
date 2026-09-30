@@ -825,6 +825,7 @@
     "active": "Allow choosing this preset when creating jobs",
     "isDefault": "Make this the default preset",
     "defaultConflict": "A default preset already exists in this scope. Clear the current default first.",
+    "deleteDefaultBlocked": "This preset is the default for its scope. Edit it and clear \"Default\" before deleting.",
     "projectFilter": "Filter by project",
     "projectFilterHint": "Pick a project in the filter above to see its presets.",
     "projectAll": "All projects",

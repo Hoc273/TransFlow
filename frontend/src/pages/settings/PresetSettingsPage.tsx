@@ -365,7 +365,7 @@ function PresetFormModal({
   ]
 
   const fail = (e: unknown) => {
-    if (e instanceof ApiError && e.code === 'WORKFLOW_PRESET_DEFAULT_CONFLICT') {
+    if (e instanceof ApiError && (e.code === 'WORKFLOW_PRESET_DEFAULT_CONFLICT' || e.code === '2505')) {
       setError(t('media:workflowPresetAdmin.defaultConflict'))
       return
     }
@@ -1322,6 +1322,11 @@ export function PresetSettingsPage() {
       setDeleting(null)
     } catch (e) {
       setDeleting(null)
+      // 2503 CANNOT_DELETE_ONLY_DEFAULT_PRESET: the default must be unset (or replaced) first.
+      if (e instanceof ApiError && e.code === '2503') {
+        setPageError(t('media:workflowPresetAdmin.deleteDefaultBlocked'))
+        return
+      }
       setPageError(e instanceof ApiError ? e.message : t('common:error.generic'))
     }
   }
@@ -1450,9 +1455,22 @@ export function PresetSettingsPage() {
         </div>
       </div>
 
-      {pageError && (
-        <div role="alert" className="media-panel-error-toast" data-testid="preset-page-error">
-          {pageError}
+      {/* Hidden while the form is open: the fixed toast would cover the modal's Save button. */}
+      {pageError && !formOpen && (
+        <div
+          role="alert"
+          className="media-panel-error-toast flex items-center justify-between gap-2"
+          data-testid="preset-page-error"
+        >
+          <span>{pageError}</span>
+          <button
+            type="button"
+            className="btn-ghost btn-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
+            onClick={() => setPageError(null)}
+            aria-label={t('common:actions.close')}
+          >
+            <IconX size={14} />
+          </button>
         </div>
       )}
 

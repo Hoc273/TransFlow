@@ -34,6 +34,20 @@ import { assignUsageColors } from '@/lib/usageColors'
 
 const MODEL_PALETTE = ['#7c5cff', '#38bdf8', '#10b981', '#f59e0b', '#ec4899', '#6366f1']
 
+// Theme tokens for both background and text: a fixed dark background left the text-primary
+// labels unreadable in light mode.
+const TOOLTIP_CONTENT_STYLE = {
+  background: 'var(--color-bg-surface)',
+  border: '1px solid var(--color-border-strong)',
+  borderRadius: 8,
+  color: 'var(--color-text-primary)',
+  fontSize: 12,
+  boxShadow: '0 10px 25px -5px rgba(0,0,0,0.35)',
+}
+
+// Keeps the tooltip above the donut's centered total label, which is a later sibling.
+const TOOLTIP_WRAPPER_STYLE = { zIndex: 10 }
+
 export function AiUsageLiveChartsWidget() {
   const { t } = useTranslation('dashboard')
   const { workspaceId = '' } = useParams()
@@ -257,13 +271,8 @@ export function AiUsageLiveChartsWidget() {
                     ))}
                   </Pie>
                   <Tooltip
-                    contentStyle={{
-                      background: 'var(--color-bg-surface-elevated, #151827)',
-                      borderColor: 'var(--color-border, #1f2235)',
-                      borderRadius: 8,
-                      fontSize: 12,
-                      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.5)',
-                    }}
+                    contentStyle={TOOLTIP_CONTENT_STYLE}
+                    wrapperStyle={TOOLTIP_WRAPPER_STYLE}
                     itemStyle={{ color: 'var(--color-text-primary)' }}
                     formatter={(val, name, item) => {
                       const num = Number(val) || 0
@@ -356,13 +365,8 @@ export function AiUsageLiveChartsWidget() {
                     tickFormatter={(v) => formatCompactNumber(Number(v), language)}
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: 'var(--color-bg-surface-elevated, #151827)',
-                      borderColor: 'var(--color-border, #1f2235)',
-                      borderRadius: 8,
-                      fontSize: 12,
-                      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.5)',
-                    }}
+                    contentStyle={TOOLTIP_CONTENT_STYLE}
+                    wrapperStyle={TOOLTIP_WRAPPER_STYLE}
                     labelStyle={{ color: 'var(--color-text-primary)', fontWeight: 600 }}
                     formatter={(val, name) => [
                       formatNumber(Number(val) || 0, language) + ' tokens',

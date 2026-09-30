@@ -2,7 +2,6 @@ package com.app.modules.preset.dto;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -23,7 +22,10 @@ public record CreateMediaPresetRequest(
         @Size(max = 200, message = "name must not exceed 200 characters")
         String name,
 
-        @NotNull(message = "subtitleStyle is required")
+        @Size(max = 1000, message = "description must not exceed 1000 characters")
+        String description,
+
+        /** Optional; defaults to {@code {}} (the job keeps its default subtitle style). */
         JsonNode subtitleStyle,
 
         JsonNode voiceConfig,

@@ -25,13 +25,21 @@ export function listWorkflowPresetsApi(
 ): Promise<WorkflowPreset[]> {
   const params = new URLSearchParams({ scope })
   if (projectId) params.set('projectId', projectId)
-  return apiRequest<Array<WorkflowPreset & { renderConfig?: WorkflowPresetConfig | null }>>(
+  return apiRequest<PresetRow[]>(
     `${buildWorkspacePath(workspaceId, '/presets')}?${params.toString()}`,
-  ).then((rows) =>
-    // backend-main returns `renderConfig` (media_presets.render_config, same keys as the job
-    // render-config); the picker reads it as `config`.
-    rows.map(({ renderConfig, ...row }) => ({ ...row, config: row.config ?? renderConfig ?? null })),
-  )
+  ).then((rows) => rows.map(fromPresetRow))
+}
+
+type PresetRow = WorkflowPreset & { renderConfig?: WorkflowPresetConfig | null }
+
+// backend-main stores the preset config in `renderConfig` (media_presets.render_config, same keys
+// as the job render-config); the UI works with it as `config`.
+function fromPresetRow({ renderConfig, ...row }: PresetRow): WorkflowPreset {
+  return { ...row, config: row.config ?? renderConfig ?? null }
+}
+
+function toPresetBody({ config, schemaVersion: _schemaVersion, ...body }: WorkflowPresetRequest) {
+  return config === undefined ? body : { ...body, renderConfig: config }
 }
 
 /** POST /workspaces/{ws}/presets */
@@ -39,10 +47,10 @@ export function createWorkflowPresetApi(
   workspaceId: string,
   body: WorkflowPresetRequest,
 ): Promise<WorkflowPreset> {
-  return apiRequest<WorkflowPreset>(
+  return apiRequest<PresetRow>(
     buildWorkspacePath(workspaceId, '/presets'),
-    { method: 'POST', body },
-  )
+    { method: 'POST', body: toPresetBody(body) },
+  ).then(fromPresetRow)
 }
 
 /** PUT /workspaces/{ws}/presets/{id} */
@@ -51,10 +59,10 @@ export function updateWorkflowPresetApi(
   presetId: string,
   body: WorkflowPresetRequest,
 ): Promise<WorkflowPreset> {
-  return apiRequest<WorkflowPreset>(
+  return apiRequest<PresetRow>(
     buildWorkspacePath(workspaceId, `/presets/${presetId}`),
-    { method: 'PUT', body },
-  )
+    { method: 'PUT', body: toPresetBody(body) },
+  ).then(fromPresetRow)
 }
 
 /** DELETE /workspaces/{ws}/presets/{id} */

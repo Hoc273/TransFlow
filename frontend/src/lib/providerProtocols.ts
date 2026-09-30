@@ -42,15 +42,18 @@ export const PROVIDER_PROTOCOLS: Record<
     models: { TEXT: 'qwen-plus', STT: 'qwen-omni-turbo', TTS: 'qwen-omni-turbo' },
   },
   elevenlabs_native: {
-    capabilities: ['TTS'],
+    capabilities: ['TTS', 'STT'],
     baseUrl: 'https://api.elevenlabs.io/v1',
-    models: { TTS: 'eleven_multilingual_v2' },
+    // One key, two model families: eleven_* for TTS, scribe_* for STT (Scribe).
+    models: { TTS: 'eleven_multilingual_v2', STT: 'scribe_v1' },
   },
   azure_speech: {
-    capabilities: ['TTS'],
-    // The portal endpoint https://{region}.api.cognitive.microsoft.com is accepted too.
-    baseUrl: 'https://southeastasia.tts.speech.microsoft.com',
-    models: { TTS: 'azure-neural-tts' },
+    capabilities: ['TTS', 'STT'],
+    // The portal endpoint serves both: the gateway calls TTS on
+    // {region}.tts.speech.microsoft.com and STT (Fast Transcription) on the portal host.
+    // A TTS host (https://{region}.tts.speech.microsoft.com) is accepted too.
+    baseUrl: 'https://southeastasia.api.cognitive.microsoft.com',
+    models: { TTS: 'azure-neural-tts', STT: 'azure-fast-transcription' },
     modelUnused: true,
   },
   google_speech: {
@@ -88,6 +91,31 @@ export function defaultModelFor(protocol: ProviderProtocol | string, capabilitie
     capabilities.map((c) => (c === 'TRANSLATE' ? 'TEXT' : c)).find((c) => s.capabilities.includes(c as ProtocolCapability)) ??
     s.capabilities[0]
   return s.models[cap as ProtocolCapability] ?? ''
+}
+
+/** Default model of one capability (TRANSLATE and TEXT are the same capability). */
+export function capabilityDefaultModel(protocol: ProviderProtocol | string, capability: string): string {
+  const cap = capability === 'TRANSLATE' ? 'TEXT' : capability
+  return spec(protocol)?.models[cap as ProtocolCapability] ?? ''
+}
+
+/**
+ * Per-capability models a key needs besides its default model: every checked capability
+ * whose protocol default differs from {@code defaultModel} (e.g. OpenAI STT whisper-1 and
+ * TTS tts-1 next to a gpt-4o-mini default). Speech APIs without a model need none.
+ */
+export function suggestedCapabilityModels(
+  protocol: ProviderProtocol | string,
+  capabilities: readonly string[],
+  defaultModel: string,
+): Record<string, string> {
+  if (isModelUnused(protocol)) return {}
+  const result: Record<string, string> = {}
+  for (const cap of capabilities) {
+    const model = capabilityDefaultModel(protocol, cap)
+    if (model && model !== defaultModel.trim()) result[cap] = model
+  }
+  return result
 }
 
 export function isModelUnused(protocol: ProviderProtocol | string): boolean {

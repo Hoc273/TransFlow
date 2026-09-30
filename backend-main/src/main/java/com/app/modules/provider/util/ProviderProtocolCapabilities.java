@@ -12,7 +12,7 @@ import java.util.Set;
  * Capabilities each protocol adapter in the AI gateway can execute
  * ({@code backend-ai/app/services/protocol/*.py supported_capabilities}; TEXT ↔ TRANSLATE).
  *
- * <p>Saving a combination the adapter cannot run (Anthropic + TTS, Azure + STT) used to succeed
+ * <p>Saving a combination the adapter cannot run (Anthropic + TTS, Google Speech + STT) used to succeed
  * and only fail later inside a media job, so it is rejected up front.
  */
 public final class ProviderProtocolCapabilities {
@@ -21,8 +21,8 @@ public final class ProviderProtocolCapabilities {
             "openai_compatible", Set.of("TRANSLATE", "STT", "TTS", "VISION"),
             "anthropic", Set.of("TRANSLATE", "VISION"),
             "dashscope_native", Set.of("TRANSLATE", "STT", "TTS"),
-            "elevenlabs_native", Set.of("TTS"),
-            "azure_speech", Set.of("TTS"),
+            "elevenlabs_native", Set.of("TTS", "STT"),
+            "azure_speech", Set.of("TTS", "STT"),
             "google_speech", Set.of("TTS")
     );
 

@@ -357,7 +357,7 @@
       "apiKeyKeep": "Để trống để giữ key hiện tại.",
       "model": "Model mặc định",
       "capabilities": "Năng lực",
-      "modelUnusedHint": "Azure / Google TTS không có model để chọn — giá trị chỉ là nhãn; giọng đọc chọn theo từng job.",
+      "modelUnusedHint": "Azure / Google Speech không có model để chọn — giá trị chỉ là nhãn. Azure: dùng endpoint https://{region}.api.cognitive.microsoft.com cho cả TTS và STT.",
       "modelOverrides": "Model riêng theo thao tác",
       "modelOverridesHint": "Tuỳ chọn. Tóm tắt, Refine và QA chạy trên key TRANSLATE này; để trống = dùng model mặc định ở trên. Ví dụ FreeLLMAPI: auto:script.",
       "modelOverride": {
@@ -373,7 +373,9 @@
       "weightHint": "Chia tải giữa các key cùng ưu tiên.",
       "tier": "Loại",
       "active": "Bật key này",
-      "saveError": "Không lưu được key."
+      "saveError": "Không lưu được key.",
+      "capabilityModels": "Model theo chức năng",
+      "capabilityModelsHint": "Key này chạy nhiều chức năng; mỗi chức năng có thể cần model riêng (vd OpenAI: STT whisper-1, TTS tts-1). Để trống = dùng model mặc định ở trên."
     }
   },
   "pricing": {

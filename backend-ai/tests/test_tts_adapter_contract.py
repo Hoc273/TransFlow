@@ -45,12 +45,14 @@ class TtsAdapterContractTest(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(issubclass(cls, BaseTtsAdapter))
                 self.assertTrue(cls.protocol)
 
-    async def test_supports_tts_only_with_auto_discovery(self):
+    async def test_supports_speech_not_text_with_auto_discovery(self):
+        # Azure Speech also runs STT (Fast Transcription) on the same key.
+        stt_protocols = {"azure_speech"}
         for cls in ADAPTER_CLASSES:
             with self.subTest(protocol=cls.protocol):
                 adapter = cls()
                 self.assertTrue(adapter.supports(Capability.TTS))
-                self.assertFalse(adapter.supports(Capability.STT))
+                self.assertEqual(cls.protocol in stt_protocols, adapter.supports(Capability.STT))
                 self.assertFalse(adapter.supports(Capability.TEXT))
                 self.assertEqual(VoiceDiscoveryStrategy.AUTO, adapter.voice_discovery_strategy)
                 catalog = adapter.catalog()

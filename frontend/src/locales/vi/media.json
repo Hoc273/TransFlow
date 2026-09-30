@@ -825,6 +825,7 @@
     "active": "Cho phép chọn preset này khi tạo job",
     "isDefault": "Đặt làm preset mặc định",
     "defaultConflict": "Đã có preset mặc định trong phạm vi này. Hãy bỏ chọn preset mặc định hiện tại trước.",
+    "deleteDefaultBlocked": "Preset này đang là mặc định của phạm vi. Hãy sửa preset và bỏ chọn \"Mặc định\" trước khi xoá.",
     "projectFilter": "Lọc theo dự án",
     "projectFilterHint": "Chọn dự án ở bộ lọc phía trên để xem preset của dự án.",
     "projectAll": "Tất cả dự án",

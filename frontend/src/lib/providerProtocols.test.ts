@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  capabilityDefaultModel,
   defaultBaseUrlFor,
   defaultModelFor,
   isModelUnused,
   protocolSupports,
+  suggestedCapabilityModels,
   supportedSubset,
 } from './providerProtocols'
 
@@ -13,7 +15,9 @@ describe('providerProtocols', () => {
     expect(protocolSupports('anthropic', 'TRANSLATE')).toBe(true)
     expect(protocolSupports('anthropic', 'VISION')).toBe(true)
     expect(protocolSupports('anthropic', 'TTS')).toBe(false)
-    expect(protocolSupports('azure_speech', 'STT')).toBe(false)
+    expect(protocolSupports('azure_speech', 'STT')).toBe(true)
+    expect(protocolSupports('elevenlabs_native', 'STT')).toBe(true)
+    expect(protocolSupports('google_speech', 'STT')).toBe(false)
     expect(protocolSupports('dashscope_native', 'VISION')).toBe(false)
     expect(protocolSupports('openai_compatible', 'VISION')).toBe(true)
     expect(protocolSupports('unknown', 'TTS')).toBe(false)
@@ -37,5 +41,18 @@ describe('providerProtocols', () => {
   it('drops capabilities a protocol cannot run', () => {
     expect(supportedSubset('anthropic', ['TEXT', 'TTS', 'VISION'])).toEqual(['TEXT', 'VISION'])
     expect(supportedSubset('google_speech', ['TRANSLATE'])).toEqual([])
+  })
+
+  it('suggests a model per extra capability when one key serves several', () => {
+    expect(suggestedCapabilityModels('openai_compatible', ['TRANSLATE', 'STT', 'TTS'], 'gpt-4o-mini')).toEqual({
+      STT: 'whisper-1',
+      TTS: 'tts-1',
+    })
+    expect(suggestedCapabilityModels('elevenlabs_native', ['TTS', 'STT'], 'eleven_multilingual_v2')).toEqual({
+      STT: 'scribe_v1',
+    })
+    // Azure speech APIs take no model: nothing to configure per capability.
+    expect(suggestedCapabilityModels('azure_speech', ['TTS', 'STT'], 'azure-neural-tts')).toEqual({})
+    expect(capabilityDefaultModel('openai_compatible', 'TRANSLATE')).toBe('gpt-4o-mini')
   })
 })
