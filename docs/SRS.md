@@ -457,8 +457,11 @@ mới đi tìm hình ảnh khớp với nội dung đó.
 - Chọn ngôn ngữ tóm tắt chính ngay khi tạo yêu cầu (mới — v1.2): vì nội dung tóm tắt được AI soạn trực tiếp
   bằng ngôn ngữ này, người dùng phải chọn ngôn ngữ đích chính ngay từ bước tạo yêu cầu. Ngôn ngữ chính có
   thể trùng hoặc khác ngôn ngữ gốc của video.
-- Kết quả được chấp nhận trong một khoảng dung sai hợp lý quanh độ dài yêu cầu; nếu video gốc ngắn hơn độ
-  dài mong muốn, hệ thống vẫn đề xuất theo đúng độ dài gốc kèm cảnh báo rõ ràng.
+- Kết quả được chấp nhận trong một khoảng dung sai hợp lý quanh độ dài yêu cầu.
+- Độ dài mong muốn phải **ngắn hơn** độ dài video gốc. Nếu bằng hoặc dài hơn, hệ thống từ chối tạo yêu cầu
+  (form báo lỗi và không cho gửi; API trả `SUMMARY_TARGET_TOO_LONG`) — một bản "tóm tắt" dài bằng video gốc
+  chỉ là đọc lại toàn bộ video mà vẫn tốn đủ credit STT/TTS/render. Nếu video chưa đo được độ dài, yêu cầu
+  vẫn được nhận và AI đề xuất theo độ dài thực tế của nguồn (tối đa bằng độ dài gốc).
 - Người dùng có thể bật thêm tuỳ chọn phân tích ngữ cảnh hình ảnh (mặc định tắt) — mô tả hình ảnh này còn
   giúp AI viết nội dung tóm tắt sinh động và chính xác hơn, không chỉ giúp chọn đoạn.
 

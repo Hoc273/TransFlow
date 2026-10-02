@@ -4,8 +4,11 @@ import com.app.common.dto.PageResponse;
 import com.app.modules.credit.dto.*;
 import com.app.modules.credit.entity.CostMode;
 import com.app.modules.credit.entity.CreditAccount;
+import com.app.modules.credit.entity.CreditPurchaseStatus;
 import com.app.modules.credit.entity.CreditTransactionType;
 import com.app.modules.credit.entity.WorkspaceBillingConfig;
+
+import org.springframework.data.domain.Page;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -67,7 +70,29 @@ public interface CreditService {
 
     List<CreditPackageResponse> listActivePackages();
 
-    PurchaseCreditPackageResponse purchasePackage(UUID userId, UUID packageId, PurchaseCreditPackageRequest req);
+    /**
+     * Records a purchase request in {@code PENDING}; the balance is untouched until a Super Admin
+     * approves it with {@link #approvePurchase}. The payment reference must not belong to another
+     * pending or approved purchase.
+     */
+    CreditPurchaseResponse purchasePackage(UUID userId, UUID packageId, PurchaseCreditPackageRequest req);
+
+    PageResponse<CreditPurchaseResponse> getMyPurchases(UUID userId, int page, int size);
+
+    /**
+     * Every credit account with ledger aggregates since {@code windowStart}, for anomaly monitoring.
+     * Callers must have checked platform admin rights.
+     */
+    List<CreditAccountSnapshot> snapshotAccounts(Instant windowStart);
+
+    /** Platform-wide list for review. Callers must have checked platform admin rights. */
+    Page<CreditPurchaseResponse> listPurchases(CreditPurchaseStatus status, int page, int size);
+
+    /** Grants the package credit to the buyer. Callers must have checked platform admin rights. */
+    CreditPurchaseResponse approvePurchase(UUID adminId, UUID purchaseId, String note);
+
+    /** Closes the request without granting credit. Callers must have checked platform admin rights. */
+    CreditPurchaseResponse rejectPurchase(UUID adminId, UUID purchaseId, String note);
 
     /**
      * Admin credit adjustment (grant or deduct) for any user.

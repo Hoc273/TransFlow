@@ -2,6 +2,12 @@ import { apiRequest } from '@/lib/api/client'
 import type {
   AdminCreditAdjustRequest,
   AdminCreditAdjustResponse,
+  PlatformActivityLogItem,
+  PlatformActivityQuery,
+  PlatformCreditMonitor,
+  PlatformCreditMonitorQuery,
+  PlatformCreditPurchaseItem,
+  PlatformCreditPurchasesQuery,
   CreatePricingVersionResult,
   PlatformAuditLogItem,
   PlatformAuditQuery,
@@ -129,6 +135,64 @@ export function adminAdjustUserCreditApi(
   return apiRequest<AdminCreditAdjustResponse>(`/platform/users/${userId}/credit/adjust`, {
     method: 'POST',
     body: req,
+  })
+}
+
+/** SA — regular-user activity log. */
+export async function getPlatformActivityLogsApi(
+  query: PlatformActivityQuery = {},
+): Promise<PlatformPage<PlatformActivityLogItem>> {
+  const res = await apiRequest<unknown>(
+    `/platform/activity-logs${qs({
+      userId: query.userId,
+      workspaceId: query.workspaceId,
+      q: query.q,
+      failedOnly: query.failedOnly,
+      page: query.page,
+      size: query.size,
+    })}`,
+  )
+  return normalizePage<PlatformActivityLogItem>(res)
+}
+
+/** SA — credit monitor: balances, 7-day flow and anomaly flags. */
+export async function getPlatformCreditMonitorApi(
+  query: PlatformCreditMonitorQuery = {},
+): Promise<PlatformCreditMonitor> {
+  const res = await apiRequest<PlatformCreditMonitor & { accounts: unknown }>(
+    `/platform/credit/accounts${qs({
+      q: query.q,
+      flaggedOnly: query.flaggedOnly,
+      sort: query.sort,
+      page: query.page,
+      size: query.size,
+    })}`,
+  )
+  return { ...res, accounts: normalizePage(res.accounts) }
+}
+
+/** SA — credit package purchases; credit is granted only on approve. */
+export async function getPlatformCreditPurchasesApi(
+  query: PlatformCreditPurchasesQuery = {},
+): Promise<PlatformPage<PlatformCreditPurchaseItem>> {
+  const res = await apiRequest<unknown>(
+    `/platform/credit/purchases${qs({
+      status: query.status,
+      page: query.page,
+      size: query.size,
+    })}`,
+  )
+  return normalizePage<PlatformCreditPurchaseItem>(res)
+}
+
+export function reviewPlatformCreditPurchaseApi(
+  purchaseId: string,
+  decision: 'approve' | 'reject',
+  note?: string,
+): Promise<PlatformCreditPurchaseItem> {
+  return apiRequest<PlatformCreditPurchaseItem>(`/platform/credit/purchases/${purchaseId}/${decision}`, {
+    method: 'POST',
+    body: { note },
   })
 }
 

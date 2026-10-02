@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -583,6 +583,20 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     }
   }
 
+  // Summary target must stay below every selected source (backend: SUMMARY_TARGET_TOO_LONG).
+  const shortestSourceMs = useMemo(() => {
+    const known = staged
+      .filter((s) => s.uploadStatus === 'ready' && s.durationMs != null)
+      .map((s) => s.durationMs as number)
+    return known.length ? Math.min(...known) : null
+  }, [staged])
+  const targetSeconds = parseMmSs(durationMmSs)
+  const targetExceedsSource =
+    recipeId !== 'localization.full' &&
+    shortestSourceMs != null &&
+    targetSeconds != null &&
+    targetSeconds * 1000 >= shortestSourceMs
+
   const handleCreate = async () => {
     const readyRows = staged.filter((s) => s.uploadStatus === 'ready')
     if (readyRows.length === 0 || !consented || batchCreating) return
@@ -592,6 +606,10 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
     const seconds = needsDuration ? parseMmSs(durationMmSs) : null
     if (needsDuration && (seconds == null || seconds <= 0)) {
       setError(t('media:create.invalidDuration'))
+      return
+    }
+    if (needsDuration && shortestSourceMs != null && seconds != null && seconds * 1000 >= shortestSourceMs) {
+      setError(t('media:create.durationExceedsSource', { source: formatDurationMs(shortestSourceMs) }))
       return
     }
 
@@ -1191,6 +1209,13 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                           : 'media:create.durationHelp',
                       )}
                     </span>
+                    {targetExceedsSource && shortestSourceMs != null && (
+                      <span role="alert" className="mt-1.5 block text-[11px] text-[var(--color-error)]">
+                        {t('media:create.durationExceedsSource', {
+                          source: formatDurationMs(shortestSourceMs),
+                        })}
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <div className="media-keep-duration-note">
@@ -1798,6 +1823,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 || selectedTargets.length === 0
                 || createJob.isPending
                 || batchCreating
+                || targetExceedsSource
                 || selectedModeBlock.kind !== 'ok'
                 || (isMultiTarget
                   ? selectedTargets.some((lang) => targetBlocked(lang))

@@ -9,8 +9,14 @@ public enum PlatformAdminAuditAction {
     LIST_USERS,
     LIST_WORKSPACES,
     LIST_AUDIT,
+    /** Regular-user activity log (user_activity_logs). */
+    LIST_ACTIVITY,
     VIEW_USER_CREDIT,
     ADJUST_USER_CREDIT,
+    LIST_CREDIT_PURCHASES,
+    VIEW_CREDIT_MONITOR,
+    /** Approve or reject of a credit package purchase. */
+    REVIEW_CREDIT_PURCHASE,
     SEED_GRANT,
     LIST_PROVIDERS,
     /** Create, update, delete, test or voice sync of a shared platform key. */

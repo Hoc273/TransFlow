@@ -3,6 +3,8 @@ package com.app.modules.credit.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
@@ -42,7 +44,20 @@ public class CreditPackagePurchase {
     @Column(name = "payment_reference")
     private String paymentReference;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private CreditPurchaseStatus status = CreditPurchaseStatus.PENDING;
+
     @CreatedDate
     @Column(name = "purchased_at", nullable = false, updatable = false)
     private Instant purchasedAt;
+
+    @Column(name = "reviewed_by")
+    private UUID reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private Instant reviewedAt;
+
+    @Column(name = "review_note")
+    private String reviewNote;
 }

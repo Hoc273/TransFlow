@@ -11,6 +11,7 @@ import com.app.modules.credit.service.CreditService;
 import com.app.modules.workspace.service.WorkspaceAccessService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -21,8 +22,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class CreditServiceImpl implements CreditService {
@@ -31,6 +35,11 @@ public class CreditServiceImpl implements CreditService {
 
     private static final BigDecimal DEFAULT_INFRA_X = CreditPricingService.FALLBACK_INFRA_X;
     private static final BigDecimal DEFAULT_TOKEN_Y = CreditPricingService.FALLBACK_TOKEN_Y;
+
+    /** Keeps one user from flooding the admin review queue. */
+    static final int MAX_PENDING_PURCHASES_PER_USER = 3;
+    private static final List<CreditPurchaseStatus> ACTIVE_PURCHASE_STATUSES =
+            List.of(CreditPurchaseStatus.PENDING, CreditPurchaseStatus.APPROVED);
 
     private final CreditAccountRepository creditAccountRepository;
     private final CreditTransactionRepository creditTransactionRepository;
@@ -266,7 +275,7 @@ public class CreditServiceImpl implements CreditService {
 
     @Override
     @Transactional
-    public PurchaseCreditPackageResponse purchasePackage(UUID userId, UUID packageId, PurchaseCreditPackageRequest req) {
+    public CreditPurchaseResponse purchasePackage(UUID userId, UUID packageId, PurchaseCreditPackageRequest req) {
         CreditPackage pkg = creditPackageRepository.findById(packageId)
                 .orElseThrow(() -> new AppException(ErrorCode.CREDIT_PACKAGE_NOT_FOUND));
 
@@ -274,52 +283,156 @@ public class CreditServiceImpl implements CreditService {
             throw new AppException(ErrorCode.CREDIT_PACKAGE_INACTIVE);
         }
 
-        // Lock user's credit account
-        CreditAccount account = creditAccountRepository.findByUserIdForUpdate(userId)
-                .orElseGet(() -> {
-                    CreditAccount newAcc = new CreditAccount();
-                    newAcc.setUserId(userId);
-                    newAcc.setBalance(BigDecimal.ZERO);
-                    return creditAccountRepository.save(newAcc);
-                });
+        String reference = req.paymentReference().trim();
+        if (creditPackagePurchaseRepository.existsByReferenceInStatuses(reference, ACTIVE_PURCHASE_STATUSES)) {
+            throw new AppException(ErrorCode.PAYMENT_REFERENCE_ALREADY_USED);
+        }
+        if (creditPackagePurchaseRepository.countByUserIdAndStatus(userId, CreditPurchaseStatus.PENDING)
+                >= MAX_PENDING_PURCHASES_PER_USER) {
+            throw new AppException(ErrorCode.CREDIT_PURCHASE_PENDING_LIMIT);
+        }
 
-        BigDecimal newBalance = account.getBalance().add(pkg.getCreditAmount());
-        account.setBalance(newBalance);
-        creditAccountRepository.save(account);
-
-        // Record purchase
+        // No payment gateway yet (Arch §14 item 3): the reference is only a claim until an admin
+        // matches it against the received transfer, so the balance is not touched here.
         CreditPackagePurchase purchase = new CreditPackagePurchase();
         purchase.setUserId(userId);
         purchase.setPackageId(pkg.getId());
         purchase.setCreditAmount(pkg.getCreditAmount());
         purchase.setPricePaid(pkg.getPriceAmount());
-        purchase.setPaymentReference(req.paymentReference().trim());
+        purchase.setPaymentReference(reference);
+        purchase.setStatus(CreditPurchaseStatus.PENDING);
         purchase.setPurchasedAt(Instant.now());
-        CreditPackagePurchase savedPurchase = creditPackagePurchaseRepository.save(purchase);
+        CreditPackagePurchase saved;
+        try {
+            saved = creditPackagePurchaseRepository.saveAndFlush(purchase);
+        } catch (DataIntegrityViolationException e) {
+            // Lost a race on ux_credit_package_purchases_reference_active.
+            throw new AppException(ErrorCode.PAYMENT_REFERENCE_ALREADY_USED);
+        }
 
-        // Record credit transaction
+        log.info("User {} requested package '{}' ({} credits), purchase {} awaiting review",
+                userId, pkg.getName(), pkg.getCreditAmount(), saved.getId());
+        return CreditPurchaseResponse.from(saved, pkg.getName(), pkg.getPriceCurrency());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<CreditPurchaseResponse> getMyPurchases(UUID userId, int page, int size) {
+        Page<CreditPurchaseResponse> result = toResponses(creditPackagePurchaseRepository
+                .findByUserIdOrderByPurchasedAtDesc(userId, pageRequest(page, size)));
+        return new PageResponse<>(result.getContent(), result.getNumber(), result.getSize(),
+                result.getTotalElements(), result.getTotalPages());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CreditAccountSnapshot> snapshotAccounts(Instant windowStart) {
+        Map<UUID, BigDecimal> unverified = creditPackagePurchaseRepository
+                .sumCreditByUserForStatus(CreditPurchaseStatus.LEGACY_UNVERIFIED).stream()
+                .collect(Collectors.toMap(CreditPackagePurchaseRepository.UserCreditTotal::getUserId,
+                        CreditPackagePurchaseRepository.UserCreditTotal::getTotal));
+        return creditAccountRepository.aggregateLedgers(windowStart,
+                        CreditTransactionType.INITIAL_GRANT, CreditTransactionType.AI_USAGE).stream()
+                .map(row -> new CreditAccountSnapshot(
+                        row.getUserId(),
+                        scale(row.getBalance()),
+                        scale(row.getLedgerBalance()),
+                        scale(row.getCreditedInWindow()),
+                        scale(row.getUsedInWindow()),
+                        scale(unverified.get(row.getUserId())),
+                        row.getLastActivityAt()))
+                .toList();
+    }
+
+    private static BigDecimal scale(BigDecimal value) {
+        return (value != null ? value : BigDecimal.ZERO).setScale(4, RoundingMode.HALF_UP);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<CreditPurchaseResponse> listPurchases(CreditPurchaseStatus status, int page, int size) {
+        return toResponses(creditPackagePurchaseRepository.findByStatus(status, pageRequest(page, size)));
+    }
+
+    @Override
+    @Transactional
+    public CreditPurchaseResponse approvePurchase(UUID adminId, UUID purchaseId, String note) {
+        CreditPackagePurchase purchase = lockPendingPurchase(purchaseId);
+
+        CreditAccount account = creditAccountRepository.findByUserIdForUpdate(purchase.getUserId())
+                .orElseGet(() -> {
+                    CreditAccount newAcc = new CreditAccount();
+                    newAcc.setUserId(purchase.getUserId());
+                    newAcc.setBalance(BigDecimal.ZERO);
+                    return creditAccountRepository.save(newAcc);
+                });
+        BigDecimal newBalance = account.getBalance().add(purchase.getCreditAmount());
+        account.setBalance(newBalance);
+        creditAccountRepository.save(account);
+
         CreditTransaction tx = new CreditTransaction();
-        tx.setUserId(userId);
-        tx.setAmount(pkg.getCreditAmount());
+        tx.setUserId(purchase.getUserId());
+        tx.setAmount(purchase.getCreditAmount());
         tx.setBalanceAfter(newBalance);
         tx.setType(CreditTransactionType.PACKAGE_PURCHASE);
-        tx.setPerformedByUserId(userId);
+        tx.setPerformedByUserId(adminId);
         tx.setRefType("PACKAGE_PURCHASE");
-        tx.setRefId(savedPurchase.getId());
+        tx.setRefId(purchase.getId());
         creditTransactionRepository.save(tx);
 
-        log.info("User {} purchased package '{}' ({} credits) with paymentReference={}",
-                userId, pkg.getName(), pkg.getCreditAmount(), req.paymentReference());
+        markReviewed(purchase, CreditPurchaseStatus.APPROVED, adminId, note);
+        log.info("Admin {} approved purchase {}: {} credits to user {}",
+                adminId, purchase.getId(), purchase.getCreditAmount(), purchase.getUserId());
+        return toResponse(purchase);
+    }
 
-        return new PurchaseCreditPackageResponse(
-                savedPurchase.getId(),
-                pkg.getId(),
-                pkg.getCreditAmount(),
-                pkg.getPriceAmount(),
-                savedPurchase.getPaymentReference(),
-                newBalance,
-                savedPurchase.getPurchasedAt()
-        );
+    @Override
+    @Transactional
+    public CreditPurchaseResponse rejectPurchase(UUID adminId, UUID purchaseId, String note) {
+        CreditPackagePurchase purchase = lockPendingPurchase(purchaseId);
+        markReviewed(purchase, CreditPurchaseStatus.REJECTED, adminId, note);
+        log.info("Admin {} rejected purchase {} of user {}", adminId, purchase.getId(), purchase.getUserId());
+        return toResponse(purchase);
+    }
+
+    /** Row lock makes a double approve (two admins, a double click) grant credit at most once. */
+    private CreditPackagePurchase lockPendingPurchase(UUID purchaseId) {
+        CreditPackagePurchase purchase = creditPackagePurchaseRepository.findByIdForUpdate(purchaseId)
+                .orElseThrow(() -> new AppException(ErrorCode.CREDIT_PURCHASE_NOT_FOUND));
+        if (purchase.getStatus() != CreditPurchaseStatus.PENDING) {
+            throw new AppException(ErrorCode.CREDIT_PURCHASE_NOT_PENDING);
+        }
+        return purchase;
+    }
+
+    private void markReviewed(CreditPackagePurchase purchase, CreditPurchaseStatus status, UUID adminId, String note) {
+        purchase.setStatus(status);
+        purchase.setReviewedBy(adminId);
+        purchase.setReviewedAt(Instant.now());
+        purchase.setReviewNote(note == null || note.isBlank() ? null : note.trim());
+        creditPackagePurchaseRepository.save(purchase);
+    }
+
+    private static Pageable pageRequest(int page, int size) {
+        return PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 100)));
+    }
+
+    private Page<CreditPurchaseResponse> toResponses(Page<CreditPackagePurchase> purchases) {
+        Map<UUID, CreditPackage> packages = creditPackageRepository.findAllById(
+                        purchases.getContent().stream().map(CreditPackagePurchase::getPackageId).distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(CreditPackage::getId, Function.identity()));
+        return purchases.map(p -> {
+            CreditPackage pkg = packages.get(p.getPackageId());
+            return CreditPurchaseResponse.from(p, pkg != null ? pkg.getName() : null,
+                    pkg != null ? pkg.getPriceCurrency() : null);
+        });
+    }
+
+    private CreditPurchaseResponse toResponse(CreditPackagePurchase purchase) {
+        CreditPackage pkg = creditPackageRepository.findById(purchase.getPackageId()).orElse(null);
+        return CreditPurchaseResponse.from(purchase, pkg != null ? pkg.getName() : null,
+                pkg != null ? pkg.getPriceCurrency() : null);
     }
 
     @Override

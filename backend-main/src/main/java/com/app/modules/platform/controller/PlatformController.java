@@ -4,6 +4,12 @@ import com.app.common.dto.ApiResponse;
 import com.app.common.security.AuthenticatedUser;
 import com.app.modules.credit.dto.AdminCreditAdjustRequest;
 import com.app.modules.credit.dto.AdminCreditAdjustResponse;
+import com.app.modules.credit.dto.ReviewCreditPurchaseRequest;
+import com.app.modules.credit.entity.CreditPurchaseStatus;
+import com.app.modules.platform.dto.PlatformCreditMonitorResponse;
+import com.app.modules.platform.dto.UserActivityLogItem;
+import com.app.modules.platform.service.UserActivityLogService;
+import com.app.modules.platform.dto.PlatformCreditPurchaseItem;
 import com.app.modules.platform.dto.PlatformAuditLogItem;
 import com.app.modules.platform.dto.PlatformOverviewResponse;
 import com.app.modules.platform.dto.PlatformPageResponse;
@@ -33,7 +39,7 @@ import java.util.UUID;
 
 /**
  * Platform Super Admin API (SRS §5.8, API_Contract.md §13.1). Read-only except
- * for user credit adjustment.
+ * for user credit adjustment and credit purchase review.
  * Authorization is enforced at the service layer via
  * {@code PlatformAdminAccessService.requirePlatformAdmin} (CLAUDE.md §5 rule 6);
  * request audit is written by {@code PlatformAdminAuditFilter}.
@@ -47,17 +53,35 @@ public class PlatformController {
     private final PlatformDirectoryService directoryService;
     private final PlatformAuditQueryService auditQueryService;
     private final PlatformCreditService creditService;
+    private final UserActivityLogService activityLogService;
 
     public PlatformController(PlatformAnalyticsService analyticsService,
                               PlatformStatusService statusService,
                               PlatformDirectoryService directoryService,
                               PlatformAuditQueryService auditQueryService,
-                              PlatformCreditService creditService) {
+                              PlatformCreditService creditService,
+                              UserActivityLogService activityLogService) {
         this.analyticsService = analyticsService;
         this.statusService = statusService;
         this.directoryService = directoryService;
         this.auditQueryService = auditQueryService;
         this.creditService = creditService;
+        this.activityLogService = activityLogService;
+    }
+
+    /** Regular-user activity (data-changing requests and failed logins); filters optional. */
+    @GetMapping("/activity-logs")
+    public ApiResponse<PlatformPageResponse<UserActivityLogItem>> activityLogs(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(required = false) UUID userId,
+            @RequestParam(required = false) UUID workspaceId,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "false") boolean failedOnly,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        return ApiResponse.<PlatformPageResponse<UserActivityLogItem>>builder()
+                .data(activityLogService.list(user.id(), userId, workspaceId, q, failedOnly, page, size))
+                .build();
     }
 
     /** 6 KPI analytics snapshot. */
@@ -143,6 +167,54 @@ public class PlatformController {
             @Valid @RequestBody AdminCreditAdjustRequest req) {
         return ApiResponse.<AdminCreditAdjustResponse>builder()
                 .data(creditService.adjustUserCredit(user.id(), userId, req.amount(), req.reason()))
+                .build();
+    }
+
+    /** Credit monitor: balances, 7-day inflow/usage and anomaly flags of every account. */
+    @GetMapping("/credit/accounts")
+    public ApiResponse<PlatformCreditMonitorResponse> creditAccounts(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "false") boolean flaggedOnly,
+            @RequestParam(defaultValue = "BALANCE") PlatformCreditService.MonitorSort sort,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.<PlatformCreditMonitorResponse>builder()
+                .data(creditService.creditMonitor(user.id(), q, flaggedOnly, sort, page, size))
+                .build();
+    }
+
+    /** Credit package purchases awaiting (or past) review; status omitted = all. */
+    @GetMapping("/credit/purchases")
+    public ApiResponse<PlatformPageResponse<PlatformCreditPurchaseItem>> creditPurchases(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(required = false) CreditPurchaseStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.<PlatformPageResponse<PlatformCreditPurchaseItem>>builder()
+                .data(creditService.listPurchases(user.id(), status, page, size))
+                .build();
+    }
+
+    /** Payment matched: grants the package credit to the buyer. */
+    @PostMapping("/credit/purchases/{purchaseId}/approve")
+    public ApiResponse<PlatformCreditPurchaseItem> approveCreditPurchase(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID purchaseId,
+            @Valid @RequestBody(required = false) ReviewCreditPurchaseRequest req) {
+        return ApiResponse.<PlatformCreditPurchaseItem>builder()
+                .data(creditService.approvePurchase(user.id(), purchaseId, req != null ? req.note() : null))
+                .build();
+    }
+
+    /** Payment not found or invalid: closes the request without credit. */
+    @PostMapping("/credit/purchases/{purchaseId}/reject")
+    public ApiResponse<PlatformCreditPurchaseItem> rejectCreditPurchase(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID purchaseId,
+            @Valid @RequestBody(required = false) ReviewCreditPurchaseRequest req) {
+        return ApiResponse.<PlatformCreditPurchaseItem>builder()
+                .data(creditService.rejectPurchase(user.id(), purchaseId, req != null ? req.note() : null))
                 .build();
     }
 }

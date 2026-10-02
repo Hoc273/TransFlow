@@ -3,6 +3,7 @@ import type {
   CreditBalance,
   CreditPackage,
   CreditPurchase,
+  CreditPurchasePage,
   CreditTransactionPage,
   CreditTransactionQuery,
 } from '@/types/credit'
@@ -27,6 +28,10 @@ export function getCreditTransactionsApi(query: CreditTransactionQuery = {}) {
 
 export function getCreditPackagesApi() {
   return apiRequest<CreditPackage[]>('/credit/packages')
+}
+
+export function getMyCreditPurchasesApi(page = 0, size = 5) {
+  return apiRequest<CreditPurchasePage>(`/users/me/credit/purchases?page=${page}&size=${size}`)
 }
 
 export function purchaseCreditPackageApi(packageId: string, paymentReference: string) {

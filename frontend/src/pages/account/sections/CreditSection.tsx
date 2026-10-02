@@ -3,6 +3,7 @@ import {
   IconArrowDownRight,
   IconArrowUpRight,
   IconCheck,
+  IconClockHour4,
   IconCoins,
   IconCreditCard,
   IconLoader2,
@@ -15,15 +16,23 @@ import { CreditPackageCard, type PackageAccent } from '@/components/credit/Credi
 import {
   useCreditPackages,
   useCreditTransactions,
+  useMyCreditPurchases,
   usePurchaseCreditPackage,
   useUserCredit,
 } from '@/hooks/useCredit'
 import { formatDateTime, formatNumber, intlLocale } from '@/lib/format'
 import { useUiStore } from '@/store/uiStore'
 import { ApiError } from '@/types/api'
-import type { CreditPackage, CreditTransactionType } from '@/types/credit'
+import type { CreditPackage, CreditPurchaseStatus, CreditTransactionType } from '@/types/credit'
 
 const PAGE_SIZE = 10
+
+const PURCHASE_STATUS_CLASS: Record<CreditPurchaseStatus, string> = {
+  PENDING: 'bg-amber-500/10 text-amber-500',
+  APPROVED: 'bg-emerald-500/10 text-emerald-500',
+  REJECTED: 'bg-[var(--color-error-bg)] text-[var(--color-error)]',
+  LEGACY_UNVERIFIED: 'bg-[var(--color-bg-hover)] text-[var(--color-text-tertiary)]',
+}
 
 export function CreditSection() {
   const { t } = useTranslation(['account', 'common'])
@@ -40,6 +49,7 @@ export function CreditSection() {
     type: type || undefined,
   })
   const packages = useCreditPackages()
+  const purchases = useMyCreditPurchases()
 
   const balanceValue = Number(balance.data?.balance ?? 0)
   const error = balance.error ?? transactions.error ?? packages.error
@@ -48,6 +58,7 @@ export function CreditSection() {
     void balance.refetch()
     void transactions.refetch()
     void packages.refetch()
+    void purchases.refetch()
   }
 
   return (
@@ -110,6 +121,41 @@ export function CreditSection() {
           </div>
         </div>
       </section>
+
+      {!!purchases.data?.items.length && (
+        <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-surface)] shadow-xs">
+          <div className="border-b border-[var(--color-border)] p-5">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
+              <IconClockHour4 size={16} className="text-[var(--color-accent)]" />
+              {t('account:credit.requests.title')}
+            </h2>
+            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+              {t('account:credit.requests.desc')}
+            </p>
+          </div>
+          <ul className="divide-y divide-[var(--color-border)]">
+            {purchases.data.items.map((purchase) => (
+              <li key={purchase.purchaseId} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-[var(--color-text-primary)]">
+                    {purchase.packageName ?? '—'} · {formatNumber(Number(purchase.creditAmount), language)}{' '}
+                    {t('account:credit.unit')}
+                  </div>
+                  <div className="mt-0.5 truncate text-[11px] text-[var(--color-text-tertiary)]">
+                    {purchase.paymentReference} · {formatDateTime(purchase.purchasedAt, language)}
+                    {purchase.reviewNote ? ` · ${purchase.reviewNote}` : ''}
+                  </div>
+                </div>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${PURCHASE_STATUS_CLASS[purchase.status]}`}
+                >
+                  {t(`account:credit.requests.status.${purchase.status}`)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {error && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-error)]/25 bg-[var(--color-error-bg)] p-4 text-xs text-[var(--color-error)]">
@@ -262,13 +308,9 @@ export function CreditSection() {
         loading={packages.isLoading}
         language={language}
         onClose={() => setPurchaseOpen(false)}
-        onPurchased={(newBalance) => {
+        onPurchased={() => {
           setPurchaseOpen(false)
-          setPurchaseMessage(
-            t('account:credit.purchaseSuccess', {
-              balance: formatNumber(newBalance, language),
-            }),
-          )
+          setPurchaseMessage(t('account:credit.purchaseSuccess'))
         }}
       />
     </div>
@@ -288,7 +330,7 @@ function PurchaseCreditModal({
   loading: boolean
   language: string
   onClose: () => void
-  onPurchased: (newBalance: number) => void
+  onPurchased: () => void
 }) {
   const { t } = useTranslation(['account', 'common'])
   const purchase = usePurchaseCreditPackage()
@@ -311,11 +353,11 @@ function PurchaseCreditModal({
   const submit = async () => {
     if (!selected || !paymentReference.trim()) return
     try {
-      const result = await purchase.mutateAsync({
+      await purchase.mutateAsync({
         packageId: selected.id,
         paymentReference: paymentReference.trim(),
       })
-      onPurchased(Number(result.newBalance))
+      onPurchased()
       purchase.reset()
       setSelectedId('')
       setPaymentReference('')

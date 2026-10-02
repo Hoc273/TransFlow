@@ -134,7 +134,7 @@
     "unit": "credit",
     "balanceHelp": "Credit được trừ khi các công đoạn AI và xử lý media chạy. Mọi vai trò trong workspace đều có thể mua credit cho tài khoản cá nhân.",
     "addTitle": "Nạp thêm credit",
-    "addDesc": "Chọn gói và ghi nhận mã tham chiếu thanh toán. MVP hiện chưa kết nối cổng thanh toán trực tuyến.",
+    "addDesc": "Chọn gói, chuyển khoản rồi nhập mã giao dịch. Credit được cộng sau khi quản trị viên đối soát.",
     "buy": "Mua gói credit",
     "history": "Sổ giao dịch credit",
     "historyDesc": "Theo dõi các lần cấp, mua, sử dụng và điều chỉnh credit trên tài khoản.",
@@ -155,18 +155,28 @@
     "noReference": "Giao dịch tài khoản",
     "empty": "Không có giao dịch credit phù hợp bộ lọc.",
     "page": "Trang {{current}} / {{total}}",
-    "purchaseSuccess": "Đã mua gói. Số dư mới của bạn là {{balance}} credit.",
+    "purchaseSuccess": "Đã gửi yêu cầu mua gói. Credit sẽ được cộng sau khi quản trị viên xác nhận chuyển khoản.",
     "modal": {
       "title": "Chọn gói credit",
-      "desc": "Credit của gói được cộng ngay sau khi xác nhận.",
-      "confirm": "Xác nhận mua",
+      "desc": "Credit được cộng sau khi quản trị viên xác nhận khoản thanh toán khớp với mã giao dịch.",
+      "confirm": "Gửi yêu cầu",
       "select": "Chọn gói",
       "selected": "Đã chọn",
       "noPackages": "Hiện không có gói credit khả dụng.",
       "reference": "Mã tham chiếu thanh toán",
       "referencePlaceholder": "Ví dụ: BANK-2026-00125",
-      "referenceHelp": "Nhập mã chuyển khoản hoặc mã thanh toán nội bộ. Hệ thống chưa kết nối cổng thanh toán thật.",
-      "error": "Không thể mua gói. Hãy kiểm tra mã tham chiếu và thử lại."
+      "referenceHelp": "Nhập đúng mã giao dịch chuyển khoản ngân hàng. Mỗi mã chỉ dùng được một lần; mã không khớp với giao dịch thật sẽ bị từ chối.",
+      "error": "Không thể gửi yêu cầu. Hãy kiểm tra mã giao dịch và thử lại."
+    },
+    "requests": {
+      "title": "Yêu cầu nạp credit",
+      "desc": "Các yêu cầu mua gói gần đây và trạng thái duyệt.",
+      "status": {
+        "PENDING": "Chờ duyệt",
+        "APPROVED": "Đã cộng credit",
+        "REJECTED": "Bị từ chối",
+        "LEGACY_UNVERIFIED": "Chưa xác minh"
+      }
     }
   },
   "danger": {

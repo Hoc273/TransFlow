@@ -105,6 +105,16 @@ public class PlatformAdminAuditServiceImpl implements PlatformAdminAuditService 
             return path.endsWith("/preview")
                     ? PlatformAdminAuditAction.PREVIEW_PRICING : PlatformAdminAuditAction.CREATE_PRICING;
         }
+        if (path.contains("/activity-logs")) {
+            return PlatformAdminAuditAction.LIST_ACTIVITY;
+        }
+        if (path.contains("/credit/accounts")) {
+            return PlatformAdminAuditAction.VIEW_CREDIT_MONITOR;
+        }
+        if (path.contains("/credit/purchases")) {
+            return "GET".equalsIgnoreCase(method)
+                    ? PlatformAdminAuditAction.LIST_CREDIT_PURCHASES : PlatformAdminAuditAction.REVIEW_CREDIT_PURCHASE;
+        }
         if (path.contains("/providers")) {
             return "GET".equalsIgnoreCase(method)
                     ? PlatformAdminAuditAction.LIST_PROVIDERS : PlatformAdminAuditAction.MANAGE_PROVIDERS;
@@ -138,7 +148,7 @@ public class PlatformAdminAuditServiceImpl implements PlatformAdminAuditService 
      * because deployments are expected behind a trusted reverse proxy that
      * overwrites the header; without one, a caller can spoof this field.
      */
-    private static String clientIp(HttpServletRequest request) {
+    public static String clientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
             int comma = forwarded.indexOf(',');

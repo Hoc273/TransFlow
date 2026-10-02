@@ -3,7 +3,7 @@ package com.app.modules.credit;
 import com.app.common.exception.AppException;
 import com.app.common.exception.ErrorCode;
 import com.app.modules.credit.dto.PurchaseCreditPackageRequest;
-import com.app.modules.credit.dto.PurchaseCreditPackageResponse;
+import com.app.modules.credit.dto.CreditPurchaseResponse;
 import com.app.modules.credit.entity.*;
 import com.app.modules.credit.repository.*;
 import com.app.modules.credit.service.impl.CreditServiceImpl;
@@ -249,41 +249,68 @@ class CreditServiceTest {
         verify(creditTransactionRepository, never()).save(any());
     }
 
-    @Test
-    void testPurchasePackage_Success() {
-        UUID packageId = UUID.randomUUID();
+    private CreditPackage activePackage(UUID packageId) {
         CreditPackage pkg = new CreditPackage();
         pkg.setId(packageId);
         pkg.setName("Starter");
         pkg.setCreditAmount(new BigDecimal("500.0000"));
         pkg.setPriceAmount(new BigDecimal("50000.00"));
         pkg.setActive(true);
-        when(creditPackageRepository.findById(packageId)).thenReturn(Optional.of(pkg));
+        return pkg;
+    }
 
-        CreditAccount account = new CreditAccount();
-        account.setUserId(userId);
-        account.setBalance(new BigDecimal("10.0000"));
-        when(creditAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
+    private CreditPackagePurchase pendingPurchase(UUID packageId) {
+        CreditPackagePurchase purchase = new CreditPackagePurchase();
+        purchase.setId(UUID.randomUUID());
+        purchase.setUserId(userId);
+        purchase.setPackageId(packageId);
+        purchase.setCreditAmount(new BigDecimal("500.0000"));
+        purchase.setPricePaid(new BigDecimal("50000.00"));
+        purchase.setPaymentReference("PAY-12345");
+        purchase.setStatus(CreditPurchaseStatus.PENDING);
+        return purchase;
+    }
 
-        CreditPackagePurchase savedPurchase = new CreditPackagePurchase();
-        savedPurchase.setId(UUID.randomUUID());
-        savedPurchase.setUserId(userId);
-        savedPurchase.setPackageId(packageId);
-        savedPurchase.setCreditAmount(pkg.getCreditAmount());
-        savedPurchase.setPricePaid(pkg.getPriceAmount());
-        savedPurchase.setPaymentReference("PAY-12345");
-        when(creditPackagePurchaseRepository.save(any(CreditPackagePurchase.class))).thenReturn(savedPurchase);
+    @Test
+    void purchasePackageOnlyRecordsAPendingRequestAndNeverTouchesTheBalance() {
+        UUID packageId = UUID.randomUUID();
+        when(creditPackageRepository.findById(packageId)).thenReturn(Optional.of(activePackage(packageId)));
+        when(creditPackagePurchaseRepository.saveAndFlush(any(CreditPackagePurchase.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
-        PurchaseCreditPackageRequest req = new PurchaseCreditPackageRequest("PAY-12345");
-        PurchaseCreditPackageResponse res = creditService.purchasePackage(userId, packageId, req);
+        CreditPurchaseResponse res = creditService.purchasePackage(userId, packageId,
+                new PurchaseCreditPackageRequest("  PAY-12345 "));
 
-        assertNotNull(res);
-        assertEquals(packageId, res.packageId());
+        assertEquals(CreditPurchaseStatus.PENDING, res.status());
+        assertEquals("PAY-12345", res.paymentReference());
         assertEquals(new BigDecimal("500.0000"), res.creditAmount());
-        assertEquals(new BigDecimal("510.0000"), res.newBalance());
-        assertEquals(new BigDecimal("510.0000"), account.getBalance());
+        verifyNoInteractions(creditAccountRepository, creditTransactionRepository);
+    }
 
-        verify(creditTransactionRepository).save(any(CreditTransaction.class));
+    @Test
+    void purchasePackageRejectsAReferenceAlreadyPendingOrApproved() {
+        UUID packageId = UUID.randomUUID();
+        when(creditPackageRepository.findById(packageId)).thenReturn(Optional.of(activePackage(packageId)));
+        when(creditPackagePurchaseRepository.existsByReferenceInStatuses(eq("PAY-12345"), any())).thenReturn(true);
+
+        AppException ex = assertThrows(AppException.class, () ->
+                creditService.purchasePackage(userId, packageId, new PurchaseCreditPackageRequest("PAY-12345")));
+
+        assertEquals(ErrorCode.PAYMENT_REFERENCE_ALREADY_USED, ex.getErrorCode());
+        verify(creditPackagePurchaseRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void purchasePackageCapsPendingRequestsPerUser() {
+        UUID packageId = UUID.randomUUID();
+        when(creditPackageRepository.findById(packageId)).thenReturn(Optional.of(activePackage(packageId)));
+        when(creditPackagePurchaseRepository.countByUserIdAndStatus(userId, CreditPurchaseStatus.PENDING))
+                .thenReturn(3L);
+
+        AppException ex = assertThrows(AppException.class, () ->
+                creditService.purchasePackage(userId, packageId, new PurchaseCreditPackageRequest("PAY-NEW")));
+
+        assertEquals(ErrorCode.CREDIT_PURCHASE_PENDING_LIMIT, ex.getErrorCode());
     }
 
     @Test
@@ -301,5 +328,47 @@ class CreditServiceTest {
 
         assertEquals(ErrorCode.CREDIT_PACKAGE_INACTIVE, ex.getErrorCode());
         verify(creditAccountRepository, never()).save(any());
+    }
+
+    @Test
+    void approvePurchaseGrantsThePackageCreditOnce() {
+        UUID packageId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        CreditPackagePurchase purchase = pendingPurchase(packageId);
+        when(creditPackagePurchaseRepository.findByIdForUpdate(purchase.getId())).thenReturn(Optional.of(purchase));
+        CreditAccount account = new CreditAccount();
+        account.setUserId(userId);
+        account.setBalance(new BigDecimal("10.0000"));
+        when(creditAccountRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(account));
+
+        CreditPurchaseResponse res = creditService.approvePurchase(adminId, purchase.getId(), " paid ");
+
+        assertEquals(CreditPurchaseStatus.APPROVED, res.status());
+        assertEquals("paid", res.reviewNote());
+        assertEquals(adminId, purchase.getReviewedBy());
+        assertEquals(new BigDecimal("510.0000"), account.getBalance());
+        ArgumentCaptor<CreditTransaction> tx = ArgumentCaptor.forClass(CreditTransaction.class);
+        verify(creditTransactionRepository).save(tx.capture());
+        assertEquals(CreditTransactionType.PACKAGE_PURCHASE, tx.getValue().getType());
+        assertEquals(purchase.getId(), tx.getValue().getRefId());
+        assertEquals(adminId, tx.getValue().getPerformedByUserId());
+
+        // Second approve of the same purchase must not credit again.
+        AppException ex = assertThrows(AppException.class, () ->
+                creditService.approvePurchase(adminId, purchase.getId(), null));
+        assertEquals(ErrorCode.CREDIT_PURCHASE_NOT_PENDING, ex.getErrorCode());
+        assertEquals(new BigDecimal("510.0000"), account.getBalance());
+    }
+
+    @Test
+    void rejectPurchaseClosesTheRequestWithoutCredit() {
+        UUID packageId = UUID.randomUUID();
+        CreditPackagePurchase purchase = pendingPurchase(packageId);
+        when(creditPackagePurchaseRepository.findByIdForUpdate(purchase.getId())).thenReturn(Optional.of(purchase));
+
+        CreditPurchaseResponse res = creditService.rejectPurchase(UUID.randomUUID(), purchase.getId(), "no transfer");
+
+        assertEquals(CreditPurchaseStatus.REJECTED, res.status());
+        verifyNoInteractions(creditAccountRepository, creditTransactionRepository);
     }
 }

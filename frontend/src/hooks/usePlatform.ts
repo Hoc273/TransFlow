@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   adminAdjustUserCreditApi,
+  getPlatformActivityLogsApi,
+  getPlatformCreditMonitorApi,
+  getPlatformCreditPurchasesApi,
+  reviewPlatformCreditPurchaseApi,
   createPlatformPricingApi,
   getPlatformPricingApi,
   getPlatformPricingCoverageApi,
@@ -24,6 +28,9 @@ import { queryKeys, STALE } from '@/lib/queryClient'
 import { useAuthStore } from '@/store/authStore'
 import type {
   AdminCreditAdjustRequest,
+  PlatformActivityQuery,
+  PlatformCreditMonitorQuery,
+  PlatformCreditPurchasesQuery,
   PlatformAuditQuery,
   PlatformOverviewQuery,
   PlatformProviderInput,
@@ -33,7 +40,7 @@ import type {
 } from '@/types/platform'
 
 /** Refresh me from DB so isPlatformAdmin is not stale after seed. */
-export function usePlatformMe(enabled = true) {
+export function usePlatformMe(enabled = true, alwaysRefetch = false) {
   const setUser = useAuthStore((s) => s.setUser)
   return useQuery({
     queryKey: queryKeys.me,
@@ -44,6 +51,7 @@ export function usePlatformMe(enabled = true) {
     },
     enabled,
     staleTime: STALE.realtime,
+    refetchOnMount: alwaysRefetch ? 'always' : true,
   })
 }
 
@@ -134,6 +142,73 @@ export function useAdminAdjustUserCredit() {
     mutationFn: ({ userId, req }: { userId: string; req: AdminCreditAdjustRequest }) =>
       adminAdjustUserCreditApi(userId, req),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['platform', 'users'] })
+    },
+  })
+}
+
+/** SA — regular-user activity log. */
+export function usePlatformActivityLogs(query: PlatformActivityQuery = {}, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.platformActivity({
+      userId: query.userId,
+      workspaceId: query.workspaceId,
+      q: query.q,
+      failedOnly: query.failedOnly,
+      page: query.page,
+      size: query.size,
+    }),
+    queryFn: () => getPlatformActivityLogsApi(query),
+    enabled,
+    staleTime: STALE.realtime,
+  })
+}
+
+/** SA — credit monitor. */
+export function usePlatformCreditMonitor(query: PlatformCreditMonitorQuery = {}, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.platformCreditMonitor({
+      q: query.q,
+      flaggedOnly: query.flaggedOnly,
+      sort: query.sort,
+      page: query.page,
+      size: query.size,
+    }),
+    queryFn: () => getPlatformCreditMonitorApi(query),
+    enabled,
+    staleTime: STALE.realtime,
+  })
+}
+
+/** SA — credit purchase review queue. */
+export function usePlatformCreditPurchases(query: PlatformCreditPurchasesQuery = {}, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.platformCreditPurchases({
+      status: query.status,
+      page: query.page,
+      size: query.size,
+    }),
+    queryFn: () => getPlatformCreditPurchasesApi(query),
+    enabled,
+    staleTime: STALE.realtime,
+  })
+}
+
+export function useReviewCreditPurchase() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      purchaseId,
+      decision,
+      note,
+    }: {
+      purchaseId: string
+      decision: 'approve' | 'reject'
+      note?: string
+    }) => reviewPlatformCreditPurchaseApi(purchaseId, decision, note),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.platformCreditPurchasesRoot })
+      void queryClient.invalidateQueries({ queryKey: ['platform', 'credit-monitor'] })
       void queryClient.invalidateQueries({ queryKey: ['platform', 'users'] })
     },
   })

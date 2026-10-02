@@ -189,6 +189,31 @@ CREATE INDEX ix_platform_audit_action  ON platform_admin_audit_logs(action);
   Redis ZSET `platform:presence:online` (member = `userId`, score = epoch giây heartbeat cuối), prune entry
   cũ hơn 120s khi đọc — dữ liệu tạm, mất khi Redis restart là chấp nhận được.
 
+### 3.2 `user_activity_logs` — nhật ký hoạt động người dùng thường (V9)
+
+Append-only, ghi bởi `UserActivityLogFilter` cho mọi request **thay đổi dữ liệu** (POST/PUT/PATCH/DELETE)
+đã xác thực dưới `/api/**`, và các lần đăng nhập thất bại (`user_id` NULL). Không ghi: request đọc (polling),
+`/api/platform/**` (đã có §3.1), heartbeat, refresh token, upload chunk, đánh dấu đã đọc notification.
+Đăng nhập thành công đã nằm ở `auth_sessions`. Job dọn xoá dòng cũ hơn `app.activity-log.retention-days` (90).
+
+```sql
+user_activity_logs(
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+  workspace_id UUID NULL,              -- tách từ /api/workspaces/{id}/..., không FK (workspace có thể bị xoá)
+  action       VARCHAR(160) NOT NULL,  -- method + path đã thay id, vd 'POST /api/workspaces/{id}/media/jobs'
+  http_method  VARCHAR(10)  NOT NULL,
+  path         VARCHAR(512) NOT NULL,
+  ip           VARCHAR(64)  NULL,
+  user_agent   VARCHAR(512) NULL,
+  status_code  INT          NOT NULL,
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+)
+CREATE INDEX ix_user_activity_created   ON user_activity_logs(created_at DESC);
+CREATE INDEX ix_user_activity_user      ON user_activity_logs(user_id, created_at DESC);
+CREATE INDEX ix_user_activity_workspace ON user_activity_logs(workspace_id, created_at DESC);
+```
+
 ### 3.2 `guide_categories` / `guide_articles` — trang Hướng dẫn (migration V11)
 
 Nội dung tĩnh song ngữ vi/en do Platform Super Admin quản trị; không thuộc Workspace (không có
@@ -356,9 +381,19 @@ credit_package_purchases(
   credit_amount NUMERIC(14,4) NOT NULL,
   price_paid NUMERIC(14,2) NOT NULL,
   payment_reference VARCHAR,
-  purchased_at TIMESTAMPTZ DEFAULT now()
+  purchased_at TIMESTAMPTZ DEFAULT now(),
+  -- V8: chưa có cổng thanh toán → mua gói là yêu cầu chờ Super Admin đối soát, chỉ cộng credit khi APPROVED
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+    CHECK (status IN ('PENDING','APPROVED','REJECTED','LEGACY_UNVERIFIED')),  -- LEGACY_UNVERIFIED = bản ghi trước V8, đã cộng mà chưa xác minh
+  reviewed_by UUID REFERENCES users(id),
+  reviewed_at TIMESTAMPTZ,
+  review_note VARCHAR(255)
 )
 CREATE INDEX ix_credit_package_purchases_user ON credit_package_purchases(user_id, purchased_at DESC);
+CREATE INDEX ix_credit_package_purchases_status ON credit_package_purchases(status, purchased_at DESC);
+-- Một mã chuyển khoản chỉ gắn với một yêu cầu còn hiệu lực
+CREATE UNIQUE INDEX ux_credit_package_purchases_reference_active
+  ON credit_package_purchases(UPPER(payment_reference)) WHERE status IN ('PENDING','APPROVED');
 ```
 
 ---

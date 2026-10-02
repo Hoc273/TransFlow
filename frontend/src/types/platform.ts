@@ -1,3 +1,5 @@
+import type { CreditPurchaseStatus } from '@/types/credit'
+
 /** Platform Super Admin types — mirror docs/34 response sketches (camelCase JSON). */
 
 export type JobStatusCounts = {
@@ -165,6 +167,89 @@ export type PlatformRealtime = {
 }
 
 /** SA — request body for admin credit adjustment (grant or deduct). */
+/** SA — a credit package purchase awaiting (or past) review. */
+export type PlatformCreditPurchaseItem = {
+  purchaseId: string
+  userId: string
+  userEmail: string | null
+  userFullName: string | null
+  packageId: string
+  packageName: string | null
+  creditAmount: number
+  pricePaid: number
+  priceCurrency: string | null
+  paymentReference: string
+  status: CreditPurchaseStatus
+  purchasedAt: string
+  reviewedAt: string | null
+  reviewNote: string | null
+}
+
+/** SA — one regular-user activity row (data-changing request or failed login). */
+export type PlatformActivityLogItem = {
+  id: string
+  userId: string | null
+  userEmail: string | null
+  workspaceId: string | null
+  action: string
+  httpMethod: string
+  path: string
+  ip: string | null
+  userAgent: string | null
+  statusCode: number
+  createdAt: string
+}
+
+export type PlatformActivityQuery = {
+  userId?: string
+  workspaceId?: string
+  q?: string
+  failedOnly?: boolean
+  page?: number
+  size?: number
+}
+
+export type PlatformCreditMonitorSort = 'BALANCE' | 'CREDITED_7D' | 'USED_7D'
+
+export type PlatformCreditAccountFlag = 'LEDGER_MISMATCH' | 'UNVERIFIED_CREDIT'
+
+/** SA — one credit account in the credit monitor. */
+export type PlatformCreditAccountItem = {
+  userId: string
+  email: string | null
+  fullName: string | null
+  balance: number
+  ledgerBalance: number
+  credited7d: number
+  used7d: number
+  unverifiedCredit: number
+  lastActivityAt: string | null
+  flags: PlatformCreditAccountFlag[]
+}
+
+export type PlatformCreditMonitor = {
+  accountCount: number
+  flaggedCount: number
+  totalBalance: number
+  credited7d: number
+  used7d: number
+  accounts: PlatformPage<PlatformCreditAccountItem>
+}
+
+export type PlatformCreditMonitorQuery = {
+  q?: string
+  flaggedOnly?: boolean
+  sort?: PlatformCreditMonitorSort
+  page?: number
+  size?: number
+}
+
+export type PlatformCreditPurchasesQuery = {
+  status?: CreditPurchaseStatus
+  page?: number
+  size?: number
+}
+
 export type AdminCreditAdjustRequest = {
   /** Positive = grant credit, negative = deduct credit. */
   amount: number

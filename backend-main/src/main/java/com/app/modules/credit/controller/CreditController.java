@@ -72,16 +72,31 @@ public class CreditController {
 
     /**
      * POST /api/credit/packages/{packageId}/purchase
-     * Mua gói credit (chưa tích hợp cổng thanh toán thật, ghi nhận paymentReference).
+     * Gửi yêu cầu mua gói kèm mã chuyển khoản. Chưa có cổng thanh toán nên yêu cầu ở trạng thái
+     * PENDING, credit chỉ được cộng khi Super Admin duyệt.
      */
     @PostMapping("/api/credit/packages/{packageId}/purchase")
-    public ApiResponse<PurchaseCreditPackageResponse> purchasePackage(
+    public ApiResponse<CreditPurchaseResponse> purchasePackage(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID packageId,
             @Valid @RequestBody PurchaseCreditPackageRequest req) {
-        PurchaseCreditPackageResponse response = creditService.purchasePackage(user.id(), packageId, req);
-        return ApiResponse.<PurchaseCreditPackageResponse>builder()
+        CreditPurchaseResponse response = creditService.purchasePackage(user.id(), packageId, req);
+        return ApiResponse.<CreditPurchaseResponse>builder()
                 .data(response)
+                .build();
+    }
+
+    /**
+     * GET /api/users/me/credit/purchases?page=&size=
+     * Các yêu cầu mua gói của user hiện tại, mới nhất trước.
+     */
+    @GetMapping("/api/users/me/credit/purchases")
+    public ApiResponse<PageResponse<CreditPurchaseResponse>> getMyPurchases(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.<PageResponse<CreditPurchaseResponse>>builder()
+                .data(creditService.getMyPurchases(user.id(), page, size))
                 .build();
     }
 }

@@ -26,7 +26,10 @@
     "guides": "Guides",
     "providers": "AI providers",
     "pricing": "Credit pricing",
-    "legal": "Terms & Privacy"
+    "legal": "Terms & Privacy",
+    "creditPurchases": "Credit purchases",
+    "creditMonitor": "Credit monitor",
+    "activity": "User activity"
   },
   "menu": {
     "console": "Platform console"
@@ -34,7 +37,8 @@
   "guard": {
     "forbiddenTitle": "Platform access denied",
     "forbiddenBody": "Your account is not a platform super admin. Workspace Admin role does not grant this access.",
-    "loading": "Checking platform access…"
+    "loading": "Checking platform access…",
+    "checkFailed": "Could not verify platform access. Please try again."
   },
   "overview": {
     "title": "Platform Overview",
@@ -269,7 +273,11 @@
     "system": "system",
     "viewPricing": "View pricing",
     "previewPricing": "Preview pricing",
-    "createPricing": "Create price version"
+    "createPricing": "Create price version",
+    "listCreditPurchases": "List credit purchases",
+    "reviewCreditPurchase": "Review credit purchase",
+    "viewCreditMonitor": "View credit monitor",
+    "listActivity": "List user activity"
   },
   "pagination": {
     "prev": "Previous",
@@ -534,5 +542,91 @@
     "viewPublic": "View public page",
     "updatedAt": "Last updated",
     "required": "Title and content are required"
+  },
+  "creditPurchases": {
+    "title": "Credit purchases",
+    "subtitle": "No payment gateway is connected: approve only after finding a transfer that matches the reference and amount. Credit is added on approval only.",
+    "error": "Failed to load purchase requests",
+    "empty": "No requests",
+    "credits": "{{formatted}} credits",
+    "columns": {
+      "user": "User",
+      "package": "Package",
+      "reference": "Reference",
+      "price": "Amount",
+      "requestedAt": "Requested",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "ALL": "All",
+      "PENDING": "Pending",
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected",
+      "LEGACY_UNVERIFIED": "Legacy - unverified"
+    },
+    "approve": "Approve",
+    "reject": "Reject",
+    "approveTitle": "Approve credit purchase",
+    "rejectTitle": "Reject credit purchase",
+    "approveDesc": "Add {{credits}} credits to {{user}}. Approve only once the transfer {{reference}} has been received.",
+    "rejectDesc": "Close request {{reference}} from {{user}} without adding credit.",
+    "note": "Note (optional)",
+    "notePlaceholder": "e.g. matched against the Oct 2 statement",
+    "reviewError": "The request could not be processed"
+  },
+  "creditMonitor": {
+    "title": "Credit monitor",
+    "subtitle": "Balance and 7-day movement of every account. Accounts with anomalies are always listed first.",
+    "error": "Failed to load credit data",
+    "empty": "No accounts",
+    "search": "Search email or name…",
+    "sortLabel": "Sort",
+    "flaggedOnly": "Flagged accounts only",
+    "stats": {
+      "totalBalance": "Total balance",
+      "credited7d": "Credited (7 days)",
+      "used7d": "Used (7 days)",
+      "flagged": "Flagged accounts"
+    },
+    "sort": {
+      "BALANCE": "Highest balance",
+      "CREDITED_7D": "Most credited (7 days)",
+      "USED_7D": "Most used (7 days)"
+    },
+    "columns": {
+      "user": "User",
+      "balance": "Balance",
+      "credited7d": "Credited 7d",
+      "used7d": "Used 7d",
+      "lastActivity": "Last transaction",
+      "flags": "Flags"
+    },
+    "flag": {
+      "LEDGER_MISMATCH": "Ledger mismatch",
+      "UNVERIFIED_CREDIT": "Unverified credit"
+    },
+    "flagHelp": {
+      "LEDGER_MISMATCH": "Balance differs from the sum of transactions ({{ledger}}): edited outside the app or a bug.",
+      "UNVERIFIED_CREDIT": "{{unverified}} credits from purchases made before review existed, never reconciled."
+    },
+    "viewActivity": "View activity"
+  },
+  "activity": {
+    "title": "User activity",
+    "subtitle": "Every data-changing action by users and every failed login. Reads are not logged. Kept for 90 days.",
+    "error": "Failed to load activity",
+    "empty": "No activity yet",
+    "search": "Filter by email or action (e.g. media/jobs)…",
+    "failedOnly": "Failed requests only",
+    "userFilter": "User: {{user}}",
+    "anonymous": "Not signed in",
+    "columns": {
+      "time": "Time",
+      "user": "User",
+      "action": "Action",
+      "status": "Status",
+      "ip": "IP"
+    }
   }
 }

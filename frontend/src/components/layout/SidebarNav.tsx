@@ -7,6 +7,7 @@ import {
   IconFolder,
   IconLayoutGrid,
   IconShieldCheck,
+  IconUsers,
   IconVideo,
 } from '@tabler/icons-react'
 import { SidebarRecentProjects } from './SidebarRecentProjects'
@@ -73,6 +74,12 @@ function buildGroups(workspaceId: string, isPlatformAdmin: boolean): NavGroup[] 
           labelKey: 'nav.media',
           icon: IconVideo,
           path: `${base}/media`,
+        },
+        {
+          key: 'members',
+          labelKey: 'nav.members',
+          icon: IconUsers,
+          path: `${base}/settings/members`,
         },
       ],
     },

@@ -134,7 +134,7 @@
     "unit": "credits",
     "balanceHelp": "Credits are charged when AI and media processing stages run. Personal purchases are available to every workspace role.",
     "addTitle": "Add credits",
-    "addDesc": "Choose a package and record its payment reference. Online payment is not connected in this MVP.",
+    "addDesc": "Choose a package, make the transfer, then enter its transaction reference. Credits are added after an administrator verifies it.",
     "buy": "Buy a credit package",
     "history": "Credit ledger",
     "historyDesc": "Every grant, purchase, usage charge and adjustment to your account.",
@@ -155,18 +155,28 @@
     "noReference": "Account transaction",
     "empty": "No credit transactions match this filter.",
     "page": "Page {{current}} of {{total}}",
-    "purchaseSuccess": "Package purchased. Your new balance is {{balance}} credits.",
+    "purchaseSuccess": "Purchase request sent. Credits are added once an administrator confirms your transfer.",
     "modal": {
       "title": "Choose a credit package",
-      "desc": "The selected amount is credited immediately after confirmation.",
-      "confirm": "Confirm purchase",
+      "desc": "Credits are added after an administrator confirms a payment matching your transaction reference.",
+      "confirm": "Send request",
       "select": "Choose",
       "selected": "Selected",
       "noPackages": "No credit packages are currently available.",
       "reference": "Payment reference",
       "referencePlaceholder": "e.g. BANK-2026-00125",
-      "referenceHelp": "Use the bank transfer or internal payment reference. A real payment gateway is not connected yet.",
-      "error": "The package could not be purchased. Check the reference and try again."
+      "referenceHelp": "Enter the exact bank transfer reference. Each reference can be used once; references that match no real payment are rejected.",
+      "error": "The request could not be sent. Check the reference and try again."
+    },
+    "requests": {
+      "title": "Credit purchase requests",
+      "desc": "Your recent package purchases and their review status.",
+      "status": {
+        "PENDING": "Awaiting review",
+        "APPROVED": "Credited",
+        "REJECTED": "Rejected",
+        "LEGACY_UNVERIFIED": "Unverified"
+      }
     }
   },
   "danger": {

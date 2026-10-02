@@ -5,7 +5,9 @@ import com.app.common.config.SecurityProperties;
 import com.app.common.dto.ApiResponse;
 import com.app.common.exception.ErrorCode;
 import com.app.modules.platform.security.PlatformAdminAuditFilter;
+import com.app.modules.platform.security.UserActivityLogFilter;
 import com.app.modules.platform.service.PlatformAdminAuditService;
+import com.app.modules.platform.service.UserActivityLogService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -58,15 +60,18 @@ public class SecurityConfig {
     private final PlatformAdminAuditService platformAdminAuditService;
     private final SecurityProperties securityProperties;
     private final FixedWindowRateLimiter rateLimiter;
+    private final UserActivityLogService userActivityLogService;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
                           PlatformAdminAuditService platformAdminAuditService,
                           SecurityProperties securityProperties,
-                          FixedWindowRateLimiter rateLimiter) {
+                          FixedWindowRateLimiter rateLimiter,
+                          UserActivityLogService userActivityLogService) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.platformAdminAuditService = platformAdminAuditService;
         this.securityProperties = securityProperties;
         this.rateLimiter = rateLimiter;
+        this.userActivityLogService = userActivityLogService;
     }
 
     @Bean
@@ -113,7 +118,11 @@ public class SecurityConfig {
                 // Audit-only: logs every /api/platform/** request incl. denied ones;
                 // runs after JWT auth so the principal is populated when present.
                 .addFilterAfter(new PlatformAdminAuditFilter(platformAdminAuditService),
-                        JwtAuthFilter.class);
+                        JwtAuthFilter.class)
+                // Wraps the auth throttle so rate-limited logins (429) are logged too; the user is
+                // read after the chain returns, once JwtAuthFilter has populated the context.
+                .addFilterBefore(new UserActivityLogFilter(userActivityLogService),
+                        AuthThrottleFilter.class);
 
         if (securityProperties.requireHttps()) {
             // TLS terminates at the reverse proxy; isSecure() comes from its X-Forwarded-Proto

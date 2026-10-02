@@ -465,7 +465,7 @@ Cấu hình ở `app.maintenance.*` (`MAINTENANCE_ENABLED=false` tắt toàn b�
 |---|---|---|
 | 1 | Lead có kế thừa đúng 100% quyền "Admin" v1.0? | Đã map Lead = toàn quyền workspace + full-access mọi project trong workspace |
 | 2 | Hệ số `y` cố định hay khác theo thao tác/nhà cung cấp? | `credit_pricing_config` theo `capability`+`provider_scope`, không cần đổi schema |
-| 3 | Chi tiết gói Credit (giá, số lượng, cổng thanh toán) | `credit_packages`/`credit_package_purchases` đã có schema tối thiểu, chưa tích hợp cổng thanh toán thật |
+| 3 | Chi tiết gói Credit (giá, số lượng, cổng thanh toán) | `credit_packages`/`credit_package_purchases` đã có schema tối thiểu, chưa tích hợp cổng thanh toán thật; tạm thời mua gói = yêu cầu `PENDING`, Super Admin đối soát chuyển khoản rồi duyệt mới cộng credit (API §10, §13.1) |
 | 4 | Số dư không đủ → chặn ngay hay xử lý rồi báo nợ? | Mặc định `BLOCK_UPFRONT`, đặt cấu hình được |
 | 5 | Workspace có thể nhiều hơn 1 Lead trong tương lai? | Hiện enforce đúng 1 Lead/workspace bằng partial unique index |
 | 6 | Cần vai trò xem-only cho khách hàng? | **✅ ĐÃ CHỐT** — `CLIENT` là role cấp Workspace; Project access qua assignment |

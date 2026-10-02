@@ -30,14 +30,30 @@ export type CreditPackage = {
   createdAt: string
 }
 
+/** Credit is added only once a Super Admin approves the purchase (no payment gateway yet). */
+export type CreditPurchaseStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'LEGACY_UNVERIFIED'
+
 export type CreditPurchase = {
   purchaseId: string
+  userId: string
   packageId: string
+  packageName: string | null
   creditAmount: number
   pricePaid: number
+  priceCurrency: string | null
   paymentReference: string
-  newBalance: number
+  status: CreditPurchaseStatus
   purchasedAt: string
+  reviewedAt: string | null
+  reviewNote: string | null
+}
+
+export type CreditPurchasePage = {
+  items: CreditPurchase[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
 }
 
 export type CreditTransactionPage = {

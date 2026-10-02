@@ -151,7 +151,7 @@ render không còn; output-package trả `url=null` cho track đã mất.
 | `recipeId` | Field bắt buộc thêm |
 |---|---|
 | `localization.full` | `processingMode` (`TRANSLATE_ONLY`\|`HYBRID`) |
-| `summary.script_match` (alias `summary.generative`) | `requestedDurationSeconds` (giây, > 0) |
+| `summary.script_match` (alias `summary.generative`) | `requestedDurationSeconds` (giây, > 0 và **ngắn hơn** `duration_ms` của video gốc, nếu không → `SUMMARY_TARGET_TOO_LONG` 2907; video chưa đo được thời lượng thì bỏ qua kiểm tra) |
 
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
@@ -374,7 +374,8 @@ chỉ kiểm tra thời gian.
 | GET | `/api/users/me/credit` | JWT | `{balance}` — số dư `credit_accounts` của user hiện tại. |
 | GET | `/api/users/me/credit/transactions?type=&from=&to=` | JWT | List `credit_transactions` mà user là `user_id` (charged) hoặc `performed_by_user_id`. |
 | GET | `/api/credit/packages` | JWT | List `credit_packages` đang `is_active`. |
-| POST | `/api/credit/packages/{packageId}/purchase` | JWT | `{paymentReference}` → tạo `credit_package_purchases` + `credit_transactions(type=PACKAGE_PURCHASE)`. **Chưa tích hợp cổng thanh toán thật** (Arch §14 mục 3) — `paymentReference` hiện là input thủ công/giả lập. |
+| POST | `/api/credit/packages/{packageId}/purchase` | JWT | `{paymentReference}` (bắt buộc, ≤ 100 ký tự, trim) → tạo `credit_package_purchases(status=PENDING)`, **không** đổi số dư. **Chưa tích hợp cổng thanh toán thật** (Arch §14 mục 3) nên mã chỉ là khai báo của user; credit chỉ được cộng khi Super Admin duyệt (§13.1). Mã đã thuộc một yêu cầu `PENDING`/`APPROVED` khác (không phân biệt hoa/thường) → `PAYMENT_REFERENCE_ALREADY_USED`; user đã có 3 yêu cầu `PENDING` → `CREDIT_PURCHASE_PENDING_LIMIT`. Response `data` = `CreditPurchaseResponse {purchaseId, userId, packageId, packageName, creditAmount, pricePaid, priceCurrency, paymentReference, status, purchasedAt, reviewedAt, reviewNote}`. |
+| GET | `/api/users/me/credit/purchases?page=&size=` | JWT | `PageResponse<CreditPurchaseResponse>` các yêu cầu mua gói của user hiện tại, mới nhất trước. `status ∈ PENDING \| APPROVED \| REJECTED \| LEGACY_UNVERIFIED` (bản ghi tạo trước khi có bước duyệt). |
 | GET | `/api/workspaces/{workspaceId}/usage?groupBy=project\|user\|operation&from=&to=` | LEAD (toàn Workspace) / MEMBER (chỉ dữ liệu Project được gán) | Tổng hợp `ai_usage_logs` theo SRS §5.6 "Bảng theo dõi mức sử dụng AI". |
 
 ---
@@ -446,8 +447,13 @@ Workspace; tài khoản thường nhận `UNAUTHORIZED` (HTTP 403). Response v�
 | GET | `/api/platform/users?page=0&size=20&q=&isPlatformAdmin=` | Danh bạ user có phân trang; hỗ trợ tìm kiếm và lọc theo cờ Platform Admin. Không trả dữ liệu bí mật. |
 | GET | `/api/platform/users/{userId}/credit/balance` | Số dư Credit hiện tại của một user bất kỳ. |
 | POST | `/api/platform/users/{userId}/credit/adjust` | Cộng (`amount > 0`) hoặc trừ (`amount < 0`) Credit của một user bất kỳ, có ghi `credit_transactions`. |
+| GET | `/api/platform/credit/accounts?q=&flaggedOnly=false&sort=BALANCE\|CREDITED_7D\|USED_7D&page=0&size=20` | Giám sát credit: `{accountCount, flaggedCount, totalBalance, credited7d, used7d, accounts: PlatformPageResponse<PlatformCreditAccountItem>}`; mỗi item `{userId, email, fullName, balance, ledgerBalance, credited7d, used7d, unverifiedCredit, lastActivityAt, flags[]}`. `ledgerBalance` = tổng `credit_transactions.amount` (mọi thay đổi số dư đều ghi giao dịch cùng số tiền nên phải bằng `balance`). `credited7d` = credit cộng trong 7 ngày trừ `INITIAL_GRANT`; `used7d` = `AI_USAGE` 7 ngày. `flags`: `LEDGER_MISMATCH` (balance ≠ ledgerBalance), `UNVERIFIED_CREDIT` (có mua gói `LEGACY_UNVERIFIED`). Tài khoản có cờ luôn xếp trước, sau đó giảm dần theo `sort`. Audit action `VIEW_CREDIT_MONITOR`. |
+| GET | `/api/platform/credit/purchases?status=&page=0&size=20` | Hàng đợi duyệt mua gói Credit (`PlatformPageResponse<PlatformCreditPurchaseItem>` = `CreditPurchaseResponse` + `userEmail, userFullName`); bỏ `status` = mọi trạng thái. Audit action `LIST_CREDIT_PURCHASES`. |
+| POST | `/api/platform/credit/purchases/{purchaseId}/approve` | Body tuỳ chọn `{note}` (≤ 255). Đã đối soát chuyển khoản khớp mã → khoá `credit_package_purchases` và `credit_accounts` (`FOR UPDATE`), cộng `credit_amount`, ghi `credit_transactions(type=PACKAGE_PURCHASE, ref_id=<purchase>, performed_by_user_id=<admin>)`, `status=APPROVED`. Yêu cầu không còn `PENDING` → `CREDIT_PURCHASE_NOT_PENDING` (duyệt 2 lần không cộng 2 lần). Audit action `REVIEW_CREDIT_PURCHASE`. |
+| POST | `/api/platform/credit/purchases/{purchaseId}/reject` | Body tuỳ chọn `{note}`. Đóng yêu cầu `PENDING` với `status=REJECTED`, không cộng credit; mã tham chiếu được giải phóng để gửi lại. Audit action `REVIEW_CREDIT_PURCHASE`. |
 | GET | `/api/platform/workspaces?page=0&size=20&q=` | Danh sách Workspace có phân trang, owner và số thành viên. |
 | GET | `/api/platform/audit-logs?page=0&size=20&action=` | Nhật ký kiểm toán cấp nền tảng có phân trang, lọc theo action. |
+| GET | `/api/platform/activity-logs?userId=&workspaceId=&q=&failedOnly=false&page=0&size=20` | Nhật ký hoạt động của người dùng thường (DB §3.2): request thay đổi dữ liệu + đăng nhập thất bại, mới nhất trước. Item `{id, userId, userEmail, workspaceId, action, httpMethod, path, ip, userAgent, statusCode, createdAt}`; `q` khớp `action` hoặc email; `failedOnly` = `statusCode >= 400`. Audit action `LIST_ACTIVITY`. |
 | GET | `/api/platform/providers` | Pool key AI nền tảng dùng chung (`PlatformAiProviderResponse[]`): `name, protocol, groupKey, capabilities, baseUrl, apiKeyHint, defaultModel, modelOverrides, isActive, priority, weight, tier (PAID\|FREE), healthStatus (UNKNOWN\|HEALTHY\|DOWN), coolingDown, lastCheckedAt, lastErrorCode`. `groupKey` (dẫn xuất, không lưu DB) = `protocol` với hãng speech, còn lại `protocol@host[:port]`; các key cùng `groupKey` là một provider (UI Super Admin gom theo nhóm, có nút thêm key chép cấu hình). **Không bao giờ trả API key.** |
 | POST | `/api/platform/providers` | Thêm key: `{name, protocol, capabilities[], baseUrl, apiKey, defaultModel, modelOverrides?, priority?=100, weight?=1, tier?=PAID, isActive?=true}`. Key mã hoá AES-GCM trước khi lưu. `modelOverrides` = map khoá → model, khoá là **thao tác** `SUMMARIZE_SCRIPT \| REFINE \| QA` (chạy trên key TRANSLATE) hoặc **capability** `TRANSLATE \| STT \| TTS \| VISION` (key phục vụ nhiều capability cần model khác nhau, vd OpenAI `{"STT":"whisper-1","TTS":"tts-1"}` bên cạnh `defaultModel=gpt-4o-mini`). Thứ tự chọn model: thao tác → capability → `defaultModel`; áp cho cả job, test-connection và đồng bộ giọng TTS. Model rỗng bị bỏ; khoá lạ, thao tác trên key không có TRANSLATE, hoặc capability key không có → `VALIDATION_ERROR`. Không áp cho BYOK. |
 | PATCH | `/api/platform/providers/{id}` | Sửa từng phần; `apiKey` không rỗng = xoay key. `modelOverrides` có mặt = thay cả map (`{}` = xoá), null = giữ nguyên (khoá không còn dùng được sau khi đổi capabilities tự bị bỏ). Đổi key/baseUrl/model reset `healthStatus=UNKNOWN`. |
@@ -477,7 +483,7 @@ lệch > ±50% so với version đang mở mà thiếu `confirmLargeChange=true`
 Khi trừ Credit, stage tra giá theo thứ tự `protocol/model` → `protocol` → mặc định, tại thời điểm `media_jobs.created_at`
 (đổi giá không ảnh hưởng job đã tạo). Audit action: `VIEW_PRICING` (GET), `PREVIEW_PRICING`, `CREATE_PRICING`.
 
-Nhóm API này read-only trong MVP, **trừ** điều chỉnh Credit của user (`POST .../credit/adjust`), quản lý pool key
+Nhóm API này read-only trong MVP, **trừ** điều chỉnh Credit của user (`POST .../credit/adjust`), duyệt mua gói Credit (`POST /api/platform/credit/purchases/*`), quản lý pool key
 AI (`/api/platform/providers*`), tạo version bảng giá Credit (`POST /api/platform/pricing`) và quản trị Hướng dẫn (§13.2); không cấp endpoint sửa user/Workspace và không bỏ qua RBAC nghiệp vụ.
 
 Quy tắc chung cho nhóm:
@@ -817,13 +823,13 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `auth` | 2000–2099 | `EMAIL_ALREADY_EXISTS` = 2000, `INVALID_CREDENTIALS` = 2001, `ACCOUNT_DISABLED` = 2002, `OAUTH_ONLY_ACCOUNT` = 2003, `INVALID_REFRESH_TOKEN` = 2004, `USER_NOT_FOUND` = 2005, `GOOGLE_OAUTH_FAILED` = 2006, `GOOGLE_EMAIL_UNVERIFIED` = 2007, `GOOGLE_ACCOUNT_CONFLICT` = 2008, `GOOGLE_NOT_CONFIGURED` = 2009, `GOOGLE_STATE_INVALID` = 2010, `INVALID_OTP` = 2011, `OTP_REQUIRED` = 2012, `OTP_RATE_LIMIT_EXCEEDED` = 2013, `LOGIN_TEMPORARILY_LOCKED` = 2014, `INVALID_AVATAR` = 2015 |
 | `workspace` | 2100–2199 | `WORKSPACE_NOT_FOUND` = 2100, `WORKSPACE_MEMBER_NOT_FOUND` = 2101, `LEAD_CANNOT_BE_REMOVED` = 2102, `WORKSPACE_MEMBER_ALREADY_EXISTS` = 2103, `CANNOT_ASSIGN_LEAD_ROLE` = 2104, `WORKSPACE_SLUG_ALREADY_EXISTS` = 2105 |
 | `project` | 2200–2299 | `PROJECT_NOT_FOUND` = 2200, `PROJECT_MEMBER_NOT_FOUND` = 2201, `PROJECT_ACCESS_DENIED` = 2202, `USER_NOT_WORKSPACE_MEMBER` = 2203, `LEAD_ALREADY_HAS_FULL_PROJECT_ACCESS` = 2204, `PROJECT_MEMBER_ALREADY_EXISTS` = 2205 |
-| `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303, 2304 dành cho `PRICING_CONFIG_MISSING`, `PRICING_INVALID` = 2305, `PRICING_LARGE_CHANGE_UNCONFIRMED` = 2306 |
+| `credit` | 2300–2399 | `INSUFFICIENT_CREDIT` = 2300, `CREDIT_PACKAGE_NOT_FOUND` = 2301, `CREDIT_PACKAGE_INACTIVE` = 2302, `CREDIT_ACCOUNT_NOT_FOUND` = 2303, 2304 dành cho `PRICING_CONFIG_MISSING`, `PRICING_INVALID` = 2305, `PRICING_LARGE_CHANGE_UNCONFIRMED` = 2306, `CREDIT_PURCHASE_NOT_FOUND` = 2307, `CREDIT_PURCHASE_NOT_PENDING` = 2308, `PAYMENT_REFERENCE_ALREADY_USED` = 2309, `CREDIT_PURCHASE_PENDING_LIMIT` = 2310 |
 | `provider` | 2400–2499 | `PROVIDER_NOT_FOUND` = 2400, `PROVIDER_CAPABILITY_NOT_SUPPORTED` = 2401, `PROVIDER_TEST_FAILED` = 2402, `PROVIDER_VOICES_FETCH_FAILED` = 2403, `PLATFORM_PROVIDER_NOT_CONFIGURED` = 2404, `INVALID_PROVIDER_PROTOCOL` = 2405, `TTS_VOICE_NOT_FOUND` = 2406, `TTS_PREVIEW_RATE_LIMIT_EXCEEDED` = 2407, `TTS_PREVIEW_FAILED` = 2408, `PROVIDER_KEY_DECRYPTION_FAILED` = 2409, `PROVIDER_DEFAULT_NOT_CONFIGURED` = 2410, `PROVIDER_MODEL_NOT_CONFIGURED` = 2411, `PROVIDER_IN_USE` = 2412 |
 | `preset` | 2500–2599 | `PRESET_NOT_FOUND` = 2500, `PRESET_INACTIVE` = 2501, `PRESET_SCOPE_INVALID` = 2502, `CANNOT_DELETE_ONLY_DEFAULT_PRESET` = 2503, `SYSTEM_PRESET_READ_ONLY` = 2504, `PRESET_DEFAULT_CONFLICT` = 2505, `REPLACEMENT_PRESET_INVALID` = 2506 |
 | `notification` | 2600–2699 | `NOTIFICATION_NOT_FOUND` = 2600, `NOTIFICATION_TYPE_INVALID` = 2601 |
 | `dashboard` | 2700–2799 | `DASHBOARD_DATE_RANGE_INVALID` = 2700, `DASHBOARD_GROUP_BY_INVALID` = 2701 |
 | `media_asset` | 2800–2899 | `TERMS_NOT_ACCEPTED` = 2800, `MEDIA_FILE_TOO_LARGE` = 2801, `MEDIA_DURATION_EXCEEDED` = 2802, `TERMS_VERSION_MISMATCH` = 2803, `MEDIA_FILE_EXPIRED` = 2804, `MEDIA_INVALID_FILE` = 2805 |
-| `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902, `STYLE_NOT_FOUND` = 2903, `INVALID_STYLE_KEY` = 2904, `DOWNLOAD_SELECTION_TOO_LARGE` = 2905, `STUDIO_MODE_UNAVAILABLE` = 2906 |
+| `media_job` | 2900–2999 | `VOICE_LANGUAGE_MISMATCH` = 2900, `JOB_OWNERSHIP_REQUIRED` = 2901, `STAGE_NOT_READY` = 2902, `STYLE_NOT_FOUND` = 2903, `INVALID_STYLE_KEY` = 2904, `DOWNLOAD_SELECTION_TOO_LARGE` = 2905, `STUDIO_MODE_UNAVAILABLE` = 2906, `SUMMARY_TARGET_TOO_LONG` = 2907 |
 | `summarization` | 3000–3099 | `REFINE_LIMIT_REACHED` = 3000, `PROPOSAL_ALREADY_TRANSLATED` = 3001 |
 | `batch` | 3100–3199 | `BATCH_SIZE_EXCEEDED` = 3100, `BATCH_RATE_LIMIT_EXCEEDED` = 3101 |
 | `glossary` | 3200–3299 | `GLOSSARY_IMPORT_TOO_LARGE` = 3200 |
@@ -869,6 +875,7 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `INVALID_STYLE_KEY` | 2904 | 400 | Key style sai định dạng (`^[a-z0-9][a-z0-9-]{0,63}$`). |
 | `DOWNLOAD_SELECTION_TOO_LARGE` | 2905 | 400 | Chọn quá số video tối đa cho 1 lần tải zip (mặc định 20). |
 | `STUDIO_MODE_UNAVAILABLE` | 2906 | 409 | Tạo job bật tách nguồn (STUDIO) trong khi deployment không có GPU cho Demucs. |
+| `SUMMARY_TARGET_TOO_LONG` | 2907 | 400 | Thời lượng tóm tắt yêu cầu ≥ thời lượng video gốc. |
 | `TERMS_NOT_ACCEPTED` | 2800 | 403 | Tạo job từ asset chưa có `media_consents` khớp `terms_version` hiện hành. |
 | `MEDIA_FILE_TOO_LARGE` | 2801 | 400 | Upload video vượt 500MB (SRS §6), enforce ở service layer. |
 | `MEDIA_DURATION_EXCEEDED` | 2802 | 400 | Video vượt 30 phút (SRS §6), enforce ở service layer sau khi ffprobe. |
@@ -885,6 +892,10 @@ chung/lấn dải module khác (tránh 2 người thêm trùng số khi làm son
 | `CREDIT_ACCOUNT_NOT_FOUND` | 2303 | 404 | Không tìm thấy tài khoản credit của người dùng. |
 | `PRICING_INVALID` | 2305 | 400 | Version giá không hợp lệ: capability lạ, `providerScope` sai định dạng, x/y âm hoặc quá 6 chữ số thập phân, thiếu lý do, `effectiveFrom` ở quá khứ hoặc không sau version đang mở. |
 | `PRICING_LARGE_CHANGE_UNCONFIRMED` | 2306 | 409 | x hoặc y lệch > ±50% so với version đang mở mà chưa gửi `confirmLargeChange=true`. |
+| `CREDIT_PURCHASE_NOT_FOUND` | 2307 | 404 | Yêu cầu mua gói không tồn tại. |
+| `CREDIT_PURCHASE_NOT_PENDING` | 2308 | 409 | Duyệt/từ chối một yêu cầu đã được xử lý. |
+| `PAYMENT_REFERENCE_ALREADY_USED` | 2309 | 409 | Mã tham chiếu thanh toán đã thuộc một yêu cầu `PENDING`/`APPROVED` khác. |
+| `CREDIT_PURCHASE_PENDING_LIMIT` | 2310 | 429 | User đã có 3 yêu cầu mua gói đang chờ duyệt. |
 | `REFINE_LIMIT_REACHED` | 3000 | 429 | Vượt 5 lần refine/phiên Summarization. |
 | `PROPOSAL_ALREADY_TRANSLATED` | 3001 | 409 | Đổi `selected_proposal_id` hoặc refine phương án đang chọn khi stage `TRANSLATE` của job đã `COMPLETED` từ phương án đó (SRS §5.5 — phải rerun-from-stage `TRANSLATE` trước). |
 | `BATCH_SIZE_EXCEEDED` | 3100 | 400 | `sourceAssetIds` rỗng hoặc > 20 khi tạo batch. |

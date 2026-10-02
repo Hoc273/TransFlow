@@ -270,7 +270,8 @@
     "preset2m": "2 min",
     "preset3m": "3 min",
     "preset5m": "5 min",
-    "preset10m": "10 min"
+    "preset10m": "10 min",
+    "durationExceedsSource": "The summary must be shorter than the source video ({{source}})."
   },
   "proposals": {
     "hint": "Pick one AI proposal or define your own cut. After you select, the job continues to Translate and the choice is locked.",

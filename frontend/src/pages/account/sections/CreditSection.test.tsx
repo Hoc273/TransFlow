@@ -15,7 +15,7 @@ vi.mock('@/store/uiStore', () => ({
   useUiStore: (selector: (state: { language: string }) => unknown) => selector({ language: 'en' }),
 }))
 
-const purchaseMutate = vi.fn().mockResolvedValue({ newBalance: 1250 })
+const purchaseMutate = vi.fn().mockResolvedValue({ purchaseId: 'purchase-1', status: 'PENDING' })
 const purchaseReset = vi.fn()
 
 vi.mock('@/hooks/useCredit', () => ({
@@ -62,6 +62,31 @@ vi.mock('@/hooks/useCredit', () => ({
     isLoading: false,
     refetch: vi.fn(),
   }),
+  useMyCreditPurchases: () => ({
+    data: {
+      items: [{
+        purchaseId: 'purchase-0',
+        userId: 'user-1',
+        packageId: 'package-1',
+        packageName: 'Studio 1K',
+        creditAmount: 1000,
+        pricePaid: 9.99,
+        priceCurrency: 'USD',
+        paymentReference: 'BANK-000',
+        status: 'PENDING',
+        purchasedAt: '2026-09-22T00:00:00Z',
+        reviewedAt: null,
+        reviewNote: null,
+      }],
+      page: 0,
+      size: 5,
+      totalElements: 1,
+      totalPages: 1,
+    },
+    error: null,
+    isLoading: false,
+    refetch: vi.fn(),
+  }),
   usePurchaseCreditPackage: () => ({
     mutateAsync: purchaseMutate,
     reset: purchaseReset,
@@ -82,6 +107,13 @@ describe('CreditSection', () => {
     expect(screen.getByText('MEDIA_JOB')).toBeTruthy()
   })
 
+  it('lists purchase requests with their review status', () => {
+    render(<CreditSection />)
+
+    expect(screen.getByText('account:credit.requests.status.PENDING')).toBeTruthy()
+    expect(screen.getByText(/BANK-000/)).toBeTruthy()
+  })
+
   it('purchases a selected package with its payment reference', async () => {
     render(<CreditSection />)
 
@@ -98,5 +130,6 @@ describe('CreditSection', () => {
         paymentReference: 'BANK-001',
       })
     })
+    expect(await screen.findByText('account:credit.purchaseSuccess')).toBeTruthy()
   })
 })

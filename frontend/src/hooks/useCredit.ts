@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getCreditPackagesApi,
   getCreditTransactionsApi,
+  getMyCreditPurchasesApi,
   getUserCreditApi,
   purchaseCreditPackageApi,
 } from '@/api/credit'
@@ -32,6 +33,14 @@ export function useCreditPackages() {
   })
 }
 
+export function useMyCreditPurchases() {
+  return useQuery({
+    queryKey: queryKeys.creditPurchases,
+    queryFn: () => getMyCreditPurchasesApi(),
+    staleTime: STALE.realtime,
+  })
+}
+
 export function usePurchaseCreditPackage() {
   const queryClient = useQueryClient()
 
@@ -39,8 +48,7 @@ export function usePurchaseCreditPackage() {
     mutationFn: ({ packageId, paymentReference }: { packageId: string; paymentReference: string }) =>
       purchaseCreditPackageApi(packageId, paymentReference),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.userCredit })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.creditTransactionsRoot })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.creditPurchases })
     },
   })
 }
