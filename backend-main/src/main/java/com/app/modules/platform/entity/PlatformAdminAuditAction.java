@@ -11,6 +11,9 @@ public enum PlatformAdminAuditAction {
     LIST_AUDIT,
     VIEW_USER_CREDIT,
     ADJUST_USER_CREDIT,
+    LIST_CREDIT_PURCHASES,
+    /** Approve or reject of a credit package purchase. */
+    REVIEW_CREDIT_PURCHASE,
     SEED_GRANT,
     LIST_PROVIDERS,
     /** Create, update, delete, test or voice sync of a shared platform key. */

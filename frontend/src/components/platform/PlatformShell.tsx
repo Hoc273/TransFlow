@@ -14,6 +14,7 @@ import {
   IconScale,
   IconKey,
   IconCoins,
+  IconReceipt,
 } from '@tabler/icons-react'
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
@@ -30,6 +31,7 @@ const NAV = [
   { to: '/platform/workspaces', end: false, icon: IconBuilding, key: 'workspaces' as const },
   { to: '/platform/providers', end: false, icon: IconKey, key: 'providers' as const },
   { to: '/platform/pricing', end: false, icon: IconCoins, key: 'pricing' as const },
+  { to: '/platform/credit-purchases', end: false, icon: IconReceipt, key: 'creditPurchases' as const },
   { to: '/platform/audit', end: false, icon: IconClipboardList, key: 'audit' as const },
   { to: '/platform/guides', end: false, icon: IconBook2, key: 'guides' as const },
   { to: '/platform/legal', end: false, icon: IconScale, key: 'legal' as const },

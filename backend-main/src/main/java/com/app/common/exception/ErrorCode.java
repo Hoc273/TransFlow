@@ -69,6 +69,10 @@ public enum ErrorCode {
     // 2304 reserved: PRICING_CONFIG_MISSING (Credit_Coefficient_Calculation P8)
     PRICING_INVALID(2305, "Invalid credit pricing configuration", HttpStatus.BAD_REQUEST),
     PRICING_LARGE_CHANGE_UNCONFIRMED(2306, "Pricing change above 50% requires confirmation", HttpStatus.CONFLICT),
+    CREDIT_PURCHASE_NOT_FOUND(2307, "Credit purchase not found", HttpStatus.NOT_FOUND),
+    CREDIT_PURCHASE_NOT_PENDING(2308, "Credit purchase has already been reviewed", HttpStatus.CONFLICT),
+    PAYMENT_REFERENCE_ALREADY_USED(2309, "Payment reference has already been submitted", HttpStatus.CONFLICT),
+    CREDIT_PURCHASE_PENDING_LIMIT(2310, "Too many credit purchases awaiting review", HttpStatus.TOO_MANY_REQUESTS),
 
     // 24xx - provider (Member A)
     PROVIDER_NOT_FOUND(2400, "AI provider not found", HttpStatus.NOT_FOUND),

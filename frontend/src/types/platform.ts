@@ -1,3 +1,5 @@
+import type { CreditPurchaseStatus } from '@/types/credit'
+
 /** Platform Super Admin types — mirror docs/34 response sketches (camelCase JSON). */
 
 export type JobStatusCounts = {
@@ -165,6 +167,30 @@ export type PlatformRealtime = {
 }
 
 /** SA — request body for admin credit adjustment (grant or deduct). */
+/** SA — a credit package purchase awaiting (or past) review. */
+export type PlatformCreditPurchaseItem = {
+  purchaseId: string
+  userId: string
+  userEmail: string | null
+  userFullName: string | null
+  packageId: string
+  packageName: string | null
+  creditAmount: number
+  pricePaid: number
+  priceCurrency: string | null
+  paymentReference: string
+  status: CreditPurchaseStatus
+  purchasedAt: string
+  reviewedAt: string | null
+  reviewNote: string | null
+}
+
+export type PlatformCreditPurchasesQuery = {
+  status?: CreditPurchaseStatus
+  page?: number
+  size?: number
+}
+
 export type AdminCreditAdjustRequest = {
   /** Positive = grant credit, negative = deduct credit. */
   amount: number

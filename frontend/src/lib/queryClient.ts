@@ -31,6 +31,7 @@ export const queryKeys = {
   userCredit: ['credit', 'balance'] as const,
   creditPackages: ['credit', 'packages'] as const,
   creditTransactionsRoot: ['credit', 'transactions'] as const,
+  creditPurchases: ['credit', 'purchases'] as const,
   creditTransactions: (params: CreditTransactionQuery = {}) =>
     ['credit', 'transactions', params] as const,
   workspaces: ['workspaces'] as const,
@@ -98,6 +99,9 @@ export const queryKeys = {
   platformRealtime: ['platform', 'realtime'] as const,
   platformProviders: ['platform', 'providers'] as const,
   platformPricing: ['platform', 'pricing'] as const,
+  platformCreditPurchasesRoot: ['platform', 'credit-purchases'] as const,
+  platformCreditPurchases: (params: Record<string, string | number | undefined>) =>
+    ['platform', 'credit-purchases', params] as const,
   platformPricingHistory: (params: Record<string, string | undefined>) =>
     ['platform', 'pricing', 'history', params] as const,
   platformPricingCoverage: ['platform', 'pricing', 'coverage'] as const,

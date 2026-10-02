@@ -26,7 +26,8 @@
     "guides": "Guides",
     "providers": "AI providers",
     "pricing": "Credit pricing",
-    "legal": "Terms & Privacy"
+    "legal": "Terms & Privacy",
+    "creditPurchases": "Credit purchases"
   },
   "menu": {
     "console": "Platform console"
@@ -269,7 +270,9 @@
     "system": "system",
     "viewPricing": "View pricing",
     "previewPricing": "Preview pricing",
-    "createPricing": "Create price version"
+    "createPricing": "Create price version",
+    "listCreditPurchases": "List credit purchases",
+    "reviewCreditPurchase": "Review credit purchase"
   },
   "pagination": {
     "prev": "Previous",
@@ -534,5 +537,37 @@
     "viewPublic": "View public page",
     "updatedAt": "Last updated",
     "required": "Title and content are required"
+  },
+  "creditPurchases": {
+    "title": "Credit purchases",
+    "subtitle": "No payment gateway is connected: approve only after finding a transfer that matches the reference and amount. Credit is added on approval only.",
+    "error": "Failed to load purchase requests",
+    "empty": "No requests",
+    "credits": "{{formatted}} credits",
+    "columns": {
+      "user": "User",
+      "package": "Package",
+      "reference": "Reference",
+      "price": "Amount",
+      "requestedAt": "Requested",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "ALL": "All",
+      "PENDING": "Pending",
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected",
+      "LEGACY_UNVERIFIED": "Legacy - unverified"
+    },
+    "approve": "Approve",
+    "reject": "Reject",
+    "approveTitle": "Approve credit purchase",
+    "rejectTitle": "Reject credit purchase",
+    "approveDesc": "Add {{credits}} credits to {{user}}. Approve only once the transfer {{reference}} has been received.",
+    "rejectDesc": "Close request {{reference}} from {{user}} without adding credit.",
+    "note": "Note (optional)",
+    "notePlaceholder": "e.g. matched against the Oct 2 statement",
+    "reviewError": "The request could not be processed"
   }
 }

@@ -4,6 +4,8 @@ import com.app.testsupport.TestRegistration;
 
 import com.app.modules.auth.dto.RegisterRequest;
 import com.app.modules.credit.dto.PurchaseCreditPackageRequest;
+import com.app.modules.credit.entity.CreditPackage;
+import com.app.modules.credit.repository.CreditPackageRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -14,6 +16,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.math.BigDecimal;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -31,6 +36,9 @@ class CreditControllerTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private CreditPackageRepository creditPackageRepository;
 
     private String registerAndGetToken(String email, String name) throws Exception {
         RegisterRequest reg = TestRegistration.withOtp(registerOtpStore, new RegisterRequest(email, "Password123!", name));
@@ -66,7 +74,14 @@ class CreditControllerTest {
                 .andExpect(jsonPath("$.data.items[0].type").value("INITIAL_GRANT"))
                 .andExpect(jsonPath("$.data.items[0].amount").value(100.0000));
 
-        // 4. GET /api/credit/packages -> lists active packages
+        // 4. GET /api/credit/packages -> lists active packages (tests run without Flyway seed data)
+        if (creditPackageRepository.findByIsActiveTrueOrderByCreditAmountAsc().isEmpty()) {
+            CreditPackage pkg = new CreditPackage();
+            pkg.setName("Test Pack");
+            pkg.setCreditAmount(new BigDecimal("500.0000"));
+            pkg.setPriceAmount(new BigDecimal("50000.00"));
+            creditPackageRepository.save(pkg);
+        }
         MvcResult pkgResult = mockMvc.perform(get("/api/credit/packages")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
@@ -75,27 +90,42 @@ class CreditControllerTest {
                 .andReturn();
 
         JsonNode packagesNode = objectMapper.readTree(pkgResult.getResponse().getContentAsString()).path("data");
-        if (packagesNode.size() > 0) {
-            String packageId = packagesNode.get(0).path("id").asText();
-            double pkgCreditAmount = packagesNode.get(0).path("creditAmount").asDouble();
+        assertTrue(packagesNode.size() > 0);
+        String packageId = packagesNode.get(0).path("id").asText();
+        double pkgCreditAmount = packagesNode.get(0).path("creditAmount").asDouble();
 
-            // 5. POST /api/credit/packages/{packageId}/purchase -> purchases package
-            PurchaseCreditPackageRequest purchaseReq = new PurchaseCreditPackageRequest("SIMULATED-REF-999");
-            mockMvc.perform(post("/api/credit/packages/" + packageId + "/purchase")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(purchaseReq)))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(1000))
-                    .andExpect(jsonPath("$.data.paymentReference").value("SIMULATED-REF-999"))
-                    .andExpect(jsonPath("$.data.newBalance").value(100.0000 + pkgCreditAmount));
+        // 5. POST /api/credit/packages/{packageId}/purchase -> only a PENDING request,
+        //    a made-up reference must never add credit by itself
+        String reference = "SIMULATED-REF-" + System.nanoTime();
+        mockMvc.perform(post("/api/credit/packages/" + packageId + "/purchase")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PurchaseCreditPackageRequest(reference))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.data.paymentReference").value(reference))
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.creditAmount").value(pkgCreditAmount));
 
-            // Verify updated balance on /api/users/me/credit
-            mockMvc.perform(get("/api/users/me/credit")
-                            .header("Authorization", "Bearer " + token))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(1000))
-                    .andExpect(jsonPath("$.data.balance").value(100.0000 + pkgCreditAmount));
-        }
+        mockMvc.perform(get("/api/users/me/credit")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.balance").value(100.0000));
+
+        // 6. The same reference cannot be submitted again (any letter case)
+        mockMvc.perform(post("/api/credit/packages/" + packageId + "/purchase")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new PurchaseCreditPackageRequest(reference.toLowerCase()))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(2309));
+
+        // 7. GET /api/users/me/credit/purchases -> the request with its status
+        mockMvc.perform(get("/api/users/me/credit/purchases")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].paymentReference").value(reference))
+                .andExpect(jsonPath("$.data.items[0].status").value("PENDING"));
     }
 }

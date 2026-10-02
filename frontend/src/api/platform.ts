@@ -2,6 +2,8 @@ import { apiRequest } from '@/lib/api/client'
 import type {
   AdminCreditAdjustRequest,
   AdminCreditAdjustResponse,
+  PlatformCreditPurchaseItem,
+  PlatformCreditPurchasesQuery,
   CreatePricingVersionResult,
   PlatformAuditLogItem,
   PlatformAuditQuery,
@@ -129,6 +131,31 @@ export function adminAdjustUserCreditApi(
   return apiRequest<AdminCreditAdjustResponse>(`/platform/users/${userId}/credit/adjust`, {
     method: 'POST',
     body: req,
+  })
+}
+
+/** SA — credit package purchases; credit is granted only on approve. */
+export async function getPlatformCreditPurchasesApi(
+  query: PlatformCreditPurchasesQuery = {},
+): Promise<PlatformPage<PlatformCreditPurchaseItem>> {
+  const res = await apiRequest<unknown>(
+    `/platform/credit/purchases${qs({
+      status: query.status,
+      page: query.page,
+      size: query.size,
+    })}`,
+  )
+  return normalizePage<PlatformCreditPurchaseItem>(res)
+}
+
+export function reviewPlatformCreditPurchaseApi(
+  purchaseId: string,
+  decision: 'approve' | 'reject',
+  note?: string,
+): Promise<PlatformCreditPurchaseItem> {
+  return apiRequest<PlatformCreditPurchaseItem>(`/platform/credit/purchases/${purchaseId}/${decision}`, {
+    method: 'POST',
+    body: { note },
   })
 }
 

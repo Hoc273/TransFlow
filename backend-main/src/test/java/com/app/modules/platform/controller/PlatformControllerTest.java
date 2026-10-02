@@ -4,7 +4,12 @@ import com.app.common.security.AuthenticatedUser;
 import com.app.modules.auth.entity.User;
 import com.app.modules.auth.entity.UserStatus;
 import com.app.modules.auth.repository.UserRepository;
+import com.app.modules.credit.entity.CreditPackage;
+import com.app.modules.credit.entity.CreditPackagePurchase;
+import com.app.modules.credit.entity.CreditPurchaseStatus;
 import com.app.modules.credit.repository.CreditAccountRepository;
+import com.app.modules.credit.repository.CreditPackagePurchaseRepository;
+import com.app.modules.credit.repository.CreditPackageRepository;
 import com.app.modules.credit.repository.CreditTransactionRepository;
 import com.app.modules.platform.entity.PlatformAdminAuditAction;
 import com.app.modules.platform.repository.PlatformAdminAuditLogRepository;
@@ -24,6 +29,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.UUID;
@@ -59,6 +65,12 @@ class PlatformControllerTest {
     @Autowired
     private CreditAccountRepository creditAccountRepository;
 
+    @Autowired
+    private CreditPackageRepository creditPackageRepository;
+
+    @Autowired
+    private CreditPackagePurchaseRepository creditPackagePurchaseRepository;
+
     private User adminUser;
     private User normalUser;
 
@@ -66,6 +78,7 @@ class PlatformControllerTest {
     void setup() {
         auditLogRepository.deleteAll();
         creditTransactionRepository.deleteAll();
+        creditPackagePurchaseRepository.deleteAll();
         creditAccountRepository.deleteAll();
         workspaceMemberRepository.deleteAll();
         workspaceRepository.deleteAll();
@@ -439,5 +452,83 @@ class PlatformControllerTest {
                 .andExpect(jsonPath("$.data.totalElements").value(2))
                 .andExpect(jsonPath("$.data.content[?(@.email=='user@transflow.com')].workspaceCount")
                         .value(org.hamcrest.Matchers.contains(2)));
+    }
+
+    private CreditPackagePurchase pendingPurchaseOf(User buyer) {
+        CreditPackage pkg = new CreditPackage();
+        pkg.setName("Review Pack");
+        pkg.setCreditAmount(new BigDecimal("250.0000"));
+        pkg.setPriceAmount(new BigDecimal("25000.00"));
+        pkg = creditPackageRepository.save(pkg);
+
+        CreditPackagePurchase purchase = new CreditPackagePurchase();
+        purchase.setUserId(buyer.getId());
+        purchase.setPackageId(pkg.getId());
+        purchase.setCreditAmount(pkg.getCreditAmount());
+        purchase.setPricePaid(pkg.getPriceAmount());
+        purchase.setPaymentReference("BANK-" + UUID.randomUUID());
+        purchase.setStatus(CreditPurchaseStatus.PENDING);
+        purchase.setPurchasedAt(Instant.now());
+        return creditPackagePurchaseRepository.save(purchase);
+    }
+
+    @Test
+    void testCreditPurchaseReview_ApproveGrantsCreditExactlyOnce() throws Exception {
+        CreditPackagePurchase purchase = pendingPurchaseOf(normalUser);
+        authenticateAs(adminUser);
+
+        mockMvc.perform(get("/api/platform/credit/purchases").param("status", "PENDING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].purchaseId").value(purchase.getId().toString()))
+                .andExpect(jsonPath("$.data.content[0].userEmail").value("user@transflow.com"))
+                .andExpect(jsonPath("$.data.content[0].packageName").value("Review Pack"));
+
+        String approveUrl = "/api/platform/credit/purchases/" + purchase.getId() + "/approve";
+        mockMvc.perform(post(approveUrl)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\": \"transfer matched\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.reviewNote").value("transfer matched"));
+
+        mockMvc.perform(post(approveUrl))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(2308));
+
+        mockMvc.perform(get("/api/platform/users/" + normalUser.getId() + "/credit/balance"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.balance").value(250));
+
+        assertThat(auditLogRepository.findFiltered(PlatformAdminAuditAction.REVIEW_CREDIT_PURCHASE,
+                PageRequest.of(0, 10)).getTotalElements()).isEqualTo(2);
+    }
+
+    @Test
+    void testCreditPurchaseReview_RejectGrantsNothing() throws Exception {
+        CreditPackagePurchase purchase = pendingPurchaseOf(normalUser);
+        authenticateAs(adminUser);
+
+        mockMvc.perform(post("/api/platform/credit/purchases/" + purchase.getId() + "/reject")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\": \"no transfer found\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"));
+
+        assertThat(creditAccountRepository.findByUserId(normalUser.getId())).isEmpty();
+    }
+
+    @Test
+    void testCreditPurchaseReview_AsNormalUser_Forbidden() throws Exception {
+        CreditPackagePurchase purchase = pendingPurchaseOf(normalUser);
+        authenticateAs(normalUser);
+
+        mockMvc.perform(post("/api/platform/credit/purchases/" + purchase.getId() + "/approve"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/platform/credit/purchases"))
+                .andExpect(status().isForbidden());
+
+        assertThat(creditPackagePurchaseRepository.findById(purchase.getId()).orElseThrow().getStatus())
+                .isEqualTo(CreditPurchaseStatus.PENDING);
+        assertThat(creditAccountRepository.findByUserId(normalUser.getId())).isEmpty();
     }
 }

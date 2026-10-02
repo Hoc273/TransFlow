@@ -356,9 +356,19 @@ credit_package_purchases(
   credit_amount NUMERIC(14,4) NOT NULL,
   price_paid NUMERIC(14,2) NOT NULL,
   payment_reference VARCHAR,
-  purchased_at TIMESTAMPTZ DEFAULT now()
+  purchased_at TIMESTAMPTZ DEFAULT now(),
+  -- V8: chưa có cổng thanh toán → mua gói là yêu cầu chờ Super Admin đối soát, chỉ cộng credit khi APPROVED
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+    CHECK (status IN ('PENDING','APPROVED','REJECTED','LEGACY_UNVERIFIED')),  -- LEGACY_UNVERIFIED = bản ghi trước V8, đã cộng mà chưa xác minh
+  reviewed_by UUID REFERENCES users(id),
+  reviewed_at TIMESTAMPTZ,
+  review_note VARCHAR(255)
 )
 CREATE INDEX ix_credit_package_purchases_user ON credit_package_purchases(user_id, purchased_at DESC);
+CREATE INDEX ix_credit_package_purchases_status ON credit_package_purchases(status, purchased_at DESC);
+-- Một mã chuyển khoản chỉ gắn với một yêu cầu còn hiệu lực
+CREATE UNIQUE INDEX ux_credit_package_purchases_reference_active
+  ON credit_package_purchases(UPPER(payment_reference)) WHERE status IN ('PENDING','APPROVED');
 ```
 
 ---

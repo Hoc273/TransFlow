@@ -26,7 +26,8 @@
     "guides": "Hướng dẫn",
     "providers": "AI providers",
     "pricing": "Bảng giá Credit",
-    "legal": "Điều khoản & Bảo mật"
+    "legal": "Điều khoản & Bảo mật",
+    "creditPurchases": "Duyệt nạp credit"
   },
   "menu": {
     "console": "Bảng điều khiển Platform"
@@ -269,7 +270,9 @@
     "system": "system",
     "viewPricing": "Xem bảng giá",
     "previewPricing": "Xem trước giá",
-    "createPricing": "Tạo phiên bản giá"
+    "createPricing": "Tạo phiên bản giá",
+    "listCreditPurchases": "Xem yêu cầu nạp credit",
+    "reviewCreditPurchase": "Duyệt yêu cầu nạp credit"
   },
   "pagination": {
     "prev": "Trước",
@@ -534,5 +537,37 @@
     "viewPublic": "Xem trang công khai",
     "updatedAt": "Cập nhật lần cuối",
     "required": "Tiêu đề và nội dung bắt buộc"
+  },
+  "creditPurchases": {
+    "title": "Duyệt nạp credit",
+    "subtitle": "Chưa kết nối cổng thanh toán: chỉ duyệt khi đã thấy giao dịch chuyển khoản khớp mã tham chiếu và số tiền. Credit chỉ được cộng khi duyệt.",
+    "error": "Không tải được danh sách yêu cầu",
+    "empty": "Không có yêu cầu nào",
+    "credits": "{{formatted}} credit",
+    "columns": {
+      "user": "Người dùng",
+      "package": "Gói",
+      "reference": "Mã giao dịch",
+      "price": "Số tiền",
+      "requestedAt": "Thời gian gửi",
+      "status": "Trạng thái",
+      "actions": "Thao tác"
+    },
+    "status": {
+      "ALL": "Tất cả",
+      "PENDING": "Chờ duyệt",
+      "APPROVED": "Đã duyệt",
+      "REJECTED": "Đã từ chối",
+      "LEGACY_UNVERIFIED": "Cũ - chưa xác minh"
+    },
+    "approve": "Duyệt",
+    "reject": "Từ chối",
+    "approveTitle": "Duyệt yêu cầu nạp credit",
+    "rejectTitle": "Từ chối yêu cầu nạp credit",
+    "approveDesc": "Cộng {{credits}} credit cho {{user}}. Chỉ duyệt khi đã nhận được chuyển khoản mã {{reference}}.",
+    "rejectDesc": "Đóng yêu cầu mã {{reference}} của {{user}} mà không cộng credit.",
+    "note": "Ghi chú (tuỳ chọn)",
+    "notePlaceholder": "Ví dụ: đã đối soát sao kê ngày 02/10",
+    "reviewError": "Không thể xử lý yêu cầu"
   }
 }
