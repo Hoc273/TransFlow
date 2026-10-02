@@ -22,7 +22,9 @@ import java.util.UUID;
  * {@code /api/platform/**} has its own audit ({@code PlatformAdminAuditFilter}).
  *
  * <p>Same wiring rules as {@code PlatformAdminAuditFilter}: instantiated by {@code SecurityConfig}
- * (not a bean, so it is not registered twice), runs after JWT auth, never blocks or breaks a request.
+ * (not a bean, so it is not registered twice) and never blocks or breaks a request. It sits before
+ * {@code AuthThrottleFilter} so logins rejected by the rate limit (429) are recorded as failed logins;
+ * the user is resolved after the chain returns, when JWT auth has run.
  */
 public class UserActivityLogFilter extends OncePerRequestFilter {
 

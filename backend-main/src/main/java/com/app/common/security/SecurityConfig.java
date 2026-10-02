@@ -119,8 +119,10 @@ public class SecurityConfig {
                 // runs after JWT auth so the principal is populated when present.
                 .addFilterAfter(new PlatformAdminAuditFilter(platformAdminAuditService),
                         JwtAuthFilter.class)
-                .addFilterAfter(new UserActivityLogFilter(userActivityLogService),
-                        PlatformAdminAuditFilter.class);
+                // Wraps the auth throttle so rate-limited logins (429) are logged too; the user is
+                // read after the chain returns, once JwtAuthFilter has populated the context.
+                .addFilterBefore(new UserActivityLogFilter(userActivityLogService),
+                        AuthThrottleFilter.class);
 
         if (securityProperties.requireHttps()) {
             // TLS terminates at the reverse proxy; isSecure() comes from its X-Forwarded-Proto

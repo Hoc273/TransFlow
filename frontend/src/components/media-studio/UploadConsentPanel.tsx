@@ -1823,6 +1823,7 @@ export function UploadConsentPanel({ workspaceId, projectId, onCreated }: Props)
                 || selectedTargets.length === 0
                 || createJob.isPending
                 || batchCreating
+                || targetExceedsSource
                 || selectedModeBlock.kind !== 'ok'
                 || (isMultiTarget
                   ? selectedTargets.some((lang) => targetBlocked(lang))
