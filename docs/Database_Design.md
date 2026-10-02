@@ -189,6 +189,31 @@ CREATE INDEX ix_platform_audit_action  ON platform_admin_audit_logs(action);
   Redis ZSET `platform:presence:online` (member = `userId`, score = epoch giây heartbeat cuối), prune entry
   cũ hơn 120s khi đọc — dữ liệu tạm, mất khi Redis restart là chấp nhận được.
 
+### 3.2 `user_activity_logs` — nhật ký hoạt động người dùng thường (V9)
+
+Append-only, ghi bởi `UserActivityLogFilter` cho mọi request **thay đổi dữ liệu** (POST/PUT/PATCH/DELETE)
+đã xác thực dưới `/api/**`, và các lần đăng nhập thất bại (`user_id` NULL). Không ghi: request đọc (polling),
+`/api/platform/**` (đã có §3.1), heartbeat, refresh token, upload chunk, đánh dấu đã đọc notification.
+Đăng nhập thành công đã nằm ở `auth_sessions`. Job dọn xoá dòng cũ hơn `app.activity-log.retention-days` (90).
+
+```sql
+user_activity_logs(
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+  workspace_id UUID NULL,              -- tách từ /api/workspaces/{id}/..., không FK (workspace có thể bị xoá)
+  action       VARCHAR(160) NOT NULL,  -- method + path đã thay id, vd 'POST /api/workspaces/{id}/media/jobs'
+  http_method  VARCHAR(10)  NOT NULL,
+  path         VARCHAR(512) NOT NULL,
+  ip           VARCHAR(64)  NULL,
+  user_agent   VARCHAR(512) NULL,
+  status_code  INT          NOT NULL,
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+)
+CREATE INDEX ix_user_activity_created   ON user_activity_logs(created_at DESC);
+CREATE INDEX ix_user_activity_user      ON user_activity_logs(user_id, created_at DESC);
+CREATE INDEX ix_user_activity_workspace ON user_activity_logs(workspace_id, created_at DESC);
+```
+
 ### 3.2 `guide_categories` / `guide_articles` — trang Hướng dẫn (migration V11)
 
 Nội dung tĩnh song ngữ vi/en do Platform Super Admin quản trị; không thuộc Workspace (không có

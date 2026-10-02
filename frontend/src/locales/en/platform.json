@@ -28,7 +28,8 @@
     "pricing": "Credit pricing",
     "legal": "Terms & Privacy",
     "creditPurchases": "Credit purchases",
-    "creditMonitor": "Credit monitor"
+    "creditMonitor": "Credit monitor",
+    "activity": "User activity"
   },
   "menu": {
     "console": "Platform console"
@@ -274,7 +275,8 @@
     "createPricing": "Create price version",
     "listCreditPurchases": "List credit purchases",
     "reviewCreditPurchase": "Review credit purchase",
-    "viewCreditMonitor": "View credit monitor"
+    "viewCreditMonitor": "View credit monitor",
+    "listActivity": "List user activity"
   },
   "pagination": {
     "prev": "Previous",
@@ -606,6 +608,24 @@
     "flagHelp": {
       "LEDGER_MISMATCH": "Balance differs from the sum of transactions ({{ledger}}): edited outside the app or a bug.",
       "UNVERIFIED_CREDIT": "{{unverified}} credits from purchases made before review existed, never reconciled."
+    },
+    "viewActivity": "View activity"
+  },
+  "activity": {
+    "title": "User activity",
+    "subtitle": "Every data-changing action by users and every failed login. Reads are not logged. Kept for 90 days.",
+    "error": "Failed to load activity",
+    "empty": "No activity yet",
+    "search": "Filter by email or action (e.g. media/jobs)…",
+    "failedOnly": "Failed requests only",
+    "userFilter": "User: {{user}}",
+    "anonymous": "Not signed in",
+    "columns": {
+      "time": "Time",
+      "user": "User",
+      "action": "Action",
+      "status": "Status",
+      "ip": "IP"
     }
   }
 }

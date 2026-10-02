@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconSearch } from '@tabler/icons-react'
 import { PlatformPagination } from '@/components/platform/PlatformPagination'
@@ -142,8 +143,14 @@ export function PlatformCreditMonitorPage() {
                 accounts.content.map((item) => (
                   <tr key={item.userId}>
                     <td>
-                      <div className="font-medium">{item.fullName ?? '—'}</div>
-                      <div className="text-[12px] text-[var(--color-text-tertiary)]">{item.email ?? item.userId}</div>
+                      <Link
+                        to={`/platform/activity?${new URLSearchParams({ userId: item.userId, user: item.email ?? item.userId })}`}
+                        className="block hover:underline"
+                        title={t('creditMonitor.viewActivity')}
+                      >
+                        <div className="font-medium">{item.fullName ?? '—'}</div>
+                        <div className="text-[12px] text-[var(--color-text-tertiary)]">{item.email ?? item.userId}</div>
+                      </Link>
                     </td>
                     <td className="text-right font-semibold tabular-nums">{num(item.balance)}</td>
                     <td className="text-right tabular-nums">{num(item.credited7d)}</td>

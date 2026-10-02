@@ -2,6 +2,8 @@ import { apiRequest } from '@/lib/api/client'
 import type {
   AdminCreditAdjustRequest,
   AdminCreditAdjustResponse,
+  PlatformActivityLogItem,
+  PlatformActivityQuery,
   PlatformCreditMonitor,
   PlatformCreditMonitorQuery,
   PlatformCreditPurchaseItem,
@@ -134,6 +136,23 @@ export function adminAdjustUserCreditApi(
     method: 'POST',
     body: req,
   })
+}
+
+/** SA — regular-user activity log. */
+export async function getPlatformActivityLogsApi(
+  query: PlatformActivityQuery = {},
+): Promise<PlatformPage<PlatformActivityLogItem>> {
+  const res = await apiRequest<unknown>(
+    `/platform/activity-logs${qs({
+      userId: query.userId,
+      workspaceId: query.workspaceId,
+      q: query.q,
+      failedOnly: query.failedOnly,
+      page: query.page,
+      size: query.size,
+    })}`,
+  )
+  return normalizePage<PlatformActivityLogItem>(res)
 }
 
 /** SA — credit monitor: balances, 7-day flow and anomaly flags. */

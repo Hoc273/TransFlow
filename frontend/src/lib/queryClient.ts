@@ -99,6 +99,8 @@ export const queryKeys = {
   platformRealtime: ['platform', 'realtime'] as const,
   platformProviders: ['platform', 'providers'] as const,
   platformPricing: ['platform', 'pricing'] as const,
+  platformActivity: (params: Record<string, string | number | boolean | undefined>) =>
+    ['platform', 'activity', params] as const,
   platformCreditMonitor: (params: Record<string, string | number | boolean | undefined>) =>
     ['platform', 'credit-monitor', params] as const,
   platformCreditPurchasesRoot: ['platform', 'credit-purchases'] as const,

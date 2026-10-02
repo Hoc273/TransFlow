@@ -185,6 +185,30 @@ export type PlatformCreditPurchaseItem = {
   reviewNote: string | null
 }
 
+/** SA — one regular-user activity row (data-changing request or failed login). */
+export type PlatformActivityLogItem = {
+  id: string
+  userId: string | null
+  userEmail: string | null
+  workspaceId: string | null
+  action: string
+  httpMethod: string
+  path: string
+  ip: string | null
+  userAgent: string | null
+  statusCode: number
+  createdAt: string
+}
+
+export type PlatformActivityQuery = {
+  userId?: string
+  workspaceId?: string
+  q?: string
+  failedOnly?: boolean
+  page?: number
+  size?: number
+}
+
 export type PlatformCreditMonitorSort = 'BALANCE' | 'CREDITED_7D' | 'USED_7D'
 
 export type PlatformCreditAccountFlag = 'LEDGER_MISMATCH' | 'UNVERIFIED_CREDIT'

@@ -18,6 +18,7 @@ const PlatformAdminGuard = lazy(() => import('@/components/platform/PlatformAdmi
 const PlatformOverviewPage = lazy(() => import('@/pages/platform/PlatformOverviewPage').then(m => ({ default: m.PlatformOverviewPage })))
 const PlatformStatusPage = lazy(() => import('@/pages/platform/PlatformStatusPage').then(m => ({ default: m.PlatformStatusPage })))
 const PlatformUsersPage = lazy(() => import('@/pages/platform/PlatformUsersPage').then(m => ({ default: m.PlatformUsersPage })))
+const PlatformActivityPage = lazy(() => import('@/pages/platform/PlatformActivityPage').then(m => ({ default: m.PlatformActivityPage })))
 const PlatformCreditMonitorPage = lazy(() => import('@/pages/platform/PlatformCreditMonitorPage').then(m => ({ default: m.PlatformCreditMonitorPage })))
 const PlatformCreditPurchasesPage = lazy(() => import('@/pages/platform/PlatformCreditPurchasesPage').then(m => ({ default: m.PlatformCreditPurchasesPage })))
 const PlatformWorkspacesPage = lazy(() => import('@/pages/platform/PlatformWorkspacesPage').then(m => ({ default: m.PlatformWorkspacesPage })))
@@ -95,6 +96,7 @@ export function AppRouter() {
             <Route path="credit-purchases" element={<PlatformCreditPurchasesPage />} />
             <Route path="credit-monitor" element={<PlatformCreditMonitorPage />} />
             <Route path="audit" element={<PlatformAuditPage />} />
+            <Route path="activity" element={<PlatformActivityPage />} />
             <Route path="guides" element={<GuideAdminPage />} />
             <Route path="legal" element={<PlatformLegalPage />} />
           </Route>

@@ -28,7 +28,8 @@
     "pricing": "Bảng giá Credit",
     "legal": "Điều khoản & Bảo mật",
     "creditPurchases": "Duyệt nạp credit",
-    "creditMonitor": "Giám sát credit"
+    "creditMonitor": "Giám sát credit",
+    "activity": "Nhật ký người dùng"
   },
   "menu": {
     "console": "Bảng điều khiển Platform"
@@ -274,7 +275,8 @@
     "createPricing": "Tạo phiên bản giá",
     "listCreditPurchases": "Xem yêu cầu nạp credit",
     "reviewCreditPurchase": "Duyệt yêu cầu nạp credit",
-    "viewCreditMonitor": "Xem giám sát credit"
+    "viewCreditMonitor": "Xem giám sát credit",
+    "listActivity": "Xem nhật ký người dùng"
   },
   "pagination": {
     "prev": "Trước",
@@ -606,6 +608,24 @@
     "flagHelp": {
       "LEDGER_MISMATCH": "Số dư khác tổng giao dịch ({{ledger}}): đã bị sửa ngoài hệ thống hoặc có lỗi.",
       "UNVERIFIED_CREDIT": "{{unverified}} credit từ các lần mua trước khi có bước duyệt, chưa được đối soát."
+    },
+    "viewActivity": "Xem nhật ký hoạt động"
+  },
+  "activity": {
+    "title": "Nhật ký người dùng",
+    "subtitle": "Mọi thao tác thay đổi dữ liệu của người dùng và các lần đăng nhập thất bại. Lượt xem không được ghi. Lưu 90 ngày.",
+    "error": "Không tải được nhật ký",
+    "empty": "Chưa có hoạt động nào",
+    "search": "Lọc theo email hoặc thao tác (vd: media/jobs)…",
+    "failedOnly": "Chỉ request lỗi",
+    "userFilter": "Người dùng: {{user}}",
+    "anonymous": "Chưa đăng nhập",
+    "columns": {
+      "time": "Thời gian",
+      "user": "Người dùng",
+      "action": "Thao tác",
+      "status": "Status",
+      "ip": "IP"
     }
   }
 }

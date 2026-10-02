@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   adminAdjustUserCreditApi,
+  getPlatformActivityLogsApi,
   getPlatformCreditMonitorApi,
   getPlatformCreditPurchasesApi,
   reviewPlatformCreditPurchaseApi,
@@ -27,6 +28,7 @@ import { queryKeys, STALE } from '@/lib/queryClient'
 import { useAuthStore } from '@/store/authStore'
 import type {
   AdminCreditAdjustRequest,
+  PlatformActivityQuery,
   PlatformCreditMonitorQuery,
   PlatformCreditPurchasesQuery,
   PlatformAuditQuery,
@@ -141,6 +143,23 @@ export function useAdminAdjustUserCredit() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['platform', 'users'] })
     },
+  })
+}
+
+/** SA — regular-user activity log. */
+export function usePlatformActivityLogs(query: PlatformActivityQuery = {}, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.platformActivity({
+      userId: query.userId,
+      workspaceId: query.workspaceId,
+      q: query.q,
+      failedOnly: query.failedOnly,
+      page: query.page,
+      size: query.size,
+    }),
+    queryFn: () => getPlatformActivityLogsApi(query),
+    enabled,
+    staleTime: STALE.realtime,
   })
 }
 

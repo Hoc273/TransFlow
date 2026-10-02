@@ -7,6 +7,8 @@ import com.app.modules.credit.dto.AdminCreditAdjustResponse;
 import com.app.modules.credit.dto.ReviewCreditPurchaseRequest;
 import com.app.modules.credit.entity.CreditPurchaseStatus;
 import com.app.modules.platform.dto.PlatformCreditMonitorResponse;
+import com.app.modules.platform.dto.UserActivityLogItem;
+import com.app.modules.platform.service.UserActivityLogService;
 import com.app.modules.platform.dto.PlatformCreditPurchaseItem;
 import com.app.modules.platform.dto.PlatformAuditLogItem;
 import com.app.modules.platform.dto.PlatformOverviewResponse;
@@ -51,17 +53,35 @@ public class PlatformController {
     private final PlatformDirectoryService directoryService;
     private final PlatformAuditQueryService auditQueryService;
     private final PlatformCreditService creditService;
+    private final UserActivityLogService activityLogService;
 
     public PlatformController(PlatformAnalyticsService analyticsService,
                               PlatformStatusService statusService,
                               PlatformDirectoryService directoryService,
                               PlatformAuditQueryService auditQueryService,
-                              PlatformCreditService creditService) {
+                              PlatformCreditService creditService,
+                              UserActivityLogService activityLogService) {
         this.analyticsService = analyticsService;
         this.statusService = statusService;
         this.directoryService = directoryService;
         this.auditQueryService = auditQueryService;
         this.creditService = creditService;
+        this.activityLogService = activityLogService;
+    }
+
+    /** Regular-user activity (data-changing requests and failed logins); filters optional. */
+    @GetMapping("/activity-logs")
+    public ApiResponse<PlatformPageResponse<UserActivityLogItem>> activityLogs(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(required = false) UUID userId,
+            @RequestParam(required = false) UUID workspaceId,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "false") boolean failedOnly,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        return ApiResponse.<PlatformPageResponse<UserActivityLogItem>>builder()
+                .data(activityLogService.list(user.id(), userId, workspaceId, q, failedOnly, page, size))
+                .build();
     }
 
     /** 6 KPI analytics snapshot. */

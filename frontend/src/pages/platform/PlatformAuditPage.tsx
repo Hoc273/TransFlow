@@ -17,6 +17,7 @@ const ACTION_FILTERS = [
   { value: 'LIST_USERS', labelKey: 'audit.listUsers' as const },
   { value: 'LIST_WORKSPACES', labelKey: 'audit.listWs' as const },
   { value: 'LIST_AUDIT', labelKey: 'audit.listAudit' as const },
+  { value: 'LIST_ACTIVITY', labelKey: 'audit.listActivity' as const },
   { value: 'VIEW_USER_CREDIT', labelKey: 'audit.viewUserCredit' as const },
   { value: 'ADJUST_USER_CREDIT', labelKey: 'audit.adjustUserCredit' as const },
   { value: 'LIST_CREDIT_PURCHASES', labelKey: 'audit.listCreditPurchases' as const },
