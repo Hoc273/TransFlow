@@ -15,14 +15,17 @@ import java.util.UUID;
 @Repository
 public interface UserActivityLogRepository extends JpaRepository<UserActivityLog, UUID> {
 
-    /** Every filter is optional (null = no filter); {@code q} matches the action or the user's email. */
+    /**
+     * {@code userId}/{@code workspaceId} null = no filter. {@code q} must be lower-case and never null
+     * ('' = no filter): a null string is bound as bytea on PostgreSQL and breaks {@code locate}.
+     */
     @Query(value = """
             select a from UserActivityLog a
             left join PlatformUserView u on u.id = a.userId
             where (:userId is null or a.userId = :userId)
               and (:workspaceId is null or a.workspaceId = :workspaceId)
               and (:failedOnly = false or a.statusCode >= 400)
-              and (:q is null
+              and (:q = ''
                    or locate(:q, lower(a.action)) > 0
                    or locate(:q, lower(u.email)) > 0)
             order by a.createdAt desc
@@ -33,7 +36,7 @@ public interface UserActivityLogRepository extends JpaRepository<UserActivityLog
             where (:userId is null or a.userId = :userId)
               and (:workspaceId is null or a.workspaceId = :workspaceId)
               and (:failedOnly = false or a.statusCode >= 400)
-              and (:q is null
+              and (:q = ''
                    or locate(:q, lower(a.action)) > 0
                    or locate(:q, lower(u.email)) > 0)
             """)

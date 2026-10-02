@@ -79,7 +79,7 @@ public class UserActivityLogServiceImpl implements UserActivityLogService {
     public PlatformPageResponse<UserActivityLogItem> list(UUID callerId, UUID userId, UUID workspaceId, String q,
                                                           boolean failedOnly, Integer page, Integer size) {
         accessService.requirePlatformAdmin(callerId);
-        String needle = q == null || q.isBlank() ? null : q.trim().toLowerCase(Locale.ROOT);
+        String needle = q == null ? "" : q.trim().toLowerCase(Locale.ROOT);
         Page<UserActivityLog> rows = repository.search(userId, workspaceId, needle, failedOnly,
                 PageRequest.of(page == null ? 0 : Math.max(0, page),
                         size == null ? 20 : Math.max(1, Math.min(size, 100))));
