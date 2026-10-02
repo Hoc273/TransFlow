@@ -37,7 +37,8 @@
   "guard": {
     "forbiddenTitle": "Không có quyền Platform",
     "forbiddenBody": "Tài khoản của bạn không phải platform super admin. Role Admin trong workspace không cấp quyền này.",
-    "loading": "Đang kiểm tra quyền platform…"
+    "loading": "Đang kiểm tra quyền platform…",
+    "checkFailed": "Không kiểm tra được quyền platform. Vui lòng thử lại."
   },
   "overview": {
     "title": "Tổng quan nền tảng",

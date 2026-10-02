@@ -37,7 +37,8 @@
   "guard": {
     "forbiddenTitle": "Platform access denied",
     "forbiddenBody": "Your account is not a platform super admin. Workspace Admin role does not grant this access.",
-    "loading": "Checking platform access…"
+    "loading": "Checking platform access…",
+    "checkFailed": "Could not verify platform access. Please try again."
   },
   "overview": {
     "title": "Platform Overview",

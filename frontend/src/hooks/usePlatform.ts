@@ -40,7 +40,7 @@ import type {
 } from '@/types/platform'
 
 /** Refresh me from DB so isPlatformAdmin is not stale after seed. */
-export function usePlatformMe(enabled = true) {
+export function usePlatformMe(enabled = true, alwaysRefetch = false) {
   const setUser = useAuthStore((s) => s.setUser)
   return useQuery({
     queryKey: queryKeys.me,
@@ -51,6 +51,7 @@ export function usePlatformMe(enabled = true) {
     },
     enabled,
     staleTime: STALE.realtime,
+    refetchOnMount: alwaysRefetch ? 'always' : true,
   })
 }
 
