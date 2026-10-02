@@ -21,6 +21,7 @@ const ACTION_FILTERS = [
   { value: 'ADJUST_USER_CREDIT', labelKey: 'audit.adjustUserCredit' as const },
   { value: 'LIST_CREDIT_PURCHASES', labelKey: 'audit.listCreditPurchases' as const },
   { value: 'REVIEW_CREDIT_PURCHASE', labelKey: 'audit.reviewCreditPurchase' as const },
+  { value: 'VIEW_CREDIT_MONITOR', labelKey: 'audit.viewCreditMonitor' as const },
   { value: 'SEED_GRANT', labelKey: 'audit.seedGrant' as const },
   { value: 'VIEW_PRICING', labelKey: 'audit.viewPricing' as const },
   { value: 'PREVIEW_PRICING', labelKey: 'audit.previewPricing' as const },

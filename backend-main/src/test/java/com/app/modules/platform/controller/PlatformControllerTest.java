@@ -4,6 +4,7 @@ import com.app.common.security.AuthenticatedUser;
 import com.app.modules.auth.entity.User;
 import com.app.modules.auth.entity.UserStatus;
 import com.app.modules.auth.repository.UserRepository;
+import com.app.modules.credit.entity.CreditAccount;
 import com.app.modules.credit.entity.CreditPackage;
 import com.app.modules.credit.entity.CreditPackagePurchase;
 import com.app.modules.credit.entity.CreditPurchaseStatus;
@@ -530,5 +531,46 @@ class PlatformControllerTest {
         assertThat(creditPackagePurchaseRepository.findById(purchase.getId()).orElseThrow().getStatus())
                 .isEqualTo(CreditPurchaseStatus.PENDING);
         assertThat(creditAccountRepository.findByUserId(normalUser.getId())).isEmpty();
+    }
+
+    @Test
+    void testCreditMonitor_FlagsBalanceEditedOutsideTheLedger() throws Exception {
+        authenticateAs(adminUser);
+        String adjustUrl = "/api/platform/users/" + normalUser.getId() + "/credit/adjust";
+        mockMvc.perform(post(adjustUrl).contentType(MediaType.APPLICATION_JSON).content("{\"amount\": 100}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/platform/users/" + adminUser.getId() + "/credit/adjust")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"amount\": 40}"))
+                .andExpect(status().isOk());
+
+        // Simulate a balance changed without a transaction (direct DB edit).
+        CreditAccount tampered = creditAccountRepository.findByUserId(normalUser.getId()).orElseThrow();
+        tampered.setBalance(new BigDecimal("5000.0000"));
+        creditAccountRepository.save(tampered);
+
+        mockMvc.perform(get("/api/platform/credit/accounts"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accountCount").value(2))
+                .andExpect(jsonPath("$.data.flaggedCount").value(1))
+                .andExpect(jsonPath("$.data.totalBalance").value(5040))
+                .andExpect(jsonPath("$.data.accounts.content[0].email").value("user@transflow.com"))
+                .andExpect(jsonPath("$.data.accounts.content[0].ledgerBalance").value(100))
+                .andExpect(jsonPath("$.data.accounts.content[0].credited7d").value(100))
+                .andExpect(jsonPath("$.data.accounts.content[0].flags[0]").value("LEDGER_MISMATCH"))
+                .andExpect(jsonPath("$.data.accounts.content[1].flags").isEmpty());
+
+        mockMvc.perform(get("/api/platform/credit/accounts").param("flaggedOnly", "true").param("q", "admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accounts.totalElements").value(0));
+
+        assertThat(auditLogRepository.findFiltered(PlatformAdminAuditAction.VIEW_CREDIT_MONITOR,
+                PageRequest.of(0, 10)).getTotalElements()).isEqualTo(2);
+    }
+
+    @Test
+    void testCreditMonitor_AsNormalUser_Forbidden() throws Exception {
+        authenticateAs(normalUser);
+        mockMvc.perform(get("/api/platform/credit/accounts"))
+                .andExpect(status().isForbidden());
     }
 }

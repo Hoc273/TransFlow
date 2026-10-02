@@ -79,6 +79,12 @@ public interface CreditService {
 
     PageResponse<CreditPurchaseResponse> getMyPurchases(UUID userId, int page, int size);
 
+    /**
+     * Every credit account with ledger aggregates since {@code windowStart}, for anomaly monitoring.
+     * Callers must have checked platform admin rights.
+     */
+    List<CreditAccountSnapshot> snapshotAccounts(Instant windowStart);
+
     /** Platform-wide list for review. Callers must have checked platform admin rights. */
     Page<CreditPurchaseResponse> listPurchases(CreditPurchaseStatus status, int page, int size);
 

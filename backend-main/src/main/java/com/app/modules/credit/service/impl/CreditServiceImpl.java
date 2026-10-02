@@ -326,6 +326,30 @@ public class CreditServiceImpl implements CreditService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<CreditAccountSnapshot> snapshotAccounts(Instant windowStart) {
+        Map<UUID, BigDecimal> unverified = creditPackagePurchaseRepository
+                .sumCreditByUserForStatus(CreditPurchaseStatus.LEGACY_UNVERIFIED).stream()
+                .collect(Collectors.toMap(CreditPackagePurchaseRepository.UserCreditTotal::getUserId,
+                        CreditPackagePurchaseRepository.UserCreditTotal::getTotal));
+        return creditAccountRepository.aggregateLedgers(windowStart,
+                        CreditTransactionType.INITIAL_GRANT, CreditTransactionType.AI_USAGE).stream()
+                .map(row -> new CreditAccountSnapshot(
+                        row.getUserId(),
+                        scale(row.getBalance()),
+                        scale(row.getLedgerBalance()),
+                        scale(row.getCreditedInWindow()),
+                        scale(row.getUsedInWindow()),
+                        scale(unverified.get(row.getUserId())),
+                        row.getLastActivityAt()))
+                .toList();
+    }
+
+    private static BigDecimal scale(BigDecimal value) {
+        return (value != null ? value : BigDecimal.ZERO).setScale(4, RoundingMode.HALF_UP);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Page<CreditPurchaseResponse> listPurchases(CreditPurchaseStatus status, int page, int size) {
         return toResponses(creditPackagePurchaseRepository.findByStatus(status, pageRequest(page, size)));
     }

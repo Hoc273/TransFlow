@@ -2,6 +2,8 @@ import { apiRequest } from '@/lib/api/client'
 import type {
   AdminCreditAdjustRequest,
   AdminCreditAdjustResponse,
+  PlatformCreditMonitor,
+  PlatformCreditMonitorQuery,
   PlatformCreditPurchaseItem,
   PlatformCreditPurchasesQuery,
   CreatePricingVersionResult,
@@ -132,6 +134,22 @@ export function adminAdjustUserCreditApi(
     method: 'POST',
     body: req,
   })
+}
+
+/** SA — credit monitor: balances, 7-day flow and anomaly flags. */
+export async function getPlatformCreditMonitorApi(
+  query: PlatformCreditMonitorQuery = {},
+): Promise<PlatformCreditMonitor> {
+  const res = await apiRequest<PlatformCreditMonitor & { accounts: unknown }>(
+    `/platform/credit/accounts${qs({
+      q: query.q,
+      flaggedOnly: query.flaggedOnly,
+      sort: query.sort,
+      page: query.page,
+      size: query.size,
+    })}`,
+  )
+  return { ...res, accounts: normalizePage(res.accounts) }
 }
 
 /** SA — credit package purchases; credit is granted only on approve. */

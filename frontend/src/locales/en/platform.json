@@ -27,7 +27,8 @@
     "providers": "AI providers",
     "pricing": "Credit pricing",
     "legal": "Terms & Privacy",
-    "creditPurchases": "Credit purchases"
+    "creditPurchases": "Credit purchases",
+    "creditMonitor": "Credit monitor"
   },
   "menu": {
     "console": "Platform console"
@@ -272,7 +273,8 @@
     "previewPricing": "Preview pricing",
     "createPricing": "Create price version",
     "listCreditPurchases": "List credit purchases",
-    "reviewCreditPurchase": "Review credit purchase"
+    "reviewCreditPurchase": "Review credit purchase",
+    "viewCreditMonitor": "View credit monitor"
   },
   "pagination": {
     "prev": "Previous",
@@ -569,5 +571,41 @@
     "note": "Note (optional)",
     "notePlaceholder": "e.g. matched against the Oct 2 statement",
     "reviewError": "The request could not be processed"
+  },
+  "creditMonitor": {
+    "title": "Credit monitor",
+    "subtitle": "Balance and 7-day movement of every account. Accounts with anomalies are always listed first.",
+    "error": "Failed to load credit data",
+    "empty": "No accounts",
+    "search": "Search email or name…",
+    "sortLabel": "Sort",
+    "flaggedOnly": "Flagged accounts only",
+    "stats": {
+      "totalBalance": "Total balance",
+      "credited7d": "Credited (7 days)",
+      "used7d": "Used (7 days)",
+      "flagged": "Flagged accounts"
+    },
+    "sort": {
+      "BALANCE": "Highest balance",
+      "CREDITED_7D": "Most credited (7 days)",
+      "USED_7D": "Most used (7 days)"
+    },
+    "columns": {
+      "user": "User",
+      "balance": "Balance",
+      "credited7d": "Credited 7d",
+      "used7d": "Used 7d",
+      "lastActivity": "Last transaction",
+      "flags": "Flags"
+    },
+    "flag": {
+      "LEDGER_MISMATCH": "Ledger mismatch",
+      "UNVERIFIED_CREDIT": "Unverified credit"
+    },
+    "flagHelp": {
+      "LEDGER_MISMATCH": "Balance differs from the sum of transactions ({{ledger}}): edited outside the app or a bug.",
+      "UNVERIFIED_CREDIT": "{{unverified}} credits from purchases made before review existed, never reconciled."
+    }
   }
 }

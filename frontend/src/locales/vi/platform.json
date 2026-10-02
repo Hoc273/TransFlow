@@ -27,7 +27,8 @@
     "providers": "AI providers",
     "pricing": "Bảng giá Credit",
     "legal": "Điều khoản & Bảo mật",
-    "creditPurchases": "Duyệt nạp credit"
+    "creditPurchases": "Duyệt nạp credit",
+    "creditMonitor": "Giám sát credit"
   },
   "menu": {
     "console": "Bảng điều khiển Platform"
@@ -272,7 +273,8 @@
     "previewPricing": "Xem trước giá",
     "createPricing": "Tạo phiên bản giá",
     "listCreditPurchases": "Xem yêu cầu nạp credit",
-    "reviewCreditPurchase": "Duyệt yêu cầu nạp credit"
+    "reviewCreditPurchase": "Duyệt yêu cầu nạp credit",
+    "viewCreditMonitor": "Xem giám sát credit"
   },
   "pagination": {
     "prev": "Trước",
@@ -569,5 +571,41 @@
     "note": "Ghi chú (tuỳ chọn)",
     "notePlaceholder": "Ví dụ: đã đối soát sao kê ngày 02/10",
     "reviewError": "Không thể xử lý yêu cầu"
+  },
+  "creditMonitor": {
+    "title": "Giám sát credit",
+    "subtitle": "Số dư và biến động 7 ngày của mọi tài khoản. Tài khoản có dấu hiệu bất thường luôn được xếp lên đầu.",
+    "error": "Không tải được dữ liệu credit",
+    "empty": "Không có tài khoản nào",
+    "search": "Tìm email hoặc tên…",
+    "sortLabel": "Sắp xếp",
+    "flaggedOnly": "Chỉ tài khoản bất thường",
+    "stats": {
+      "totalBalance": "Tổng số dư",
+      "credited7d": "Được cộng 7 ngày",
+      "used7d": "Đã dùng 7 ngày",
+      "flagged": "Tài khoản bất thường"
+    },
+    "sort": {
+      "BALANCE": "Số dư cao nhất",
+      "CREDITED_7D": "Được cộng nhiều nhất (7 ngày)",
+      "USED_7D": "Dùng nhiều nhất (7 ngày)"
+    },
+    "columns": {
+      "user": "Người dùng",
+      "balance": "Số dư",
+      "credited7d": "Cộng 7 ngày",
+      "used7d": "Dùng 7 ngày",
+      "lastActivity": "Giao dịch gần nhất",
+      "flags": "Cảnh báo"
+    },
+    "flag": {
+      "LEDGER_MISMATCH": "Lệch sổ",
+      "UNVERIFIED_CREDIT": "Credit chưa xác minh"
+    },
+    "flagHelp": {
+      "LEDGER_MISMATCH": "Số dư khác tổng giao dịch ({{ledger}}): đã bị sửa ngoài hệ thống hoặc có lỗi.",
+      "UNVERIFIED_CREDIT": "{{unverified}} credit từ các lần mua trước khi có bước duyệt, chưa được đối soát."
+    }
   }
 }

@@ -6,6 +6,7 @@ import com.app.modules.credit.dto.AdminCreditAdjustRequest;
 import com.app.modules.credit.dto.AdminCreditAdjustResponse;
 import com.app.modules.credit.dto.ReviewCreditPurchaseRequest;
 import com.app.modules.credit.entity.CreditPurchaseStatus;
+import com.app.modules.platform.dto.PlatformCreditMonitorResponse;
 import com.app.modules.platform.dto.PlatformCreditPurchaseItem;
 import com.app.modules.platform.dto.PlatformAuditLogItem;
 import com.app.modules.platform.dto.PlatformOverviewResponse;
@@ -146,6 +147,20 @@ public class PlatformController {
             @Valid @RequestBody AdminCreditAdjustRequest req) {
         return ApiResponse.<AdminCreditAdjustResponse>builder()
                 .data(creditService.adjustUserCredit(user.id(), userId, req.amount(), req.reason()))
+                .build();
+    }
+
+    /** Credit monitor: balances, 7-day inflow/usage and anomaly flags of every account. */
+    @GetMapping("/credit/accounts")
+    public ApiResponse<PlatformCreditMonitorResponse> creditAccounts(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "false") boolean flaggedOnly,
+            @RequestParam(defaultValue = "BALANCE") PlatformCreditService.MonitorSort sort,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.<PlatformCreditMonitorResponse>builder()
+                .data(creditService.creditMonitor(user.id(), q, flaggedOnly, sort, page, size))
                 .build();
     }
 

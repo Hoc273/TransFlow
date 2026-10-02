@@ -12,6 +12,7 @@ public enum PlatformAdminAuditAction {
     VIEW_USER_CREDIT,
     ADJUST_USER_CREDIT,
     LIST_CREDIT_PURCHASES,
+    VIEW_CREDIT_MONITOR,
     /** Approve or reject of a credit package purchase. */
     REVIEW_CREDIT_PURCHASE,
     SEED_GRANT,

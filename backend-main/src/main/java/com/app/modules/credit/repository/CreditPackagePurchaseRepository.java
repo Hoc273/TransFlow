@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -34,4 +35,13 @@ public interface CreditPackagePurchaseRepository extends JpaRepository<CreditPac
                                         @Param("statuses") Collection<CreditPurchaseStatus> statuses);
 
     long countByUserIdAndStatus(UUID userId, CreditPurchaseStatus status);
+
+    @Query("SELECT p.userId AS userId, SUM(p.creditAmount) AS total FROM CreditPackagePurchase p "
+            + "WHERE p.status = :status GROUP BY p.userId")
+    List<UserCreditTotal> sumCreditByUserForStatus(@Param("status") CreditPurchaseStatus status);
+
+    interface UserCreditTotal {
+        UUID getUserId();
+        java.math.BigDecimal getTotal();
+    }
 }

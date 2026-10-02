@@ -185,6 +185,41 @@ export type PlatformCreditPurchaseItem = {
   reviewNote: string | null
 }
 
+export type PlatformCreditMonitorSort = 'BALANCE' | 'CREDITED_7D' | 'USED_7D'
+
+export type PlatformCreditAccountFlag = 'LEDGER_MISMATCH' | 'UNVERIFIED_CREDIT'
+
+/** SA — one credit account in the credit monitor. */
+export type PlatformCreditAccountItem = {
+  userId: string
+  email: string | null
+  fullName: string | null
+  balance: number
+  ledgerBalance: number
+  credited7d: number
+  used7d: number
+  unverifiedCredit: number
+  lastActivityAt: string | null
+  flags: PlatformCreditAccountFlag[]
+}
+
+export type PlatformCreditMonitor = {
+  accountCount: number
+  flaggedCount: number
+  totalBalance: number
+  credited7d: number
+  used7d: number
+  accounts: PlatformPage<PlatformCreditAccountItem>
+}
+
+export type PlatformCreditMonitorQuery = {
+  q?: string
+  flaggedOnly?: boolean
+  sort?: PlatformCreditMonitorSort
+  page?: number
+  size?: number
+}
+
 export type PlatformCreditPurchasesQuery = {
   status?: CreditPurchaseStatus
   page?: number

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   adminAdjustUserCreditApi,
+  getPlatformCreditMonitorApi,
   getPlatformCreditPurchasesApi,
   reviewPlatformCreditPurchaseApi,
   createPlatformPricingApi,
@@ -26,6 +27,7 @@ import { queryKeys, STALE } from '@/lib/queryClient'
 import { useAuthStore } from '@/store/authStore'
 import type {
   AdminCreditAdjustRequest,
+  PlatformCreditMonitorQuery,
   PlatformCreditPurchasesQuery,
   PlatformAuditQuery,
   PlatformOverviewQuery,
@@ -142,6 +144,22 @@ export function useAdminAdjustUserCredit() {
   })
 }
 
+/** SA — credit monitor. */
+export function usePlatformCreditMonitor(query: PlatformCreditMonitorQuery = {}, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.platformCreditMonitor({
+      q: query.q,
+      flaggedOnly: query.flaggedOnly,
+      sort: query.sort,
+      page: query.page,
+      size: query.size,
+    }),
+    queryFn: () => getPlatformCreditMonitorApi(query),
+    enabled,
+    staleTime: STALE.realtime,
+  })
+}
+
 /** SA — credit purchase review queue. */
 export function usePlatformCreditPurchases(query: PlatformCreditPurchasesQuery = {}, enabled = true) {
   return useQuery({
@@ -170,6 +188,7 @@ export function useReviewCreditPurchase() {
     }) => reviewPlatformCreditPurchaseApi(purchaseId, decision, note),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.platformCreditPurchasesRoot })
+      void queryClient.invalidateQueries({ queryKey: ['platform', 'credit-monitor'] })
       void queryClient.invalidateQueries({ queryKey: ['platform', 'users'] })
     },
   })
