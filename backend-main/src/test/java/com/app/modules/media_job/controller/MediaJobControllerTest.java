@@ -361,6 +361,37 @@ class MediaJobControllerTest {
     }
 
     @Test
+    void createJob_summaryNotShorterThanSource_isRejected() throws Exception {
+        Lead lead = registerLeadWithWorkspace("lead-summarylong@transflow.com");
+        UUID assetId = uploadAndConsentAsset(lead, lead.accessToken());
+        var asset = mediaAssetRepository.findById(assetId).orElseThrow();
+        asset.setDurationMs(20 * 60_000L); // 20-minute source
+        mediaAssetRepository.save(asset);
+
+        var body = objectMapper.createObjectNode();
+        body.put("projectId", lead.projectId().toString());
+        body.put("rootAssetId", assetId.toString());
+        body.put("recipeId", "summary.script_match");
+        body.put("targetLang", "en");
+        body.put("requestedDurationSeconds", 60 * 60); // 1-hour target
+        body.put("sourceLang", "vi");
+
+        mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs")
+                        .header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(2907));
+
+        body.put("requestedDurationSeconds", 20 * 60); // equal to the source is not a summary either
+        mockMvc.perform(post("/api/workspaces/" + lead.workspaceId() + "/media/jobs")
+                        .header("Authorization", "Bearer " + lead.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(jsonPath("$.code").value(2907));
+    }
+
+    @Test
     void createJob_voiceLanguageMismatch_returnsBusinessError() throws Exception {
         Lead lead = registerLeadWithWorkspace("lead-voicemismatch@transflow.com");
         UUID assetId = uploadAndConsentAsset(lead, lead.accessToken());

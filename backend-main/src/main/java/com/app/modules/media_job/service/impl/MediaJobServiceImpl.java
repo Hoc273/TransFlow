@@ -176,6 +176,12 @@ public class MediaJobServiceImpl implements MediaJobService {
                 || req.requestedDurationSeconds() == null || req.requestedDurationSeconds() <= 0)) {
             throw new AppException(ErrorCode.VALIDATION_ERROR);
         }
+        // A summary as long as its source is just the source re-narrated, at full STT/TTS/render cost.
+        // Unknown duration (probe failed) is left to the AI gateway's short-source fallback.
+        if (isSummary && rootAsset.getDurationMs() != null
+                && req.requestedDurationSeconds() * 1000L >= rootAsset.getDurationMs()) {
+            throw new AppException(ErrorCode.SUMMARY_TARGET_TOO_LONG);
+        }
 
         // SOFT_SUB unless requested; a resolved preset may still choose it below.
         MediaJob.SubtitleMode subtitleMode = req.subtitleMode() != null

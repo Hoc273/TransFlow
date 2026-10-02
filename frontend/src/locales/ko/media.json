@@ -270,7 +270,8 @@
     "preset2m": "2분",
     "preset3m": "3분",
     "preset5m": "5분",
-    "preset10m": "10분"
+    "preset10m": "10분",
+    "durationExceedsSource": "요약 길이는 원본 영상({{source}})보다 짧아야 합니다."
   },
   "proposals": {
     "hint": "AI 제안 하나를 고르거나 직접 컷을 지정하세요. 선택하면 작업이 번역 단계로 진행되며 선택은 잠깁니다.",

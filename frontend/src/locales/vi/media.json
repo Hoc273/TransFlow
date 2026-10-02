@@ -270,7 +270,8 @@
     "preset2m": "2 phút",
     "preset3m": "3 phút",
     "preset5m": "5 phút",
-    "preset10m": "10 phút"
+    "preset10m": "10 phút",
+    "durationExceedsSource": "Thời lượng tóm tắt phải ngắn hơn video gốc ({{source}})."
   },
   "proposals": {
     "hint": "Chọn 1 phương án AI hoặc tự cắt đoạn. Sau khi chọn, job tiếp tục bước Dịch và lựa chọn bị khóa.",

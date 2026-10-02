@@ -127,6 +127,7 @@ public enum ErrorCode {
     INVALID_STYLE_KEY(2904, "Invalid subtitle style key", HttpStatus.BAD_REQUEST),
     DOWNLOAD_SELECTION_TOO_LARGE(2905, "Too many videos selected for one download", HttpStatus.BAD_REQUEST),
     STUDIO_MODE_UNAVAILABLE(2906, "Studio audio mode needs a GPU source-separation worker, none is available", HttpStatus.CONFLICT),
+    SUMMARY_TARGET_TOO_LONG(2907, "Summary duration must be shorter than the source video", HttpStatus.BAD_REQUEST),
 
     // 30xx - summarization (Member B)
     REFINE_LIMIT_REACHED(3000, "Maximum of 5 refine iterations per session reached", HttpStatus.TOO_MANY_REQUESTS),
